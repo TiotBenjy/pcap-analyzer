@@ -67,3 +67,27 @@ acceptée : la remplacer par une nouvelle qui la référence.
     dont `beforeBuildCommand` construit la vraie UI.
 - Conséquences : un seul chemin de code API pour dev, shots et desktop ; le jeton ne quitte jamais le
   processus (pas d'URL, pas de log) ; à revoir si une vue doit afficher des contenus distants (refusé).
+
+## ADR-007 — Table de flux : chevauchements, expiration et fin de capture déterministes
+
+- Contexte : P1.6. Les captures sont hostiles (chevauchements forgés, fragments incohérents) et
+  P1.7 exige les mêmes tables quels que soient le découpage en chunks et le nombre de shards.
+- Décision :
+  - Chevauchements IP et TCP : **le premier arrivé gagne**. Un fragment ou un segment ultérieur
+    ne fait que combler les trous ; les octets déjà reçus ou livrés ne sont jamais réécrits.
+    Les fragments incohérents (longueurs de fin contradictoires, données au-delà de la fin,
+    fragment non final de taille non multiple de 8, datagramme > 65 535 octets) font rejeter
+    tout le datagramme. Un datagramme incomplet n'est jamais signalé.
+  - Expiration **décidée à la recherche du flux**, à partir du seul flux : un paquet arrivant
+    plus d'un timeout après le dernier paquet de son flux clôt celui-ci (`Timeout`, `last_ts` =
+    dernier paquet) et ouvre un nouveau flux. Le balayage périodique ne fait que libérer la
+    mémoire, avec une marge de 5 s, et produit le même `FlowCtx`. Même règle pour les fragments.
+  - `FlowTable::finish_at(end_ts)` : à la fin, l'engine passe le dernier horodatage **global** ;
+    les flux inactifs depuis plus que leur timeout finissent en `Timeout`, les autres en
+    `EndOfCapture`.
+  - Bornes mémoire comptées avec un surcoût fixe par morceau tamponné (64 octets) ; un segment
+    tronqué par le snaplen saute immédiatement sa fin perdue (gap).
+- Conséquences : l'ensemble des flux et des flux réassemblés ne dépend ni des chunks ni du
+  nombre de shards, sauf l'éviction LRU (`max_flows`, par table) et des reculs d'horloge
+  supérieurs à 5 s. `max_flows` et `max_defrag_bytes` sont des bornes par table : l'engine
+  divise ses bornes globales par le nombre de shards.

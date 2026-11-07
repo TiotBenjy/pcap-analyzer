@@ -2,18 +2,25 @@
 //!
 //! Module ownership (parallel tasks, see docs/ROADMAP.md):
 //! - [`api`]: shared, frozen interface with the engine (`FlowSink`, `FlowKey`, `FlowCtx`, ...);
-//! - [`table`]: the flow table, placeholder until task P1.6 (which may add private modules).
+//! - [`table`]: the flow table (policies documented there), built on private modules:
+//!   `defrag` (bounded IPv4 / IPv6 defragmentation), `tcp` (one-direction TCP reassembly)
+//!   and `ranges` (byte-range helpers).
 
-// Captures are hostile input: no panics (tests exempted through clippy.toml).
+// Captures are hostile input: no panics, no unchecked arithmetic (tests exempted through
+// clippy.toml, and explicitly for arithmetic).
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::indexing_slicing,
-    clippy::panic
+    clippy::panic,
+    clippy::arithmetic_side_effects
 )]
 
 pub mod api;
+mod defrag;
+mod ranges;
 pub mod table;
+mod tcp;
 
 pub use api::{
     DirStats, Direction, EndReason, Endpoint, FlowConfig, FlowCtx, FlowId, FlowKey, FlowSink,

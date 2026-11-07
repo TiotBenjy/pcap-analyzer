@@ -71,9 +71,14 @@ pub struct PacketFlow {
 pub struct PacketCtx {
     pub ts_ns: i64,
     pub chunk_id: u32,
+    /// Global frame index (0-based, in reading order over the whole chunk set), assigned by the
+    /// engine; identifies the source packet for provenance and PCAP export.
+    pub frame: u64,
     /// Original length on the wire of the frame (for byte counters), >= captured length.
     pub wire_len: u32,
-    /// `None` for packets outside any flow (non-IP, undecodable, pending fragments).
+    /// `None` for packets outside any flow (non-IP, undecodable, rejected IP fragments).
+    /// Fragments of a datagram being reassembled are absorbed and not reported until the
+    /// datagram is complete; an incomplete datagram is never reported.
     pub flow: Option<PacketFlow>,
 }
 
@@ -83,6 +88,10 @@ pub struct StreamCtx {
     /// Time of the packet that completed this in-order data.
     pub ts_ns: i64,
     pub chunk_id: u32,
+    /// Global frame index (0-based, in reading order over the whole chunk set), assigned by the
+    /// engine; identifies the source packet for provenance and PCAP export. Here, the frame
+    /// that completed this data.
+    pub frame: u64,
     pub id: FlowId,
     pub key: FlowKey,
     /// Bytes known to be missing just before this data (lost segments, buffer limit). Analyzers
@@ -116,7 +125,8 @@ pub enum EndReason {
     Timeout,
     /// Evicted because the table reached `max_flows` (least recently used first).
     Evicted,
-    /// End of the capture: every remaining flow is flushed by [`crate::FlowTable::finish`].
+    /// End of the capture: every remaining flow is flushed by [`crate::FlowTable::finish_at`]
+    /// (or [`crate::FlowTable::finish`]).
     EndOfCapture,
 }
 
@@ -144,8 +154,11 @@ pub struct FlowCtx {
 
 /// Consumer of flow events. Implemented by the engine (P1.7), which fans out to analyzers.
 pub trait FlowSink {
-    /// Every decoded packet, after IP defragmentation (a reassembled datagram is reported once,
-    /// with the timestamp and chunk of its last fragment).
+    /// Every decoded packet, after IP defragmentation: one event per frame, except IP fragments,
+    /// which are absorbed; `on_packet` reports one event per reassembled datagram, with the
+    /// timestamp, chunk and frame of its last fragment and the summed wire length of its
+    /// fragments. An incomplete datagram (timed out, evicted, end of capture) is never reported.
+    /// The engine counts global frames and bytes from raw frames before `process`.
     fn on_packet(&mut self, ctx: &PacketCtx, pkt: &Decoded<'_>);
 
     /// In-order reassembled TCP payload for one direction (retransmissions removed, overlaps
@@ -163,13 +176,16 @@ pub struct FlowConfig {
     pub udp_timeout_ns: i64,
     /// Other protocols (ICMP, ...).
     pub other_timeout_ns: i64,
-    /// Maximum tracked flows per table (LRU eviction beyond).
+    /// Maximum tracked flows **per table** (LRU eviction beyond); the engine divides its global
+    /// bound by the number of shards.
     pub max_flows: usize,
-    /// Maximum out-of-order bytes buffered per direction of a TCP flow.
+    /// Maximum out-of-order bytes buffered per direction of a TCP flow, counting a fixed
+    /// overhead per buffered piece.
     pub max_stream_buffer: usize,
     /// Fragments of an incomplete datagram are dropped after this delay.
     pub defrag_timeout_ns: i64,
-    /// Total bytes held by pending fragments per table.
+    /// Total bytes held by pending fragments **per table** (plus fixed overheads); the engine
+    /// divides its global bound by the number of shards.
     pub max_defrag_bytes: usize,
 }
 

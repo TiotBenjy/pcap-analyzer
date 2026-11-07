@@ -18,7 +18,7 @@ pub struct CaptureInfo {
     pub format: CaptureFormat,
     /// True when the file was transparently decompressed (`.gz`, detected by magic).
     pub compressed: bool,
-    /// Link types seen so far, in order of first appearance (pcapng: one per interface).
+    /// Distinct link types seen so far, in order of first appearance.
     pub linktypes: Vec<u32>,
     /// Snapshot length of the first interface, when the format declares one.
     pub snaplen: Option<u32>,

@@ -40,6 +40,8 @@ pub struct Scenario {
     ttl: u8,
     rng: SplitMix64,
     next_port: u16,
+    /// Next IPv4 identification, when enabled by [`Scenario::with_ip_ids`] (0 otherwise).
+    next_ip_id: Option<u16>,
     packets: Vec<Packet>,
 }
 
@@ -65,6 +67,7 @@ impl Scenario {
             ttl: 64,
             rng: SplitMix64::new(DEFAULT_SEED),
             next_port: FIRST_EPHEMERAL_PORT,
+            next_ip_id: None,
             packets: Vec::new(),
         }
     }
@@ -83,6 +86,24 @@ impl Scenario {
         assert!(gap_ns >= 0, "the packet gap cannot be negative");
         self.gap_ns = gap_ns;
         self
+    }
+
+    /// Numbers the IPv4 identification field of the following UDP and TCP frames from
+    /// `first` (incremented per IPv4 frame, wrapping). Off by default, so that the bytes of
+    /// existing scenarios stay identical (their IPv4 identification is 0).
+    #[must_use]
+    pub fn with_ip_ids(mut self, first: u16) -> Self {
+        self.next_ip_id = Some(first);
+        self
+    }
+
+    /// Sets the IPv4 identification of `frame` when [`Scenario::with_ip_ids`] is enabled.
+    fn stamp_ip_id(&mut self, frame: &mut [u8]) {
+        if let Some(id) = self.next_ip_id
+            && crate::craft::set_ipv4_ident(frame, id)
+        {
+            self.next_ip_id = Some(id.wrapping_add(1));
+        }
     }
 
     /// Stamps the following packets with this capture interface.
@@ -148,7 +169,8 @@ impl Scenario {
 
     /// One UDP datagram; returns its packet index.
     pub fn udp(&mut self, src: Host, dst: Host, sport: u16, dport: u16, payload: &[u8]) -> usize {
-        let frame = build_frame(&src, &dst, self.ttl, &L4::Udp { sport, dport }, payload);
+        let mut frame = build_frame(&src, &dst, self.ttl, &L4::Udp { sport, dport }, payload);
+        self.stamp_ip_id(&mut frame);
         self.push_frame(frame)
     }
 
@@ -537,7 +559,8 @@ impl TcpSession<'_> {
             window: self.window,
             mss: flags.syn.then_some(self.mss_option),
         };
-        let frame = build_frame(&src, &dst, self.sc.ttl, &l4, payload);
+        let mut frame = build_frame(&src, &dst, self.sc.ttl, &l4, payload);
+        self.sc.stamp_ip_id(&mut frame);
         self.sc.push_frame(frame)
     }
 }

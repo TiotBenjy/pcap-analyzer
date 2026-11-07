@@ -87,12 +87,27 @@ Suivis non bloquants de la vague 1.A (à intégrer à la tâche qui en a besoin)
 
 - [x] **P1.6** `feat/flow-table` — `netsift-flow` : défragmentation IP bornée, table de flux, réassemblage TCP
       (hors ordre, retransmissions, chevauchements, bornes mémoire), expiration en temps paquet.
-- [~] **P1.7** `feat/engine-pipeline` — `netsift-engine` : threads lecteur/décodeur/shards/writer, trait
+- [x] **P1.7** `feat/engine-pipeline` — `netsift-engine` : threads lecteur/décodeur/shards/writer, trait
       `Analyzer` **figé** (voir ARCHITECTURE), classification applicative pour `timeseries`, progression,
       annulation. CLI `netsift ingest <dossier|fichier> --out <dir>`. Test d'acceptation « fichier unique
       vs chunks = mêmes tables ».
 
 Sortie de phase : ingestion d'un dossier de chunks synthétiques de 1 Go en CLI avec rapport.
+Atteinte le 2026-11-08 : 11 chunks dumpcap de 100 Mo, 1 872 000 paquets, 192 004 flux, 0 anomalie, 6,65 s
+(152 Mio/s, 20 shards sur 22 cœurs). Test d'acceptation vert : `timeseries`, `hosts` et `flows` identiques
+entre fichier unique et découpages (dumpcap, tcpdump `-C`, nametimenum, formats mélangés + gz) et pour
+1, 4 et 7 shards.
+
+Suivis de la phase 1 :
+
+- P2.1 / P2.5 : appeler `recover_interrupted()` au démarrage de l'API embarquée (desktop), comme le fait
+  déjà `netsift serve` (sessions restées `importing` après un arrêt brutal -> `incomplete`).
+- P4.2 : mesurer le pic de mémoire résidente (non mesuré en P1.7 : pas de GNU `time` dans l'image) ;
+  supprimer le double décodage (décodeur puis `FlowTable`) si le profilage le justifie ; borne globale
+  des tampons TCP tous flux confondus (les bornes actuelles sont par flux et par table).
+- Phase 3 : le trait `Analyzer` est figé (`netsift-analyze`) ; chaque analyseur ajoute une ligne triée
+  dans `Registry::BUILTIN`, ses variantes de `Record`, sa traduction dans `netsift-engine/src/translate.rs`,
+  sa sous-structure dans `AnalyzerConfig` et sa migration dans sa plage réservée.
 
 ---
 

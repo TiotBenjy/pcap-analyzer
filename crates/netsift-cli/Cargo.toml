@@ -16,9 +16,15 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 netsift-api.workspace = true
+netsift-engine.workspace = true
+netsift-store.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+netsift-fixtures.workspace = true
+tempfile = "3.27.0"

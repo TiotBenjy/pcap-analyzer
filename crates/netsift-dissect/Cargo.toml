@@ -9,6 +9,12 @@ publish.workspace = true
 repository.workspace = true
 
 [dependencies]
+etherparse = "0.21.0"
+thiserror.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+insta = "1.49.0"
+proptest = "1.12.0"

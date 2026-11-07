@@ -231,3 +231,106 @@ fn nbns_round(sc: &mut Scenario) {
     sc.nbns_query(hosts::workstation(), hosts::broadcast(), 0x7102, &name);
     sc.nbns_query_response(server, hosts::workstation(), 0x7102, &name);
 }
+
+/// One fragmented UDP datagram of [`fragmentation`], as the receiver should rebuild it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FragmentedDatagram {
+    pub src: Host,
+    pub dst: Host,
+    pub sport: u16,
+    pub dport: u16,
+    /// UDP payload after reassembly.
+    pub payload: Vec<u8>,
+    /// Number of fragment frames sent for this datagram.
+    pub frames: usize,
+}
+
+/// Deterministic payload of `len` bytes, different for each `seed`.
+fn pattern(len: usize, seed: u8) -> Vec<u8> {
+    (0..len)
+        .map(|i| u8::try_from(i % 251).unwrap_or_default() ^ seed)
+        .collect()
+}
+
+/// IP fragmentation scenario: four UDP datagrams (two IPv4, two IPv6) sent as fragments,
+/// each completed by its last frame, in this order:
+///
+/// 1. IPv4, 3000-byte payload, three fragments sent out of order (last, first, first again
+///    as an exact duplicate, middle);
+/// 2. IPv4, 2000-byte payload, two fragments overlapping by 8 identical bytes, with a forged
+///    fragment (zeros over bytes 512..1024) between them that a "first arrival wins"
+///    reassembler must ignore;
+/// 3. IPv6, 3000-byte payload, three fragments in reverse order with the middle one repeated;
+/// 4. IPv6, same overlap and forged fragment as case 2.
+///
+/// The packets use the scenario clock (500 us apart); the expected datagrams are returned in
+/// completion order.
+pub fn fragmentation() -> (Scenario, Vec<FragmentedDatagram>) {
+    use crate::craft::{FragSpec, fragment_frames, ip_payload, udp_frame};
+
+    let mut sc = Scenario::new();
+    let mut expected = Vec::new();
+    let cases: [(Host, Host, u32, usize, u8); 4] = [
+        (hosts::workstation(), hosts::router(), 0x0101, 3000, 1),
+        (hosts::workstation(), hosts::router(), 0x0102, 2000, 2),
+        (
+            hosts::workstation_v6(),
+            hosts::router_v6(),
+            0xdead_0001,
+            3000,
+            3,
+        ),
+        (
+            hosts::workstation_v6(),
+            hosts::router_v6(),
+            0xdead_0002,
+            2000,
+            4,
+        ),
+    ];
+    for (i, (src, dst, ident, len, seed)) in cases.into_iter().enumerate() {
+        let (sport, dport) = (40_000 + u16::from(seed), 9_000);
+        let payload = pattern(len, seed);
+        let frame = udp_frame(&src, &dst, sport, dport, &payload);
+        let body = ip_payload(&frame).expect("IP frame").to_vec();
+        let specs = if i % 2 == 0 {
+            let even = FragSpec::even(&body, 1232);
+            assert_eq!(even.len(), 3, "three fragments");
+            if i == 0 {
+                vec![
+                    even[2].clone(),
+                    even[0].clone(),
+                    even[0].clone(),
+                    even[1].clone(),
+                ]
+            } else {
+                vec![
+                    even[2].clone(),
+                    even[1].clone(),
+                    even[1].clone(),
+                    even[0].clone(),
+                ]
+            }
+        } else {
+            vec![
+                FragSpec::slice(&body, 0..1024),
+                FragSpec::new(512, true, vec![0u8; 512]),
+                FragSpec::slice(&body, 1016..body.len()),
+            ]
+        };
+        let frames = fragment_frames(&frame, ident, &specs);
+        let count = frames.len();
+        for f in frames {
+            sc.push_frame(f);
+        }
+        expected.push(FragmentedDatagram {
+            src,
+            dst,
+            sport,
+            dport,
+            payload,
+            frames: count,
+        });
+    }
+    (sc, expected)
+}

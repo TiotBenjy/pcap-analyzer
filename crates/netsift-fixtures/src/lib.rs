@@ -6,6 +6,8 @@
 //! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip.
 //! - [`split`]: chunk splitter by size, duration, packet count or explicit boundaries, with
 //!   the dumpcap, dumpcap `nametimenum`, editcap and tcpdump `-C` naming conventions.
+//! - [`craft`]: hand-crafted frames for the flow layer (TCP segments with any sequence
+//!   number or flag, UDP, ICMP echo, IPv4 / IPv6 fragments with overlaps and duplicates).
 //! - [`anomaly`]: helpers to damage or arrange chunk sets (missing, duplicated, truncated,
 //!   empty, mixed formats, several prefixes, overlapping interfaces, cross-chunk exchanges).
 //!
@@ -23,6 +25,7 @@
 //! ```
 
 pub mod anomaly;
+pub mod craft;
 pub mod packet;
 pub mod proto;
 pub mod rng;

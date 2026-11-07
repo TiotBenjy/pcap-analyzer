@@ -2632,6 +2632,12 @@ dependencies = [
 [[package]]
 name = "netsift-dissect"
 version = "0.1.0"
+dependencies = [
+ "etherparse",
+ "insta",
+ "proptest",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "netsift-engine"

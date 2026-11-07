@@ -23,6 +23,8 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    // No data: URIs for fonts/assets: the desktop CSP only allows data: for images.
+    assetsInlineLimit: 0,
     sourcemap: false,
     rollupOptions: {
       output: {

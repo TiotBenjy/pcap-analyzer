@@ -62,7 +62,7 @@ export function FilterBar({ filters, onToggle, onSetAll, search, onSearch, searc
   );
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <div className="relative flex min-w-0 flex-wrap items-center gap-2">
       {onSearch !== undefined && (
         <label className="relative flex h-8 min-w-0 flex-1 basis-48 items-center sm:max-w-xs">
           <span className="sr-only">{t('common.search')}</span>
@@ -86,7 +86,7 @@ export function FilterBar({ filters, onToggle, onSetAll, search, onSearch, searc
             {bulk}
           </div>
 
-          <details className="group relative md:hidden" data-testid="filterbar-menu">
+          <details className="group md:hidden" data-testid="filterbar-menu">
             <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-surface px-3 text-body [&::-webkit-details-marker]:hidden">
               {t('common.filters')}
               <span className="num text-meta text-muted">
@@ -94,7 +94,7 @@ export function FilterBar({ filters, onToggle, onSetAll, search, onSearch, searc
               </span>
               <ChevronDown aria-hidden size={16} strokeWidth={1.75} className="group-open:rotate-180" />
             </summary>
-            <div className="absolute left-0 z-20 mt-1 flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-xs">
+            <div className="absolute inset-x-0 top-full z-20 mt-1 flex flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-xs">
               {toggles}
               {bulk}
             </div>

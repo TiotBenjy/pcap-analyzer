@@ -1,0 +1,12 @@
+---
+source: crates/netsift-flow/tests/defrag.rs
+expression: rec.render()
+---
+pkt +0us 28d8c51f778714fa c>s wire=4376 192.168.1.10>192.168.1.1 p17 udp 40001>9000 len=3000
+pkt +1500us 2a8edd70f32ad3cd c>s wire=2630 192.168.1.10>192.168.1.1 p17 udp 40002>9000 len=2000
+pkt +3500us 2a6a6ad5e65ba790 c>s wire=4488 2001:db8:1::10>2001:db8:1::1 p17 udp 40003>9000 len=3000
+pkt +5000us 2ae761e7d8bee4e3 c>s wire=2714 2001:db8:1::10>2001:db8:1::1 p17 udp 40004>9000 len=2000
+end 28d8c51f778714fa p17 192.168.1.10:40001 > 192.168.1.1:9000 +0us..+0us c>s 1p/4376B s>c 0p/0B None EndOfCapture
+end 2a8edd70f32ad3cd p17 192.168.1.10:40002 > 192.168.1.1:9000 +1500us..+1500us c>s 1p/2630B s>c 0p/0B None EndOfCapture
+end 2a6a6ad5e65ba790 p17 2001:db8:1::10:40003 > 2001:db8:1::1:9000 +3500us..+3500us c>s 1p/4488B s>c 0p/0B None EndOfCapture
+end 2ae761e7d8bee4e3 p17 2001:db8:1::10:40004 > 2001:db8:1::1:9000 +5000us..+5000us c>s 1p/2714B s>c 0p/0B None EndOfCapture

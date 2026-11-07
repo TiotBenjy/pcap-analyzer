@@ -41,7 +41,11 @@ async function resolveEndpoint(): Promise<ApiEndpoint> {
 }
 
 export function getEndpoint(): Promise<ApiEndpoint> {
-  endpointPromise ??= resolveEndpoint();
+  // A failed resolution is not cached: the next request retries.
+  endpointPromise ??= resolveEndpoint().catch((e: unknown) => {
+    endpointPromise = null;
+    throw e;
+  });
   return endpointPromise;
 }
 

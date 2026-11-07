@@ -89,7 +89,8 @@ pub trait Analyzer: Send {
 
 ## Stockage
 
-Répertoire de données de l'application (`dirs::data_dir()/NetSift`, ou `.data/` en mode dev) :
+Répertoire de données de l'application (`dirs::data_local_dir()/NetSift`, local et non itinérant sous Windows,
+ou `.data/` en mode dev) :
 
 ```
 sessions/<session_id>/

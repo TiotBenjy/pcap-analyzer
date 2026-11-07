@@ -1,0 +1,8 @@
+# Fins de ligne normalisées : LF partout, pour que les scripts bash marchent sous Windows (Git Bash).
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.mmdb binary
+*.pcap binary
+*.pcapng binary
+*.ico binary

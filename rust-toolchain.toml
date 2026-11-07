@@ -1,0 +1,6 @@
+# Toolchain épinglée. Doit rester alignée avec docker/Dockerfile (RUST_VERSION) et les workflows CI.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+profile = "minimal"

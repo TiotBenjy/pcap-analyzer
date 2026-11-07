@@ -1,0 +1,65 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# Worktrees live inside the repository; fuzz targets need nightly and are built separately.
+exclude = [".worktrees", "fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+publish = false
+repository = "https://github.com/TiotBenjy/pcap-analyzer"
+
+[workspace.dependencies]
+# Internal crates (allowed dependency graph: see docs/ARCHITECTURE.md).
+netsift-analyze = { path = "crates/netsift-analyze" }
+netsift-api = { path = "crates/netsift-api" }
+netsift-capture = { path = "crates/netsift-capture" }
+netsift-dissect = { path = "crates/netsift-dissect" }
+netsift-engine = { path = "crates/netsift-engine" }
+netsift-fixtures = { path = "crates/netsift-fixtures" }
+netsift-flow = { path = "crates/netsift-flow" }
+netsift-geo = { path = "crates/netsift-geo" }
+netsift-store = { path = "crates/netsift-store" }
+
+# Third-party (versions pinned per docs/STACK_VERSIONS.md; add with `./x.sh cargo add`).
+anyhow = "1.0"
+thiserror = "2.0"
+
+[workspace.lints.rust]
+# The desktop crate (Tauri) does not inherit these lints: its generated code may need `unsafe`.
+unsafe_code = "forbid"
+unused_must_use = "deny"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+# Pedantic as warnings (the gate runs clippy with -D warnings), minus the noisiest lints.
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+similar_names = "allow"
+# Always on, everywhere.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+print_stdout = "warn"
+print_stderr = "warn"
+# Hostile-input crates (netsift-dissect) additionally deny unwrap/expect/indexing/panic
+# at crate level (see its lib.rs): Cargo cannot extend inherited lints per crate.
+
+[profile.dev]
+# Faster builds and smaller target dirs; backtraces keep line numbers.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+# Dependencies optimized even in dev: parsing and SQLite are much faster, rebuilt rarely.
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

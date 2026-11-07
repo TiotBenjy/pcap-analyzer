@@ -22,11 +22,15 @@ allow = [
   "CC0-1.0",
 ]
 confidence-threshold = 0.9
+# The allow-list anticipates future dependencies: do not warn on unused entries.
+unused-allowed-license = "allow"
 # La base GeoIP DB-IP Lite est CC BY 4.0 (donnée, pas du code) : attribution gérée dans l'app, hors scope deny.
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Internal path dependencies (publish = false) are not wildcards in practice.
+allow-wildcard-paths = true
 # Interdire explicitement un éventuel binding libpcap/pcap système (ADR-002 : parsing 100% Rust).
 deny = [
   { name = "pcap" },

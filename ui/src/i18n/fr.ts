@@ -1,0 +1,98 @@
+import type { Dictionary } from './en';
+
+// French dictionary. Typed against the English shape: a missing or extra key fails typecheck.
+export const fr: Dictionary = {
+  app: {
+    name: 'NetSift',
+    skipToContent: 'Aller au contenu',
+  },
+  nav: {
+    groups: {
+      session: 'Session',
+      analysis: 'Analyse',
+      more: 'Autres',
+    },
+    items: {
+      captures: 'Captures',
+      overview: "Vue d'ensemble",
+      dns: 'DNS',
+      http: 'HTTP',
+      httpHeaders: 'En-têtes HTTP',
+      tls: 'SSL/TLS',
+      connections: 'Connexions',
+      openPorts: 'Ports ouverts',
+      smb: 'SMB',
+      pictures: 'Images',
+      credentials: 'Identifiants',
+      servers: 'Serveurs',
+      network: 'Réseau',
+      hosts: 'Hôtes',
+      documents: 'Documents',
+      ftp: 'FTP',
+      telnet: 'Telnet',
+      ssdp: 'SSDP',
+      sip: 'SIP',
+      arp: 'ARP',
+      ethernet: 'Ethernet',
+      wifi: 'WiFi',
+      settings: 'Réglages',
+    },
+    openMenu: 'Ouvrir la navigation',
+    closeMenu: 'Fermer la navigation',
+    collapse: 'Replier la barre latérale',
+    expand: 'Déplier la barre latérale',
+    unavailable: 'Disponible dans une version ultérieure',
+  },
+  theme: {
+    label: 'Thème',
+    system: 'Système',
+    light: 'Clair',
+    dark: 'Sombre',
+    toggle: 'Changer de thème',
+  },
+  language: {
+    label: 'Langue',
+    system: 'Système',
+    en: 'English',
+    fr: 'Français',
+  },
+  views: {
+    captures: {
+      subtitle: 'Sessions de capture importées',
+      emptyTitle: 'Aucune capture importée',
+      emptyText: 'Importez un fichier pcap ou pcapng, ou un dossier de chunks, pour lancer une analyse.',
+    },
+    overview: {
+      subtitle: 'Synthèse du trafic de la session courante',
+      emptyTitle: 'Aucune session ouverte',
+      emptyText: "Ouvrez une session depuis Captures pour afficher sa vue d'ensemble.",
+    },
+    placeholder: {
+      subtitle: 'Pas encore implémenté',
+      emptyTitle: 'Pas encore disponible',
+      emptyText: 'Cette vue sera ajoutée dans une version ultérieure.',
+    },
+    settings: {
+      subtitle: "Préférences d'affichage, enregistrées sur cet appareil",
+      appearance: 'Apparence',
+    },
+    notFound: {
+      title: 'Page introuvable',
+      text: 'Cette adresse ne correspond à aucune vue.',
+      back: 'Aller à Captures',
+    },
+  },
+  common: {
+    loading: 'Chargement',
+    retry: 'Réessayer',
+    error: 'Une erreur est survenue',
+    noData: 'Aucune donnée',
+    search: 'Rechercher',
+    filters: 'Filtres',
+    enableAll: 'Tout activer',
+    disableAll: 'Tout désactiver',
+    rows_one: '{{count}} ligne',
+    rows_other: '{{count}} lignes',
+    other: 'Autres',
+  },
+};

@@ -25,6 +25,11 @@ fn fragmentation_scenario_reports_each_datagram_once() {
         idx += dg.frames;
         assert_eq!(payload, &dg.payload, "{summary}");
         assert_eq!(
+            ctx.frame,
+            u64::try_from(idx - 1).unwrap(),
+            "frame of the last fragment"
+        );
+        assert_eq!(
             ctx.ts_ns,
             frames.last().unwrap().ts_ns,
             "time of the last fragment"

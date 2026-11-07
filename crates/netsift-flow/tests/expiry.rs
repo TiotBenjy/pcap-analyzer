@@ -236,10 +236,21 @@ fn chunk_and_wire_length_are_passed_through() {
     let mut table = FlowTable::new(FlowConfig::default());
     let mut rec = Recorder::default();
     let frame = udp(1, false);
-    table.process(5, 42, LINKTYPE_ETHERNET, 1500, &frame, &mut rec);
+    table.process(
+        5,
+        42,
+        9_000_000_000,
+        LINKTYPE_ETHERNET,
+        1500,
+        &frame,
+        &mut rec,
+    );
     table.finish(&mut rec);
     let (ctx, _, _) = rec.packets()[0].clone();
-    assert_eq!((ctx.ts_ns, ctx.chunk_id, ctx.wire_len), (5, 42, 1500));
+    assert_eq!(
+        (ctx.ts_ns, ctx.chunk_id, ctx.frame, ctx.wire_len),
+        (5, 42, 9_000_000_000, 1500)
+    );
     assert_eq!(rec.single_flow().to_server.bytes, 1500);
 }
 

@@ -90,11 +90,11 @@ fn view(rec: &Recorder) -> View {
 fn run_sharded(packets: &[Packet], n: u64, route: impl Fn(u64) -> u64) -> Recorder {
     let mut tables: Vec<FlowTable> = (0..n).map(|_| FlowTable::new(config())).collect();
     let mut rec = Recorder::default();
-    for p in packets {
+    for (frame, p) in (0u64..).zip(packets) {
         let shard = route(shard_hash(&decode(p.linktype, &p.data))) % n;
         let len = u32::try_from(p.data.len()).unwrap();
         tables[usize::try_from(shard).unwrap()]
-            .process(p.ts_ns, 0, p.linktype, len, &p.data, &mut rec);
+            .process(p.ts_ns, 0, frame, p.linktype, len, &p.data, &mut rec);
     }
     let end = packets.iter().map(|p| p.ts_ns).max().unwrap_or(0);
     for t in &mut tables {

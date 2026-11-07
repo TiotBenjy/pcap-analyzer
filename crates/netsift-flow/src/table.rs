@@ -44,7 +44,7 @@
 //!
 //! [`FlowSink::on_packet`] is called once per frame, except IP fragments: a fragment is
 //! absorbed silently until its datagram is complete, which is then reported once, decoded
-//! from the reassembled bytes, with the timestamp and chunk of the completing fragment and the
+//! from the reassembled bytes, with the timestamp, chunk and frame index of the completing fragment and the
 //! summed wire length of all its fragments. In that [`Decoded`], `network` comes from the last
 //! fragment with `fragment = None`, `payload` and `ip_payload` borrow the reassembly buffer,
 //! and `l4_offset` is `None` (offsets refer to the last fragment frame). Rejected fragments
@@ -221,7 +221,9 @@ struct Flow {
     serial: u64,
     first_ts: i64,
     last_ts: i64,
+    /// Chunk and frame of the packet that set `last_ts`.
     last_chunk: u32,
+    last_frame: u64,
     to_server: DirStats,
     to_client: DirStats,
     /// Position in the LRU list of `class`.
@@ -241,20 +243,22 @@ impl Flow {
     }
 }
 
-/// Flushes the buffered data of both directions (holes reported as gaps).
-fn flush_streams(
-    conn: &mut TcpConn,
+/// Source of an event: packet time, chunk and global frame index.
+#[derive(Debug, Clone, Copy)]
+struct At {
     ts_ns: i64,
     chunk_id: u32,
-    id: FlowId,
-    key: FlowKey,
-    sink: &mut dyn FlowSink,
-) {
+    frame: u64,
+}
+
+/// Flushes the buffered data of both directions (holes reported as gaps).
+fn flush_streams(conn: &mut TcpConn, at: At, id: FlowId, key: FlowKey, sink: &mut dyn FlowSink) {
     for dir in [Direction::ToServer, Direction::ToClient] {
         conn.stream_mut(dir).flush(&mut |gap, data| {
             let ctx = StreamCtx {
-                ts_ns,
-                chunk_id,
+                ts_ns: at.ts_ns,
+                chunk_id: at.chunk_id,
+                frame: at.frame,
                 id,
                 key,
                 gap_before: gap,
@@ -331,30 +335,38 @@ impl FlowTable {
         &self.config
     }
 
-    /// Processes one captured frame. `wire_len` is the original length on the wire.
-    /// Frames must be passed in non-decreasing time order per shard (the engine guarantees it;
+    /// Processes one captured frame. `frame` is its global index (see [`PacketCtx::frame`]),
+    /// `wire_len` its original length on the wire. Frames must be passed in non-decreasing time order per shard (the engine guarantees it;
     /// small backward steps must be tolerated, never panic).
+    // Frame metadata passed flat: called once per packet on the hot path (agreed signature).
+    #[allow(clippy::too_many_arguments)]
     pub fn process(
         &mut self,
         ts_ns: i64,
         chunk_id: u32,
+        frame: u64,
         linktype: u32,
         wire_len: u32,
         data: &[u8],
         sink: &mut dyn FlowSink,
     ) {
         let pkt = decode(linktype, data);
+        let at = At {
+            ts_ns,
+            chunk_id,
+            frame,
+        };
         self.advance_clock(ts_ns, sink);
         let Some(ip) = pkt.ip() else {
-            report_unflowed(ts_ns, chunk_id, wire_len, &pkt, sink);
+            report_unflowed(at, wire_len, &pkt, sink);
             return;
         };
         let Some(fragment) = ip.fragment else {
-            self.handle(ts_ns, chunk_id, wire_len, &pkt, sink);
+            self.handle(at, wire_len, &pkt, sink);
             return;
         };
         if ip.truncated {
-            report_unflowed(ts_ns, chunk_id, wire_len, &pkt, sink);
+            report_unflowed(at, wire_len, &pkt, sink);
             return;
         }
         let piece = Piece {
@@ -368,11 +380,11 @@ impl FlowTable {
         };
         match self.defrag.push(&piece) {
             Outcome::Pending => {}
-            Outcome::Rejected => report_unflowed(ts_ns, chunk_id, wire_len, &pkt, sink),
+            Outcome::Rejected => report_unflowed(at, wire_len, &pkt, sink),
             Outcome::Complete(dg) => {
                 let full = reassembled(&pkt, &dg.data, dg.next_header);
                 let total = u32::try_from(dg.wire_len).unwrap_or(u32::MAX);
-                self.handle(ts_ns, chunk_id, total, &full, sink);
+                self.handle(at, total, &full, sink);
             }
         }
     }
@@ -468,7 +480,12 @@ impl FlowTable {
         let mut end = reason;
         let mut tcp_state = None;
         if let Some(conn) = flow.tcp.as_deref_mut() {
-            flush_streams(conn, flow.last_ts, flow.last_chunk, flow.id, flow.key, sink);
+            let at = At {
+                ts_ns: flow.last_ts,
+                chunk_id: flow.last_chunk,
+                frame: flow.last_frame,
+            };
+            flush_streams(conn, at, flow.id, flow.key, sink);
             if conn.finished() {
                 end = EndReason::Closed;
             }
@@ -564,6 +581,7 @@ impl FlowTable {
             first_ts: ts_ns,
             last_ts: ts_ns,
             last_chunk: 0,
+            last_frame: 0,
             to_server: DirStats::default(),
             to_client: DirStats::default(),
             tick: self.tick,
@@ -577,16 +595,9 @@ impl FlowTable {
     }
 
     /// Tracks one decoded (possibly reassembled) packet and reports it.
-    fn handle(
-        &mut self,
-        ts_ns: i64,
-        chunk_id: u32,
-        wire_len: u32,
-        pkt: &Decoded<'_>,
-        sink: &mut dyn FlowSink,
-    ) {
+    fn handle(&mut self, at: At, wire_len: u32, pkt: &Decoded<'_>, sink: &mut dyn FlowSink) {
         let Some(ip) = pkt.ip().filter(|_| pkt.error.is_none()) else {
-            report_unflowed(ts_ns, chunk_id, wire_len, pkt, sink);
+            report_unflowed(at, wire_len, pkt, sink);
             return;
         };
         let (sport, dport) = pkt.ports().unwrap_or((0, 0));
@@ -600,12 +611,13 @@ impl FlowTable {
         };
         let canon = Canon::new(ip.protocol, src, dst);
         let tcp = pkt.tcp().copied();
+        let ts_ns = at.ts_ns;
         self.retire_stale(&canon, ts_ns, src, tcp.as_ref(), sink);
         if !self.flows.contains_key(&canon) {
             self.create(canon, ts_ns, src, dst, tcp.as_ref(), sink);
         }
         let Some(flow) = self.flows.get_mut(&canon) else {
-            report_unflowed(ts_ns, chunk_id, wire_len, pkt, sink);
+            report_unflowed(at, wire_len, pkt, sink);
             return;
         };
 
@@ -620,8 +632,11 @@ impl FlowTable {
         };
         stats.packets = stats.packets.saturating_add(1);
         stats.bytes = stats.bytes.saturating_add(u64::from(wire_len));
-        flow.last_ts = flow.last_ts.max(ts_ns);
-        flow.last_chunk = chunk_id;
+        if ts_ns >= flow.last_ts {
+            flow.last_ts = ts_ns;
+            flow.last_chunk = at.chunk_id;
+            flow.last_frame = at.frame;
+        }
         if let (Some(t), Some(conn)) = (tcp.as_ref(), flow.tcp.as_deref_mut()) {
             conn.update(t, dir);
         }
@@ -637,7 +652,8 @@ impl FlowTable {
         let (id, key) = (flow.id, flow.key);
         let ctx = PacketCtx {
             ts_ns,
-            chunk_id,
+            chunk_id: at.chunk_id,
+            frame: at.frame,
             wire_len,
             flow: Some(PacketFlow { id, key, dir }),
         };
@@ -657,7 +673,8 @@ impl FlowTable {
                 .segment(&seg, self.config.max_stream_buffer, &mut |gap, data| {
                     let ctx = StreamCtx {
                         ts_ns,
-                        chunk_id,
+                        chunk_id: at.chunk_id,
+                        frame: at.frame,
                         id,
                         key,
                         gap_before: gap,
@@ -666,21 +683,16 @@ impl FlowTable {
                 });
         }
         if conn.finished() {
-            flush_streams(conn, ts_ns, chunk_id, id, key, sink);
+            flush_streams(conn, at, id, key, sink);
         }
     }
 }
 
-fn report_unflowed(
-    ts_ns: i64,
-    chunk_id: u32,
-    wire_len: u32,
-    pkt: &Decoded<'_>,
-    sink: &mut dyn FlowSink,
-) {
+fn report_unflowed(at: At, wire_len: u32, pkt: &Decoded<'_>, sink: &mut dyn FlowSink) {
     let ctx = PacketCtx {
-        ts_ns,
-        chunk_id,
+        ts_ns: at.ts_ns,
+        chunk_id: at.chunk_id,
+        frame: at.frame,
         wire_len,
         flow: None,
     };

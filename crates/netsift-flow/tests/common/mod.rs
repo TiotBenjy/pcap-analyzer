@@ -33,6 +33,8 @@ pub enum Event {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Recorder {
     pub events: Vec<Event>,
+    /// Frames fed so far (the global frame index of the next one).
+    pub frames: u64,
 }
 
 fn summary(pkt: &Decoded<'_>) -> String {
@@ -177,7 +179,8 @@ impl Recorder {
                     });
                     writeln!(
                         out,
-                        "pkt +{}us {flow} wire={} {summary}",
+                        "pkt #{} +{}us {flow} wire={} {summary}",
+                        ctx.frame,
                         rel(ctx.ts_ns),
                         ctx.wire_len
                     )
@@ -197,7 +200,8 @@ impl Recorder {
                         .collect();
                     writeln!(
                         out,
-                        "stream +{}us {:016x} {} gap={} len={} {text:?}",
+                        "stream #{} +{}us {:016x} {} gap={} len={} {text:?}",
+                        ctx.frame,
                         rel(ctx.ts_ns),
                         ctx.id.0,
                         dir(*d),
@@ -248,7 +252,9 @@ pub fn run(packets: &[Packet], config: FlowConfig) -> Recorder {
 pub fn feed(table: &mut FlowTable, packets: &[Packet], rec: &mut Recorder) {
     for p in packets {
         let len = u32::try_from(p.data.len()).unwrap();
-        table.process(p.ts_ns, p.interface, p.linktype, len, &p.data, rec);
+        let frame = rec.frames;
+        rec.frames += 1;
+        table.process(p.ts_ns, p.interface, frame, p.linktype, len, &p.data, rec);
     }
 }
 

@@ -85,9 +85,9 @@ Suivis non bloquants de la vague 1.A (à intégrer à la tâche qui en a besoin)
 
 ### Vague 1.B (après 1.A)
 
-- [ ] **P1.6** `feat/flow-table` — `netsift-flow` : défragmentation IP bornée, table de flux, réassemblage TCP
+- [~] **P1.6** `feat/flow-table` — `netsift-flow` : défragmentation IP bornée, table de flux, réassemblage TCP
       (hors ordre, retransmissions, chevauchements, bornes mémoire), expiration en temps paquet.
-- [ ] **P1.7** `feat/engine-pipeline` — `netsift-engine` : threads lecteur/décodeur/shards/writer, trait
+- [~] **P1.7** `feat/engine-pipeline` — `netsift-engine` : threads lecteur/décodeur/shards/writer, trait
       `Analyzer` **figé** (voir ARCHITECTURE), classification applicative pour `timeseries`, progression,
       annulation. CLI `netsift ingest <dossier|fichier> --out <dir>`. Test d'acceptation « fichier unique
       vs chunks = mêmes tables ».

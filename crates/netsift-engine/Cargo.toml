@@ -12,6 +12,14 @@ repository.workspace = true
 netsift-analyze.workspace = true
 netsift-capture.workspace = true
 netsift-store.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+insta = "1.49.0"
+netsift-fixtures.workspace = true
+tempfile = "3.27.0"

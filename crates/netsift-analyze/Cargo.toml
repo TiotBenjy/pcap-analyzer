@@ -9,8 +9,13 @@ publish.workspace = true
 repository.workspace = true
 
 [dependencies]
+netsift-dissect.workspace = true
 netsift-flow.workspace = true
 netsift-geo.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+insta = "1.49.0"
+netsift-fixtures.workspace = true

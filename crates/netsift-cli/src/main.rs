@@ -1,11 +1,16 @@
 //! `netsift` command-line entry point.
 
+mod ingest;
+
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use netsift_api::ApiConfig;
+use netsift_engine::CancelToken;
 use tracing::{info, warn};
 
 #[derive(Debug, Parser)]
@@ -21,6 +26,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Import a capture file or a folder of chunks into a new session.
+    Ingest(ingest::IngestArgs),
     /// Serve the HTTP API (used by `./x.sh dev`, screenshots, and for debugging with curl).
     Serve(ServeArgs),
 }
@@ -77,6 +84,9 @@ async fn serve(args: ServeArgs) -> Result<()> {
     }
     std::fs::create_dir_all(&args.data_dir)
         .with_context(|| format!("cannot create data directory {}", args.data_dir.display()))?;
+    if !args.read_only {
+        recover_sessions(&args.data_dir)?;
+    }
 
     let listener = tokio::net::TcpListener::bind(args.bind)
         .await
@@ -92,6 +102,17 @@ async fn serve(args: ServeArgs) -> Result<()> {
     };
     netsift_api::serve(listener, config, shutdown_signal()).await?;
     info!("API stopped");
+    Ok(())
+}
+
+/// Sessions left `importing` by a previous run (crash, kill) become `incomplete`. Done before
+/// the API accepts imports.
+fn recover_sessions(data_dir: &std::path::Path) -> Result<()> {
+    let catalog = netsift_store::Catalog::open(data_dir)
+        .with_context(|| format!("cannot open the catalog in {}", data_dir.display()))?;
+    for id in netsift_engine::recover_interrupted(&catalog)? {
+        warn!(session = %id, "interrupted import marked incomplete");
+    }
     Ok(())
 }
 
@@ -117,7 +138,28 @@ async fn shutdown_signal() {
     }
 }
 
-fn main() -> Result<()> {
+/// Runs an import on the current thread; Ctrl-C or SIGTERM cancels it (session incomplete).
+fn ingest_command(
+    runtime: &tokio::runtime::Runtime,
+    args: &ingest::IngestArgs,
+) -> Result<ExitCode> {
+    let cancel = CancelToken::new();
+    let on_signal = cancel.clone();
+    runtime.spawn(async move {
+        shutdown_signal().await;
+        on_signal.cancel();
+    });
+    let interactive = std::io::stderr().is_terminal();
+    ingest::run(
+        args,
+        &cancel,
+        interactive,
+        &mut std::io::stderr(),
+        &mut std::io::stdout(),
+    )
+}
+
+fn main() -> Result<ExitCode> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -131,7 +173,8 @@ fn main() -> Result<()> {
         .enable_all()
         .build()?;
     match cli.command {
-        Command::Serve(args) => runtime.block_on(serve(args)),
+        Command::Ingest(args) => ingest_command(&runtime, &args),
+        Command::Serve(args) => runtime.block_on(serve(args)).map(|()| ExitCode::SUCCESS),
     }
 }
 
@@ -142,7 +185,9 @@ mod tests {
 
     fn parse(args: &[&str]) -> ServeArgs {
         let cli = Cli::try_parse_from(args).unwrap();
-        let Command::Serve(serve) = cli.command;
+        let Command::Serve(serve) = cli.command else {
+            panic!("not a serve command");
+        };
         serve
     }
 
@@ -177,5 +222,126 @@ mod tests {
         assert!(
             Cli::try_parse_from(["netsift", "serve", "--token", "x", "--token-file", "y"]).is_err()
         );
+    }
+
+    fn parse_ingest(args: &[&str]) -> ingest::IngestArgs {
+        let cli = Cli::try_parse_from(args).unwrap();
+        let Command::Ingest(ingest) = cli.command else {
+            panic!("not an ingest command");
+        };
+        ingest
+    }
+
+    #[test]
+    fn ingest_arguments() {
+        let a = parse_ingest(&["netsift", "ingest", "caps", "--out", "data"]);
+        assert_eq!(a.input, PathBuf::from("caps"));
+        assert_eq!(a.out, PathBuf::from("data"));
+        assert_eq!(
+            (a.group, a.merge_all, a.recursive, a.shards),
+            (None, false, false, None)
+        );
+        let a = parse_ingest(&[
+            "netsift",
+            "ingest",
+            "caps",
+            "--out",
+            "d",
+            "--name",
+            "run 1",
+            "--shards",
+            "3",
+            "--group",
+            "1",
+            "--recursive",
+        ]);
+        assert_eq!(a.name.as_deref(), Some("run 1"));
+        assert_eq!((a.group, a.shards, a.recursive), (Some(1), Some(3), true));
+        // --out is required, --group and --merge-all are exclusive, shards >= 1.
+        assert!(Cli::try_parse_from(["netsift", "ingest", "caps"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "netsift",
+                "ingest",
+                "caps",
+                "--out",
+                "d",
+                "--group",
+                "0",
+                "--merge-all"
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from(["netsift", "ingest", "caps", "--out", "d", "--shards", "0"])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn ingest_prints_a_report_and_fails_on_bad_input() {
+        use netsift_fixtures::scenarios::{Kind, generate};
+        use netsift_fixtures::{Encoding, Naming, SplitBy, SplitOptions, split_to_dir};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let caps = tmp.path().join("caps");
+        let opts = SplitOptions::new(SplitBy::Packets(25), Naming::Dumpcap)
+            .with_encoding(Encoding::pcapng());
+        let packets = generate(Kind::Demo, 2, 1);
+        let (chunks, _) = split_to_dir(&caps, &packets, &opts).unwrap();
+        let data = tmp.path().join("data");
+        let args = parse_ingest(&[
+            "netsift",
+            "ingest",
+            caps.to_str().unwrap(),
+            "--out",
+            data.to_str().unwrap(),
+            "--shards",
+            "2",
+        ]);
+        let (mut err, mut out) = (Vec::new(), Vec::new());
+        let code = ingest::run(&args, &CancelToken::new(), false, &mut err, &mut out).unwrap();
+        assert_eq!(code, ExitCode::SUCCESS);
+        let out = String::from_utf8(out).unwrap();
+        assert!(out.contains("state       ready"), "{out}");
+        assert!(
+            out.contains(&format!("packets     {}", packets.len())),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!(
+                "chunks      {n} read, {n} listed",
+                n = chunks.len()
+            )),
+            "{out}"
+        );
+        let err = String::from_utf8(err).unwrap();
+        assert!(
+            err.lines()
+                .any(|l| l.starts_with("done") && l.contains("100.0%")),
+            "{err}"
+        );
+
+        // Cancelled: the report is printed and the exit code tells it apart.
+        let cancel = CancelToken::new();
+        cancel.cancel();
+        let code = ingest::run(&args, &cancel, false, &mut Vec::new(), &mut Vec::new()).unwrap();
+        assert_eq!(code, ExitCode::from(ingest::EXIT_INCOMPLETE));
+
+        let missing = parse_ingest(&[
+            "netsift",
+            "ingest",
+            tmp.path().join("missing").to_str().unwrap(),
+            "--out",
+            data.to_str().unwrap(),
+        ]);
+        let result = ingest::run(
+            &missing,
+            &CancelToken::new(),
+            false,
+            &mut Vec::new(),
+            &mut Vec::new(),
+        );
+        assert!(result.is_err());
     }
 }

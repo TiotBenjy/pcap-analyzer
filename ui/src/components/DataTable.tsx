@@ -76,7 +76,9 @@ export function DataTable<T>({
   const items = virtual ? virtualizer.getVirtualItems() : [];
   const padTop = virtual ? (items[0]?.start ?? 0) : 0;
   const padBottom = virtual ? virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0) : 0;
-  const visible = virtual ? items.map((v) => rows[v.index]).filter((r) => r !== undefined) : rows;
+  const visible = (
+    virtual ? items.map((v) => ({ row: rows[v.index], pos: v.index })) : rows.map((row, pos) => ({ row, pos }))
+  ).filter((v): v is { row: (typeof rows)[number]; pos: number } => v.row !== undefined);
   const colCount = table.getVisibleLeafColumns().length;
 
   return (
@@ -136,11 +138,11 @@ export function DataTable<T>({
               <td colSpan={colCount} style={{ height: padTop }} />
             </tr>
           )}
-          {visible.map((row, i) => (
+          {visible.map(({ row, pos }) => (
             <tr
               key={row.id}
               style={{ height: ROW_HEIGHT }}
-              aria-rowindex={(virtual ? (items[i]?.index ?? i) : i) + 2}
+              aria-rowindex={pos + 2}
               {...(onRowClick === undefined
                 ? {}
                 : {

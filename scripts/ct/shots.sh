@@ -11,7 +11,7 @@ OUT=".artifacts/screens"
 TOKEN_FILE="$(mktemp)"
 head -c 32 /dev/urandom | base64 | tr -d '/+=' > "$TOKEN_FILE"
 mkdir -p "$OUT" "$DATA_DIR"
-rm -f "$OUT"/*.png
+if [ "$VIEW" = "all" ]; then rm -f "$OUT"/*.png; else rm -f "$OUT/$VIEW"-*.png; fi
 
 cleanup() { kill "${API_PID:-}" 2>/dev/null || true; rm -f "$TOKEN_FILE"; }
 trap cleanup EXIT INT TERM

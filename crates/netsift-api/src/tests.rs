@@ -121,3 +121,19 @@ async fn serve_binds_and_shuts_down() {
     tx.send(()).unwrap();
     server.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn wrong_method_is_problem_json_405() {
+    let req = Request::post("/api/v1/health").body(Body::empty()).unwrap();
+    let (status, headers, json) = send(req).await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/problem+json");
+    assert_eq!(json["type"], "urn:netsift:problem:method-not-allowed");
+}
+
+#[test]
+fn debug_never_prints_the_token() {
+    let printed = format!("{:?}", config());
+    assert!(!printed.contains("s3cret-token"));
+    assert!(printed.contains("<redacted>"));
+}

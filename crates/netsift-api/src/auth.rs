@@ -18,13 +18,21 @@ pub(crate) async fn require_bearer(
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
+        .and_then(bearer_token);
     match provided {
         Some(token) if token_matches(token.as_bytes(), state.config.token.as_bytes()) => {
             Ok(next.run(req).await)
         }
         _ => Err(ApiError::Unauthorized),
     }
+}
+
+/// Extracts the credentials of a `Bearer` authorization (scheme is case-insensitive, RFC 9110).
+fn bearer_token(value: &str) -> Option<&str> {
+    let (scheme, token) = value.split_once(' ')?;
+    scheme
+        .eq_ignore_ascii_case("bearer")
+        .then(|| token.trim_start())
 }
 
 /// Constant-time comparison (no early exit on the first differing byte). An empty expected
@@ -42,7 +50,7 @@ fn token_matches(provided: &[u8], expected: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::token_matches;
+    use super::{bearer_token, token_matches};
 
     #[test]
     fn compares_tokens() {
@@ -50,5 +58,13 @@ mod tests {
         assert!(!token_matches(b"abd", b"abc"));
         assert!(!token_matches(b"ab", b"abc"));
         assert!(!token_matches(b"", b""));
+    }
+
+    #[test]
+    fn parses_bearer_scheme_case_insensitively() {
+        assert_eq!(bearer_token("Bearer abc"), Some("abc"));
+        assert_eq!(bearer_token("bearer abc"), Some("abc"));
+        assert_eq!(bearer_token("Basic abc"), None);
+        assert_eq!(bearer_token("Bearer"), None);
     }
 }

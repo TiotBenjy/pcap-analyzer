@@ -112,6 +112,12 @@ for (const [view, path] of views) {
 
         await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /\bdark\b/ : /^(?!.*\bdark\b)/);
 
+        if (view === 'settings') {
+          // /server-info is authenticated: "Read-only" proves the proxy injects a valid token.
+          await expect(page.getByTestId('backend-status')).toContainText('Connected');
+          await expect(page.getByTestId('server-mode')).toHaveText('Read-only');
+        }
+
         await page.screenshot({ path: `${OUT_DIR}/${view}-${width}-${theme}.png`, fullPage: true });
 
         const r = await inspectLayout(page);

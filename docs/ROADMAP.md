@@ -12,25 +12,25 @@ Légende : `[ ]` à faire, `[~]` en cours (branche ouverte), `[x]` fusionné dan
 
 Objectif : un squelette qui compile, se teste, se lance en local et se construit en CI.
 
-- [ ] **P0.1** `chore/toolchain` — Construire l'image (`./x.sh image`), vérifier `./x.sh cargo --version`,
+- [x] **P0.1** `chore/toolchain` — Construire l'image (`./x.sh image`), vérifier `./x.sh cargo --version`,
       `./x.sh npm --version`, `./x.sh shell`. Corriger `docker/Dockerfile` / `x.sh` si besoin.
-- [ ] **P0.2** `chore/workspace` — Workspace Cargo (resolver 3, édition 2024, `[workspace.lints]` :
+- [x] **P0.2** `chore/workspace` — Workspace Cargo (resolver 3, édition 2024, `[workspace.lints]` :
       `unsafe_code = "forbid"` hors desktop, `clippy::pedantic` en warn ciblé, `unwrap_used`/`expect_used`/
       `indexing_slicing`/`panic` = deny dans `netsift-dissect`), toutes les crates de `ARCHITECTURE.md`
       créées vides avec un test fumée, `exclude = [".worktrees", "fuzz"]`. `./x.sh check` vert.
-- [ ] **P0.3** `chore/ui-shell` — `ui/` : Vite + React + TS strict + Tailwind 4 + ESLint + Vitest + Playwright
+- [x] **P0.3** `chore/ui-shell` — `ui/` : Vite + React + TS strict + Tailwind 4 + ESLint + Vitest + Playwright
       (version épinglée identique à `PLAYWRIGHT_VERSION` du Dockerfile). **Utiliser les versions de
       `docs/STACK_VERSIONS.md`** (combinaison testée : install + tsc + build OK). Tailwind 4 via
       `@tailwindcss/vite` + `@theme` (pas de `tailwind.config.js`). Code-splitting des vues et des graphes
       dès le départ (bundle echarts+sigma > 500 Kio sinon). AppShell + Sidebar avec toutes
       les entrées (onglets futurs inclus, désactivés), routes vides, thèmes clair/sombre, i18n en/fr,
       composants communs de base (`Card`, `Chart`, `DataTable`, `EmptyState`, `FilterBar`, `Toggle`, `Badge`).
-- [ ] **P0.4** `chore/dev-loop` — `netsift serve` minimal (axum, `/api/v1/health`), `./x.sh dev`
+- [x] **P0.4** `chore/dev-loop` — `netsift serve` minimal (axum, `/api/v1/health`), `./x.sh dev`
       (backend + Vite avec proxy et jeton), `./x.sh shots` avec les assertions de `UI_GUIDELINES.md`
       sur la page d'accueil. L'utilisateur peut ouvrir http://localhost:5173.
-- [ ] **P0.5** `chore/desktop` — `apps/desktop` Tauri 2 qui démarre l'API embarquée et affiche l'UI ;
+- [~] **P0.5** `chore/desktop` — `apps/desktop` Tauri 2 qui démarre l'API embarquée et affiche l'UI ;
       `./x.sh desktop` produit AppImage + .deb dans `dist/` ; icônes provisoires sobres.
-- [ ] **P0.6** `ci/github-actions` — Rendre `.github/workflows/ci.yml` et `release.yml` cohérents avec la
+- [~] **P0.6** `ci/github-actions` — Rendre `.github/workflows/ci.yml` et `release.yml` cohérents avec la
       structure réelle (chemins Tauri, cache). Vérification : pousser la branche, l'utilisateur confirme
       le statut vert dans GitHub (pas de `gh`).
 

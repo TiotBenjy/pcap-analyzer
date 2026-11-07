@@ -8,7 +8,9 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/cache/target/root}"
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/usr/local/pw-browsers}"
 # npm : cache dans le volume, pas dans le home (souvent non inscriptible avec --user).
 export npm_config_cache="${npm_config_cache:-/cache/npm}"
-export HOME="${HOME:-/tmp}"
+# HOME hors du dépôt monté (/work) : sinon npm/cargo y écriraient leurs fichiers.
+if [ -z "${HOME:-}" ] || [ "$HOME" = "/work" ] || [ "$HOME" = "/" ]; then export HOME=/tmp/home; fi
+mkdir -p "$HOME" 2>/dev/null || true
 
 mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$npm_config_cache" 2>/dev/null || true
 

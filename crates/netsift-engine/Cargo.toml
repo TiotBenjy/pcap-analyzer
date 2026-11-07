@@ -1,0 +1,17 @@
+[package]
+name = "netsift-engine"
+description = "Ingestion pipeline orchestration: threads, progress, cancellation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+netsift-analyze.workspace = true
+netsift-capture.workspace = true
+netsift-store.workspace = true
+
+[lints]
+workspace = true

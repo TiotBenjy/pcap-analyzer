@@ -28,13 +28,29 @@ Objectif : un squelette qui compile, se teste, se lance en local et se construit
 - [x] **P0.4** `chore/dev-loop` — `netsift serve` minimal (axum, `/api/v1/health`), `./x.sh dev`
       (backend + Vite avec proxy et jeton), `./x.sh shots` avec les assertions de `UI_GUIDELINES.md`
       sur la page d'accueil. L'utilisateur peut ouvrir http://localhost:5173.
-- [~] **P0.5** `chore/desktop` — `apps/desktop` Tauri 2 qui démarre l'API embarquée et affiche l'UI ;
+- [x] **P0.5** `chore/desktop` — `apps/desktop` Tauri 2 qui démarre l'API embarquée et affiche l'UI ;
       `./x.sh desktop` produit AppImage + .deb dans `dist/` ; icônes provisoires sobres.
-- [~] **P0.6** `ci/github-actions` — Rendre `.github/workflows/ci.yml` et `release.yml` cohérents avec la
+- [x] **P0.6** `ci/github-actions` — Rendre `.github/workflows/ci.yml` et `release.yml` cohérents avec la
       structure réelle (chemins Tauri, cache). Vérification : pousser la branche, l'utilisateur confirme
       le statut vert dans GitHub (pas de `gh`).
 
 Sortie de phase : `./x.sh check`, `./x.sh dev`, `./x.sh shots`, `./x.sh desktop` fonctionnent.
+
+Suivis issus des revues de la phase 0 (à traiter dans la tâche indiquée) :
+
+- P2.1 : progression SSE lue via `fetch` (jamais `EventSource`, qui ne peut pas envoyer `Authorization`) ;
+  avant la première route mutante (`POST /sessions/import`), refuser les `Origin` hors liste et
+  `Sec-Fetch-Site: cross-site` (le proxy Vite ajoute le jeton à toute requête `/api`) ; arrêt gracieux
+  de `netsift serve` borné dans le temps (connexions SSE ouvertes).
+- P2.5 : dialogue d'erreur si l'API embarquée ne démarre pas (pas de console en release Windows) ;
+  attendre la fin réelle de l'API (writer SQLite) à la fermeture, avec délai maximal ; scope du plugin
+  `opener` sur le dossier d'export ; vérifier `freezePrototype` avec ECharts et sigma ; créer la fenêtre
+  dans `setup` après démarrage de l'API (`create: false`).
+- P2.4 / P3.x : `DataTable` virtualisé : `scrollMargin` de l'en-tête collant, redimensionnement des
+  colonnes au clavier.
+- Outillage : le hook `.claude/hooks/guard-toolchain.sh` bloque à tort les commandes passées au conteneur
+  entre guillemets (`./x.sh run '...; ...'`) et certaines lignes de heredoc ; la règle de permission
+  `Read(./.artifacts/**)` empêche l'agent `ui-reviewer` de relire les captures produites par `./x.sh shots`.
 
 ---
 

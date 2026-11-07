@@ -58,7 +58,7 @@ Suivis issus des revues de la phase 0 (à traiter dans la tâche indiquée) :
 
 ### Vague 1.A (parallèle)
 
-- [~] **P1.1** `feat/capture-reader` — `netsift-capture` : pcap (µs/ns, 2 endianness), pcapng (SHB multiples,
+- [x] **P1.1** `feat/capture-reader` — `netsift-capture` : pcap (µs/ns, 2 endianness), pcapng (SHB multiples,
       IDB multiples, EPB/SPB/PB, blocs inconnus), `.gz`, détection par magic, lecture en streaming,
       tolérance au dernier paquet tronqué. Dép. : P0.2.
 - [ ] **P1.2** `feat/chunk-sets` — Inventaire de dossier, regroupement, tri numérique, contrôles de continuité,

@@ -68,7 +68,7 @@ function AboutCard() {
         {info.data !== undefined && (
           <>
             <dt className="text-muted">{t('views.settings.mode')}</dt>
-            <dd className="min-w-0">
+            <dd className="min-w-0" data-testid="server-mode">
               {info.data.read_only ? t('views.settings.readOnly') : t('views.settings.readWrite')}
             </dd>
           </>

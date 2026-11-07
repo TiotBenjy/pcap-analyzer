@@ -12,6 +12,8 @@ pub enum ApiError {
     Unauthorized,
     #[error("resource not found")]
     NotFound,
+    #[error("method not allowed")]
+    MethodNotAllowed,
     #[error("server is read-only")]
     ReadOnly,
     #[error("invalid request: {0}")]
@@ -39,6 +41,11 @@ impl ApiError {
                 "Authentication required",
             ),
             Self::NotFound => (StatusCode::NOT_FOUND, "not-found", "Resource not found"),
+            Self::MethodNotAllowed => (
+                StatusCode::METHOD_NOT_ALLOWED,
+                "method-not-allowed",
+                "Method not allowed",
+            ),
             Self::ReadOnly => (StatusCode::FORBIDDEN, "read-only", "Server is read-only"),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad-request", "Invalid request"),
             Self::Internal => (
@@ -80,4 +87,8 @@ impl IntoResponse for ApiError {
 
 pub(crate) async fn not_found() -> ApiError {
     ApiError::NotFound
+}
+
+pub(crate) async fn method_not_allowed() -> ApiError {
+    ApiError::MethodNotAllowed
 }

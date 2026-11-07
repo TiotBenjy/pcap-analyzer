@@ -24,8 +24,8 @@ pub use error::ApiError;
 /// Crate name, used by smoke tests and diagnostics.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
 
-/// Runtime configuration of the API server.
-#[derive(Debug, Clone)]
+/// Runtime configuration of the API server. `Debug` never prints the token.
+#[derive(Clone)]
 pub struct ApiConfig {
     /// Bearer token required on every authenticated route. Must be long and random.
     pub token: String,
@@ -37,6 +37,18 @@ pub struct ApiConfig {
     pub read_only: bool,
     /// Extra origins allowed by CORS (the desktop webview origin). Same-origin needs none.
     pub cors_origins: Vec<HeaderValue>,
+}
+
+impl std::fmt::Debug for ApiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ApiConfig")
+            .field("token", &"<redacted>")
+            .field("data_dir", &self.data_dir)
+            .field("captures_roots", &self.captures_roots)
+            .field("read_only", &self.read_only)
+            .field("cors_origins", &self.cors_origins)
+            .finish()
+    }
 }
 
 /// Shared state handed to handlers.
@@ -61,6 +73,7 @@ pub fn router(config: ApiConfig) -> Router {
     let api = Router::new()
         .route("/health", get(dto::health))
         .merge(protected)
+        .method_not_allowed_fallback(error::method_not_allowed)
         .fallback(error::not_found);
 
     Router::new()

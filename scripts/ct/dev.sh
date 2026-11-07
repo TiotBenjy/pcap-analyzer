@@ -32,6 +32,7 @@ for _ in $(seq 1 30); do
   kill -0 "$API_PID" 2>/dev/null || { echo "L'API s'est arrêtée au démarrage." >&2; exit 1; }
   sleep 0.5
 done
+curl -fsS "http://127.0.0.1:${API_PORT}/api/v1/health" >/dev/null || { echo "API injoignable." >&2; exit 1; }
 
 if [ ! -d ui/node_modules ]; then (cd ui && npm ci); fi
 

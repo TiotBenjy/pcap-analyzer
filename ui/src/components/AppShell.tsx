@@ -9,6 +9,8 @@ import { Button } from './Button';
 import { Sidebar } from './Sidebar';
 
 const COLLAPSED_KEY = 'netsift.sidebar.collapsed';
+/** Must match the Tailwind `lg` breakpoint used by the layout classes. */
+const DESKTOP_QUERY = '(min-width: 1024px)';
 
 /**
  * Application frame. >= 1024 px: fixed 240 px sidebar (collapsible to 56 px).
@@ -25,7 +27,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(() => readPref(COLLAPSED_KEY) === '1');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerPanelRef = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
 
   // Close the drawer on navigation.
@@ -35,11 +37,26 @@ export function AppShell() {
     setDrawerOpen(false);
   }
 
+  // The drawer only exists below lg: close it when the window grows (maximize, rotation),
+  // otherwise the main column would stay inert behind an invisible drawer.
+  useEffect(() => {
+    if (!drawerOpen || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia(DESKTOP_QUERY);
+    const onChange = () => {
+      if (mq.matches) setDrawerOpen(false);
+    };
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => {
+      mq.removeEventListener('change', onChange);
+    };
+  }, [drawerOpen]);
+
   // Drawer focus management: focus inside on open, Escape closes, focus returns to the trigger.
   useEffect(() => {
     if (drawerOpen) {
       wasOpen.current = true;
-      drawerRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus();
+      drawerPanelRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus();
       const onKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') setDrawerOpen(false);
       };
@@ -78,22 +95,20 @@ export function AppShell() {
       {/* Mobile / tablet drawer (modal: the rest of the page is inert while it is open) */}
       {drawerOpen && (
         <div
-          ref={drawerRef}
           className="fixed inset-0 z-40 lg:hidden"
           role="dialog"
           aria-modal="true"
           aria-label={t('nav.drawer')}
         >
-          <button
-            type="button"
-            tabIndex={-1}
+          {/* Backdrop: pointer-only dismissal (keyboard users have Escape and the close button). */}
+          <div
             aria-hidden
             className="absolute inset-0 bg-zinc-950/40"
             onClick={() => {
               setDrawerOpen(false);
             }}
           />
-          <div className="relative flex h-full w-60 max-w-[85vw]">
+          <div ref={drawerPanelRef} className="relative flex h-full w-60 max-w-[85vw]">
             <Sidebar
               collapsed={false}
               onClose={() => {

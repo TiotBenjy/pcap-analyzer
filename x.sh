@@ -140,7 +140,10 @@ case "$CMD" in
       echo "== clippy =="       && cargo clippy --workspace --all-targets --all-features -- -D warnings
       echo "== cargo-deny =="   && (cargo deny check || true)   # avertit sans bloquer au début du projet
       echo "== tests Rust =="   && cargo nextest run --workspace
-      echo "== bindings TS =="  && (cargo test -p netsift-api export_bindings 2>/dev/null || true)
+      echo "== bindings TS =="  && cargo test -q -p netsift-api export_bindings >/dev/null \
+        && { ! git rev-parse --git-dir >/dev/null 2>&1 `# worktree : .git hors du montage` \
+             || git diff --quiet -- ui/src/api/types \
+             || echo "ATTENTION : bindings TS regeneres, a committer (ui/src/api/types)"; }
       if [ -d ui ] && [ -f ui/package.json ]; then
         echo "== UI : install ==" && (cd ui && npm ci || npm install)
         echo "== UI : typecheck/lint ==" && (cd ui && npm run -s lint && npm run -s typecheck)

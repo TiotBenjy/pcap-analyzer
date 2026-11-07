@@ -54,6 +54,7 @@ function Run-In {
     "-e","RUSTC_WRAPPER=$scc",
     "-e","npm_config_cache=/cache/npm",
     "-e","PLAYWRIGHT_BROWSERS_PATH=/usr/local/pw-browsers",
+    "-e","HOME=/tmp/home",
     "-w","/work"
   ) + $Extra + @($Image,"bash","-lc",$Script)
   & $Engine @args

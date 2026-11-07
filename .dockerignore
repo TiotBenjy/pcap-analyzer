@@ -1,0 +1,4 @@
+# Le build de l image n a besoin que de docker/ (entrypoint). Tout le reste est exclu
+# pour garder un contexte minuscule (worktrees, node_modules, captures, target...).
+*
+!docker/

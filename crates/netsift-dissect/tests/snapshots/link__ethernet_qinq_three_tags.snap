@@ -1,0 +1,24 @@
+---
+source: crates/netsift-dissect/tests/link.rs
+expression: d.link.vlans
+---
+[
+    VlanTag {
+        tpid: 34984,
+        pcp: 5,
+        dei: false,
+        id: 10,
+    },
+    VlanTag {
+        tpid: 37120,
+        pcp: 0,
+        dei: false,
+        id: 20,
+    },
+    VlanTag {
+        tpid: 33024,
+        pcp: 3,
+        dei: false,
+        id: 30,
+    },
+]

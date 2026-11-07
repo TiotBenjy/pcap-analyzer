@@ -1,0 +1,48 @@
+---
+source: crates/netsift-dissect/tests/link.rs
+expression: d
+---
+Decoded {
+    link: LinkInfo {
+        linktype: 1,
+        kind: Ethernet,
+        src_mac: Some(
+            02:00:00:00:00:0a,
+        ),
+        dst_mac: Some(
+            ff:ff:ff:ff:ff:ff,
+        ),
+        vlans: [],
+        ethertype: Some(
+            2054,
+        ),
+        llc: None,
+        sll: None,
+        radiotap: None,
+        wifi: None,
+    },
+    network: Some(
+        Arp(
+            ArpInfo {
+                hardware_type: 1,
+                protocol_type: 2048,
+                operation: 1,
+                sender_mac: Some(
+                    02:00:00:00:00:0a,
+                ),
+                sender_ip: Some(
+                    192.168.1.10,
+                ),
+                target_mac: Some(
+                    00:00:00:00:00:00,
+                ),
+                target_ip: Some(
+                    198.51.100.7,
+                ),
+            },
+        ),
+    ),
+    transport: None,
+    payload: 18 bytes [00000000000000000000000000000000..],
+    error: None,
+}

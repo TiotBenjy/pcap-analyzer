@@ -1,0 +1,15 @@
+---
+source: crates/netsift-flow/tests/tcp.rs
+expression: rec.render()
+---
+pkt +0us 2d6af3a9e1595a46 c>s wire=54 192.168.1.10>203.0.113.80 p6 tcp 40000>80 SYN len=0
+pkt +1000us 2d6af3a9e1595a46 s>c wire=54 203.0.113.80>192.168.1.10 p6 tcp 80>40000 ACK|SYN len=0
+pkt +2000us 2d6af3a9e1595a46 c>s wire=54 192.168.1.10>203.0.113.80 p6 tcp 40000>80 ACK len=0
+pkt +3000us 2d6af3a9e1595a46 c>s wire=72 192.168.1.10>203.0.113.80 p6 tcp 40000>80 ACK|PSH len=18
+stream +3000us 2d6af3a9e1595a46 c>s gap=0 len=18 "GET / HTTP/1.1...."
+pkt +4000us 2d6af3a9e1595a46 s>c wire=81 203.0.113.80>192.168.1.10 p6 tcp 80>40000 ACK|PSH len=27
+stream +4000us 2d6af3a9e1595a46 s>c gap=0 len=27 "HTTP/1.1 204 No Content."
+pkt +5000us 2d6af3a9e1595a46 c>s wire=54 192.168.1.10>203.0.113.80 p6 tcp 40000>80 ACK|FIN len=0
+pkt +6000us 2d6af3a9e1595a46 s>c wire=54 203.0.113.80>192.168.1.10 p6 tcp 80>40000 ACK|FIN len=0
+pkt +7000us 2d6af3a9e1595a46 c>s wire=54 192.168.1.10>203.0.113.80 p6 tcp 40000>80 ACK len=0
+end 2d6af3a9e1595a46 p6 192.168.1.10:40000 > 203.0.113.80:80 +0us..+7000us c>s 5p/288B s>c 3p/189B Some(Closed) Closed

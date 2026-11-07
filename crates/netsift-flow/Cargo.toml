@@ -13,3 +13,8 @@ netsift-dissect.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+insta = "1.49.0"
+netsift-fixtures.workspace = true
+proptest = "1.12.0"

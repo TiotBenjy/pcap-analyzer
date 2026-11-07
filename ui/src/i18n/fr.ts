@@ -42,6 +42,8 @@ export const fr: Dictionary = {
     collapse: 'Replier la barre latérale',
     expand: 'Déplier la barre latérale',
     unavailable: 'Disponible dans une version ultérieure',
+    unavailableItem: '{{label}} : disponible dans une version ultérieure',
+    drawer: 'Navigation',
   },
   theme: {
     label: 'Thème',
@@ -75,6 +77,14 @@ export const fr: Dictionary = {
     settings: {
       subtitle: "Préférences d'affichage, enregistrées sur cet appareil",
       appearance: 'Apparence',
+      about: 'À propos',
+      backend: 'Serveur',
+      backendOk: 'Connecté, version {{version}}',
+      backendDown: 'Indisponible',
+      checking: 'Vérification',
+      mode: 'Mode',
+      readOnly: 'Lecture seule',
+      readWrite: 'Lecture et écriture',
     },
     notFound: {
       title: 'Page introuvable',

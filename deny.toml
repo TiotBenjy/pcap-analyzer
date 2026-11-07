@@ -4,6 +4,9 @@
 [advisories]
 version = 2
 yanked = "deny"
+# "unmaintained" ne vise que nos dépendances directes : les transitives de Tauri (gtk-rs, zbus)
+# ne sont pas sous notre contrôle. Les vulnérabilités restent bloquantes quelle que soit la profondeur.
+unmaintained = "workspace"
 ignore = []
 
 [licenses]

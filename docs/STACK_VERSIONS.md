@@ -38,10 +38,32 @@ lucide-react      0.544.0
 @types/react-dom  19.2.0
 ```
 
-À ajouter en phase 0/3 selon les specs (pas encore testés ici, prendre une version compatible) :
-`@tauri-apps/api` (2.x), `@fontsource-variable/inter`, `@fontsource/jetbrains-mono`,
-`d3-chord` + `@types/d3-chord`, `flag-icons`, `vitest`, `@playwright/test` (= PLAYWRIGHT_VERSION),
-`eslint` + config, i18n (`i18next` + `react-i18next`), `world-atlas` (cartes).
+Ajoutées en P0.3 (shell UI), épinglées exactement (`ui/.npmrc` : `save-exact=true`) et validées
+par `./x.sh check` (lint + typecheck strict + tests) et `vite build` :
+
+```
+@tanstack/react-router       1.170.46   # routes code-based, historique hash (Vite, statique, Tauri)
+i18next                      27.0.1
+react-i18next                18.0.0
+@fontsource-variable/inter   5.3.0
+@fontsource/jetbrains-mono   5.3.0
+vitest                       5.1.0      # pairs : vite ^6.4 || ^7 || ^8
+jsdom                        29.1.1
+@testing-library/react       16.3.3
+@testing-library/user-event  14.6.8
+@testing-library/jest-dom    7.0.1
+@playwright/test             1.65.0     # = PLAYWRIGHT_VERSION du Dockerfile
+eslint                       10.14.0    # config plate (eslint/config defineConfig)
+@eslint/js                   10.0.1
+typescript-eslint            8.72.1     # strict + stylistic, sans type-checking (rapide)
+eslint-plugin-react-hooks    7.1.1      # configs.flat['recommended-latest']
+eslint-plugin-react-refresh  0.5.7
+globals                      17.14.0
+@types/node                  22.20.5    # aligné sur Node 22
+```
+
+Restant à ajouter en phase 2/3 selon les specs (prendre une version compatible) :
+`@tauri-apps/api` (2.x), `d3-chord` + `@types/d3-chord`, `flag-icons`, `world-atlas` (cartes).
 
 ## Faits constatés au test
 

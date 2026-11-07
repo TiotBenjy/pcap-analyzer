@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { type KeyboardEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/cn';
 import { EmptyState } from './EmptyState';
@@ -76,7 +76,9 @@ export function DataTable<T>({
   const items = virtual ? virtualizer.getVirtualItems() : [];
   const padTop = virtual ? (items[0]?.start ?? 0) : 0;
   const padBottom = virtual ? virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0) : 0;
-  const visible = virtual ? items.map((v) => rows[v.index]).filter((r) => r !== undefined) : rows;
+  const visible = (
+    virtual ? items.map((v) => ({ row: rows[v.index], pos: v.index })) : rows.map((row, pos) => ({ row, pos }))
+  ).filter((v): v is { row: (typeof rows)[number]; pos: number } => v.row !== undefined);
   const colCount = table.getVisibleLeafColumns().length;
 
   return (
@@ -136,18 +138,29 @@ export function DataTable<T>({
               <td colSpan={colCount} style={{ height: padTop }} />
             </tr>
           )}
-          {visible.map((row) => (
+          {visible.map(({ row, pos }) => (
             <tr
               key={row.id}
               style={{ height: ROW_HEIGHT }}
-              onClick={
-                onRowClick === undefined
-                  ? undefined
-                  : () => {
+              aria-rowindex={pos + 2}
+              {...(onRowClick === undefined
+                ? {}
+                : {
+                    tabIndex: 0,
+                    onClick: () => {
                       onRowClick(row.original);
-                    }
-              }
-              className={cn('border-b border-line last:border-b-0', onRowClick !== undefined && 'cursor-pointer hover:bg-subtle')}
+                    },
+                    onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onRowClick(row.original);
+                      }
+                    },
+                  })}
+              className={cn(
+                'border-b border-line last:border-b-0',
+                onRowClick !== undefined && 'cursor-pointer hover:bg-subtle focus-visible:bg-subtle',
+              )}
             >
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id} className="truncate px-3">

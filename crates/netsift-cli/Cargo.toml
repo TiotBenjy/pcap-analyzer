@@ -13,7 +13,12 @@ name = "netsift"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
+clap.workspace = true
 netsift-api.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

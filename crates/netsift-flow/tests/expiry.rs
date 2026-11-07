@@ -64,8 +64,9 @@ fn sweep_expires_idle_flows_while_others_are_active() {
     let mut table = FlowTable::new(config);
     let mut rec = Recorder::default();
     let mut packets = vec![packet(0, udp(1, false)), packet(MS, udp(2, false))];
-    // Flow 3 keeps talking every 500 ms for 10 s.
-    for i in 0..20 {
+    // Flow 3 keeps talking every 500 ms for 15 s: the sweep releases idle flows once they
+    // are idle for the timeout plus the 5 s grace.
+    for i in 0..30 {
         packets.push(packet(2 * MS + i * 500 * MS, udp(3, false)));
     }
     feed(&mut table, &packets, &mut rec);
@@ -143,20 +144,31 @@ fn small_clock_steps_backwards_are_tolerated() {
 }
 
 #[test]
-fn tcp_uses_its_own_timeout() {
+fn tcp_uses_its_own_timeout_and_the_sweep_waits_for_the_grace() {
     let c = netsift_fixtures::craft::TcpConv::new(hosts::workstation(), hosts::web_server(), 4, 80);
     let mut packets = timed(vec![c.syn(), c.syn_ack()], 0, MS);
     packets.push(packet(100 * S, udp(9, false)));
+    // Lookup: UDP flow 9 idle 201 s > 60 s ends at once and reopens.
     packets.push(packet(301 * S, udp(9, false)));
-    let rec = run(&packets, FlowConfig::default());
+    // TCP idle 301 s > 300 s, but the sweep waits for the 5 s grace.
+    packets.push(packet(305 * S, udp(7, false)));
+    packets.push(packet(306 * S + 2 * MS, udp(7, false)));
+    let mut table = FlowTable::new(FlowConfig::default());
+    let mut rec = Recorder::default();
+    feed(&mut table, &packets[..5], &mut rec);
+    assert_eq!(rec.ends().len(), 1);
+    assert_eq!(rec.ends()[0].key.proto, 17);
+    assert_eq!(rec.ends()[0].last_ts_ns, 100 * S);
+    feed(&mut table, &packets[5..], &mut rec);
     let ends = rec.ends();
-    // At 301 s one sweep expires the TCP flow (idle 300.999 s > 300 s) and the UDP flow
-    // (idle 201 s > 60 s), in LRU order; the last packet then opens a new UDP flow.
-    assert_eq!(ends.len(), 3);
-    assert_eq!(ends[0].key.proto, 6);
-    assert_eq!(ends[0].end, EndReason::Timeout);
-    assert_eq!(ends[1].key.proto, 17);
-    assert_eq!(ends[1].end, EndReason::Timeout);
+    assert_eq!(ends.len(), 2);
+    assert_eq!((ends[1].key.proto, ends[1].end), (6, EndReason::Timeout));
+    assert_eq!(
+        ends[1].last_ts_ns, MS,
+        "time of the last packet, not of the sweep"
+    );
+    table.finish(&mut rec);
+    rec.assert_ends_once();
 }
 
 #[test]
@@ -229,4 +241,29 @@ fn chunk_and_wire_length_are_passed_through() {
     let (ctx, _, _) = rec.packets()[0].clone();
     assert_eq!((ctx.ts_ns, ctx.chunk_id, ctx.wire_len), (5, 42, 1500));
     assert_eq!(rec.single_flow().to_server.bytes, 1500);
+}
+
+#[test]
+fn end_of_capture_reason_depends_on_the_end_time_only() {
+    let packets = vec![packet(0, udp(1, false)), packet(62 * S, udp(2, false))];
+    // Idle 62 s > 60 s at the table's last packet, but within the sweep grace: not released
+    // by a sweep, yet reported as a timeout at the end, like a swept flow.
+    let rec = run(&packets, FlowConfig::default());
+    let reasons: Vec<_> = rec
+        .ends()
+        .iter()
+        .map(|e| (e.key.client.port, e.end))
+        .collect();
+    assert_eq!(
+        reasons,
+        vec![(1, EndReason::Timeout), (2, EndReason::EndOfCapture)]
+    );
+    // With an explicit (global) end time, flow 2 alone in its table gets the same reasons as
+    // in a table that saw later traffic.
+    let mut table = FlowTable::new(FlowConfig::default());
+    let mut rec = Recorder::default();
+    feed(&mut table, &packets[1..], &mut rec);
+    table.finish_at(200 * S, &mut rec);
+    assert_eq!(rec.single_flow().end, EndReason::Timeout);
+    assert_eq!(rec.single_flow().last_ts_ns, 62 * S);
 }

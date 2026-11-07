@@ -17,13 +17,28 @@
 //!   and retransmissions stay attached to it; it then ends with `Closed`. Once closed or reset,
 //!   a connection always ends with `Closed`, whatever removes it (linger, eviction, end of
 //!   capture). Its buffered out-of-order data is flushed as soon as it closes.
-//! - **Expiry.** Flows are kept in one LRU list per timeout class (open TCP, closed TCP, UDP,
-//!   other), ordered by last activity: a sweep, run when packet time has advanced by one
-//!   second, only looks at the oldest entries of each list. Time never goes backwards for
-//!   expiry purposes (high-water mark); small backward steps are tolerated.
+//! - **Expiry.** The decision is taken **at lookup**, from the flow alone: a packet arriving
+//!   more than the timeout after the last packet of its flow ends that flow (`Timeout`, its
+//!   `last_ts` being the time of its last packet) and opens a new one. A periodic sweep, run
+//!   when packet time has advanced by one second in the table, only releases memory: it ends
+//!   flows idle for longer than their timeout plus a grace of 5 s (`SWEEP_GRACE_NS`),
+//!   producing exactly the [`FlowCtx`] the lookup would have produced. The sweep therefore
+//!   never changes how traffic is split into flows, whatever else shares the table (number of
+//!   shards, chunking), unless timestamps step backwards by more than the grace. Flows are kept
+//!   in one LRU list per timeout class (open TCP, closed TCP, UDP, other), ordered by last
+//!   activity, so a sweep only looks at the oldest entries. Pending IP fragments follow the
+//!   same rule: fragment time against first fragment time at lookup, sweep with the grace.
+//! - **End of capture.** [`FlowTable::finish_at`] ends the remaining flows: `Timeout` for
+//!   those idle for longer than their timeout at the given end time, `EndOfCapture` for the
+//!   others. With the global end time, a flow gets the same reason whether a sweep released it
+//!   earlier or not.
 //! - **Eviction.** Beyond `max_flows`, the least recently active flow ends with `Evicted`.
+//!   This is the only behavior that depends on what else shares the table (hence on the number
+//!   of shards): with the default bound it should not trigger on realistic captures.
 //! - **Determinism.** Hash maps are used for lookups only. Every batch of flow ends (sweep,
-//!   end of capture) is sorted (LRU order, creation order) before being reported.
+//!   end of capture) is sorted (LRU order, creation order) before being reported. The set of
+//!   `FlowCtx` and of reassembled streams does not depend on how flows are spread over tables
+//!   (eviction aside); only the interleaving of `on_flow_end` calls with other events does.
 //!
 //! # Reported packets
 //!
@@ -54,6 +69,10 @@ use crate::tcp::{Segment, Stream};
 const NS_PER_SEC: i64 = 1_000_000_000;
 /// Packet time between two expiry sweeps.
 const SWEEP_INTERVAL_NS: i64 = NS_PER_SEC;
+/// Extra idle time before the sweep releases a flow or a pending datagram: the sweep runs on
+/// the table's high-water time, which may be ahead of a late (slightly backward) packet of the
+/// flow; the grace keeps the lookup the only place where expiry is decided.
+pub(crate) const SWEEP_GRACE_NS: i64 = 5 * NS_PER_SEC;
 /// How long a closed or reset TCP connection stays in the table (capped by the TCP timeout).
 const CLOSED_LINGER_NS: i64 = 10 * NS_PER_SEC;
 
@@ -359,11 +378,35 @@ impl FlowTable {
     }
 
     /// Flushes every remaining flow with `EndReason::EndOfCapture`, then pending fragments.
+    ///
+    /// Same as [`FlowTable::finish_at`] with the latest packet time seen by this table: a
+    /// flow already idle for longer than its timeout at that time ends with `Timeout`, as it
+    /// would have if a later packet had come.
     pub fn finish(&mut self, sink: &mut dyn FlowSink) {
+        self.finish_at(self.now, sink);
+    }
+
+    /// Flushes every remaining flow, in creation order, then drops pending fragments.
+    ///
+    /// `end_ts_ns` is the end of the capture (the latest packet time over **all** tables):
+    /// flows idle for longer than their timeout at that time end with `Timeout`, the others
+    /// with `EndOfCapture` (closed connections always end with `Closed`). Passing the global
+    /// end makes the reasons independent of how flows are spread over tables: a flow released
+    /// earlier by a sweep was idle for longer than its timeout before `end_ts_ns` too.
+    pub fn finish_at(&mut self, end_ts_ns: i64, sink: &mut dyn FlowSink) {
         let mut all: Vec<(u64, Canon)> = self.flows.iter().map(|(c, f)| (f.serial, *c)).collect();
         all.sort_unstable_by_key(|&(serial, _)| serial);
         for (_, canon) in all {
-            self.end_flow(&canon, EndReason::EndOfCapture, sink);
+            let idle = self
+                .flows
+                .get(&canon)
+                .is_some_and(|f| end_ts_ns.saturating_sub(f.last_ts) > self.timeout(f.class));
+            let reason = if idle {
+                EndReason::Timeout
+            } else {
+                EndReason::EndOfCapture
+            };
+            self.end_flow(&canon, reason, sink);
         }
         self.lru = Lru::default();
         self.defrag.clear();
@@ -392,11 +435,12 @@ impl FlowTable {
         }
     }
 
-    /// Ends the flows idle for longer than their timeout at `now`, in LRU order.
+    /// Releases the flows idle for longer than their timeout plus the grace at `now`, in LRU
+    /// order, and the pending datagrams likewise.
     fn sweep(&mut self, now: i64, sink: &mut dyn FlowSink) {
         let mut expired: Vec<(u64, Class, Canon)> = Vec::new();
         for class in Class::ALL {
-            let timeout = self.timeout(class);
+            let timeout = self.timeout(class).saturating_add(SWEEP_GRACE_NS);
             for (&tick, canon) in self.lru.list(class) {
                 match self.flows.get(canon) {
                     Some(f) if now.saturating_sub(f.last_ts) <= timeout => break,
@@ -412,7 +456,7 @@ impl FlowTable {
                 self.lru.list_mut(class).remove(&tick);
             }
         }
-        self.defrag.expire(now);
+        self.defrag.expire(now.saturating_sub(SWEEP_GRACE_NS));
     }
 
     /// Removes a flow: flushes its streams, then reports its end.

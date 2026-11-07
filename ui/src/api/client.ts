@@ -25,8 +25,18 @@ export class ApiError extends Error {
 
 let endpointPromise: Promise<ApiEndpoint> | null = null;
 
+/** True inside the Tauri webview (the IPC bridge is injected before any page script). */
+export function isDesktop(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
 async function resolveEndpoint(): Promise<ApiEndpoint> {
-  // Desktop integration (P0.5) plugs in here.
+  if (isDesktop()) {
+    // Loaded on demand: the web build never pulls the Tauri bridge into its main chunk.
+    const { invoke } = await import('@tauri-apps/api/core');
+    const ep = await invoke<{ base_url: string; token: string }>('get_api_endpoint');
+    return { baseUrl: ep.base_url, token: ep.token };
+  }
   return { baseUrl: '/api/v1', token: null };
 }
 

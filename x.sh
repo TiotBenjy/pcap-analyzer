@@ -61,6 +61,9 @@ userargs() {
 # Un slug stable par worktree pour isoler le répertoire target dans le cache partagé.
 slug() { echo "$WORKDIR" | sha1sum | cut -c1-12; }
 
+# CI n'est transmis que s'il est défini : certains outils (tauri-cli) refusent CI="".
+CI_ENV=(); [[ -n "${CI:-}" ]] && CI_ENV=(-e "CI=${CI}")
+
 ensure_cache_vol() { "$ENGINE" volume inspect "$CACHE_VOL" >/dev/null 2>&1 || "$ENGINE" volume create "$CACHE_VOL" >/dev/null; }
 
 image_exists() { "$ENGINE" image inspect "$IMAGE" >/dev/null 2>&1; }
@@ -94,7 +97,7 @@ run_in() {
     -e npm_config_cache=/cache/npm \
     -e PLAYWRIGHT_BROWSERS_PATH=/usr/local/pw-browsers \
     -e HOME=/tmp/home \
-    -e CI="${CI:-}" \
+    "${CI_ENV[@]}" \
     -w /work \
     "${extra[@]}" \
     "$IMAGE" bash -lc "$*"
@@ -109,7 +112,7 @@ run_in_q() { local a=(); while [[ "${1:-}" != "--" ]]; do a+=("$1"); shift; done
     -e CARGO_TARGET_DIR="/cache/target/$(slug)" -e CARGO_HOME=/cache/cargo \
     -e SCCACHE_DIR=/cache/sccache -e RUSTC_WRAPPER="$scc" \
     -e npm_config_cache=/cache/npm -e PLAYWRIGHT_BROWSERS_PATH=/usr/local/pw-browsers \
-    -e HOME=/tmp/home -e CI="${CI:-}" \
+    -e HOME=/tmp/home "${CI_ENV[@]}" \
     -w /work "${a[@]}" "$IMAGE" bash -lc "$*"
 }
 

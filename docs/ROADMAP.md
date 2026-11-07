@@ -58,19 +58,19 @@ Suivis issus des revues de la phase 0 (à traiter dans la tâche indiquée) :
 
 ### Vague 1.A (parallèle)
 
-- [ ] **P1.1** `feat/capture-reader` — `netsift-capture` : pcap (µs/ns, 2 endianness), pcapng (SHB multiples,
+- [~] **P1.1** `feat/capture-reader` — `netsift-capture` : pcap (µs/ns, 2 endianness), pcapng (SHB multiples,
       IDB multiples, EPB/SPB/PB, blocs inconnus), `.gz`, détection par magic, lecture en streaming,
       tolérance au dernier paquet tronqué. Dép. : P0.2.
 - [ ] **P1.2** `feat/chunk-sets` — Inventaire de dossier, regroupement, tri numérique, contrôles de continuité,
       fusion k-voies, rapport d'anomalies (`docs/CHUNKED_CAPTURES.md`). Dép. : P0.2 (interface du lecteur
       définie d'un commun accord : trait `PacketSource`, mock en attendant P1.1).
-- [ ] **P1.3** `feat/dissect-l2-l4` — `netsift-dissect` : Ethernet, VLAN/QinQ, Linux SLL/SLL2, raw IPv4/IPv6,
+- [~] **P1.3** `feat/dissect-l2-l4` — `netsift-dissect` : Ethernet, VLAN/QinQ, Linux SLL/SLL2, raw IPv4/IPv6,
       loopback/null, **radiotap + 802.11** (trames data -> LLC/SNAP -> IP ; trames mgmt décodées en en-tête),
       IPv4/IPv6/ICMP/TCP/UDP via `etherparse`. Dép. : P0.2.
-- [ ] **P1.4** `feat/store-core` — `netsift-store` : catalogue, ouverture de session, migrations versionnées,
+- [~] **P1.4** `feat/store-core` — `netsift-store` : catalogue, ouverture de session, migrations versionnées,
       writer par lots sur thread dédié, tables `meta`, `chunks`, `anomalies`, `timeseries`, `hosts`, `flows`.
       Dép. : P0.2.
-- [ ] **P1.5** `feat/fixtures` — `netsift-fixtures` : constructeur de scénarios (DNS, HTTP avec image, TLS
+- [~] **P1.5** `feat/fixtures` — `netsift-fixtures` : constructeur de scénarios (DNS, HTTP avec image, TLS
       ClientHello/ServerHello/certificat auto-signé, NBNS, SMB browser announce, SNMP community, FTP login),
       écrivain pcap/pcapng/gz, découpeur en chunks par taille et par durée avec les 4 conventions de nommage.
       Dép. : P0.2.

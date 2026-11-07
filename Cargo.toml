@@ -26,7 +26,17 @@ netsift-store = { path = "crates/netsift-store" }
 
 # Third-party (versions pinned per docs/STACK_VERSIONS.md; add with `./x.sh cargo add`).
 anyhow = "1.0"
+axum = "0.8"
+clap = { version = "4.6", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 thiserror = "2.0"
+tokio = { version = "1.54", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ts-rs = "12.0"
 
 [workspace.lints.rust]
 # The desktop crate (Tauri) does not inherit these lints: its generated code may need `unsafe`.

@@ -41,6 +41,8 @@ export const en = {
     collapse: 'Collapse sidebar',
     expand: 'Expand sidebar',
     unavailable: 'Available in a later version',
+    unavailableItem: '{{label}}: available in a later version',
+    drawer: 'Navigation',
   },
   theme: {
     label: 'Theme',
@@ -74,6 +76,14 @@ export const en = {
     settings: {
       subtitle: 'Display preferences, stored on this device',
       appearance: 'Appearance',
+      about: 'About',
+      backend: 'Backend',
+      backendOk: 'Connected, version {{version}}',
+      backendDown: 'Unavailable',
+      checking: 'Checking',
+      mode: 'Mode',
+      readOnly: 'Read-only',
+      readWrite: 'Read and write',
     },
     notFound: {
       title: 'Page not found',

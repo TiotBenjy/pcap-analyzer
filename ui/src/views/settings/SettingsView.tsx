@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useHealth, useServerInfo } from '../../api/queries';
+import { Badge } from '../../components/Badge';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { type LanguagePref, readLanguagePref, setLanguagePref } from '../../i18n';
 import { type ThemePref, useTheme } from '../../theme/theme';
-import { useState } from 'react';
 
 export default function SettingsView() {
   const { t } = useTranslation();
@@ -41,6 +43,37 @@ export default function SettingsView() {
           />
         </div>
       </Card>
+      <AboutCard />
     </div>
+  );
+}
+
+function AboutCard() {
+  const { t } = useTranslation();
+  const health = useHealth();
+  const info = useServerInfo();
+
+  let backend;
+  if (health.isPending) backend = <span className="text-muted">{t('views.settings.checking')}</span>;
+  else if (health.isError) backend = <Badge tone="danger">{t('views.settings.backendDown')}</Badge>;
+  else backend = <Badge tone="success">{t('views.settings.backendOk', { version: health.data.version })}</Badge>;
+
+  return (
+    <Card title={t('views.settings.about')}>
+      <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] items-center gap-x-4 gap-y-3">
+        <dt className="text-muted">{t('views.settings.backend')}</dt>
+        <dd className="min-w-0" data-testid="backend-status">
+          {backend}
+        </dd>
+        {info.data !== undefined && (
+          <>
+            <dt className="text-muted">{t('views.settings.mode')}</dt>
+            <dd className="min-w-0" data-testid="server-mode">
+              {info.data.read_only ? t('views.settings.readOnly') : t('views.settings.readWrite')}
+            </dd>
+          </>
+        )}
+      </dl>
+    </Card>
   );
 }

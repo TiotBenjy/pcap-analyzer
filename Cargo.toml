@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "apps/desktop"]
 # Worktrees live inside the repository; fuzz targets need nightly and are built separately.
 exclude = [".worktrees", "fuzz"]
 

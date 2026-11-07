@@ -139,7 +139,8 @@ toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paqu
 
 - `apps/desktop` démarre l'API dans un runtime tokio, puis ouvre la fenêtre sur `ui/dist`.
 - Plugins : `dialog` (choix de dossier), `opener` (ouvrir le dossier des exports).
-- CSP stricte : `default-src 'self'; connect-src http://127.0.0.1:*; img-src 'self' http://127.0.0.1:* data:`.
+- CSP stricte : `default-src 'self'; connect-src http://127.0.0.1:*; img-src 'self' http://127.0.0.1:* data:`,
+  plus `style-src 'self' 'unsafe-inline'` pour le SVG d'ECharts et des directives fermées (détail : ADR-006).
 - Aucune autre fenêtre, aucun accès réseau sortant.
 - Bundles : Linux AppImage + .deb (build local dans le conteneur Ubuntu 22.04 pour compatibilité glibc),
   Windows NSIS + MSI (build CI sur `windows-latest`).

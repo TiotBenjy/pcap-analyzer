@@ -33,3 +33,6 @@ apps/desktop/resources/geoip/*.mmdb
 *.log
 .env
 .env.local
+
+# Tauri : schémas générés au build
+/apps/desktop/gen

@@ -44,3 +44,26 @@ acceptée : la remplacer par une nouvelle qui la référence.
 - Contexte : vocabulaire réseau majoritairement anglais, utilisateur francophone.
 - Décision : toutes les chaînes passent par un dictionnaire `en` / `fr` ; la langue suit l'OS,
   modifiable dans les réglages.
+
+## ADR-006 — Intégration desktop : API embarquée, CSP et lints
+
+- Contexte : P0.5. L'UI desktop doit joindre l'API locale sans exposer le jeton, sous une CSP stricte,
+  et le crate Tauri doit compiler dans le gate du workspace sans build préalable de l'UI.
+- Décision :
+  - L'API est liée de façon synchrone sur `127.0.0.1:0` avant l'ouverture de la fenêtre ; jeton de
+    256 bits (`getrandom`) ; l'UI obtient `{ base_url, token }` par la commande `get_api_endpoint`
+    (import dynamique de `@tauri-apps/api`, absent du bundle web). CORS limité aux origines de la
+    webview (`tauri://localhost`, `http://tauri.localhost`). Arrêt propre de l'API à `RunEvent::Exit`.
+  - CSP : celle d'ARCHITECTURE, complétée de `style-src 'self' 'unsafe-inline'` (le rendu SVG
+    d'ECharts pose des attributs `style`), `script-src 'self'`, `object-src 'none'`, `base-uri 'none'`,
+    `form-action 'none'`, `frame-ancestors 'none'` et `ipc:` pour le pont Tauri ; aucune ressource
+    distante. `dangerousDisableAssetCspModification: ["style-src"]` évite que les nonces injectés par
+    Tauri n'annulent `'unsafe-inline'`. Le thème initial est appliqué par un script externe
+    (`public/theme-init.js`), jamais inline ; Vite n'intègre aucun asset en `data:` (`assetsInlineLimit: 0`).
+  - Le crate desktop n'hérite pas des lints du workspace : `unsafe_code = "deny"` au lieu de `forbid`
+    (code généré par Tauri), pedantic conservé.
+  - `build.rs` crée une page de remplacement `ui/dist/index.html` si l'UI n'est pas construite, pour que
+    `cargo clippy/nextest --workspace` compile ; les bundles passent toujours par `cargo tauri build`,
+    dont `beforeBuildCommand` construit la vraie UI.
+- Conséquences : un seul chemin de code API pour dev, shots et desktop ; le jeton ne quitte jamais le
+  processus (pas d'URL, pas de log) ; à revoir si une vue doit afficher des contenus distants (refusé).

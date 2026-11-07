@@ -1,0 +1,76 @@
+---
+source: crates/netsift-dissect/tests/network.rs
+expression: d
+---
+Decoded {
+    link: LinkInfo {
+        linktype: 1,
+        kind: Ethernet,
+        src_mac: Some(
+            02:00:00:00:00:0a,
+        ),
+        dst_mac: Some(
+            02:00:00:00:00:0b,
+        ),
+        vlans: [],
+        ethertype: Some(
+            34525,
+        ),
+        llc: None,
+        sll: None,
+        radiotap: None,
+        wifi: None,
+    },
+    network: Some(
+        Ip(
+            IpInfo {
+                version: V6,
+                src: fe80::1,
+                dst: 2001:db8::2,
+                protocol: 17,
+                ttl: 64,
+                header_len: 72,
+                payload_len: 20,
+                truncated: false,
+                ident: Some(
+                    3735928559,
+                ),
+                dont_fragment: false,
+                fragment: Some(
+                    Fragment {
+                        id: 3735928559,
+                        offset: 0,
+                        more: true,
+                        next_header: 60,
+                    },
+                ),
+                extensions: [
+                    0,
+                    43,
+                    44,
+                    60,
+                ],
+            },
+        ),
+    ),
+    transport: Some(
+        Udp(
+            UdpInfo {
+                src_port: 1234,
+                dst_port: 53,
+                length: 20,
+                payload_len: 12,
+            },
+        ),
+    ),
+    payload: 12 bytes [123401000001000000000000],
+    ip_payload: 28 bytes [110000000000000004d2003500140000..],
+    l3_offset: Some(
+        14,
+    ),
+    l4_offset: Some(
+        86,
+    ),
+    payload_offset: 94,
+    error: None,
+}

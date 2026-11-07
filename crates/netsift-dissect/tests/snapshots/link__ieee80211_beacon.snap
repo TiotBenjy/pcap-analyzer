@@ -1,0 +1,36 @@
+---
+source: crates/netsift-dissect/tests/link.rs
+expression: d.link.wifi
+---
+Some(
+    WifiInfo {
+        frame_type: Management,
+        subtype: 8,
+        to_ds: false,
+        from_ds: false,
+        more_fragments: false,
+        retry: false,
+        protected: false,
+        addr1: Some(
+            ff:ff:ff:ff:ff:ff,
+        ),
+        addr2: Some(
+            02:00:00:00:00:0c,
+        ),
+        addr3: Some(
+            02:00:00:00:00:0c,
+        ),
+        addr4: None,
+        bssid: Some(
+            02:00:00:00:00:0c,
+        ),
+        sequence: Some(
+            2049,
+        ),
+        fragment: Some(
+            0,
+        ),
+        qos_tid: None,
+        amsdu: false,
+    },
+)

@@ -1,0 +1,29 @@
+---
+source: crates/netsift-dissect/tests/network.rs
+expression: tcp
+---
+TcpInfo {
+    src_port: 443,
+    dst_port: 50000,
+    seq: 0,
+    ack: 0,
+    flags: ACK|SYN,
+    window: 0,
+    header_len: 40,
+    options: TcpOptions {
+        mss: Some(
+            1460,
+        ),
+        window_scale: Some(
+            7,
+        ),
+        sack_permitted: true,
+        timestamps: Some(
+            (
+                1,
+                2,
+            ),
+        ),
+    },
+    payload_len: 0,
+}

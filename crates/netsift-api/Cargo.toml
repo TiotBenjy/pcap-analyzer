@@ -1,0 +1,17 @@
+[package]
+name = "netsift-api"
+description = "HTTP API (axum) routes and DTOs exported to TypeScript."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+netsift-engine.workspace = true
+netsift-geo.workspace = true
+netsift-store.workspace = true
+
+[lints]
+workspace = true

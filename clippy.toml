@@ -1,0 +1,9 @@
+# Tests may unwrap/expect/index freely; library code of netsift-dissect may not.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-dbg-in-tests = false
+# Domain terms that are not code identifiers (".." keeps clippy defaults).
+doc-valid-idents = ["GeoIP", "NetSift", "NetBIOS", "NTLMSSP", "PCAPNG", "TypeScript", "WebKitGTK", ".."]

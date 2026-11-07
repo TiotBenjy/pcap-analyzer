@@ -1,0 +1,19 @@
+[package]
+name = "netsift-cli"
+description = "The netsift command-line binary: ingest, query, serve, export."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "netsift"
+path = "src/main.rs"
+
+[dependencies]
+netsift-api.workspace = true
+
+[lints]
+workspace = true

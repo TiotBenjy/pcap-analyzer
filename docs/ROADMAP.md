@@ -70,10 +70,18 @@ Suivis issus des revues de la phase 0 (à traiter dans la tâche indiquée) :
 - [~] **P1.4** `feat/store-core` — `netsift-store` : catalogue, ouverture de session, migrations versionnées,
       writer par lots sur thread dédié, tables `meta`, `chunks`, `anomalies`, `timeseries`, `hosts`, `flows`.
       Dép. : P0.2.
-- [~] **P1.5** `feat/fixtures` — `netsift-fixtures` : constructeur de scénarios (DNS, HTTP avec image, TLS
+- [x] **P1.5** `feat/fixtures` — `netsift-fixtures` : constructeur de scénarios (DNS, HTTP avec image, TLS
       ClientHello/ServerHello/certificat auto-signé, NBNS, SMB browser announce, SNMP community, FTP login),
       écrivain pcap/pcapng/gz, découpeur en chunks par taille et par durée avec les 4 conventions de nommage.
       Dép. : P0.2.
+
+Suivis non bloquants de la vague 1.A (à intégrer à la tâche qui en a besoin) :
+
+- Fixtures, pour P1.6 : faire varier l'IP ID (0 partout aujourd'hui) et ajouter un scénario de
+  fragmentation IPv4/IPv6 ; tester les checksums IPv4/TCP/UDP générés.
+- Fixtures : `checked_mul` dans la conversion `if_tsresol` (`writer.rs:79`, panique au-delà de 10^-21) ;
+  `ServerKeyExchange` pour la suite ECDHE (onglet TLS, P3.3) ; nommages tcpdump `-W` et `-G` ;
+  documenter que `SplitBy::Size` ne dépasse jamais la limite (comme tcpdump `-C`, contrairement à dumpcap).
 
 ### Vague 1.B (après 1.A)
 

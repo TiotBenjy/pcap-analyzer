@@ -33,6 +33,7 @@ mod bytes;
 mod decoded;
 mod error;
 pub mod ethertype;
+mod ipext;
 mod link;
 pub mod linktype;
 mod net;
@@ -42,7 +43,7 @@ mod wifi;
 pub use decoded::{
     ArpInfo, Decoded, Fragment, IcmpInfo, IpExtensions, IpInfo, IpVersion, LinkInfo, LinkKind, Llc,
     MAX_IPV6_EXTENSIONS, MAX_VLAN_TAGS, MacAddr, Network, RadiotapInfo, SllInfo, TcpFlags, TcpInfo,
-    Transport, UdpInfo, VlanTag, Vlans, WifiFrameType, WifiInfo,
+    TcpOptions, Transport, UdpInfo, VlanTag, Vlans, WifiFrameType, WifiInfo,
 };
 pub use error::{DecodeError, ErrorKind, Layer};
 pub use transport::{decode_transport, proto};
@@ -60,6 +61,7 @@ pub fn decode(linktype: u32, data: &[u8]) -> Decoded<'_> {
     if let Err(e) = link::decode(&mut d, linktype, data) {
         d.error = Some(e);
     }
+    d.finish();
     d
 }
 

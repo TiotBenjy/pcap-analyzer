@@ -56,10 +56,24 @@ Decoded {
                 flags: ACK|PSH,
                 window: 501,
                 header_len: 20,
+                options: TcpOptions {
+                    mss: None,
+                    window_scale: None,
+                    sack_permitted: false,
+                    timestamps: None,
+                },
                 payload_len: 3,
             },
         ),
     ),
     payload: 3 bytes [170303],
+    ip_payload: 23 bytes [01bbc7380000000700000063501801f5..],
+    l3_offset: Some(
+        20,
+    ),
+    l4_offset: Some(
+        60,
+    ),
+    payload_offset: 80,
     error: None,
 }

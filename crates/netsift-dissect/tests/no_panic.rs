@@ -15,6 +15,19 @@ fn check(lt: u32, data: &[u8]) {
     );
     assert!(d.payload.len() <= data.len());
     assert_eq!(d.link.linktype, lt);
+    assert!(
+        is_subslice(data, d.ip_payload),
+        "ip_payload must borrow the frame"
+    );
+    let end = d.payload_offset + d.payload.len();
+    assert_eq!(&data[d.payload_offset..end], d.payload, "payload_offset");
+    if let Some(l4) = d.l4_offset {
+        assert!(l4 <= d.payload_offset);
+        assert!(d.l3_offset.is_some_and(|l3| l3 <= l4));
+    }
+    if let Some(l3) = d.l3_offset {
+        assert!(l3 <= d.payload_offset);
+    }
     // Formatting must not panic either (used in logs and snapshots).
     let _ = format!("{d:?}");
     if let Some(e) = d.error {

@@ -34,7 +34,8 @@ fn ipv6_extension_chain_with_first_fragment() {
         Some(Fragment {
             id: 0xdead_beef,
             offset: 0,
-            more: true
+            more: true,
+            next_header: 60,
         })
     );
     assert_eq!(d.ports(), Some((1234, 53)));
@@ -55,11 +56,13 @@ fn ipv6_non_first_fragment_has_no_transport() {
         Some(Fragment {
             id: 7,
             offset: 1448,
-            more: false
+            more: false,
+            next_header: 17,
         })
     );
     assert!(d.transport.is_none());
     assert_eq!(d.payload, b"fragment data");
+    assert_eq!(d.ip_payload, b"fragment data");
 }
 
 #[test]
@@ -103,10 +106,12 @@ fn ipv4_first_fragment_decodes_tcp_header() {
         Some(Fragment {
             id: 0x1234,
             offset: 0,
-            more: true
+            more: true,
+            next_header: 6,
         })
     );
     assert_eq!(d.tcp().unwrap().payload_len, 12);
+    assert_eq!(d.ip_payload, &tcp[..]);
 }
 
 #[test]
@@ -162,7 +167,10 @@ fn icmpv4_and_icmpv6_echo() {
     let Some(Transport::Icmpv4(i)) = d.transport else {
         panic!("no ICMP")
     };
-    assert_eq!((i.icmp_type, i.code), (8, 0));
+    assert_eq!(
+        (i.icmp_type, i.code, i.id, i.sequence),
+        (8, 0, Some(1), Some(2))
+    );
     assert_eq!(d.payload, b"ping");
 
     let mut f = Vec::new();
@@ -174,7 +182,10 @@ fn icmpv4_and_icmpv6_echo() {
     let Some(Transport::Icmpv6(i)) = d.transport else {
         panic!("no ICMPv6")
     };
-    assert_eq!((i.icmp_type, i.code), (129, 0));
+    assert_eq!(
+        (i.icmp_type, i.code, i.id, i.sequence),
+        (129, 0, Some(1), Some(2))
+    );
     assert_eq!(d.payload, b"pong");
 }
 
@@ -348,4 +359,213 @@ fn ipv6_truncated_fragment_header_after_hop_by_hop() {
             assert_eq!(d.error.unwrap().layer, Layer::Ipv6, "cut {cut}");
         }
     }
+}
+
+/// Non-first IPv6 fragments whose Fragment header announces an extension header: the
+/// fragment data must not be parsed as headers.
+#[test]
+fn ipv6_non_first_fragment_announcing_extensions() {
+    for next in [60u8, 51] {
+        // Looks like a header with length 0xff (or an AH with length 0).
+        let data = [
+            17u8,
+            if next == 51 { 0 } else { 0xff },
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+        ];
+        let mut body = frag6(next, 2048, true, 42);
+        body.extend_from_slice(&data);
+        let buf = ipv6_hdr(44, &body);
+        let d = decode(linktype::IPV6, &buf);
+        assert_eq!(d.error, None, "next header {next}");
+        let ip = d.ip().unwrap();
+        assert_eq!(ip.protocol, next);
+        assert_eq!(ip.extensions.as_slice(), &[44]);
+        assert_eq!(ip.header_len, 48);
+        let frag = ip.fragment.unwrap();
+        assert_eq!(
+            (frag.offset, frag.more, frag.next_header),
+            (2048, true, next)
+        );
+        assert!(d.transport.is_none());
+        assert_eq!(d.payload, &data);
+        assert_eq!(d.ip_payload, &data);
+    }
+}
+
+/// Non-first IPv4 fragment with protocol AH: the data is not an AH header.
+#[test]
+fn ipv4_non_first_fragment_with_auth_protocol() {
+    let data = [6u8, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    let buf = ipv4_hdr(51, 36, 0x99, 185, &data);
+    let d = decode(linktype::IPV4, &buf);
+    assert_eq!(d.error, None);
+    let ip = d.ip().unwrap();
+    assert_eq!((ip.protocol, ip.header_len), (51, 20));
+    assert!(ip.extensions.is_empty());
+    assert_eq!(ip.fragment.unwrap().next_header, 51);
+    assert!(d.transport.is_none());
+    assert_eq!(d.payload, &data);
+    assert_eq!(d.ip_payload, &data);
+}
+
+#[test]
+fn ipv6_first_fragment_with_destination_options_after_fragment() {
+    let mut fragmentable = ext8(17);
+    fragmentable.extend(udp_hdr(4000, 5000, b"first"));
+    let mut body = frag6(60, 0, true, 5);
+    body.extend_from_slice(&fragmentable);
+    let buf = ipv6_hdr(44, &body);
+    let d = decode(linktype::IPV6, &buf);
+    assert_eq!(d.error, None);
+    let ip = d.ip().unwrap();
+    assert_eq!(ip.extensions.as_slice(), &[44, 60]);
+    assert_eq!(ip.protocol, proto::UDP);
+    assert_eq!(ip.fragment.unwrap().next_header, 60);
+    assert_eq!(d.ports(), Some((4000, 5000)));
+    assert_eq!(
+        d.ip_payload,
+        &fragmentable[..],
+        "fragmentable part starts after the Fragment header"
+    );
+    assert_eq!(d.payload, b"first");
+}
+
+/// Reassembles fragments by hand from `ip_payload` and decodes the transport header,
+/// as `netsift-flow` will.
+fn reassemble(frames: &[Vec<u8>], lt: u32) -> (u8, Vec<u8>) {
+    let mut parts: Vec<(u16, u8, Vec<u8>)> = frames
+        .iter()
+        .map(|f| {
+            let d = decode(lt, f);
+            let frag = d.ip().unwrap().fragment.unwrap();
+            (frag.offset, frag.next_header, d.ip_payload.to_vec())
+        })
+        .collect();
+    parts.sort_by_key(|p| p.0);
+    let next_header = parts[0].1;
+    let mut data = Vec::new();
+    for (offset, _, part) in parts {
+        assert_eq!(usize::from(offset), data.len(), "contiguous fragments");
+        data.extend(part);
+    }
+    (next_header, data)
+}
+
+#[test]
+fn reassembled_ipv6_fragments_decode_transport() {
+    let payload = [0x5au8; 40];
+    let mut fragmentable = ext8(17);
+    fragmentable.extend(udp_hdr(4000, 5000, &payload));
+    let (a, b) = fragmentable.split_at(24);
+    let mut f1 = frag6(60, 0, true, 9);
+    f1.extend_from_slice(a);
+    let mut f2 = frag6(60, 24, false, 9);
+    f2.extend_from_slice(b);
+    // Second fragment first: order comes from the offsets.
+    let frames = [ipv6_hdr(44, &f2), ipv6_hdr(44, &f1)];
+    let (next_header, data) = reassemble(&frames, linktype::IPV6);
+    assert_eq!(data, fragmentable);
+    let (t, rest) = decode_transport(next_header, &data).unwrap().unwrap();
+    let Transport::Udp(u) = t else {
+        panic!("not UDP")
+    };
+    assert_eq!((u.src_port, u.dst_port), (4000, 5000));
+    assert_eq!(rest, &payload);
+}
+
+#[test]
+fn reassembled_ipv4_fragments_decode_transport() {
+    let datagram = udp_hdr(1111, 2222, &[0x77; 30]);
+    let (a, b) = datagram.split_at(16);
+    let f1 = ipv4_hdr(17, 36, 0x4242, 0x2000, a);
+    let f2 = ipv4_hdr(17, 20 + 22, 0x4242, 2, b);
+    let (next_header, data) = reassemble(&[f1, f2], linktype::IPV4);
+    assert_eq!(data, datagram);
+    let (t, rest) = decode_transport(next_header, &data).unwrap().unwrap();
+    let Transport::Udp(u) = t else {
+        panic!("not UDP")
+    };
+    assert_eq!((u.src_port, u.dst_port, u.length), (1111, 2222, 38));
+    assert_eq!(rest, &[0x77; 30]);
+}
+
+fn tcp_with_options(options: &[u8]) -> Vec<u8> {
+    let mut tcp = vec![0u8; 20];
+    tcp[0..2].copy_from_slice(&443u16.to_be_bytes());
+    tcp[2..4].copy_from_slice(&50000u16.to_be_bytes());
+    tcp[12] = u8::try_from((20 + options.len()) / 4).unwrap() << 4;
+    tcp[13] = 0x12; // SYN|ACK
+    tcp.extend_from_slice(options);
+    let total = u16::try_from(20 + tcp.len()).unwrap();
+    ipv4_hdr(6, total, 1, 0x4000, &tcp)
+}
+
+#[test]
+fn tcp_options_are_parsed() {
+    let mut opts = vec![2, 4, 0x05, 0xb4, 1, 3, 3, 7, 4, 2, 8, 10];
+    opts.extend_from_slice(&1u32.to_be_bytes());
+    opts.extend_from_slice(&2u32.to_be_bytes());
+    let buf = tcp_with_options(&opts);
+    let d = decode(linktype::IPV4, &buf);
+    assert_eq!(d.error, None);
+    let tcp = d.tcp().unwrap();
+    assert_eq!(tcp.header_len, 40);
+    let o = tcp.options;
+    assert_eq!(
+        (o.mss, o.window_scale, o.sack_permitted, o.timestamps),
+        (Some(1460), Some(7), true, Some((1, 2)))
+    );
+    insta::assert_debug_snapshot!("tcp_options_are_parsed", tcp);
+}
+
+#[test]
+fn tcp_malformed_options_stop_quietly() {
+    // MSS with a zero length, then a valid window scale that must not be reached.
+    let buf = tcp_with_options(&[2, 0, 0, 0, 3, 3, 7, 0]);
+    let d = decode(linktype::IPV4, &buf);
+    assert_eq!(d.error, None);
+    assert_eq!(
+        d.tcp().unwrap().options,
+        netsift_dissect::TcpOptions::default()
+    );
+    // Option longer than the option area.
+    let buf = tcp_with_options(&[8, 10, 0, 0]);
+    let d = decode(linktype::IPV4, &buf);
+    assert_eq!(d.tcp().unwrap().options.timestamps, None);
+}
+
+#[test]
+fn layer_offsets() {
+    let mut body = vlan(0, 5, ethertype::IPV4);
+    body.extend(tcp4(b"data"));
+    let f = eth(MAC_B, MAC_A, ethertype::VLAN, &body);
+    let d = decode(linktype::ETHERNET, &f);
+    assert_eq!(
+        (d.l3_offset, d.l4_offset, d.payload_offset),
+        (Some(18), Some(38), 58)
+    );
+    assert_eq!(&f[d.payload_offset..], b"data");
+
+    let arp = [
+        0u8, 1, 8, 0, 6, 4, 0, 1, 1, 2, 3, 4, 5, 6, 10, 0, 0, 1, 0, 0, 0, 0, 0, 0, 10, 0, 0, 2,
+    ];
+    let buf = on_eth(ethertype::ARP, &arp);
+    let d = decode(linktype::ETHERNET, &buf);
+    assert_eq!(
+        (d.l3_offset, d.l4_offset, d.payload_offset),
+        (Some(14), None, 42)
+    );
+
+    let d = decode(9999, &[1, 2, 3]);
+    assert_eq!(
+        (d.l3_offset, d.l4_offset, d.payload_offset),
+        (None, None, 0)
+    );
 }

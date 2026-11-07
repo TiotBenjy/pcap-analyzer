@@ -41,6 +41,7 @@ Decoded {
                         id: 3735928559,
                         offset: 0,
                         more: true,
+                        next_header: 60,
                     },
                 ),
                 extensions: [
@@ -63,5 +64,13 @@ Decoded {
         ),
     ),
     payload: 12 bytes [123401000001000000000000],
+    ip_payload: 28 bytes [110000000000000004d2003500140000..],
+    l3_offset: Some(
+        14,
+    ),
+    l4_offset: Some(
+        86,
+    ),
+    payload_offset: 94,
     error: None,
 }

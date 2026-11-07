@@ -44,5 +44,11 @@ Decoded {
     ),
     transport: None,
     payload: 18 bytes [00000000000000000000000000000000..],
+    ip_payload: 0 bytes,
+    l3_offset: Some(
+        14,
+    ),
+    l4_offset: None,
+    payload_offset: 42,
     error: None,
 }

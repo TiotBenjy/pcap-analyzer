@@ -2566,6 +2566,9 @@ dependencies = [
 name = "netsift-analyze"
 version = "0.1.0"
 dependencies = [
+ "insta",
+ "netsift-dissect",
+ "netsift-fixtures",
  "netsift-flow",
  "netsift-geo",
 ]
@@ -2608,6 +2611,10 @@ dependencies = [
  "anyhow",
  "clap",
  "netsift-api",
+ "netsift-engine",
+ "netsift-fixtures",
+ "netsift-store",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2645,9 +2652,15 @@ dependencies = [
 name = "netsift-engine"
 version = "0.1.0"
 dependencies = [
+ "insta",
  "netsift-analyze",
  "netsift-capture",
+ "netsift-fixtures",
  "netsift-store",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 import { Outlet, useRouterState } from '@tanstack/react-router';
 import { Menu, Moon, Sun } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { findNavItem } from '../app/nav';
 import { readPref, writePref } from '../lib/storage';
@@ -12,7 +12,10 @@ const COLLAPSED_KEY = 'netsift.sidebar.collapsed';
 
 /**
  * Application frame. >= 1024 px: fixed 240 px sidebar (collapsible to 56 px).
- * < 1024 px: sidebar becomes a drawer opened from the header menu button.
+ * < 1024 px: sidebar becomes a modal drawer opened from the header menu button.
+ *
+ * The main column never hides horizontal overflow: a view that overflows is a bug that the
+ * screenshot tests must see (docs/UI_GUIDELINES.md).
  */
 export function AppShell() {
   const { t } = useTranslation();
@@ -21,29 +24,41 @@ export function AppShell() {
   const current = findNavItem(pathname);
   const [collapsed, setCollapsed] = useState(() => readPref(COLLAPSED_KEY) === '1');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const wasOpen = useRef(false);
 
-  // Close the drawer on navigation and on Escape.
+  // Close the drawer on navigation.
   const [lastPath, setLastPath] = useState(pathname);
   if (lastPath !== pathname) {
     setLastPath(pathname);
     setDrawerOpen(false);
   }
+
+  // Drawer focus management: focus inside on open, Escape closes, focus returns to the trigger.
   useEffect(() => {
-    if (!drawerOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawerOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-    };
+    if (drawerOpen) {
+      wasOpen.current = true;
+      drawerRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus();
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setDrawerOpen(false);
+      };
+      window.addEventListener('keydown', onKey);
+      return () => {
+        window.removeEventListener('keydown', onKey);
+      };
+    }
+    if (wasOpen.current) {
+      wasOpen.current = false;
+      menuButtonRef.current?.focus();
+    }
+    return undefined;
   }, [drawerOpen]);
 
   const toggleCollapsed = () => {
-    setCollapsed((c) => {
-      writePref(COLLAPSED_KEY, c ? null : '1');
-      return !c;
-    });
+    const next = !collapsed;
+    writePref(COLLAPSED_KEY, next ? '1' : null);
+    setCollapsed(next);
   };
 
   return (
@@ -60,12 +75,19 @@ export function AppShell() {
         <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       </div>
 
-      {/* Mobile / tablet drawer */}
+      {/* Mobile / tablet drawer (modal: the rest of the page is inert while it is open) */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label={t('nav.openMenu')}>
+        <div
+          ref={drawerRef}
+          className="fixed inset-0 z-40 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('nav.drawer')}
+        >
           <button
             type="button"
-            aria-label={t('nav.closeMenu')}
+            tabIndex={-1}
+            aria-hidden
             className="absolute inset-0 bg-zinc-950/40"
             onClick={() => {
               setDrawerOpen(false);
@@ -82,9 +104,10 @@ export function AppShell() {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col" inert={drawerOpen}>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:px-4">
           <Button
+            ref={menuButtonRef}
             variant="ghost"
             icon
             className="lg:hidden"
@@ -118,7 +141,7 @@ export function AppShell() {
           </div>
         </header>
 
-        <main id="main" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <main id="main" className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1600px] p-3 sm:p-4 lg:p-6">
             <Outlet />
           </div>

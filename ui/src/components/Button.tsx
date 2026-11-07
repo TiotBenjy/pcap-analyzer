@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, Ref } from 'react';
 import { cn } from '../lib/cn';
 
 type Variant = 'primary' | 'secondary' | 'ghost';
@@ -13,6 +13,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   /** Square icon-only button; requires an aria-label. */
   icon?: boolean;
+  ref?: Ref<HTMLButtonElement>;
 }
 
 export function Button({ variant = 'secondary', icon = false, className, type = 'button', ...rest }: ButtonProps) {

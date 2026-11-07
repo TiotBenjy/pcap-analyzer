@@ -89,7 +89,7 @@ function SidebarEntry({ item, collapsed, count }: { item: NavItem; collapsed: bo
   const base = cn('flex h-8 items-center gap-3 rounded-md', collapsed ? 'justify-center' : 'px-2');
 
   if (!item.enabled) {
-    const title = `${label} - ${t('nav.unavailable')}`;
+    const title = t('nav.unavailableItem', { label });
     return (
       <span aria-disabled="true" title={title} className={cn(base, 'cursor-not-allowed text-faint opacity-60')}>
         <Icon aria-hidden size={20} strokeWidth={1.75} className="shrink-0" />

@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { type KeyboardEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/cn';
 import { EmptyState } from './EmptyState';
@@ -136,18 +136,29 @@ export function DataTable<T>({
               <td colSpan={colCount} style={{ height: padTop }} />
             </tr>
           )}
-          {visible.map((row) => (
+          {visible.map((row, i) => (
             <tr
               key={row.id}
               style={{ height: ROW_HEIGHT }}
-              onClick={
-                onRowClick === undefined
-                  ? undefined
-                  : () => {
+              aria-rowindex={(virtual ? (items[i]?.index ?? i) : i) + 2}
+              {...(onRowClick === undefined
+                ? {}
+                : {
+                    tabIndex: 0,
+                    onClick: () => {
                       onRowClick(row.original);
-                    }
-              }
-              className={cn('border-b border-line last:border-b-0', onRowClick !== undefined && 'cursor-pointer hover:bg-subtle')}
+                    },
+                    onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onRowClick(row.original);
+                      }
+                    },
+                  })}
+              className={cn(
+                'border-b border-line last:border-b-0',
+                onRowClick !== undefined && 'cursor-pointer hover:bg-subtle focus-visible:bg-subtle',
+              )}
             >
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id} className="truncate px-3">

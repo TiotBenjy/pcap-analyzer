@@ -2675,7 +2675,10 @@ dependencies = [
 name = "netsift-flow"
 version = "0.1.0"
 dependencies = [
+ "insta",
  "netsift-dissect",
+ "netsift-fixtures",
+ "proptest",
 ]
 
 [[package]]

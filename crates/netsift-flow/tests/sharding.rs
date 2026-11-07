@@ -53,6 +53,12 @@ fn traffic() -> Vec<Packet> {
         sc.advance(idle * 1_000_000);
     }
     let mut packets = sc.into_packets();
+    // Small backward steps (well below the sweep grace), as in real captures.
+    for (i, p) in packets.iter_mut().enumerate() {
+        if i % 7 == 3 {
+            p.ts_ns -= 3_000_000;
+        }
+    }
     let frag = scenarios::fragmentation().0.into_packets();
     let shift = packets.last().map_or(0, |p| p.ts_ns) + 1_500_000_000 - frag[0].ts_ns;
     packets.extend(frag.into_iter().map(|mut p| {

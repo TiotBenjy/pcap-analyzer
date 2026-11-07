@@ -9,9 +9,21 @@ publish.workspace = true
 repository.workspace = true
 
 [dependencies]
+axum.workspace = true
 netsift-engine.workspace = true
 netsift-geo.workspace = true
 netsift-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+ts-rs.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util"] }
+tower.workspace = true
 
 [lints]
 workspace = true

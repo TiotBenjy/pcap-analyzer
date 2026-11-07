@@ -2307,6 +2307,10 @@ dependencies = [
 [[package]]
 name = "netsift-capture"
 version = "0.1.0"
+dependencies = [
+ "bytes",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "netsift-cli"

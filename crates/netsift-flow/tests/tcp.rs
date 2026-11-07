@@ -110,8 +110,20 @@ fn loss_is_reported_as_a_gap() {
     let (data, gaps) = rec.stream(id, Direction::ToServer);
     assert_eq!(data, b"aaaaccccdd");
     assert_eq!(gaps, vec![6]);
-    // The hole is given up at the end of the capture, with the last packet time.
+    // The hole is given up at the end of the capture, with the last packet time and frame.
     assert_eq!(rec.single_flow().end, EndReason::EndOfCapture);
+    let flushed: Vec<(u64, i64, u64)> = rec
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            common::Event::Stream { ctx, .. } => Some((ctx.gap_before, ctx.ts_ns, ctx.frame)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        flushed,
+        vec![(0, 3 * MS, 3), (6, 5 * MS, 5), (0, 5 * MS, 5)]
+    );
 }
 
 #[test]

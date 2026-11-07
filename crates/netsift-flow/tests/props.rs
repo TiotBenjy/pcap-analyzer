@@ -69,9 +69,9 @@ proptest! {
         let mut table = FlowTable::new(config);
         let mut rec = Recorder::default();
         let mut ts = 1_700_000_000_000_000_000i64;
-        for (linktype, data, step) in &frames {
+        for (i, (linktype, data, step)) in frames.iter().enumerate() {
             ts = ts.saturating_add(*step);
-            table.process(ts, 0, *linktype, u32::try_from(data.len()).unwrap(), data, &mut rec);
+            table.process(ts, 0, i as u64, *linktype, u32::try_from(data.len()).unwrap(), data, &mut rec);
         }
         table.finish(&mut rec);
         prop_assert_eq!(table.active_flows(), 0);

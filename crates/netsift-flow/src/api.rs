@@ -71,6 +71,9 @@ pub struct PacketFlow {
 pub struct PacketCtx {
     pub ts_ns: i64,
     pub chunk_id: u32,
+    /// Global frame index (0-based, in reading order over the whole chunk set), assigned by the
+    /// engine; identifies the source packet for provenance and PCAP export.
+    pub frame: u64,
     /// Original length on the wire of the frame (for byte counters), >= captured length.
     pub wire_len: u32,
     /// `None` for packets outside any flow (non-IP, undecodable, pending fragments).
@@ -83,6 +86,10 @@ pub struct StreamCtx {
     /// Time of the packet that completed this in-order data.
     pub ts_ns: i64,
     pub chunk_id: u32,
+    /// Global frame index (0-based, in reading order over the whole chunk set), assigned by the
+    /// engine; identifies the source packet for provenance and PCAP export. Here, the frame
+    /// that completed this data.
+    pub frame: u64,
     pub id: FlowId,
     pub key: FlowKey,
     /// Bytes known to be missing just before this data (lost segments, buffer limit). Analyzers

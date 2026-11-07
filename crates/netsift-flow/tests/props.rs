@@ -18,7 +18,8 @@ fn segmented() -> impl Strategy<Value = (Vec<u8>, u32, Vec<(usize, usize)>)> {
         vec(any::<u8>(), 1..3000),
         vec(1usize..400, 1..40),
         vec((any::<prop::sample::Index>(), 1usize..500), 0..10),
-        any::<u32>(),
+        // Half of the cases start right before the sequence number wraps to zero.
+        prop_oneof![any::<u32>(), (u32::MAX - 4000)..=u32::MAX],
     )
         .prop_flat_map(|(data, cuts, extra, isn)| {
             let mut segs = Vec::new();
@@ -52,6 +53,41 @@ proptest! {
         let (stream, gaps) = rec.stream(rec.single_flow().id, Direction::ToServer);
         prop_assert!(gaps.is_empty());
         prop_assert_eq!(stream, data);
+    }
+
+    #[test]
+    fn small_buffer_delivers_each_byte_at_most_once_in_order(
+        (data, isn, segs) in segmented(),
+        drops in vec(any::<prop::sample::Index>(), 0..6),
+        max_stream_buffer in 0usize..2000,
+    ) {
+        let c = TcpConv::new(hosts::workstation(), hosts::web_server(), 40_000, 80)
+            .with_isns(isn, 1);
+        let dropped: Vec<usize> = drops.iter().map(|d| d.index(segs.len())).collect();
+        let mut frames = vec![c.syn(), c.syn_ack(), c.ack(Side::Client, 0, 0)];
+        for (i, &(s, e)) in segs.iter().enumerate() {
+            // Lose some segments, never one that carries the last byte.
+            if e < data.len() && dropped.contains(&i) {
+                continue;
+            }
+            frames.push(c.data(Side::Client, s as u64, 0, &data[s..e]));
+        }
+        let config = FlowConfig { max_stream_buffer, ..FlowConfig::default() };
+        let rec = run(&timed(frames, 0, MS), config);
+        let id = rec.single_flow().id;
+        let mut off = 0usize;
+        for e in &rec.events {
+            if let common::Event::Stream { ctx, dir, data: bytes } = e {
+                prop_assert_eq!(ctx.id, id);
+                prop_assert_eq!(*dir, Direction::ToServer);
+                off += usize::try_from(ctx.gap_before).unwrap();
+                prop_assert!(!bytes.is_empty());
+                prop_assert_eq!(&data[off..off + bytes.len()], bytes.as_slice());
+                off += bytes.len();
+            }
+        }
+        // Delivered bytes plus gaps cover the whole stream.
+        prop_assert_eq!(off, data.len());
     }
 
     #[test]

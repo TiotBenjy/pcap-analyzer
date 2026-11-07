@@ -120,23 +120,22 @@ fn loss_is_reported_as_a_gap() {
             _ => None,
         })
         .collect();
-    assert_eq!(
-        flushed,
-        vec![(0, 3 * MS, 3), (6, 5 * MS, 5), (0, 5 * MS, 5)]
-    );
+    // "cccc" and "dd" were buffered as one merged piece.
+    assert_eq!(flushed, vec![(0, 3 * MS, 3), (6, 5 * MS, 5)]);
 }
 
 #[test]
 fn buffer_limit_gives_up_on_a_hole() {
     let c = conv();
+    // Each buffered piece also costs 64 bytes of overhead.
     let config = FlowConfig {
-        max_stream_buffer: 8,
+        max_stream_buffer: 64 + 8,
         ..FlowConfig::default()
     };
     let mut frames = handshake(&c);
     frames.push(c.data(Side::Client, 4, 0, b"efgh"));
-    frames.push(c.data(Side::Client, 8, 0, b"ijkl")); // 8 bytes buffered: still fits
-    frames.push(c.data(Side::Client, 12, 0, b"m")); // 9 > 8: give up on 0..4
+    frames.push(c.data(Side::Client, 8, 0, b"ijkl")); // appended: 8 + 64 bytes, still fits
+    frames.push(c.data(Side::Client, 12, 0, b"m")); // 9 + 64 > 72: give up on 0..4
     frames.push(c.data(Side::Client, 0, 0, b"abcd")); // too late
     let rec = run(&timed(frames, 0, MS), config);
     let streams: Vec<_> = rec
@@ -147,14 +146,7 @@ fn buffer_limit_gives_up_on_a_hole() {
             _ => None,
         })
         .collect();
-    assert_eq!(
-        streams,
-        vec![
-            (4, b"efgh".to_vec()),
-            (0, b"ijkl".to_vec()),
-            (0, b"m".to_vec())
-        ]
-    );
+    assert_eq!(streams, vec![(4, b"efghijklm".to_vec())]);
 }
 
 #[test]
@@ -326,4 +318,87 @@ fn syn_payload_and_fin_consume_sequence_numbers() {
     ];
     let rec = run(&timed(frames, 0, MS), FlowConfig::default());
     assert_eq!(rec.stream(id_of(&rec), Direction::ToServer).0, b"tforest");
+}
+
+#[test]
+fn syn_on_a_midstream_flow_opens_a_new_flow() {
+    let c = conv();
+    let frames = vec![
+        c.data(Side::Client, 100, 7, b"old"),
+        c.syn(),
+        c.syn_ack(),
+        c.data(Side::Client, 0, 0, b"new"),
+    ];
+    let rec = run(&timed(frames, 0, MS), FlowConfig::default());
+    let ends = rec.ends();
+    assert_eq!(ends.len(), 2);
+    assert_eq!(
+        (ends[0].tcp_state, ends[0].end),
+        (Some(TcpState::Midstream), EndReason::Closed)
+    );
+    assert_eq!(rec.stream(ends[0].id, Direction::ToServer).0, b"old");
+    assert_eq!(ends[1].tcp_state, Some(TcpState::Established));
+    assert_eq!(rec.stream(ends[1].id, Direction::ToServer).0, b"new");
+}
+
+#[test]
+fn snaplen_96_capture_delivers_at_once_and_accounts_every_byte() {
+    const SNAPLEN: usize = 96;
+    const CAPTURED_PAYLOAD: usize = SNAPLEN - 14 - 20 - 20;
+    let get = HttpGet::default();
+    let mut sc = Scenario::new();
+    sc.http_get(hosts::workstation(), hosts::web_server(), &get);
+    let packets: Vec<_> = sc
+        .packets()
+        .iter()
+        .map(|p| {
+            let mut p = p.clone();
+            p.data.truncate(SNAPLEN);
+            p
+        })
+        .collect();
+    let rec = run(&packets, FlowConfig::default());
+    let flow = rec.single_flow();
+
+    // Every data packet is followed at once by its stream delivery.
+    for (i, e) in rec.events.iter().enumerate() {
+        if let common::Event::Packet { payload, .. } = e
+            && !payload.is_empty()
+        {
+            assert!(
+                matches!(rec.events.get(i + 1), Some(common::Event::Stream { .. })),
+                "delivery right after packet {i}"
+            );
+        }
+    }
+
+    for (dir, sent) in [
+        (Direction::ToServer, get.request_bytes()),
+        (Direction::ToClient, get.response_bytes()),
+    ] {
+        let (data, gaps) = rec.stream(flow.id, dir);
+        // The last segment's lost tail is skipped too, but no later data reports it.
+        let last = sent.len() % 1460;
+        let last = if last == 0 { 1460 } else { last };
+        let tail = last.saturating_sub(CAPTURED_PAYLOAD);
+        let gap_sum: u64 = gaps.iter().sum();
+        assert_eq!(
+            data.len() as u64 + gap_sum + tail as u64,
+            sent.len() as u64,
+            "{dir:?}"
+        );
+        // Delivered bytes are the captured prefixes, at their place.
+        let mut off = 0usize;
+        let mut chunks = rec.events.iter().filter_map(|e| match e {
+            common::Event::Stream { ctx, dir: d, data } if *d == dir => {
+                Some((ctx.gap_before, data.clone()))
+            }
+            _ => None,
+        });
+        for (gap, bytes) in chunks.by_ref() {
+            off += usize::try_from(gap).unwrap();
+            assert_eq!(&sent[off..off + bytes.len()], bytes.as_slice());
+            off += bytes.len();
+        }
+    }
 }

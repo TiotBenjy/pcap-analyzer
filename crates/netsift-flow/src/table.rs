@@ -10,8 +10,10 @@
 //!   [`FlowId::derive`] of the oriented key and the time of its first packet.
 //! - **New flow on the same tuple.** A packet idle for longer than its timeout starts a new
 //!   flow (the old one ends with `Timeout`). A SYN (without ACK) starts a new flow when the
-//!   previous connection was closed or reset, or when it comes from the client with an initial
-//!   sequence number different from the recorded one (port reuse); the old flow ends `Closed`.
+//!   previous connection was closed or reset, when the flow was picked up midstream (no
+//!   handshake seen: the SYN starts a new connection), or when it comes from the client with an
+//!   initial sequence number different from the recorded one (port reuse); the old flow ends
+//!   `Closed`.
 //! - **Closing.** A TCP connection closed by FIN in both directions or by RST stays in the
 //!   table for a short linger (`min(tcp_timeout, 10 s)` of packet time) so that the final ACK
 //!   and retransmissions stay attached to it; it then ends with `Closed`. Once closed or reset,
@@ -54,10 +56,15 @@
 //!
 //! Flow counters count reported packets (a reassembled datagram counts as one packet) and wire
 //! bytes (every fragment included).
+//!
+//! A TCP segment truncated by the capture snaplen is reassembled with the payload length
+//! announced by its IP header: the lost tail is reported as a gap right away (see `tcp`).
 
 use std::collections::{BTreeMap, HashMap};
 
-use netsift_dissect::{Decoded, Network, TcpInfo, Transport, decode, decode_transport, proto};
+use netsift_dissect::{
+    Decoded, IpVersion, Network, TcpInfo, Transport, decode, decode_transport, proto,
+};
 
 use crate::api::{
     DirStats, Direction, EndReason, Endpoint, FlowConfig, FlowCtx, FlowId, FlowKey, FlowSink,
@@ -362,7 +369,8 @@ impl FlowTable {
             return;
         };
         let Some(fragment) = ip.fragment else {
-            self.handle(at, wire_len, &pkt, sink);
+            let announced = announced_tcp_len(&pkt, data);
+            self.handle(at, wire_len, announced, &pkt, sink);
             return;
         };
         if ip.truncated {
@@ -384,7 +392,7 @@ impl FlowTable {
             Outcome::Complete(dg) => {
                 let full = reassembled(&pkt, &dg.data, dg.next_header);
                 let total = u32::try_from(dg.wire_len).unwrap_or(u32::MAX);
-                self.handle(at, total, &full, sink);
+                self.handle(at, total, None, &full, sink);
             }
         }
     }
@@ -523,6 +531,7 @@ impl FlowTable {
             match (fresh_syn, flow.tcp.as_deref()) {
                 (Some(t), Some(conn))
                     if conn.finished()
+                        || conn.midstream
                         || (src == flow.key.client
                             && conn.client_isn.is_some_and(|isn| isn != t.seq)) =>
                 {
@@ -595,7 +604,17 @@ impl FlowTable {
     }
 
     /// Tracks one decoded (possibly reassembled) packet and reports it.
-    fn handle(&mut self, at: At, wire_len: u32, pkt: &Decoded<'_>, sink: &mut dyn FlowSink) {
+    ///
+    /// `announced_tcp`: TCP payload length announced by the IP header when the capture
+    /// truncated the packet (see [`announced_tcp_len`]).
+    fn handle(
+        &mut self,
+        at: At,
+        wire_len: u32,
+        announced_tcp: Option<u64>,
+        pkt: &Decoded<'_>,
+        sink: &mut dyn FlowSink,
+    ) {
         let Some(ip) = pkt.ip().filter(|_| pkt.error.is_none()) else {
             report_unflowed(at, wire_len, pkt, sink);
             return;
@@ -668,6 +687,7 @@ impl FlowTable {
                 syn: t.flags.syn(),
                 fin: t.flags.fin(),
                 payload: pkt.payload,
+                len: announced_tcp.unwrap_or(0),
             };
             conn.stream_mut(dir)
                 .segment(&seg, self.config.max_stream_buffer, &mut |gap, data| {
@@ -686,6 +706,30 @@ impl FlowTable {
             flush_streams(conn, at, id, key, sink);
         }
     }
+}
+
+/// TCP payload length announced by the IP header of a packet truncated by the capture snaplen
+/// (`None` when not truncated, not TCP, or for an IPv6 jumbogram): IP total length minus the IP
+/// and TCP headers, read from the frame.
+fn announced_tcp_len(pkt: &Decoded<'_>, frame: &[u8]) -> Option<u64> {
+    let ip = pkt.ip().filter(|ip| ip.truncated)?;
+    let tcp = pkt.tcp()?;
+    let l3 = frame.get(pkt.l3_offset?..)?;
+    let be16 = |at: usize| -> Option<usize> {
+        let b = l3.get(at..at.checked_add(2)?)?;
+        Some(usize::from(u16::from_be_bytes(b.try_into().ok()?)))
+    };
+    let total = match ip.version {
+        IpVersion::V4 => be16(2)?,
+        IpVersion::V6 => match be16(4)? {
+            0 => return None,
+            n => n.checked_add(40)?,
+        },
+    };
+    let tcp_len = total
+        .checked_sub(ip.header_len)?
+        .checked_sub(usize::from(tcp.header_len))?;
+    u64::try_from(tcp_len).ok()
 }
 
 fn report_unflowed(at: At, wire_len: u32, pkt: &Decoded<'_>, sink: &mut dyn FlowSink) {

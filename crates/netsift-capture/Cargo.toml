@@ -18,5 +18,6 @@ thiserror.workspace = true
 workspace = true
 
 [dev-dependencies]
+netsift-fixtures.workspace = true
 proptest = "1.12.0"
 tempfile = "3.27.0"

@@ -78,8 +78,12 @@ run_in() {
   ensure_image; ensure_cache_vol
   local extra=(); while [[ "${1:-}" != "--" ]]; do extra+=("$1"); shift; done; shift
   local scc="sccache"; [[ "${NO_SCCACHE:-0}" == "1" ]] && scc=""
+  # -i : stdin toujours transmis (permet `./x.sh run bash -s < script`).
+  # -t : uniquement avec un vrai terminal, sinon le pty du conteneur masque le stdin redirigé
+  #      et les sorties de scripts/agents sont polluées de séquences de contrôle.
+  local tty=(-i); [[ -t 0 && -t 1 ]] && tty=(-it)
   # shellcheck disable=SC2046
-  "$ENGINE" run --rm -it \
+  "$ENGINE" run --rm "${tty[@]}" \
     $(userargs) \
     -v "$WORKDIR":/work:z \
     -v "$CACHE_VOL":/cache:z \
@@ -89,6 +93,7 @@ run_in() {
     -e RUSTC_WRAPPER="$scc" \
     -e npm_config_cache=/cache/npm \
     -e PLAYWRIGHT_BROWSERS_PATH=/usr/local/pw-browsers \
+    -e HOME=/tmp/home \
     -e CI="${CI:-}" \
     -w /work \
     "${extra[@]}" \
@@ -104,6 +109,7 @@ run_in_q() { local a=(); while [[ "${1:-}" != "--" ]]; do a+=("$1"); shift; done
     -e CARGO_TARGET_DIR="/cache/target/$(slug)" -e CARGO_HOME=/cache/cargo \
     -e SCCACHE_DIR=/cache/sccache -e RUSTC_WRAPPER="$scc" \
     -e npm_config_cache=/cache/npm -e PLAYWRIGHT_BROWSERS_PATH=/usr/local/pw-browsers \
+    -e HOME=/tmp/home -e CI="${CI:-}" \
     -w /work "${a[@]}" "$IMAGE" bash -lc "$*"
 }
 

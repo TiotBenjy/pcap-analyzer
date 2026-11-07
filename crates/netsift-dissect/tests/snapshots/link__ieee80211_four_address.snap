@@ -1,0 +1,100 @@
+---
+source: crates/netsift-dissect/tests/link.rs
+expression: d
+---
+Decoded {
+    link: LinkInfo {
+        linktype: 105,
+        kind: Ieee80211,
+        src_mac: Some(
+            02:00:00:00:00:0d,
+        ),
+        dst_mac: Some(
+            02:00:00:00:00:0c,
+        ),
+        vlans: [],
+        ethertype: Some(
+            2048,
+        ),
+        llc: Some(
+            Llc {
+                dsap: 170,
+                ssap: 170,
+                control: 3,
+                snap_oui: Some(
+                    [
+                        0,
+                        0,
+                        0,
+                    ],
+                ),
+            },
+        ),
+        sll: None,
+        radiotap: None,
+        wifi: Some(
+            WifiInfo {
+                frame_type: Data,
+                subtype: 0,
+                to_ds: true,
+                from_ds: true,
+                more_fragments: false,
+                retry: false,
+                protected: false,
+                addr1: Some(
+                    02:00:00:00:00:0a,
+                ),
+                addr2: Some(
+                    02:00:00:00:00:0b,
+                ),
+                addr3: Some(
+                    02:00:00:00:00:0c,
+                ),
+                addr4: Some(
+                    02:00:00:00:00:0d,
+                ),
+                bssid: None,
+                sequence: Some(
+                    7,
+                ),
+                fragment: Some(
+                    0,
+                ),
+                qos_tid: None,
+                amsdu: false,
+            },
+        ),
+    },
+    network: Some(
+        Ip(
+            IpInfo {
+                version: V4,
+                src: 192.168.1.10,
+                dst: 198.51.100.7,
+                protocol: 17,
+                ttl: 64,
+                header_len: 20,
+                payload_len: 11,
+                truncated: false,
+                ident: Some(
+                    0,
+                ),
+                dont_fragment: true,
+                fragment: None,
+                extensions: [],
+            },
+        ),
+    ),
+    transport: Some(
+        Udp(
+            UdpInfo {
+                src_port: 5353,
+                dst_port: 53,
+                length: 11,
+                payload_len: 3,
+            },
+        ),
+    ),
+    payload: 3 bytes [776473],
+    error: None,
+}

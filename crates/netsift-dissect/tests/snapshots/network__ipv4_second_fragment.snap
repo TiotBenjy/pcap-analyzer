@@ -1,0 +1,30 @@
+---
+source: crates/netsift-dissect/tests/network.rs
+expression: d.network
+---
+Some(
+    Ip(
+        IpInfo {
+            version: V4,
+            src: 192.168.1.10,
+            dst: 198.51.100.7,
+            protocol: 6,
+            ttl: 64,
+            header_len: 20,
+            payload_len: 16,
+            truncated: false,
+            ident: Some(
+                4660,
+            ),
+            dont_fragment: false,
+            fragment: Some(
+                Fragment {
+                    id: 4660,
+                    offset: 1480,
+                    more: false,
+                },
+            ),
+            extensions: [],
+        },
+    ),
+)

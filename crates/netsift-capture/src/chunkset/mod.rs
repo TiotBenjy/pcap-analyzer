@@ -33,8 +33,9 @@ use std::path::{Path, PathBuf};
 pub use checks::{Anomaly, AnomalyKind, ChunkSpan, ContinuityConfig, GapThreshold, timing_checks};
 pub use group::{ChunkGroup, ChunkMember, GroupKind, Grouping, MemberStatus, group, group_entries};
 pub use inventory::{
-    CaptureMeta, EntryKind, FINGERPRINT_LEN, Fingerprint, Inventory, InventoryEntry,
-    InventoryOptions, MAX_DEPTH, MIN_CAPTURE_LEN, WalkError, inventory, inventory_with,
+    CaptureMeta, DEFAULT_MAX_FILES, EntryKind, FINGERPRINT_LEN, Fingerprint, Inventory,
+    InventoryEntry, InventoryOptions, MAX_DEPTH, MIN_CAPTURE_LEN, WalkError, inventory,
+    inventory_with,
 };
 pub use merge::{ChunkSetSource, MAX_ANOMALIES, ReadOptions};
 
@@ -89,21 +90,19 @@ impl ChunkStats {
         self.max_ts = Some(self.max_ts.map_or(ts, |m| m.max(ts)));
     }
 
-    /// Reads `source` to its end (or first error).
-    fn read_all(source: &mut dyn PacketSource) -> Self {
-        let mut stats = Self::default();
+    /// Reads the rest of `source` to its end (or first error).
+    fn read_rest(&mut self, source: &mut dyn PacketSource) {
         loop {
             match source.next_packet() {
-                Ok(Some(packet)) => stats.record(&packet),
+                Ok(Some(packet)) => self.record(&packet),
                 Ok(None) => break,
                 Err(e) => {
-                    stats.error = Some(e.to_string());
+                    self.error = Some(e.to_string());
                     break;
                 }
             }
         }
-        stats.complete = true;
-        stats
+        self.complete = true;
     }
 
     /// Time span of the chunk, `None` when it holds no packet.

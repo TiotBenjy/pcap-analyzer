@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use super::checks::{self, Anomaly, AnomalyKind, ContinuityConfig};
-use super::inventory::{Inventory, InventoryEntry};
+use super::inventory::{Fingerprint, Inventory, InventoryEntry};
 use super::naming;
 
 /// How a group was recognized, by decreasing priority.
@@ -106,6 +106,7 @@ impl ChunkGroup {
                 }
             }
         }
+        mark_gzip_copies(&mut members);
         Self {
             kind,
             label,
@@ -188,6 +189,68 @@ impl ChunkGroup {
 
 /// Pool index of an entry and its sequence number.
 type Numbered = (usize, Option<u64>);
+
+/// Identity of a capture for `.gz` copy detection: directory, name without `.gz`, first
+/// timestamp, first packet.
+type GzipKey = (PathBuf, String, i64, Fingerprint);
+
+fn gzip_key(member: &ChunkMember) -> Option<GzipKey> {
+    let entry = &member.entry;
+    let meta = entry.capture()?;
+    let name = naming::strip_gz(&entry.name).unwrap_or(&entry.name);
+    Some((
+        entry.dir().to_path_buf(),
+        name.to_owned(),
+        meta.first_ts?,
+        meta.first_packet?,
+    ))
+}
+
+/// Marks a `.gz` copy stored next to its original (`cap.pcap` and `cap.pcap.gz`) as a
+/// duplicate, so that its packets are not read twice: same directory, same name without `.gz`,
+/// same first timestamp and first packet, and the same packet count when both files were fully
+/// scanned. The uncompressed file is kept (cheaper to read).
+fn mark_gzip_copies(members: &mut [ChunkMember]) {
+    let mut originals: HashMap<GzipKey, usize> = HashMap::new();
+    for (index, member) in members.iter().enumerate() {
+        let plain = member.entry.capture().is_some_and(|m| !m.info.compressed);
+        if member.status == MemberStatus::Active
+            && plain
+            && let Some(key) = gzip_key(member)
+        {
+            originals.entry(key).or_insert(index);
+        }
+    }
+    if originals.is_empty() {
+        return;
+    }
+    let packets = |m: &ChunkMember| m.entry.capture()?.scan.as_ref().map(|s| s.packets);
+    let mut copies = Vec::new();
+    for (index, member) in members.iter().enumerate() {
+        let gz_copy = naming::strip_gz(&member.entry.name).is_some()
+            && member.entry.capture().is_some_and(|m| m.info.compressed);
+        if member.status != MemberStatus::Active || !gz_copy {
+            continue;
+        }
+        let Some(&original) = gzip_key(member).and_then(|k| originals.get(&k)) else {
+            continue;
+        };
+        let same_count = match (members.get(original).and_then(packets), packets(member)) {
+            (Some(a), Some(b)) => a == b,
+            _ => true,
+        };
+        if same_count {
+            copies.push((index, original));
+        }
+    }
+    for (index, original) in copies {
+        if let Some(member) = members.get_mut(index) {
+            member.status = MemberStatus::Duplicate {
+                of: super::chunk_id(original),
+            };
+        }
+    }
+}
 
 fn member_order(a: &ChunkMember, b: &ChunkMember) -> Ordering {
     let ts = |m: &ChunkMember| {
@@ -353,7 +416,7 @@ mod tests {
             size: 1000,
             mtime_ns: None,
             fingerprint: Some(Fingerprint::of_bytes(path.to_string_lossy().as_bytes())),
-            kind: EntryKind::Capture(CaptureMeta {
+            kind: EntryKind::Capture(Box::new(CaptureMeta {
                 info: CaptureInfo {
                     format: CaptureFormat::Pcap,
                     compressed: false,
@@ -363,8 +426,9 @@ mod tests {
                 first_ts: Some(first_ts),
                 read_error: None,
                 warnings: Vec::new(),
+                first_packet: Some(Fingerprint::of_bytes(b"first")),
                 scan: None,
-            }),
+            })),
             path: path.to_path_buf(),
         }
     }
@@ -597,6 +661,43 @@ mod tests {
             .map(|m| m.status)
             .collect();
         assert_eq!(statuses, vec![MemberStatus::Active, MemberStatus::Active]);
+    }
+
+    #[test]
+    fn gzip_copy_next_to_its_original_is_a_duplicate() {
+        let plain = capture("cap.pcap", 1);
+        let mut gz = capture("cap.pcap.gz", 1);
+        if let EntryKind::Capture(meta) = &mut gz.kind {
+            meta.info.compressed = true;
+        }
+        let mut other_dir = gz.clone();
+        other_dir.path = "/elsewhere/cap.pcap.gz".into();
+        other_dir.fingerprint = Some(Fingerprint::of_bytes(b"other"));
+        let mut later = gz.clone();
+        later.name = "cap.pcap1.gz".into();
+        later.path = "/d/cap.pcap1.gz".into();
+        if let EntryKind::Capture(meta) = &mut later.kind {
+            meta.first_ts = Some(2);
+        }
+        let group = ChunkGroup::new(
+            GroupKind::Folder,
+            "d".into(),
+            vec![(gz, None), (plain, None), (other_dir, None), (later, None)],
+        );
+        let statuses: Vec<_> = group
+            .members
+            .iter()
+            .map(|m| (m.entry.path.to_str().unwrap(), m.status))
+            .collect();
+        assert_eq!(
+            statuses,
+            vec![
+                ("/d/cap.pcap", MemberStatus::Active),
+                ("/d/cap.pcap.gz", MemberStatus::Duplicate { of: 0 }),
+                ("/elsewhere/cap.pcap.gz", MemberStatus::Active),
+                ("/d/cap.pcap1.gz", MemberStatus::Active),
+            ]
+        );
     }
 
     #[test]

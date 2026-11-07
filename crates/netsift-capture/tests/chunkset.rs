@@ -26,6 +26,9 @@ const SEC: i64 = 1_000_000_000;
 /// (timestamp, linktype, bytes) of a packet, the identity compared across readings.
 type Seen = (i64, u32, Vec<u8>);
 
+/// File name of a tcpdump `-G` chunk from its first timestamp.
+type Namer = fn(i64) -> String;
+
 fn traffic() -> Vec<Packet> {
     generate(Kind::Demo, 6, 7)
 }
@@ -470,9 +473,10 @@ fn timestamps_going_backwards_are_kept_and_reported() {
     let group = only_group(tmp.path());
     let (seen, source) = read(&group);
     assert_eq!(seen, expected(&packets));
+    // Reported by the reader, and by the merged output check (delivered in file order).
     assert_eq!(
         codes(source.anomalies()),
-        vec![(Some(0), "timestamp_backwards")]
+        vec![(Some(0), "timestamp_backwards"), (None, "out_of_order")]
     );
 }
 
@@ -544,6 +548,7 @@ fn inventory_options_and_rejected_files() {
         &InventoryOptions {
             recursive: true,
             full_scan: true,
+            ..InventoryOptions::default()
         },
     )
     .unwrap();
@@ -593,4 +598,149 @@ fn full_scan_previews_timing_anomalies() {
     // The import finds the same anomalies.
     let (_, source) = read(&group);
     assert_eq!(codes(source.anomalies()), codes(&preview));
+}
+
+/// Writes `packets` split at `cuts` into tcpdump `-G` style files named by `name(first_ts)`.
+fn write_rotated_by_time(
+    dir: &Path,
+    packets: &[Packet],
+    cuts: &[usize],
+    name: impl Fn(i64) -> String,
+) {
+    let mut bounds = vec![0];
+    bounds.extend_from_slice(cuts);
+    bounds.push(packets.len());
+    for w in bounds.windows(2) {
+        let part = &packets[w[0]..w[1]];
+        write_file(&dir.join(name(part[0].ts_ns)), part, &Encoding::pcap()).unwrap();
+    }
+}
+
+#[test]
+fn tcpdump_time_rotation_names_without_extension() {
+    let mut packets = traffic();
+    // Chunks one day apart, so that a per-day split of the names would show.
+    for (i, p) in packets.iter_mut().enumerate() {
+        p.ts_ns += i64::try_from(i / 10).unwrap() * 86_400 * SEC;
+    }
+    let formats: [(&str, Namer); 3] = [
+        ("%Y%m%d%H%M%S", |ts| {
+            format!("cap-{}", netsift_fixtures::time::compact_timestamp(ts))
+        }),
+        ("%Y%m%d-%H%M%S", |ts| {
+            let c = netsift_fixtures::time::compact_timestamp(ts);
+            format!("cap-{}-{}", &c[..8], &c[8..])
+        }),
+        ("%s", |ts| format!("cap-{}", ts / SEC)),
+    ];
+    for (label, name) in formats {
+        let tmp = TempDir::new().unwrap();
+        write_rotated_by_time(tmp.path(), &packets, &[10, 20, 30], name);
+        let group = only_group(tmp.path());
+        assert_eq!(group.kind, GroupKind::CommonPrefix, "{label}");
+        assert_eq!(group.label, "cap", "{label}");
+        assert_eq!(group.members.len(), 4, "{label}");
+        assert!(group.members.iter().all(|m| m.seq.is_none()), "{label}");
+        let (seen, source) = read(&group);
+        assert_eq!(seen, expected(&packets), "{label}");
+        // No sequence check on timestamps, and one day between chunks is a gap.
+        assert_eq!(
+            codes(source.anomalies()),
+            vec![
+                (Some(1), "time_gap"),
+                (Some(2), "time_gap"),
+                (Some(3), "time_gap")
+            ],
+            "{label}"
+        );
+    }
+}
+
+#[test]
+fn gzip_copy_next_to_the_original_is_read_once() {
+    let packets = traffic();
+    for full_scan in [false, true] {
+        let tmp = TempDir::new().unwrap();
+        let plain = tmp.path().join("cap.pcap");
+        write_file(&plain, &packets, &Encoding::pcap()).unwrap();
+        write_file(
+            &tmp.path().join("cap.pcap.gz"),
+            &packets,
+            &Encoding::pcap().gz(),
+        )
+        .unwrap();
+        let options = InventoryOptions {
+            full_scan,
+            ..InventoryOptions::default()
+        };
+        let inventory = chunkset::inventory(tmp.path(), &options).unwrap();
+        let mut grouping = chunkset::group(&inventory);
+        assert_eq!(grouping.groups.len(), 1);
+        let group = grouping.groups.remove(0);
+        assert_eq!(names(&group), vec!["cap.pcap", "cap.pcap.gz"]);
+        assert_eq!(group.members[1].status, MemberStatus::Duplicate { of: 0 });
+        let (seen, source) = read(&group);
+        assert_eq!(seen, expected(&packets));
+        assert_eq!(source.total_bytes(), fs::metadata(&plain).unwrap().len());
+        assert_eq!(codes(source.anomalies()), vec![(Some(1), "duplicate")]);
+    }
+}
+
+#[test]
+fn tcpdump_ring_wrap_around_is_read_in_time_order() {
+    let packets = traffic();
+    let tmp = TempDir::new().unwrap();
+    let opts = SplitOptions::new(SplitBy::At(vec![10, 20]), Naming::TcpdumpC);
+    let paths = split(tmp.path(), &packets, &opts);
+    // After the ring wrapped, the newest data sits in the first file name.
+    let tmp_name = tmp.path().join("swap");
+    fs::rename(&paths[0], &tmp_name).unwrap();
+    fs::rename(&paths[1], &paths[0]).unwrap();
+    fs::rename(&paths[2], &paths[1]).unwrap();
+    fs::rename(&tmp_name, &paths[2]).unwrap();
+
+    let group = only_group(tmp.path());
+    assert_eq!(group.kind, GroupKind::TcpdumpRotation);
+    let (seen, source) = read(&group);
+    assert_eq!(seen, expected(&packets));
+    assert_eq!(source.anomalies(), &[]);
+}
+
+#[test]
+fn inventory_is_bounded() {
+    let tmp = TempDir::new().unwrap();
+    for i in 0..5 {
+        fs::write(tmp.path().join(format!("f{i}")), b"x").unwrap();
+    }
+    let options = InventoryOptions {
+        max_files: 3,
+        ..InventoryOptions::default()
+    };
+    let inventory = chunkset::inventory(tmp.path(), &options).unwrap();
+    assert_eq!(inventory.entries.len(), 3);
+    assert!(inventory.limit_reached);
+    let all = chunkset::inventory(tmp.path(), &InventoryOptions::default()).unwrap();
+    assert_eq!(all.entries.len(), 5);
+    assert!(!all.limit_reached);
+}
+
+#[cfg(unix)]
+#[test]
+fn special_files_are_skipped_without_being_opened() {
+    let tmp = TempDir::new().unwrap();
+    let fifo = tmp.path().join("pipe.pcap");
+    let status = std::process::Command::new("mkfifo").arg(&fifo).status();
+    if !status.is_ok_and(|s| s.success()) {
+        return; // mkfifo unavailable: nothing to test.
+    }
+    write_file(&tmp.path().join("ok.pcap"), &traffic(), &Encoding::pcap()).unwrap();
+    let inventory = chunkset::inventory(tmp.path(), &InventoryOptions::default()).unwrap();
+    let found: Vec<_> = inventory.entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(found, vec!["ok.pcap"]);
+    assert_eq!(inventory.walk_errors.len(), 1);
+    assert_eq!(inventory.walk_errors[0].path, fifo);
+    // The FIFO given as the root path is skipped as well (opening it would block).
+    let root = chunkset::inventory(&fifo, &InventoryOptions::default()).unwrap();
+    assert_eq!(root.entries, vec![]);
+    assert_eq!(root.walk_errors.len(), 1);
 }

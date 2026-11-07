@@ -40,8 +40,11 @@ impl Fingerprint {
     }
 }
 
+/// Default bound on the number of files inventoried.
+pub const DEFAULT_MAX_FILES: usize = 100_000;
+
 /// Options of [`inventory`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InventoryOptions {
     /// Descend into sub-directories (at most [`MAX_DEPTH`] levels; symlinked directories are
     /// not followed).
@@ -49,6 +52,19 @@ pub struct InventoryOptions {
     /// Read every packet of each capture to fill [`CaptureMeta::scan`] (last timestamp, packet
     /// count, warnings). Costs a full read of the folder; off by default.
     pub full_scan: bool,
+    /// Maximum number of files inventoried (default [`DEFAULT_MAX_FILES`]); further files are
+    /// not listed and [`Inventory::limit_reached`] is set. Bounds memory and probing time.
+    pub max_files: usize,
+}
+
+impl Default for InventoryOptions {
+    fn default() -> Self {
+        Self {
+            recursive: false,
+            full_scan: false,
+            max_files: DEFAULT_MAX_FILES,
+        }
+    }
 }
 
 /// Metadata of a file that opened as a capture.
@@ -61,6 +77,8 @@ pub struct CaptureMeta {
     pub read_error: Option<String>,
     /// Reader warnings met while probing (all of them with `full_scan`).
     pub warnings: Vec<ReadWarning>,
+    /// SHA-256 of the captured bytes of the first packet (recognizes a `.gz` copy of a file).
+    pub first_packet: Option<Fingerprint>,
     /// Full-read statistics, present when the inventory ran with `full_scan`.
     pub scan: Option<ChunkStats>,
 }
@@ -69,7 +87,7 @@ pub struct CaptureMeta {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryKind {
     /// A pcap or pcapng file (possibly gzip-compressed).
-    Capture(CaptureMeta),
+    Capture(Box<CaptureMeta>),
     /// Zero-byte file.
     Empty,
     /// Fewer than [`MIN_CAPTURE_LEN`] bytes: cannot be a capture (or still being written).
@@ -115,7 +133,9 @@ impl InventoryEntry {
     }
 }
 
-/// A directory that could not be listed during a recursive inventory (not fatal).
+/// A path skipped by the inventory (not fatal): directory that cannot be listed, entry whose
+/// type cannot be read, or anything that is not a regular file (FIFO, socket, device), which
+/// is never opened so that the inventory cannot block on it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WalkError {
     pub path: PathBuf,
@@ -128,6 +148,9 @@ pub struct Inventory {
     pub root: PathBuf,
     pub entries: Vec<InventoryEntry>,
     pub walk_errors: Vec<WalkError>,
+    /// True when more than [`InventoryOptions::max_files`] files were found: the listing was
+    /// cut (which files are kept then depends on the directory order).
+    pub limit_reached: bool,
 }
 
 impl Inventory {
@@ -161,20 +184,30 @@ pub fn inventory_with(
         root: path.to_path_buf(),
         ..Inventory::default()
     };
-    let mut files = Vec::new();
+    let mut walk = Walk {
+        recursive: options.recursive,
+        max_files: options.max_files,
+        files: Vec::new(),
+        errors: Vec::new(),
+        limit_reached: false,
+    };
     if meta.is_dir() {
         // The root must be listable; sub-directories only produce walk errors.
         let listing = fs::read_dir(path).map_err(io_err)?;
-        collect(
-            listing,
-            0,
-            options.recursive,
-            &mut files,
-            &mut inv.walk_errors,
-        );
+        walk.collect(listing, 0);
+    } else if meta.is_file() {
+        walk.add_file(path.to_path_buf());
     } else {
-        files.push(path.to_path_buf());
+        walk.skip(path.to_path_buf(), NOT_REGULAR);
     }
+    let Walk {
+        mut files,
+        errors,
+        limit_reached,
+        ..
+    } = walk;
+    inv.walk_errors = errors;
+    inv.limit_reached = limit_reached;
     files.sort();
     inv.entries = files
         .into_iter()
@@ -183,46 +216,77 @@ pub fn inventory_with(
     Ok(inv)
 }
 
-fn collect(
-    listing: fs::ReadDir,
-    depth: usize,
+const NOT_REGULAR: &str = "not a regular file";
+
+/// Directory walk state, bounded by `max_files`.
+struct Walk {
     recursive: bool,
-    files: &mut Vec<PathBuf>,
-    errors: &mut Vec<WalkError>,
-) {
-    for item in listing {
-        let item = match item {
-            Ok(item) => item,
-            Err(e) => {
-                errors.push(WalkError {
-                    path: PathBuf::new(),
-                    reason: e.to_string(),
-                });
-                continue;
+    max_files: usize,
+    files: Vec<PathBuf>,
+    errors: Vec<WalkError>,
+    limit_reached: bool,
+}
+
+impl Walk {
+    fn skip(&mut self, path: PathBuf, reason: impl Into<String>) {
+        // Bounded like the file list.
+        if self.errors.len() < self.max_files {
+            self.errors.push(WalkError {
+                path,
+                reason: reason.into(),
+            });
+        }
+    }
+
+    fn add_file(&mut self, path: PathBuf) {
+        if self.files.len() < self.max_files {
+            self.files.push(path);
+        } else {
+            self.limit_reached = true;
+        }
+    }
+
+    fn collect(&mut self, listing: fs::ReadDir, depth: usize) {
+        for item in listing {
+            if self.limit_reached {
+                return;
             }
-        };
-        let path = item.path();
-        let Ok(file_type) = item.file_type() else {
-            files.push(path);
-            continue;
-        };
-        if file_type.is_dir() {
-            if recursive && depth < MAX_DEPTH {
-                match fs::read_dir(&path) {
-                    Ok(sub) => collect(sub, depth + 1, recursive, files, errors),
-                    Err(e) => errors.push(WalkError {
-                        path,
-                        reason: e.to_string(),
-                    }),
+            let item = match item {
+                Ok(item) => item,
+                Err(e) => {
+                    self.skip(PathBuf::new(), e.to_string());
+                    continue;
                 }
+            };
+            let path = item.path();
+            let file_type = match item.file_type() {
+                Ok(t) => t,
+                Err(e) => {
+                    self.skip(path, e.to_string());
+                    continue;
+                }
+            };
+            if file_type.is_dir() {
+                if self.recursive && depth < MAX_DEPTH {
+                    match fs::read_dir(&path) {
+                        Ok(sub) => self.collect(sub, depth + 1),
+                        Err(e) => self.skip(path, e.to_string()),
+                    }
+                }
+            } else if file_type.is_symlink() {
+                // Symlinks to regular files are inventoried; symlinks to directories are never
+                // followed (no loops).
+                match fs::metadata(&path) {
+                    Ok(m) if m.is_file() => self.add_file(path),
+                    Ok(m) if m.is_dir() => {}
+                    Ok(_) => self.skip(path, NOT_REGULAR),
+                    Err(e) => self.skip(path, e.to_string()),
+                }
+            } else if file_type.is_file() {
+                self.add_file(path);
+            } else {
+                self.skip(path, NOT_REGULAR);
             }
-        } else if file_type.is_symlink() {
-            // Symlinks to files are inventoried; symlinks to directories are never followed.
-            if fs::metadata(&path).is_ok_and(|m| m.is_file()) {
-                files.push(path);
-            }
-        } else if file_type.is_file() {
-            files.push(path);
         }
     }
 }
@@ -276,23 +340,31 @@ pub(crate) fn probe(path: PathBuf, full_scan: bool, opener: &Opener) -> Inventor
     entry.kind = match opener(&entry.path) {
         Ok(mut source) => {
             let info = source.info().clone();
-            let (first_ts, read_error, scan) = if full_scan {
-                let stats = ChunkStats::read_all(source.as_mut());
-                (stats.first_ts, stats.error.clone(), Some(stats))
-            } else {
-                match source.next_packet() {
-                    Ok(pkt) => (pkt.map(|p| p.ts_ns), None, None),
-                    Err(e) => (None, Some(e.to_string()), None),
+            let mut stats = ChunkStats::default();
+            let mut first_packet = None;
+            match source.next_packet() {
+                Ok(Some(packet)) => {
+                    first_packet = Some(Fingerprint::of_bytes(&packet.data));
+                    stats.record(&packet);
+                    if full_scan {
+                        stats.read_rest(source.as_mut());
+                    }
                 }
-            };
-            EntryKind::Capture(CaptureMeta {
+                Ok(None) => stats.complete = true,
+                Err(e) => {
+                    stats.error = Some(e.to_string());
+                    stats.complete = true;
+                }
+            }
+            EntryKind::Capture(Box::new(CaptureMeta {
                 // Interfaces declared before the first packet are now known.
                 info: merge_info(info, source.info()),
-                first_ts,
-                read_error,
+                first_ts: stats.first_ts,
+                read_error: stats.error.clone(),
                 warnings: source.warnings().to_vec(),
-                scan,
-            })
+                first_packet,
+                scan: full_scan.then_some(stats),
+            }))
         }
         Err(CaptureError::UnknownFormat) => EntryKind::Unrecognized,
         Err(e) => EntryKind::Unreadable {

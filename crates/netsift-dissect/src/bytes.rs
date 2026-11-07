@@ -8,6 +8,14 @@ pub(crate) fn split(data: &[u8], n: usize, layer: Layer) -> Result<(&[u8], &[u8]
         .ok_or(DecodeError::truncated(layer, n, data.len()))
 }
 
+/// Bytes from `n` to the end; an empty sub-slice of `data` (not a static one) when
+/// `n` is past the end, so that offsets stay computable.
+pub(crate) fn tail(data: &[u8], n: usize) -> &[u8] {
+    data.get(n..)
+        .or_else(|| data.get(data.len()..))
+        .unwrap_or_default()
+}
+
 /// Fixed-size array at `off`.
 pub(crate) fn array<const N: usize>(data: &[u8], off: usize) -> Option<[u8; N]> {
     data.get(off..off.checked_add(N)?)?.try_into().ok()

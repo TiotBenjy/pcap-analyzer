@@ -96,5 +96,13 @@ Decoded {
         ),
     ),
     payload: 3 bytes [776473],
+    ip_payload: 11 bytes [14e90035000b1468776473],
+    l3_offset: Some(
+        38,
+    ),
+    l4_offset: Some(
+        58,
+    ),
+    payload_offset: 66,
     error: None,
 }

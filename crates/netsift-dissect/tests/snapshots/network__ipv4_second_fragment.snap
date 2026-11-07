@@ -22,6 +22,7 @@ Some(
                     id: 4660,
                     offset: 1480,
                     more: false,
+                    next_header: 6,
                 },
             ),
             extensions: [],

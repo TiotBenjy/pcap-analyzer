@@ -51,10 +51,24 @@ Decoded {
                 flags: SYN,
                 window: 64240,
                 header_len: 20,
+                options: TcpOptions {
+                    mss: None,
+                    window_scale: None,
+                    sack_permitted: false,
+                    timestamps: None,
+                },
                 payload_len: 0,
             },
         ),
     ),
     payload: 0 bytes,
+    ip_payload: 20 bytes [9c400050000003e8000000005002faf0..],
+    l3_offset: Some(
+        14,
+    ),
+    l4_offset: Some(
+        34,
+    ),
+    payload_offset: 54,
     error: None,
 }

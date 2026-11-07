@@ -1,26 +1,17 @@
-//! Network layer: IPv4 / IPv6 (via `etherparse` lax slicing) and ARP.
+//! Network layer: IPv4 / IPv6 (header slices from `etherparse`, extension headers walked
+//! by hand, see `ipext`) and ARP.
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use etherparse::err::ip::{HeaderError as IpHeaderError, LaxHeaderSliceError};
-use etherparse::err::ipv6_exts::{
-    HeaderError as ExtHeaderError, HeaderSliceError as ExtSliceError,
-};
-use etherparse::{LaxIpSlice, LaxIpv4Slice, LaxIpv6Slice};
+use etherparse::err::{ipv4, ipv6};
+use etherparse::{Ipv4HeaderSlice, Ipv6HeaderSlice};
 
-use crate::bytes::{array, be16, be32, split, u8_at};
+use crate::bytes::{array, be16, split, tail, u8_at};
 use crate::decoded::{
     ArpInfo, Decoded, Fragment, IpExtensions, IpInfo, IpVersion, MacAddr, Network,
 };
 use crate::error::{DecodeError, Layer};
-use crate::{ethertype, transport};
-
-/// IP protocol numbers of the extension headers recognized by `etherparse`.
-const PROTO_HOP_BY_HOP: u8 = 0;
-const PROTO_ROUTING: u8 = 43;
-const PROTO_FRAGMENT: u8 = 44;
-const PROTO_AUTH: u8 = 51;
-const PROTO_DEST_OPTIONS: u8 = 60;
+use crate::{ethertype, ipext, transport};
 
 /// Dispatches on an Ethertype: IP, ARP, or nothing (payload stays the link payload).
 pub(crate) fn decode_ethertype<'a>(
@@ -62,143 +53,144 @@ pub(crate) fn decode_ip<'a>(
         6 => IpVersion::V6,
         _ => return Err(DecodeError::malformed(Layer::Ip, "unknown IP version")),
     };
-    let layer = ip_layer(version);
     if expected.is_some_and(|e| e != version) {
         return Err(DecodeError::malformed(
-            layer,
+            ip_layer(version),
             "IP version does not match the link protocol",
         ));
     }
-    let (ip, ext_err) = LaxIpSlice::from_slice(data).map_err(|e| match e {
-        LaxHeaderSliceError::Len(l) => DecodeError::truncated(layer, l.required_len, l.len),
-        LaxHeaderSliceError::Content(IpHeaderError::UnsupportedIpVersion { .. }) => {
-            DecodeError::malformed(Layer::Ip, "unknown IP version")
-        }
-        LaxHeaderSliceError::Content(IpHeaderError::Ipv4HeaderLengthSmallerThanHeader {
-            ..
-        }) => DecodeError::malformed(Layer::Ipv4, "header length below 20 bytes"),
-    })?;
+    match version {
+        IpVersion::V4 => decode_ipv4(d, data),
+        IpVersion::V6 => decode_ipv6(d, data),
+    }
+}
 
-    let payload = ip.payload();
+/// Bytes announced by the IP length field after a `header_len`-byte header, without
+/// link padding. Falls back to everything captured when the field is inconsistent;
+/// the flag is set when the field announces more than captured.
+fn ip_body(data: &[u8], header_len: usize, announced_end: Option<usize>) -> (&[u8], bool) {
+    let rest = tail(data, header_len);
+    match announced_end {
+        Some(end) if end > data.len() => (rest, true),
+        Some(end) if end >= header_len => (data.get(header_len..end).unwrap_or(rest), false),
+        _ => (rest, false),
+    }
+}
+
+fn decode_ipv4<'a>(d: &mut Decoded<'a>, data: &'a [u8]) -> Result<(), DecodeError> {
+    use ipv4::{HeaderError as E, HeaderSliceError as S};
+    let h = Ipv4HeaderSlice::from_slice(data).map_err(|e| match e {
+        S::Len(l) => DecodeError::truncated(Layer::Ipv4, l.required_len, l.len),
+        S::Content(E::UnexpectedVersion { .. }) => {
+            DecodeError::malformed(Layer::Ipv4, "unexpected IP version")
+        }
+        S::Content(E::HeaderLengthSmallerThanHeader { .. }) => {
+            DecodeError::malformed(Layer::Ipv4, "header length below 20 bytes")
+        }
+    })?;
+    let header_len = h.slice().len();
+    let (body, truncated) = ip_body(data, header_len, Some(usize::from(h.total_len())));
+    let protocol = h.protocol().0;
+    let offset = h.fragments_offset().byte_offset();
+    let more = h.more_fragments();
+    let fragment = (offset != 0 || more).then(|| Fragment {
+        id: u32::from(h.identification()),
+        offset,
+        more,
+        next_header: protocol,
+    });
     let mut info = IpInfo {
-        version,
-        src: ip.source_addr(),
-        dst: ip.destination_addr(),
-        protocol: payload.ip_number.0,
-        ttl: 0,
-        header_len: 0,
-        payload_len: payload.payload.len(),
-        truncated: payload.incomplete,
-        ident: None,
-        dont_fragment: false,
-        fragment: None,
+        version: IpVersion::V4,
+        src: IpAddr::V4(h.source_addr()),
+        dst: IpAddr::V4(h.destination_addr()),
+        protocol,
+        ttl: h.ttl(),
+        header_len,
+        payload_len: body.len(),
+        truncated,
+        ident: Some(u32::from(h.identification())),
+        dont_fragment: h.dont_fragment(),
+        fragment,
         extensions: IpExtensions::default(),
     };
-    match &ip {
-        LaxIpSlice::Ipv4(v4) => fill_ipv4(&mut info, v4),
-        LaxIpSlice::Ipv6(v6) => fill_ipv6(&mut info, v6),
+    d.l3_offset = d.offset_of(data);
+    d.ip_payload = body;
+    d.payload = body;
+    if offset != 0 {
+        // Fragment data only: no AH, no transport header to look for.
+        d.network = Some(Network::Ip(info));
+        return Ok(());
     }
+    let w = ipext::walk(protocol, body, false, Layer::Ipv4);
+    info.protocol = w.protocol;
+    info.header_len = header_len.saturating_add(w.consumed);
+    info.payload_len = w.rest.len();
+    info.extensions = w.extensions;
+    finish_ip(d, info, w.rest, w.error)
+}
+
+fn decode_ipv6<'a>(d: &mut Decoded<'a>, data: &'a [u8]) -> Result<(), DecodeError> {
+    use ipv6::{HeaderError as E, HeaderSliceError as S};
+    let h = Ipv6HeaderSlice::from_slice(data).map_err(|e| match e {
+        S::Len(l) => DecodeError::truncated(Layer::Ipv6, l.required_len, l.len),
+        S::Content(E::UnexpectedVersion { .. }) => {
+            DecodeError::malformed(Layer::Ipv6, "unexpected IP version")
+        }
+    })?;
+    let header_len = h.slice().len();
+    // Payload length 0 means a jumbogram (RFC 2675) or an unset field: use the capture.
+    let announced = match h.payload_length() {
+        0 => None,
+        n => header_len.checked_add(usize::from(n)),
+    };
+    let (body, truncated) = ip_body(data, header_len, announced);
+    let w = ipext::walk(h.next_header().0, body, true, Layer::Ipv6);
+    let info = IpInfo {
+        version: IpVersion::V6,
+        src: IpAddr::V6(h.source_addr()),
+        dst: IpAddr::V6(h.destination_addr()),
+        protocol: w.protocol,
+        ttl: h.hop_limit(),
+        header_len: header_len.saturating_add(w.consumed),
+        payload_len: w.rest.len(),
+        truncated,
+        ident: w.ident,
+        dont_fragment: false,
+        fragment: w.fragment.map(|(f, _)| f),
+        extensions: w.extensions,
+    };
+    d.l3_offset = d.offset_of(data);
+    d.ip_payload = w.fragment.map_or(w.rest, |(_, fragmentable)| fragmentable);
+    finish_ip(d, info, w.rest, w.error)
+}
+
+/// Stores the IP layer, then decodes the transport header unless the packet is a
+/// non-first fragment or an extension header failed.
+fn finish_ip<'a>(
+    d: &mut Decoded<'a>,
+    info: IpInfo,
+    upper: &'a [u8],
+    error: Option<DecodeError>,
+) -> Result<(), DecodeError> {
     let protocol = info.protocol;
     let fragment = info.fragment;
-    d.network = Some(Network::Ip(info));
-    d.payload = payload.payload;
-
-    if let Some((e, _)) = ext_err {
-        return Err(ext_error(&e, layer));
+    if fragment.is_none() {
+        d.ip_payload = upper;
     }
-    // Non-first fragments carry no transport header.
+    d.network = Some(Network::Ip(info));
+    d.payload = upper;
+    if let Some(e) = error {
+        return Err(e);
+    }
     if fragment.is_some_and(|f| !f.is_first()) {
         return Ok(());
     }
-    if let Some((t, rest)) = transport::decode_transport(protocol, payload.payload)? {
+    if let Some((t, header, payload)) = transport::decode_at(protocol, upper)? {
         d.transport = Some(t);
-        d.payload = rest;
+        d.l4_offset = d.offset_of(header);
+        d.payload = payload;
     }
     Ok(())
-}
-
-fn fill_ipv4(info: &mut IpInfo, v4: &LaxIpv4Slice<'_>) {
-    let h = v4.header();
-    info.ttl = h.ttl();
-    info.ident = Some(u32::from(h.identification()));
-    info.dont_fragment = h.dont_fragment();
-    let offset = h.fragments_offset();
-    if h.more_fragments() || offset.value() != 0 {
-        info.fragment = Some(Fragment {
-            id: u32::from(h.identification()),
-            offset: offset.byte_offset(),
-            more: h.more_fragments(),
-        });
-    }
-    let mut header_len = h.slice().len();
-    if let Some(auth) = &v4.extensions().auth {
-        info.extensions.push(PROTO_AUTH);
-        header_len = header_len.saturating_add(auth.slice().len());
-    }
-    info.header_len = header_len;
-}
-
-fn fill_ipv6(info: &mut IpInfo, v6: &LaxIpv6Slice<'_>) {
-    let h = v6.header();
-    info.ttl = h.hop_limit();
-    let exts = v6.extensions();
-    info.header_len = h.slice().len().saturating_add(exts.slice().len());
-    walk_ipv6_extensions(info, h.next_header().0, exts.slice());
-}
-
-/// Walks the IPv6 extension headers already validated by `etherparse` (`validated` only
-/// holds complete headers).
-///
-/// `Ipv6ExtensionsSlice::into_iter` is deliberately not used: when a lax parse stopped on
-/// a truncated header, that iterator builds the next header with an unchecked constructor
-/// and reads past the validated bytes (debug assertion, undefined behaviour in release).
-fn walk_ipv6_extensions(info: &mut IpInfo, first: u8, validated: &[u8]) {
-    let mut next = first;
-    let mut rest = validated;
-    while !rest.is_empty() {
-        let Some(len_field) = u8_at(rest, 1).map(usize::from) else {
-            return;
-        };
-        let len = match next {
-            PROTO_FRAGMENT => Some(8),
-            // RFC 4302: length in 4-byte units, minus 2.
-            PROTO_AUTH => len_field.checked_add(2).and_then(|n| n.checked_mul(4)),
-            // RFC 8200: length in 8-byte units, not counting the first 8 bytes.
-            PROTO_HOP_BY_HOP | PROTO_ROUTING | PROTO_DEST_OPTIONS => {
-                len_field.checked_add(1).and_then(|n| n.checked_mul(8))
-            }
-            _ => None,
-        };
-        let Some((hdr, after)) = len.and_then(|n| rest.split_at_checked(n)) else {
-            return;
-        };
-        if next == PROTO_FRAGMENT {
-            let off_flags = be16(hdr, 2).unwrap_or_default();
-            let id = be32(hdr, 4).unwrap_or_default();
-            let offset = off_flags & 0xfff8; // 13-bit offset in 8-byte units, i.e. bytes
-            let more = off_flags & 0x0001 != 0;
-            info.ident = Some(id);
-            if offset != 0 || more {
-                info.fragment = Some(Fragment { id, offset, more });
-            }
-        }
-        // Headers beyond MAX_IPV6_EXTENSIONS are not listed; decoding continues.
-        info.extensions.push(next);
-        next = u8_at(hdr, 0).unwrap_or_default();
-        rest = after;
-    }
-}
-
-fn ext_error(e: &ExtSliceError, layer: Layer) -> DecodeError {
-    match e {
-        ExtSliceError::Len(l) => DecodeError::truncated(layer, l.required_len, l.len),
-        ExtSliceError::Content(ExtHeaderError::HopByHopNotAtStart) => {
-            DecodeError::malformed(layer, "hop-by-hop header is not first")
-        }
-        ExtSliceError::Content(ExtHeaderError::IpAuth(_)) => {
-            DecodeError::malformed(layer, "invalid authentication header")
-        }
-    }
 }
 
 /// ARP / RARP (RFC 826): fixed part, then addresses of the announced lengths.
@@ -228,6 +220,7 @@ fn decode_arp<'a>(d: &mut Decoded<'a>, data: &'a [u8]) -> Result<(), DecodeError
             None
         }
     };
+    d.l3_offset = d.offset_of(data);
     d.network = Some(Network::Arp(ArpInfo {
         hardware_type,
         protocol_type,

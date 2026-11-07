@@ -28,8 +28,13 @@ pub const MAX_IPV6_EXTENSIONS: usize = 8;
 /// | link, unknown Ethertype    | link payload (LLDP, STP, encrypted 802.11 body, ...)   |
 /// | nothing                    | the whole frame                                        |
 ///
-/// IP fragments are reported in [`IpInfo::fragment`] but never reassembled here
-/// (`netsift-flow` does it, then calls [`crate::decode_transport`] on the result).
+/// IP fragments are reported in [`IpInfo::fragment`] but never reassembled here.
+/// [`Decoded::ip_payload`] holds the bytes to reassemble: `netsift-flow` concatenates
+/// them in offset order, then calls [`crate::decode_transport`] with
+/// [`Fragment::next_header`].
+///
+/// Offsets ([`Decoded::l3_offset`], [`Decoded::l4_offset`], [`Decoded::payload_offset`])
+/// are byte positions in the frame, the link header starting at 0.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Decoded<'a> {
     /// Link-layer information.
@@ -40,8 +45,27 @@ pub struct Decoded<'a> {
     pub transport: Option<Transport>,
     /// Bytes after the last decoded header, borrowed from the frame.
     pub payload: &'a [u8],
+    /// IP payload borrowed from the frame; empty when there is no IP layer.
+    ///
+    /// - Fragment ([`IpInfo::fragment`] is `Some`): the raw fragmentable part, i.e. the
+    ///   bytes after the IPv4 header (IHL) or after the IPv6 Fragment header, the part
+    ///   that [`Fragment::offset`] counts from. Concatenated in offset order, the
+    ///   fragments of one datagram form the input of [`crate::decode_transport`].
+    /// - Unfragmented packet: the IP payload after all extension headers (and IPv4 AH),
+    ///   i.e. the bytes the transport header is decoded from.
+    ///
+    /// Link padding and bytes beyond the IP length field are excluded.
+    pub ip_payload: &'a [u8],
+    /// Offset of the network header (IP or ARP) in the frame.
+    pub l3_offset: Option<usize>,
+    /// Offset of the transport header in the frame.
+    pub l4_offset: Option<usize>,
+    /// Offset of [`Decoded::payload`] in the frame.
+    pub payload_offset: usize,
     /// First layer that could not be decoded, if any.
     pub error: Option<DecodeError>,
+    /// The whole frame, used to compute offsets.
+    frame: &'a [u8],
 }
 
 impl<'a> Decoded<'a> {
@@ -51,8 +75,27 @@ impl<'a> Decoded<'a> {
             network: None,
             transport: None,
             payload: data,
+            ip_payload: data.get(data.len()..).unwrap_or_default(),
+            l3_offset: None,
+            l4_offset: None,
+            payload_offset: 0,
             error: None,
+            frame: data,
         }
+    }
+
+    /// Offset of `part` in the frame, if `part` borrows the frame.
+    pub(crate) fn offset_of(&self, part: &[u8]) -> Option<usize> {
+        let off = part
+            .as_ptr()
+            .addr()
+            .checked_sub(self.frame.as_ptr().addr())?;
+        (off.checked_add(part.len())? <= self.frame.len()).then_some(off)
+    }
+
+    /// Computes [`Decoded::payload_offset`] once decoding is over.
+    pub(crate) fn finish(&mut self) {
+        self.payload_offset = self.offset_of(self.payload).unwrap_or(self.frame.len());
     }
 
     /// IP layer, if present.
@@ -96,6 +139,10 @@ impl fmt::Debug for Decoded<'_> {
             .field("network", &self.network)
             .field("transport", &self.transport)
             .field("payload", &PayloadPreview(self.payload))
+            .field("ip_payload", &PayloadPreview(self.ip_payload))
+            .field("l3_offset", &self.l3_offset)
+            .field("l4_offset", &self.l4_offset)
+            .field("payload_offset", &self.payload_offset)
             .field("error", &self.error)
             .finish()
     }
@@ -484,6 +531,9 @@ pub struct Fragment {
     pub offset: u16,
     /// More fragments follow.
     pub more: bool,
+    /// Protocol of the fragmentable part ([`Decoded::ip_payload`]): the IPv4 protocol
+    /// field, or the next header of the IPv6 Fragment header.
+    pub next_header: u8,
 }
 
 impl Fragment {
@@ -542,8 +592,23 @@ pub struct TcpInfo {
     pub window: u16,
     /// Header length in bytes (20..=60).
     pub header_len: u8,
+    /// Options relevant to analyzers.
+    pub options: TcpOptions,
     /// Captured payload length in bytes.
     pub payload_len: usize,
+}
+
+/// TCP options relevant to analyzers (others are skipped).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct TcpOptions {
+    /// Maximum segment size (kind 2).
+    pub mss: Option<u16>,
+    /// Window scale shift count (kind 3).
+    pub window_scale: Option<u8>,
+    /// SACK permitted (kind 4).
+    pub sack_permitted: bool,
+    /// Timestamps: value and echo reply (kind 8).
+    pub timestamps: Option<(u32, u32)>,
 }
 
 /// TCP control flags (NS, CWR, ECE, URG, ACK, PSH, RST, SYN, FIN).
@@ -647,4 +712,8 @@ pub struct IcmpInfo {
     pub icmp_type: u8,
     /// Message code.
     pub code: u8,
+    /// Identifier of an echo request or reply.
+    pub id: Option<u16>,
+    /// Sequence number of an echo request or reply.
+    pub sequence: Option<u16>,
 }

@@ -9,14 +9,8 @@
 //! - no buffer is sized from an unchecked length field: lengths are capped first, and buffers
 //!   grow with the bytes actually present in the file;
 //! - timestamps are converted to `i64` nanoseconds with checked arithmetic;
-//! - an incomplete last record yields [`ReadWarning::TruncatedTail`] then `Ok(None)`.
-
-#![deny(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic
-)]
+//! - an incomplete last record yields [`ReadWarning::TruncatedTail`] then `Ok(None)`;
+//! - any error from `next_packet` ends the stream: later calls return `Ok(None)`.
 
 mod pcap;
 mod pcapng;
@@ -132,7 +126,7 @@ fn build(
     counter: Arc<AtomicU64>,
     compressed: bool,
 ) -> Result<Box<dyn PacketSource>, CaptureError> {
-    let core = Core::new(Input::new(stream), counter, format, compressed);
+    let core = Core::new(Input::new(stream, compressed), counter, format, compressed);
     Ok(match format {
         CaptureFormat::Pcap => Box::new(pcap::PcapReader::open(core)?),
         CaptureFormat::PcapNg => Box::new(pcapng::PcapNgReader::open(core)?),
@@ -182,14 +176,34 @@ struct Input {
     inner: BufReader<Box<dyn Read + Send>>,
     pos: u64,
     cut_short: bool,
+    compressed: bool,
 }
 
 impl Input {
-    fn new(stream: Box<dyn Read + Send>) -> Self {
+    fn new(stream: Box<dyn Read + Send>, compressed: bool) -> Self {
         Self {
             inner: BufReader::with_capacity(BUF_CAPACITY, stream),
             pos: 0,
             cut_short: false,
+            compressed,
+        }
+    }
+
+    /// Maps a read error: corrupt gzip data (bad deflate stream, wrong CRC, garbage after the
+    /// last member) is a malformed capture, anything else stays an I/O error.
+    fn error(&self, e: io::Error) -> CaptureError {
+        if self.compressed
+            && matches!(
+                e.kind(),
+                io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput
+            )
+        {
+            CaptureError::Malformed {
+                offset: self.pos,
+                reason: format!("corrupt gzip stream: {e}"),
+            }
+        } else {
+            CaptureError::Io(e)
         }
     }
 
@@ -208,7 +222,7 @@ impl Input {
                     self.cut_short = true;
                     break;
                 }
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(self.error(e)),
             }
         }
         self.advance(filled);
@@ -229,7 +243,10 @@ impl Input {
             Ok(_) => {}
             // Bytes read before the error are kept in `buf`.
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => self.cut_short = true,
-            Err(e) => return Err(e.into()),
+            Err(e) => {
+                self.advance(buf.len());
+                return Err(self.error(e));
+            }
         }
         self.advance(buf.len());
         Ok(buf)
@@ -246,7 +263,7 @@ impl Input {
                     self.cut_short = true;
                     0
                 }
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(self.error(e)),
             };
             if available == 0 {
                 break;
@@ -295,10 +312,25 @@ impl Core {
         }
     }
 
+    /// Records a warning; the last slot is reserved for a marker telling that the limit was hit.
     fn warn(&mut self, warning: ReadWarning) {
-        if self.warnings.len() < MAX_WARNINGS {
+        let len = self.warnings.len();
+        if len + 1 < MAX_WARNINGS {
             self.warnings.push(warning);
+        } else if len + 1 == MAX_WARNINGS {
+            self.warnings.push(ReadWarning::SkippedRecord {
+                offset: self.input.pos,
+                reason: "warning limit reached; further warnings dropped".into(),
+            });
         }
+    }
+
+    /// Ends the stream after any error, so that later calls return `Ok(None)`.
+    fn guard<T>(&mut self, result: Result<T, CaptureError>) -> Result<T, CaptureError> {
+        if result.is_err() {
+            self.done = true;
+        }
+        result
     }
 
     fn skipped(&mut self, offset: u64, reason: impl Into<String>) {

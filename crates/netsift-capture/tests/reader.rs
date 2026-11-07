@@ -463,9 +463,8 @@ fn pcapng_simple_and_obsolete_packet_blocks() {
     let e = E::Be;
     let mut bytes = shb(e);
     bytes.extend(idb(e, 1, 4, None, None)); // snaplen 4
-    // SPB before any timestamped packet: ts 0.
-    bytes.extend(spb(e, 3, b"abc"));
     bytes.extend(pb(e, 0, 7_000_000, b"obsolete"));
+    bytes.extend(spb(e, 3, b"abc"));
     // SPB truncated to the snaplen; takes the last timestamp of the section.
     bytes.extend(spb(e, 10, b"0123456789"));
     let mut s = src(bytes);
@@ -477,12 +476,73 @@ fn pcapng_simple_and_obsolete_packet_blocks() {
     assert_eq!(
         got,
         vec![
-            (0, &b"abc"[..], 3),
             (7 * SEC, &b"obsolete"[..], 8),
+            (7 * SEC, &b"abc"[..], 3),
             (7 * SEC, &b"0123"[..], 10),
         ]
     );
     assert_eq!(s.warnings(), []);
+}
+
+#[test]
+fn pcapng_spb_at_file_start_is_skipped() {
+    let e = E::Le;
+    let mut bytes = shb(e);
+    bytes.extend(idb(e, 1, 0, None, None));
+    let first = bytes.len();
+    bytes.extend(spb(e, 3, b"abc"));
+    bytes.extend(epb(e, 0, 2_000_000, b"ts"));
+    // A new section reuses the last timestamp of the file.
+    bytes.extend(shb(e));
+    bytes.extend(idb(e, 1, 0, None, None));
+    bytes.extend(spb(e, 3, b"def"));
+    let mut s = src(bytes);
+    let p = read_all(s.as_mut());
+    let got: Vec<(i64, &[u8])> = p.iter().map(|p| (p.ts_ns, &p.data[..])).collect();
+    assert_eq!(got, vec![(2 * SEC, &b"ts"[..]), (2 * SEC, &b"def"[..])]);
+    assert_eq!(
+        s.warnings(),
+        &[ReadWarning::SkippedRecord {
+            offset: u64::try_from(first).unwrap(),
+            reason: "simple packet block without a reference timestamp".into(),
+        }]
+    );
+}
+
+#[test]
+fn pcapng_negative_tsoffset_on_a_packet() {
+    for e in [E::Le, E::Be] {
+        let mut bytes = shb(e);
+        bytes.extend(idb(e, 1, 0, Some(6), Some(-1_000)));
+        bytes.extend(epb(e, 0, 1_700_000_000_250_000, b"x"));
+        let mut s = src(bytes);
+        let p = read_all(s.as_mut());
+        assert_eq!(p[0].ts_ns, (1_700_000_000 - 1_000) * SEC + SEC / 4);
+    }
+}
+
+#[test]
+fn pcapng_section_header_trailer_mismatch_is_reported() {
+    let e = E::Le;
+    let mut bytes = shb(e);
+    bytes.extend(idb(e, 1, 0, None, None));
+    bytes.extend(epb(e, 0, 1_000_000, b"a"));
+    let second = bytes.len();
+    let mut bad_shb = shb(E::Be);
+    let n = bad_shb.len();
+    bad_shb[n - 4..].copy_from_slice(&E::Be.u32(12));
+    bytes.extend(bad_shb);
+    // The section still applies: big-endian, interfaces reset.
+    bytes.extend(idb(E::Be, 101, 0, None, None));
+    bytes.extend(epb(E::Be, 0, 2_000_000, b"b"));
+    let mut s = src(bytes);
+    let p = read_all(s.as_mut());
+    let got: Vec<(i64, u32)> = p.iter().map(|p| (p.ts_ns, p.linktype)).collect();
+    assert_eq!(got, vec![(SEC, 1), (2 * SEC, 101)]);
+    assert!(matches!(
+        s.warnings(),
+        [ReadWarning::SkippedRecord { offset, .. }] if *offset == u64::try_from(second).unwrap()
+    ));
 }
 
 #[test]
@@ -698,6 +758,63 @@ fn warnings_are_bounded() {
     let mut s = src(pcap(E::Le, false, &records));
     assert_eq!(read_all(s.as_mut()).len(), count);
     assert_eq!(s.warnings().len(), MAX_WARNINGS);
+    assert!(matches!(
+        s.warnings()[MAX_WARNINGS - 2],
+        ReadWarning::TimestampBackwards { .. }
+    ));
+    assert!(matches!(
+        s.warnings().last(),
+        Some(ReadWarning::SkippedRecord { reason, .. })
+            if reason == "warning limit reached; further warnings dropped"
+    ));
+}
+
+#[test]
+fn gzip_bad_crc_is_malformed_then_ends() {
+    let records: Vec<Rec<'_>> = (0..10).map(|i| rec(i, 0, b"payload")).collect();
+    let mut compressed = gzip(&pcap(E::Le, false, &records));
+    // The gzip trailer is CRC32 then ISIZE: corrupt the CRC.
+    let n = compressed.len();
+    compressed[n - 8] ^= 0xff;
+    let mut s = src(compressed);
+    let mut count = 0;
+    let err = loop {
+        match s.next_packet() {
+            Ok(Some(_)) => count += 1,
+            Ok(None) => panic!("bad CRC not detected after {count} packets"),
+            Err(e) => break e,
+        }
+    };
+    assert!(matches!(err, CaptureError::Malformed { .. }), "{err:?}");
+    assert!(s.next_packet().unwrap().is_none());
+    assert!(s.next_packet().unwrap().is_none());
+}
+
+#[test]
+fn io_error_ends_the_stream() {
+    struct FailAfter(Cursor<Vec<u8>>);
+    impl Read for FailAfter {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            match self.0.read(buf)? {
+                0 => Err(std::io::Error::other("disk gone")),
+                n => Ok(n),
+            }
+        }
+    }
+    let mut bytes = pcap(E::Le, false, &[rec(1, 0, b"a")]);
+    bytes.extend(&[0; 7]); // partial record header, then the error
+    let mut s = from_reader(FailAfter(Cursor::new(bytes))).unwrap();
+    let mut seen_error = false;
+    loop {
+        match s.next_packet() {
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+            Err(CaptureError::Io(_)) => seen_error = true,
+            Err(e) => panic!("unexpected {e:?}"),
+        }
+    }
+    assert!(seen_error);
+    assert!(s.next_packet().unwrap().is_none());
 }
 
 #[test]

@@ -57,6 +57,21 @@ impl PacketSource for PcapReader {
     }
 
     fn next_packet(&mut self) -> Result<Option<RawPacket>, CaptureError> {
+        let result = self.read_next();
+        self.core.guard(result)
+    }
+
+    fn bytes_read(&self) -> u64 {
+        self.core.bytes_read()
+    }
+
+    fn warnings(&self) -> &[ReadWarning] {
+        &self.core.warnings
+    }
+}
+
+impl PcapReader {
+    fn read_next(&mut self) -> Result<Option<RawPacket>, CaptureError> {
         loop {
             if self.core.done {
                 return Ok(None);
@@ -114,13 +129,5 @@ impl PacketSource for PcapReader {
                 data: Bytes::from(data),
             }));
         }
-    }
-
-    fn bytes_read(&self) -> u64 {
-        self.core.bytes_read()
-    }
-
-    fn warnings(&self) -> &[ReadWarning] {
-        &self.core.warnings
     }
 }

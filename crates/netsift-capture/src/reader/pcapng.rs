@@ -4,10 +4,14 @@
 //! - Interfaces carry their link type, snaplen, `if_tsresol` (power of 10 or of 2) and
 //!   `if_tsoffset` (seconds added to every timestamp).
 //! - A Simple Packet Block has no timestamp: it gets the timestamp of the previous packet of the
-//!   same section, or of the file when it is the first of its section, or 0 at the very start.
-//!   This keeps the packet order and never produces a `TimestampBackwards` warning by itself.
+//!   same section, or of the file when it is the first of its section. This keeps the packet
+//!   order and never produces a `TimestampBackwards` warning by itself. An SPB met before any
+//!   timestamped packet is skipped (`SkippedRecord`): a made-up timestamp would distort the
+//!   ordering and overlap checks of chunk sets.
 //! - Name resolution, interface statistics, systemd journal, decryption secrets and custom
 //!   blocks are skipped silently; any other block type yields `ReadWarning::UnknownBlock`.
+
+use std::ops::Range;
 
 use bytes::Bytes;
 
@@ -137,7 +141,13 @@ impl PcapNgReader {
         Ok(reader)
     }
 
+    /// Next packet; any error ends the stream.
     fn read_next(&mut self) -> Result<Option<RawPacket>, CaptureError> {
+        let result = self.read_next_unguarded();
+        self.core.guard(result)
+    }
+
+    fn read_next_unguarded(&mut self) -> Result<Option<RawPacket>, CaptureError> {
         loop {
             if self.core.done {
                 return Ok(None);
@@ -251,7 +261,10 @@ impl PcapNgReader {
         if buf.len() < len {
             return Ok(Step::Truncated);
         }
-        let Some((body, trailer)) = buf.split_at_checked(len.saturating_sub(4)) else {
+        // Packet data is sliced out of this buffer without another copy.
+        let block = Bytes::from(buf);
+        let body_len = len.saturating_sub(4);
+        let (Some(body), Some(trailer)) = (sub(&block, 0..body_len), block.get(body_len..)) else {
             return Ok(Step::Truncated);
         };
         if e.u32_at(trailer, 0) != Some(total) {
@@ -260,12 +273,12 @@ impl PcapNgReader {
         }
         Ok(match block_type {
             BT_IDB => {
-                self.on_idb(start, body);
+                self.on_idb(start, &body);
                 Step::Continue
             }
-            BT_EPB => self.on_epb(start, body, false),
-            BT_PB => self.on_epb(start, body, true),
-            _ => self.on_spb(start, body),
+            BT_EPB => self.on_epb(start, &body, false),
+            BT_PB => self.on_epb(start, &body, true),
+            _ => self.on_spb(start, &body),
         })
     }
 
@@ -299,7 +312,7 @@ impl PcapNgReader {
     }
 
     /// Enhanced Packet Block, or the obsolete Packet Block (16-bit interface id + drop count).
-    fn on_epb(&mut self, start: u64, body: &[u8], obsolete: bool) -> Step {
+    fn on_epb(&mut self, start: u64, body: &Bytes, obsolete: bool) -> Step {
         let e = self.endian;
         let iface_id = if obsolete {
             e.u16_at(body, 0).map(u32::from)
@@ -320,7 +333,7 @@ impl PcapNgReader {
         };
         let data = usize::try_from(cap_len)
             .ok()
-            .and_then(|len| body.get(20..20usize.checked_add(len)?));
+            .and_then(|len| sub(body, 20..20usize.checked_add(len)?));
         let Some(data) = data else {
             self.core
                 .skipped(start, "captured length exceeds the block size");
@@ -338,7 +351,7 @@ impl PcapNgReader {
     }
 
     /// Simple Packet Block: interface 0, no timestamp (see the module documentation).
-    fn on_spb(&mut self, start: u64, body: &[u8]) -> Step {
+    fn on_spb(&mut self, start: u64, body: &Bytes) -> Step {
         let Some(orig_len) = self.endian.u32_at(body, 0) else {
             self.core.skipped(start, "simple packet block too short");
             return Step::Continue;
@@ -353,8 +366,12 @@ impl PcapNgReader {
         if iface.snaplen != 0 {
             len = len.min(usize::try_from(iface.snaplen).unwrap_or(usize::MAX));
         }
-        let data = body.get(4..4 + len).unwrap_or_default();
-        let ts_ns = self.section_last_ts.or(self.core.previous_ts).unwrap_or(0);
+        let Some(ts_ns) = self.section_last_ts.or(self.core.previous_ts) else {
+            self.core
+                .skipped(start, "simple packet block without a reference timestamp");
+            return Step::Continue;
+        };
+        let data = sub(body, 4..4 + len).unwrap_or_default();
         self.emit(start, ts_ns, iface.linktype, orig_len, data)
     }
 
@@ -371,7 +388,7 @@ impl PcapNgReader {
         found
     }
 
-    fn emit(&mut self, start: u64, ts_ns: i64, linktype: u32, orig_len: u32, data: &[u8]) -> Step {
+    fn emit(&mut self, start: u64, ts_ns: i64, linktype: u32, orig_len: u32, data: Bytes) -> Step {
         self.core.check_order(start, ts_ns);
         self.section_last_ts = Some(ts_ns);
         Step::Packet(RawPacket {
@@ -380,9 +397,15 @@ impl PcapNgReader {
             offset: start,
             linktype,
             orig_len,
-            data: Bytes::copy_from_slice(data),
+            data,
         })
     }
+}
+
+/// Zero-copy sub-slice, `None` when out of bounds (never panics).
+fn sub(bytes: &Bytes, range: Range<usize>) -> Option<Bytes> {
+    bytes.get(range.clone())?;
+    Some(bytes.slice(range))
 }
 
 /// Reads `if_tsresol` and `if_tsoffset`; a truncated option list simply ends the parsing.

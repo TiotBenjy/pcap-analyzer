@@ -1,0 +1,98 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+/* Dark mode is driven by the `dark` class on <html> (system preference or user choice). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens (docs/UI_GUIDELINES.md). Components use the semantic names only
+ * (bg-app, bg-surface, border-line, text-fg, text-muted, text-accent...), never raw zinc/blue,
+ * so both themes stay consistent.
+ */
+:root {
+  --ns-app: var(--color-zinc-50);
+  --ns-surface: var(--color-white);
+  --ns-subtle: var(--color-zinc-100);
+  --ns-line: var(--color-zinc-200);
+  --ns-fg: var(--color-zinc-900);
+  --ns-muted: var(--color-zinc-500);
+  --ns-faint: var(--color-zinc-400);
+  --ns-accent: var(--color-blue-600);
+  --ns-accent-soft: var(--color-blue-50);
+  --ns-success: var(--color-emerald-600);
+  --ns-warning: var(--color-amber-600);
+  --ns-danger: var(--color-red-600);
+  color-scheme: light;
+}
+
+.dark {
+  --ns-app: var(--color-zinc-950);
+  --ns-surface: var(--color-zinc-900);
+  --ns-subtle: var(--color-zinc-800);
+  --ns-line: var(--color-zinc-800);
+  --ns-fg: var(--color-zinc-100);
+  --ns-muted: var(--color-zinc-400);
+  --ns-faint: var(--color-zinc-500);
+  --ns-accent: var(--color-blue-500);
+  --ns-accent-soft: color-mix(in oklab, var(--color-blue-500) 15%, transparent);
+  --ns-success: var(--color-emerald-500);
+  --ns-warning: var(--color-amber-500);
+  --ns-danger: var(--color-red-500);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --color-app: var(--ns-app);
+  --color-surface: var(--ns-surface);
+  --color-subtle: var(--ns-subtle);
+  --color-line: var(--ns-line);
+  --color-fg: var(--ns-fg);
+  --color-muted: var(--ns-muted);
+  --color-faint: var(--ns-faint);
+  --color-accent: var(--ns-accent);
+  --color-accent-soft: var(--ns-accent-soft);
+  --color-success: var(--ns-success);
+  --color-warning: var(--ns-warning);
+  --color-danger: var(--ns-danger);
+}
+
+@theme {
+  /* Type scale: 12 meta, 13 tables, 14 body, 16 card titles, 20 page title. Nothing larger. */
+  --text-meta: 12px;
+  --text-meta--line-height: 16px;
+  --text-table: 13px;
+  --text-table--line-height: 18px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-card: 16px;
+  --text-card--line-height: 24px;
+  --text-page: 20px;
+  --text-page--line-height: 28px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-app text-body text-fg font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Visible focus everywhere (accessibility), never a decorative glow. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+}
+
+@utility num {
+  font-variant-numeric: tabular-nums;
+}

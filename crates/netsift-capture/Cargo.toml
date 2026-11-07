@@ -9,6 +9,8 @@ publish.workspace = true
 repository.workspace = true
 
 [dependencies]
+bytes = "1.12.1"
+thiserror.workspace = true
 
 [lints]
 workspace = true

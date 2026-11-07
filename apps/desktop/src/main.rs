@@ -50,9 +50,10 @@ fn random_token() -> Result<String> {
     }))
 }
 
-/// `<OS data dir>/NetSift` (e.g. `~/.local/share/NetSift`, `%APPDATA%\NetSift`).
+/// `<local data dir>/NetSift` (`~/.local/share/NetSift`, `%LOCALAPPDATA%\NetSift`).
+/// Local, not roaming: sessions can weigh gigabytes and must not sync with a Windows profile.
 fn data_dir() -> Result<PathBuf> {
-    let base = dirs::data_dir().context("no user data directory on this system")?;
+    let base = dirs::data_local_dir().context("no local data directory on this system")?;
     Ok(base.join("NetSift"))
 }
 
@@ -61,7 +62,8 @@ fn start_api() -> Result<ApiHandle> {
     std::fs::create_dir_all(&data_dir)
         .with_context(|| format!("cannot create {}", data_dir.display()))?;
 
-    // Bind synchronously so the port is known before the window loads.
+    // Bind synchronously during `setup`: the window already exists, but IPC is served by the main
+    // thread, so `get_api_endpoint` cannot be answered before the endpoint is managed.
     let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
         .context("cannot bind loopback")?;
     listener.set_nonblocking(true)?;

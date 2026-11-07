@@ -10,6 +10,9 @@
 const TS_DIGITS: usize = 14;
 /// Minimum width of a dumpcap sequence number (wider when it exceeds 99 999).
 const MIN_SEQ_DIGITS: usize = 5;
+/// Maximum width of a tcpdump `-C` file number. Longer digit runs are timestamps (tcpdump `-G`
+/// names such as `cap-20240101120000` or `cap-1704110400`), not rotation numbers.
+const MAX_ROTATION_DIGITS: usize = 6;
 
 /// A file name recognized as a dumpcap chunk (patterns 1 and 2).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,7 +22,7 @@ pub(crate) struct DumpcapName {
 }
 
 /// Strips a trailing `.gz` (any case), when something remains before it.
-fn strip_gz(name: &str) -> Option<&str> {
+pub(crate) fn strip_gz(name: &str) -> Option<&str> {
     let cut = name.len().checked_sub(3)?;
     let (head, tail) = (name.get(..cut)?, name.get(cut..)?);
     (tail.eq_ignore_ascii_case(".gz") && !head.is_empty()).then_some(head)
@@ -83,7 +86,12 @@ pub(crate) fn parse_nametimenum(name: &str) -> Option<DumpcapName> {
 /// Pattern 3 (tcpdump `-C`): splits `name` into its base and trailing number.
 ///
 /// `cap.pcap3` -> (`cap.pcap`, Some(3)); `cap.pcap` -> (`cap.pcap`, None). A `.gz` suffix is
-/// ignored. Returns `None` when the trailing number does not fit in `u64`.
+/// ignored.
+///
+/// tcpdump appends the number directly to the file name, so a name is rejected (`None`) when
+/// its trailing number is longer than [`MAX_ROTATION_DIGITS`] or follows a separator
+/// (`-`, `_`, `.`, space): such names are timestamps of tcpdump `-G` (`cap-20240101-120000`)
+/// and belong to the common-prefix fallback, ordered by first timestamp.
 pub(crate) fn split_rotation(name: &str) -> Option<(&str, Option<u64>)> {
     let name = strip_gz(name).unwrap_or(name);
     let base = name.trim_end_matches(|c: char| c.is_ascii_digit());
@@ -92,10 +100,12 @@ pub(crate) fn split_rotation(name: &str) -> Option<(&str, Option<u64>)> {
     }
     let digits = name.get(base.len()..)?;
     if digits.is_empty() {
-        Some((base, None))
-    } else {
-        Some((base, Some(parse_seq(digits)?)))
+        return Some((base, None));
     }
+    if digits.len() > MAX_ROTATION_DIGITS || base.ends_with(['-', '_', '.', ' ']) {
+        return None;
+    }
+    Some((base, Some(parse_seq(digits)?)))
 }
 
 /// Fallback grouping key: the name without extension, cut at its first digit, trailing
@@ -173,8 +183,20 @@ mod tests {
         assert_eq!(split_rotation("cap.pcap12"), Some(("cap.pcap", Some(12))));
         assert_eq!(split_rotation("cap.pcap03.gz"), Some(("cap.pcap", Some(3))));
         assert_eq!(split_rotation("trace"), Some(("trace", None)));
+        assert_eq!(
+            split_rotation("cap.pcap123456"),
+            Some(("cap.pcap", Some(123_456)))
+        );
         assert_eq!(split_rotation("12345"), None);
         assert_eq!(split_rotation("x99999999999999999999999"), None);
+        // tcpdump -G timestamps are not rotation numbers.
+        assert_eq!(split_rotation("cap-20240101120000"), None);
+        assert_eq!(split_rotation("cap20240101120000"), None);
+        assert_eq!(split_rotation("cap-20240101-120000"), None);
+        assert_eq!(split_rotation("cap-1704110400"), None);
+        assert_eq!(split_rotation("cap.1.gz"), None);
+        assert_eq!(common_prefix_key("cap-20240101-120000"), "cap");
+        assert_eq!(common_prefix_key("cap-1704110400"), "cap");
     }
 
     #[test]

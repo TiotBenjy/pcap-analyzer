@@ -4,6 +4,15 @@
 //! merge reaches that timestamp. Disjoint chunks are therefore read one after the other with a
 //! single file open; overlapping chunks are merged through a min-heap holding one packet per
 //! open chunk. Memory is bounded by the number of open chunks ([`ReadOptions::max_open`]).
+//!
+//! Clock stepping back at a chunk boundary (last packet of chunk N later than the first of
+//! chunk N+1, e.g. an NTP correction between two files): chunk N+1 is opened as soon as the
+//! merge reaches its first timestamp, so its first packets are interleaved with the tail of
+//! chunk N. The output stays in timestamp order (file order is not preserved across the
+//! boundary) and an [`AnomalyKind::Overlap`] is reported. A clock stepping back *inside* a chunk
+//! cannot be reordered (the merge holds one packet per chunk): those packets are delivered in
+//! file order, reported by the reader (`TimestampBackwards`) and by
+//! [`AnomalyKind::OutOfOrder`].
 
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, VecDeque};
@@ -110,6 +119,10 @@ pub struct ChunkSetSource {
     warnings: Vec<ReadWarning>,
     anomalies: Vec<Anomaly>,
     fanout_reported: bool,
+    /// Timestamp of the previously delivered packet.
+    last_ts: Option<i64>,
+    /// Index of the [`AnomalyKind::OutOfOrder`] anomaly, once reported.
+    out_of_order: Option<usize>,
     done: bool,
 }
 
@@ -166,6 +179,8 @@ impl ChunkSetSource {
             warnings: Vec::new(),
             anomalies: Vec::new(),
             fanout_reported: false,
+            last_ts: None,
+            out_of_order: None,
             done: false,
         };
         for anomaly in checks::static_checks(group) {
@@ -227,6 +242,44 @@ impl ChunkSetSource {
                 offset: 0,
                 reason: "warning limit reached; further warnings dropped".into(),
             });
+        }
+    }
+
+    /// Counts a packet delivered earlier than its predecessor, in a single group-level anomaly.
+    fn note_out_of_order(&mut self, step_ns: i64) {
+        if let Some(Anomaly {
+            kind:
+                AnomalyKind::OutOfOrder {
+                    packets,
+                    max_backstep_ns,
+                },
+            ..
+        }) = self.out_of_order.and_then(|i| self.anomalies.get_mut(i))
+        {
+            *packets = packets.saturating_add(1);
+            *max_backstep_ns = (*max_backstep_ns).max(step_ns);
+            return;
+        }
+        if self.out_of_order.is_none() {
+            let before = self.anomalies.len();
+            self.push_anomaly(Anomaly {
+                chunk: None,
+                kind: AnomalyKind::OutOfOrder {
+                    packets: 1,
+                    max_backstep_ns: step_ns,
+                },
+            });
+            // Only when actually stored (not cut by the anomaly limit).
+            if matches!(
+                self.anomalies.last(),
+                Some(Anomaly {
+                    kind: AnomalyKind::OutOfOrder { .. },
+                    ..
+                })
+            ) && self.anomalies.len() > before
+            {
+                self.out_of_order = Some(before);
+            }
         }
     }
 
@@ -360,7 +413,8 @@ impl PacketSource for ChunkSetSource {
                 return Ok(None);
             }
             if let Some(next) = self.should_open_next() {
-                if self.open.len() < self.options.max_open.max(1) {
+                let limit = self.options.max_open.max(1);
+                if self.open.len() < limit {
                     self.pending.pop_front();
                     self.open_chunk(next);
                     continue;
@@ -369,9 +423,7 @@ impl PacketSource for ChunkSetSource {
                     self.fanout_reported = true;
                     self.push_anomaly(Anomaly {
                         chunk: None,
-                        kind: AnomalyKind::MergeFanoutLimit {
-                            limit: self.options.max_open,
-                        },
+                        kind: AnomalyKind::MergeFanoutLimit { limit },
                     });
                 }
             }
@@ -382,6 +434,12 @@ impl PacketSource for ChunkSetSource {
             self.pull(chunk);
             packet.chunk_id = chunk;
             add_linktype(&mut self.info, packet.linktype);
+            if let Some(previous) = self.last_ts
+                && packet.ts_ns < previous
+            {
+                self.note_out_of_order(previous.saturating_sub(packet.ts_ns));
+            }
+            self.last_ts = Some(packet.ts_ns);
             return Ok(Some(packet));
         }
     }
@@ -549,7 +607,7 @@ mod tests {
                         size: 1000,
                         mtime_ns: None,
                         fingerprint: Some(Fingerprint::of_bytes(name.as_bytes())),
-                        kind: EntryKind::Capture(CaptureMeta {
+                        kind: EntryKind::Capture(Box::new(CaptureMeta {
                             info: CaptureInfo {
                                 format: CaptureFormat::PcapNg,
                                 compressed: i == 1,
@@ -559,8 +617,9 @@ mod tests {
                             first_ts: script.ts.first().copied(),
                             read_error: None,
                             warnings: Vec::new(),
+                            first_packet: None,
                             scan: None,
-                        }),
+                        })),
                     };
                     (entry, Some(i as u64 + 1))
                 })
@@ -695,6 +754,8 @@ mod tests {
             vec![(1, 1, 100), (2, 1, 110), (5, 0, 100), (6, 0, 110)]
         );
         assert_eq!(world.max_open(), 1);
+        // Checked in reading order: no false overlap.
+        assert_eq!(source.anomalies(), &[]);
     }
 
     #[test]
@@ -718,6 +779,78 @@ mod tests {
                 .anomalies()
                 .iter()
                 .any(|a| a.kind == AnomalyKind::MergeFanoutLimit { limit: 2 })
+        );
+    }
+
+    #[test]
+    fn fanout_limit_reports_the_applied_limit_and_out_of_order_output() {
+        let world = World::new(&[
+            ("a", script(&[1, 4])),
+            ("b", script(&[2, 5])),
+            ("c", script(&[3, 6])),
+        ]);
+        let group = world.group(&["a", "b", "c"]);
+        let options = ReadOptions {
+            max_open: 0,
+            ..ReadOptions::default()
+        };
+        let mut source = ChunkSetSource::with_opener(&group, options, world.opener());
+        let ts: Vec<_> = drain(&mut source).into_iter().map(|p| p.0).collect();
+        // One file at a time: concatenation in first-timestamp order.
+        assert_eq!(ts, vec![1, 4, 2, 5, 3, 6]);
+        assert_eq!(world.max_open(), 1);
+        let anomalies = source.anomalies();
+        assert_eq!(
+            anomalies[0].kind,
+            AnomalyKind::MergeFanoutLimit { limit: 1 }
+        );
+        assert_eq!(
+            anomalies[1].kind,
+            AnomalyKind::OutOfOrder {
+                packets: 2,
+                max_backstep_ns: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn clock_stepping_back_at_a_chunk_boundary_is_reordered() {
+        // Chunk b starts (5) before chunk a ends (10): an NTP step between the two files.
+        let world = World::new(&[("a", script(&[1, 2, 10])), ("b", script(&[5, 11]))]);
+        let group = world.group(&["a", "b"]);
+        let mut source =
+            ChunkSetSource::with_opener(&group, ReadOptions::default(), world.opener());
+        let packets = drain(&mut source);
+        let ts: Vec<_> = packets.iter().map(|p| (p.0, p.1)).collect();
+        assert_eq!(ts, vec![(1, 0), (2, 0), (5, 1), (10, 0), (11, 1)]);
+        assert_eq!(
+            source.anomalies(),
+            &[Anomaly {
+                chunk: Some(1),
+                kind: AnomalyKind::Overlap {
+                    previous: 0,
+                    overlap_ns: 5,
+                },
+            }]
+        );
+    }
+
+    #[test]
+    fn clock_stepping_back_inside_a_chunk_is_counted_once() {
+        let world = World::new(&[("a", script(&[1, 5, 3, 4, 2]))]);
+        let group = world.group(&["a"]);
+        let mut source =
+            ChunkSetSource::with_opener(&group, ReadOptions::default(), world.opener());
+        drain(&mut source);
+        assert_eq!(
+            source.anomalies(),
+            &[Anomaly {
+                chunk: None,
+                kind: AnomalyKind::OutOfOrder {
+                    packets: 2,
+                    max_backstep_ns: 2,
+                },
+            }]
         );
     }
 

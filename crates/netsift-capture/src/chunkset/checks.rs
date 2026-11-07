@@ -82,6 +82,10 @@ pub enum AnomalyKind {
     /// More chunks overlap than readers may be open at once: some packets are delivered out of
     /// timestamp order. Group-level.
     MergeFanoutLimit { limit: usize },
+    /// Packets were delivered with a timestamp earlier than the previous packet of the merged
+    /// output (clock going backwards inside a chunk, or fan-out limit). Group-level, updated in
+    /// place: `packets` counts them, `max_backstep_ns` is the largest step back.
+    OutOfOrder { packets: u64, max_backstep_ns: i64 },
     /// Anomaly list capped: further findings were dropped. Group-level.
     LimitReached { limit: usize },
 }
@@ -105,6 +109,7 @@ impl AnomalyKind {
             Self::Read(ReadWarning::SkippedRecord { .. }) => "skipped_record",
             Self::ReadError { .. } => "read_error",
             Self::MergeFanoutLimit { .. } => "merge_fanout_limit",
+            Self::OutOfOrder { .. } => "out_of_order",
             Self::LimitReached { .. } => "limit_reached",
         }
     }
@@ -221,15 +226,19 @@ fn sequence_checks(group: &ChunkGroup, out: &mut Vec<Anomaly>) {
     }
 }
 
-/// Time gaps and overlaps between chunks, `spans` given in group order.
+/// Time gaps and overlaps between chunks, in reading order (sorted by start time).
 ///
 /// Each chunk is compared with the latest end seen so far (not only the previous chunk), so a
 /// long chunk spanning several shorter ones is reported as overlapping all of them.
 pub fn timing_checks(spans: &[ChunkSpan], config: &ContinuityConfig) -> Vec<Anomaly> {
-    let threshold_ns = gap_threshold(spans, config.gap);
+    // Reading order (by start time), not sequence order: a tcpdump `-W` ring that wrapped
+    // around has its oldest data in a higher-numbered file, which is not an overlap.
+    let mut spans = spans.to_vec();
+    spans.sort_by_key(|s| (s.start_ns, s.chunk));
+    let threshold_ns = gap_threshold(&spans, config.gap);
     let mut out = Vec::new();
     let mut latest: Option<(i64, u32)> = None;
-    for span in spans {
+    for span in &spans {
         if let Some((end, previous)) = latest {
             let delta = span.start_ns.saturating_sub(end);
             if delta < 0 {
@@ -376,6 +385,13 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn spans_are_checked_in_time_order() {
+        // Sequence order 0, 1, 2 but chunk 2 holds the oldest data (ring buffer wrap-around).
+        let spans = [span(0, 10, 20), span(1, 21, 30), span(2, 0, 9)];
+        assert_eq!(timing_checks(&spans, &ContinuityConfig::default()), vec![]);
     }
 
     #[test]

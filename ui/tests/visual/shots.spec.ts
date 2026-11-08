@@ -23,6 +23,8 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   servers: async (page) => `/sessions/${await demoSessionId(page)}/servers`,
+  'servers-empty': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
+  'servers-filter': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   settings: '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
   'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
@@ -236,6 +238,20 @@ for (const [view, target] of views) {
             page.getByRole('table', { name: /^Evidence of/ }).or(page.getByRole('list', { name: /^Evidence of/ })),
           ).toBeVisible();
           await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+        }
+
+        if ((view === 'servers-empty' || view === 'servers-filter') && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('table', { name: 'DNS servers' }).or(page.getByRole('list', { name: 'DNS servers' }))).toBeVisible();
+          await page.getByRole('button', { name: /^Address categories/ }).click();
+          await expect(page.getByRole('group', { name: 'Address categories' })).toBeVisible();
+          if (view === 'servers-empty') {
+            // LAN servers off: the roles served only on the LAN show their empty state.
+            await page.getByRole('checkbox', { name: 'LAN' }).uncheck();
+            await expect(page.getByText('No LDAP server detected')).toBeVisible();
+            await page.keyboard.press('Escape');
+            await expect(page.getByRole('group', { name: 'Address categories' })).toBeHidden();
+          }
+          await page.waitForLoadState('networkidle');
         }
 
         if (view === 'settings') {

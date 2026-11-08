@@ -659,7 +659,6 @@ export const en = {
       categories: 'Address categories',
       notRunTitle: 'Not analyzed in this session',
       notRunText: 'This session was imported by an earlier version. Import it again to detect its servers.',
-      truncated: 'Very large session: the counts are lower bounds.',
       empty: 'No {{role}} server detected',
       serverCount_one: '{{count}} server',
       serverCount_other: '{{count}} servers',

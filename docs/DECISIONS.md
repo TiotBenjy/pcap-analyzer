@@ -270,9 +270,9 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - l'API ouvre les sessions `ready` et `incomplete` par `Session::open_finished` : vérification en
     lecture seule (`write_needed`, aujourd'hui « schéma en retard »), puis, si une écriture est
     nécessaire, connexion en écriture (sans création de fichier) qui applique les migrations, puis
-    réouverture en lecture seule. Les futurs finaliseurs post-import (feat/dns) s'accrochent aux deux
-    endroits marqués `finalizers hook` : le prédicat `write_needed` et `upgrade()`, après les migrations,
-    sur la même connexion. Chaque migration reste une transaction
+    réouverture en lecture seule. Les étapes de fin d'import en attente (ADR-014) font aussi partie de
+    `write_needed` et s'exécutent dans `upgrade()`, après les migrations, sur la même connexion ; seule
+    une migration en attente rend la session illisible. Chaque migration reste une transaction
     `BEGIN IMMEDIATE` qui vérifie d'abord qu'elle n'est pas déjà appliquée : deux ouvertures simultanées
     sont sérialisées et la migration n'est jamais appliquée deux fois ;
   - une session `importing` ou `failed` n'est jamais écrite par une lecture (ouverture en lecture seule
@@ -304,3 +304,48 @@ acceptée : la remplacer par une nouvelle qui la référence.
   laisse cette colonne vide (valeur par défaut) pour les lignes déjà importées : les vues doivent le
   tolérer. Une migration appliquée ne peut pas être annulée : une session mise à niveau ne s'ouvre plus
   avec la version précédente de l'application (`session-too-new`).
+
+## ADR-014 — Étapes de fin d'import des analyseurs (`SESSION_FINALIZERS`)
+
+- Contexte : P3.1 (DNS). Les shards sont routés par paire d'IP ; la réponse à une requête envoyée à une
+  adresse de groupe (NBNS en broadcast, LLMNR, mDNS) vient d'un autre hôte, donc souvent d'un autre shard,
+  parfois de plusieurs hôtes. Aucun shard ne peut apparier seul sans que le résultat dépende du nombre de
+  shards. D'autres analyseurs auront le même besoin (tables dérivées, index de recherche).
+- Décision :
+  - registre `netsift_store::finalize::SESSION_FINALIZERS` de
+    `Finalizer { id, version, after, fills, reads, run }`,
+    **dans l'ordre d'exécution** : une étape figure après celles qu'elle cite dans `after` (vérifié par
+    un test) ; entre étapes indépendantes, on ajoute à la fin. L'ordre n'est jamais alphabétique ;
+  - le writer exécute les étapes une fois le dernier enregistrement écrit, sur sa connexion, chacune dans
+    sa transaction avec la mise à jour de son marqueur `meta.finalizers` (`id:version` séparés par des
+    virgules) ; une étape est idempotente et ne dépend pas de l'ordre d'arrivée des lignes ;
+  - `run_finalizers(conn)` (publique, idempotente) n'exécute que les étapes absentes du marqueur ; elle
+    sert à l'ouverture d'une session dont le marqueur est incomplet : import interrompu (arrêt brutal,
+    `STOP_LIMIT` dépassé, session passée `incomplete` par `recover_interrupted`), étape en échec, ou
+    nouvelle `version` d'une étape livrée par une mise à jour ;
+  - ouverture (ADR-013) : `write_needed` signale aussi un marqueur incomplet, si bien que le chemin rapide
+    en lecture seule passe par `upgrade()`, qui appelle `run_finalizers` après les migrations, sur la même
+    connexion en écriture ; une étape en échec n'y est pas une erreur de mise à niveau (la session reste
+    lisible, l'étape est retentée à l'ouverture suivante). Un serveur `read_only` n'écrit jamais : les
+    étapes restent en attente et la session s'ouvre sans erreur, alors qu'une migration en attente y
+    donne `upgrade-needed` ;
+  - une étape remplit des tables (`fills`) à partir d'autres (`reads`) : sur une session mise à niveau
+    après son import, les tables remplies sortent de `meta.schema.tables_added_after_import`, sauf si
+    une table lue y figure encore (son analyseur n'a pas tourné : il n'y a rien à dériver) ;
+  - une étape en échec **ne fait pas échouer l'import** : elle est annulée (rollback), signalée dans
+    `WriterStats::finalize` et dans les journaux, son marqueur reste absent et l'ouverture suivante la
+    retente ; les étapes qui la citent dans `after` sont reportées. Les données brutes de l'analyseur
+    restent intactes : marquer toute la session `failed` (et la rendre illisible) pour une table dérivée
+    serait disproportionné ;
+  - DNS : l'analyseur n'apparie jamais dans un shard une requête envoyée à un groupe ; il l'émet
+    `pending` (rcode `timeout` si une réponse est attendue, `NULL` sinon) et émet ses réponses seules.
+    L'étape `dns` les apparie (réponse la plus ancienne dans la fenêtre `meta.dns.pair_window_ns`, lots de
+    10 000 requêtes), construit `dns_pairs`, reconstruit `dns_fts` et complète `hosts.names` pour les hôtes
+    déjà vus (sans évincer les noms d'autres sources).
+- Conséquences :
+  - coût : SQL ensembliste sur les tables de l'analyseur (DNS : linéaire en transactions, plus une
+    recherche indexée par requête de groupe) ; aucune progression n'est publiée pendant ces étapes,
+    l'import reste dans sa phase `finishing` jusqu'à leur fin (une phase dédiée dans `Progress` changerait
+    le contrat des événements d'import : non fait) ;
+  - tant que le marqueur est incomplet, les vues de l'analyseur peuvent montrer des requêtes de groupe
+    non appariées ; les tests d'acceptation comparent 1, 3 et 7 shards, fichier unique et chunks.

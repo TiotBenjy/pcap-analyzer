@@ -68,6 +68,9 @@ uniquement derrière la feature `demo` (`netsift demo-session`, jamais dans les 
 - N workers de flux : défragmentation, réassemblage TCP, appel des analyseurs.
 - 1 thread writer SQLite : reçoit des `Record` par canal borné, insère par lots
   (transaction toutes les ~50 000 lignes ou 250 ms), met à jour la progression.
+  Après le dernier enregistrement, il exécute les étapes de fin d'import des analyseurs
+  (`SESSION_FINALIZERS` : appariements entre shards, tables dérivées, index FTS), marquées dans `meta`
+  et rejouées à l'ouverture si elles manquent (ADR-014).
 - Annulation : `CancellationToken` partagé ; progression : octets lus / octets totaux de tous les chunks.
 - Le temps « courant » est celui des paquets, jamais l'horloge murale (timeouts de flux, expiration).
 

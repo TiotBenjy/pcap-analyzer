@@ -1,0 +1,23 @@
+---
+source: crates/netsift-store/src/dns/tests.rs
+expression: dump(session.conn())
+---
+msg 0 nbns 192.168.1.10 -> 192.168.1.255 responder=Some("192.168.1.20") WPAD rcode=Some("NOERROR") latency=Some(3000000) [{"n":"WPAD","t":"NB","ttl":60,"v":"192.168.1.20"}] q=1 r=1 pending=0 pair=Some(5)
+msg 4000000 nbns 192.168.1.10 -> 192.168.1.30 responder=None WPAD rcode=Some("NOERROR") latency=None [{"n":"WPAD","t":"NB","ttl":60,"v":"192.168.1.30"}] q=0 r=1 pending=0 pair=Some(6)
+msg 10000000 llmnr 192.168.1.10 -> 224.0.0.252 responder=None printer rcode=Some("timeout") latency=None [] q=1 r=0 pending=0 pair=Some(4)
+msg 20000000 dns 192.168.1.10 -> 192.168.1.1 responder=None www.example.test rcode=Some("NOERROR") latency=Some(2000000) [{"n":"www.example.test","t":"A","ttl":60,"v":"203.0.113.80"}] q=1 r=1 pending=0 pair=Some(1)
+msg 21000000 dns 192.168.1.10 -> 192.168.1.1 responder=None www.example.test rcode=Some("NOERROR") latency=Some(4000000) [] q=1 r=1 pending=0 pair=Some(1)
+msg 22000000 dns 192.168.1.10 -> 8.8.8.8 responder=None secure.example.test rcode=Some("NOERROR") latency=Some(2000000) [{"n":"secure.example.test","t":"CNAME","ttl":60,"v":"edge.cdn.example.net"},{"n":"edge.cdn.example.net","t":"A","ttl":60,"v":"198.51.100.43"}] q=1 r=1 pending=0 pair=Some(2)
+msg 23000000 dns 192.168.1.10 -> 192.168.1.1 responder=None missing.example.test rcode=Some("NXDOMAIN") latency=Some(2000000) [] q=1 r=1 pending=0 pair=Some(1)
+msg 24000000 dns 192.168.1.11 -> 192.168.1.1 responder=None lost.example.test rcode=Some("timeout") latency=None [] q=1 r=0 pending=0 pair=Some(3)
+pair 1 dns 192.168.1.10 -> 192.168.1.1 messages=3 errors=1 names=2 top=["www.example.test","missing.example.test"]
+pair 2 dns 192.168.1.10 -> 8.8.8.8 messages=1 errors=0 names=1 top=["secure.example.test"]
+pair 3 dns 192.168.1.11 -> 192.168.1.1 messages=1 errors=1 names=1 top=["lost.example.test"]
+pair 4 llmnr 192.168.1.10 -> 224.0.0.252 messages=1 errors=1 names=1 top=["printer"]
+pair 5 nbns 192.168.1.10 -> 192.168.1.255 messages=1 errors=0 names=1 top=["WPAD"]
+pair 6 nbns 192.168.1.10 -> 192.168.1.30 messages=1 errors=0 names=1 top=["WPAD"]
+host 192.168.1.1 []
+host 192.168.1.10 []
+host 192.168.1.20 ["WPAD"]
+host 203.0.113.80 ["www.example.test"]
+host 8.8.8.8 []

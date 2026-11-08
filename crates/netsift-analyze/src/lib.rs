@@ -30,6 +30,7 @@ pub mod analyzer;
 pub mod classify;
 pub mod connections;
 pub mod core;
+pub mod dns;
 pub mod http;
 pub mod ports;
 pub mod record;

@@ -46,6 +46,8 @@ pub struct WriterStats {
     pub rejected: BTreeMap<&'static str, u64>,
     /// Committed transactions.
     pub batches: u64,
+    /// End-of-import steps run after the last record (ADR-014).
+    pub finalize: crate::finalize::FinalizeReport,
 }
 
 impl WriterStats {
@@ -232,6 +234,14 @@ fn run(conn: Connection, rx: &Receiver<Msg>, config: WriterConfig) -> Result<Wri
         let _ = conn.execute_batch("ROLLBACK");
     }
     result?;
+    // A failed end-of-import step does not fail the import (ADR-014): it is reported in the
+    // statistics, its marker stays absent and the next opening of the session runs it again.
+    batch.stats.finalize = crate::finalize::run_finalizers(&conn).unwrap_or_else(|e| {
+        crate::finalize::FinalizeReport {
+            failed: vec![("finalizers", e.to_string())],
+            ..crate::finalize::FinalizeReport::default()
+        }
+    });
     // Planner statistics for the read side, then fold the WAL back into the main file
     // (best effort: concurrent readers may prevent a full checkpoint).
     conn.execute_batch("PRAGMA optimize")?;

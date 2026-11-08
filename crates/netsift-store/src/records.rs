@@ -60,6 +60,8 @@ pub enum StoreRecord {
     Conversation(ConversationRow),
     /// Additive upsert of the traffic of a host (`connections`).
     HostTraffic(HostTrafficRow),
+    /// New HTTP transaction with its headers (`http_*`), boxed: much larger than the others.
+    Http(Box<crate::http::HttpRow>),
     /// Commutative merging upsert of an open port (`ports`).
     OpenPort(OpenPortRow),
     /// One TLS session with its hellos and certificates (`tls_*` tables).
@@ -78,6 +80,7 @@ impl StoreRecord {
             Self::Flow(_) => "flows",
             Self::Conversation(_) => "conversations",
             Self::HostTraffic(_) => "host_traffic",
+            Self::Http(_) => "http_transactions",
             Self::OpenPort(_) => "open_ports",
             Self::Tls(_) => "tls_sessions",
         }
@@ -94,6 +97,7 @@ impl StoreRecord {
             Self::Flow(r) => r.insert(conn),
             Self::Conversation(r) => r.insert(conn),
             Self::HostTraffic(r) => r.insert(conn),
+            Self::Http(r) => r.insert(conn),
             Self::OpenPort(r) => r.insert(conn),
             Self::Tls(r) => r.insert(conn),
         }

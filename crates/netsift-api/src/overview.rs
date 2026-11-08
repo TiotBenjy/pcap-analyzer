@@ -201,6 +201,8 @@ struct TrafficQuery {
 const MODULES: &[(&str, &str)] = &[
     ("connections", "conversations"),
     ("hosts", "hosts"),
+    ("http", "http_transactions"),
+    ("httpHeaders", "http_headers"),
     ("openPorts", "open_ports"),
     ("tls", "tls_sessions"),
 ];

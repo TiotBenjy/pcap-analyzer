@@ -2603,6 +2603,10 @@ dependencies = [
 name = "netsift-analyze"
 version = "0.1.0"
 dependencies = [
+ "brotli",
+ "brotli-decompressor",
+ "flate2",
+ "httparse",
  "insta",
  "md-5",
  "netsift-dissect",

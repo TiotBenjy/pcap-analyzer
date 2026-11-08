@@ -99,9 +99,9 @@ export function suiteRowLabel(s: { suite: number | null; name: string | null }, 
 /**
  * Horizontal bars of the top suites: weak ones get an amber dot before their label (cut in the
  * middle, full name in the tooltip), the count is written at the end of each bar (no value axis,
- * so that narrow cards keep a useful plot area). `labelColor`: theme text color.
+ * so that narrow cards keep a useful plot area). Label colors come from the chart theme.
  */
-export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat, labelColor: string): EChartsCoreOption {
+export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat): EChartsCoreOption {
   const total = stats.suites.reduce((n, s) => n + s.count, 0);
   // Category axes draw from the bottom: reverse so that the most frequent is on top.
   const rows = [...stats.suites].reverse();
@@ -141,9 +141,6 @@ export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat, labelCol
         label: {
           show: true,
           position: 'right',
-          color: labelColor,
-          // zrender ignores `textBorderWidth: 0`: a transparent border keeps the text plain.
-          textBorderColor: 'transparent',
           formatter: (p: { value: number }) => fmt.count(p.value),
         },
         data: rows.map((s) => ({

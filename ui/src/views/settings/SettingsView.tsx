@@ -78,7 +78,7 @@ function AboutCard() {
             the buttons do not fit the value column of a phone. */}
         <dt className="col-span-2 self-start text-muted sm:col-span-1">{t('views.settings.geoip.label')}</dt>
         <dd className="col-span-2 min-w-0 sm:col-span-1">
-          <GeoipSection info={info.data} />
+          <GeoipSection info={info.data} infoError={info.isError} />
         </dd>
       </dl>
     </Card>

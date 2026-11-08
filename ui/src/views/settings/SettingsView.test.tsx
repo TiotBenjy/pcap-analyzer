@@ -13,11 +13,13 @@ const MISSING: GeoipInfo = { status: 'missing', source: null, built_at_us: null,
 let geoip: GeoipInfo | undefined = MISSING;
 let readOnly = true;
 let canBrowse = false;
+let infoError = false;
 
 vi.mock('../../api/queries', () => ({
   useHealth: () => ({ isPending: false, isError: false, data: { version: '0.1.0' } }),
   useServerInfo: () => ({
     data: geoip === undefined ? undefined : { version: '0.1.0', read_only: readOnly, can_browse: canBrowse, geoip },
+    isError: infoError,
   }),
 }));
 
@@ -56,6 +58,7 @@ describe('SettingsView', () => {
     geoip = MISSING;
     readOnly = true;
     canBrowse = false;
+    infoError = false;
     setNativePicker(undefined);
     vi.clearAllMocks();
     await i18n.changeLanguage('en');
@@ -122,11 +125,17 @@ describe('SettingsView', () => {
     expect(status).toHaveTextContent('Unreadable database, countries unknown');
   });
 
-  it('shows no status nor update buttons before the server info arrives', () => {
+  it('says it is checking before the server info arrives, and when it fails', () => {
     geoip = undefined;
-    renderView();
-    expect(screen.queryByTestId('geoip-status')).toBeNull();
+    const { unmount } = renderView();
+    expect(screen.getByTestId('geoip-status')).toHaveTextContent(/^Checking$/);
     expect(screen.queryByRole('button', { name: 'Download latest version' })).toBeNull();
+    expect(screen.getByTestId('geoip-attribution')).toHaveTextContent('DB-IP');
+    unmount();
+
+    infoError = true;
+    renderView();
+    expect(screen.getByRole('alert')).toHaveTextContent('GeoIP status unavailable');
     expect(screen.getByTestId('geoip-attribution')).toHaveTextContent('DB-IP');
   });
 
@@ -156,8 +165,12 @@ describe('SettingsView', () => {
     await user.click(screen.getByRole('button', { name: 'Download latest version' }));
     expect(api.downloadGeoip).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(screen.getByTestId('geoip-progress')).toHaveTextContent(/^Downloading, 1\.0\sMiB of 4\.0\sMiB$/);
+      expect(screen.getByTestId('geoip-progress-bytes')).toHaveTextContent(/^1\.0\sMiB of 4\.0\sMiB$/);
     });
+    // Screen readers hear the phase only, not every byte count.
+    const live = screen.getByRole('status');
+    expect(live).toHaveTextContent(/^Downloading$/);
+    expect(live).not.toContainElement(screen.getByTestId('geoip-progress-bytes'));
     // One update at a time.
     expect(screen.getByRole('button', { name: 'Download latest version' })).toBeDisabled();
 
@@ -229,7 +242,43 @@ describe('SettingsView', () => {
     renderView();
     const button = screen.getByRole('button', { name: 'Import a file' });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('title', 'No folder is available to choose a file from.');
+    // The reason is visible text, not only a tooltip.
+    expect(screen.getByTestId('geoip-update')).toHaveTextContent('No folder is available to choose a file from.');
     expect(screen.getByRole('button', { name: 'Download latest version' })).toBeEnabled();
+  });
+
+  it('reaches every allowed root and reports browse errors in web mode', async () => {
+    readOnly = false;
+    canBrowse = true;
+    const listing = (path: string) => ({
+      path,
+      parent: null,
+      roots: ['/captures', '/more'],
+      entries: [{ name: path === '/more' ? 'other.mmdb' : 'country.mmdb', is_dir: false, size: 2048 }],
+    });
+    api.browse.mockRejectedValueOnce(new ApiError(0, 'network', 'down'));
+    const user = setupUser();
+    renderView();
+    await user.click(screen.getByRole('button', { name: 'Import a file' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import a GeoIP database' });
+    // First listing failed: retry offered.
+    api.browse.mockImplementation((path?: string) => Promise.resolve(listing(path ?? '/captures')));
+    await user.click(await screen.findByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('button', { name: /country\.mmdb/ })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Allowed roots' }), '/more');
+    expect(await screen.findByRole('button', { name: /other\.mmdb/ })).toBeInTheDocument();
+    expect(api.browse).toHaveBeenLastCalledWith('/more', expect.anything());
+
+    // A later folder fails: the previous listing stays, the error is said.
+    api.browse.mockRejectedValueOnce(new ApiError(0, 'network', 'down'));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Allowed roots' }), '/captures');
+    expect(await screen.findByRole('alert')).toHaveTextContent('The folder could not be listed');
+    expect(dialog).toHaveTextContent('other.mmdb');
+    // Still usable: the file of the listing on screen can be installed.
+    api.importGeoip.mockResolvedValue(AVAILABLE);
+    await user.click(screen.getByRole('button', { name: /other\.mmdb/ }));
+    await user.click(screen.getByRole('button', { name: 'Install' }));
+    expect(api.importGeoip).toHaveBeenCalledWith('/more/other.mmdb');
   });
 });

@@ -516,6 +516,8 @@ export const en = {
     sessionTooNew: 'This session was created by a newer version of NetSift. Update the application to open it.',
     sessionUpgradeFailed:
       'This session could not be upgraded to this version. Check that the data folder is writable, or import the capture again.',
+    sessionUpgradeNeeded: 'This session must be upgraded to this version, which a read-only server cannot do.',
+    sessionBusy: 'This session is being upgraded. Try again in a moment.',
     route: {
       title: 'This view could not be displayed',
       text: 'An unexpected error stopped the view. Reload the application; if it happens again, copy the details to report it.',

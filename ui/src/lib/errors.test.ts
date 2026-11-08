@@ -53,6 +53,12 @@ describe('describeError', () => {
         'This session could not be upgraded to this version. Check that the data folder is writable, or import the capture again.',
       detail: null,
     });
+    expect(describeError(t, new ApiError(409, urn('session-upgrade-needed'), 'x')).message).toBe(
+      'This session must be upgraded to this version, which a read-only server cannot do.',
+    );
+    expect(describeError(t, new ApiError(503, urn('session-busy'), 'x')).message).toBe(
+      'This session is being upgraded. Try again in a moment.',
+    );
     expect(describeError(t, new ApiError(500, urn('internal'), 'Internal error')).message).toBe('Something went wrong');
   });
 });

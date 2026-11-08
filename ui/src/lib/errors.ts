@@ -15,16 +15,20 @@ export const PROBLEM = {
   tooManyImports: 'urn:netsift:problem:too-many-imports',
   sessionTooNew: 'urn:netsift:problem:session-too-new',
   sessionUpgradeFailed: 'urn:netsift:problem:session-upgrade-failed',
+  sessionUpgradeNeeded: 'urn:netsift:problem:session-upgrade-needed',
+  sessionBusy: 'urn:netsift:problem:session-busy',
 } as const;
 
 /**
- * Message of a session that this version cannot open (created by a newer version, or upgrade
- * failed), `null` for any other error. Views with their own error text use it to tell these apart.
+ * Message of a session that this version cannot open as is (created by a newer version, upgrade
+ * failed, needed on a read-only server, or running elsewhere), `null` for any other error. Views with their own error text use it to tell these apart.
  */
 export function sessionVersionMessage(t: TFunction, error: unknown): string | null {
   if (!(error instanceof ApiError)) return null;
   if (error.kind === PROBLEM.sessionTooNew) return t('errors.sessionTooNew');
   if (error.kind === PROBLEM.sessionUpgradeFailed) return t('errors.sessionUpgradeFailed');
+  if (error.kind === PROBLEM.sessionUpgradeNeeded) return t('errors.sessionUpgradeNeeded');
+  if (error.kind === PROBLEM.sessionBusy) return t('errors.sessionBusy');
   return null;
 }
 

@@ -1,19 +1,19 @@
 ---
 source: crates/netsift-store/src/servers/tests.rs
-assertion_line: 179
+assertion_line: 197
 expression: render(&entries)
 ---
-ntp 203.0.113.123 ntp_response count=3 clients=Some(2) 100..200 example=Some("stratum 3, 192.0.2.2") names=[]
-smb 192.168.1.5 browser_dc count=3 clients=None 800..900 example=Some("DC") names=["dc.corp.example"]
 dhcp 192.168.1.1 dhcp_offer count=2 clients=Some(1) 20..50 example=Some("192.168.1.31") names=["router.lan"]
-dns 192.168.1.1 dns_response count=2 clients=Some(2) 405..415 example=None names=["router.lan"]
-kerberos 192.168.1.5 kdc_tgs_rep count=2 clients=Some(1) 320..330 example=Some("CORP.EXAMPLE") names=["dc.corp.example"]
-ldap 192.168.1.5 open_port count=2 clients=Some(2) 500..510 example=Some("389/tcp") names=["dc.corp.example"]
-smb 192.168.1.20 browser_server count=2 clients=None 800..900 example=Some("FILES") names=[]
-smb 192.168.1.20 smb_session count=2 clients=Some(2) 600..750 example=Some("SMB 3.1.1") names=[]
 dhcp 192.168.1.1 dhcp_ack count=1 clients=Some(1) 40..40 example=Some("192.168.1.30") names=["router.lan"]
+dns 192.168.1.1 dns_response count=2 clients=Some(2) 405..415 example=None names=["router.lan"]
 http 203.0.113.80 http_response count=1 clients=Some(1) 955..955 example=None names=[]
+kerberos 192.168.1.5 kdc_tgs_rep count=2 clients=Some(1) 320..330 example=Some("CORP.EXAMPLE") names=["dc.corp.example"]
 kerberos 192.168.1.5 dns_srv count=1 clients=None 415..415 example=Some("_kerberos._udp.corp.example") names=["dc.corp.example"]
 kerberos 192.168.1.5 kdc_as_rep count=1 clients=Some(1) 310..310 example=Some("CORP.EXAMPLE") names=["dc.corp.example"]
 kerberos 192.168.1.5 kdc_error count=1 clients=Some(1) 300..300 example=Some("CORP.EXAMPLE") names=["dc.corp.example"]
+ldap 192.168.1.5 open_port count=2 clients=Some(2) 500..510 example=Some("389/tcp") names=["dc.corp.example"]
 ldap 192.168.1.5 dns_srv count=1 clients=None 405..405 example=Some("_ldap._tcp.dc._msdcs.corp.example") names=["dc.corp.example"]
+ntp 203.0.113.123 ntp_response count=3 clients=Some(2) 100..200 example=Some("stratum 3, 192.0.2.2") names=[]
+smb 192.168.1.20 browser_server count=2 clients=None 800..900 example=Some("FILES") names=[]
+smb 192.168.1.20 smb_session count=2 clients=Some(2) 600..750 example=Some("SMB 3.1.1") names=[]
+smb 192.168.1.5 browser_dc count=3 clients=None 800..900 example=Some("DC") names=["dc.corp.example"]

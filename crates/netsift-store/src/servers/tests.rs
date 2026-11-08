@@ -148,6 +148,25 @@ fn insert(conn: &Connection, rows: &[ServerRow]) {
     }
 }
 
+/// Every piece of evidence of up to 1000 servers per role.
+fn all(conn: &Connection, role: Option<&str>) -> Vec<EvidenceEntry> {
+    let q = EvidenceQuery {
+        role,
+        categories: None,
+        limit: 1000,
+    };
+    evidence(conn, &q).unwrap().entries
+}
+
+fn rows(conn: &Connection, sql: &str) -> Vec<String> {
+    conn.prepare(sql)
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap()
+}
+
 fn render(entries: &[EvidenceEntry]) -> String {
     let mut out = String::new();
     for e in entries {
@@ -174,11 +193,10 @@ fn evidence_of_every_role() {
     let conn = db();
     conn.execute_batch(OTHERS).unwrap();
     insert(&conn, &server_rows());
-    let (entries, truncated) = evidence(&conn, None).unwrap();
-    assert!(!truncated);
+    let entries = all(&conn, None);
     insta::assert_snapshot!(render(&entries));
 
-    let (dhcp, _) = evidence(&conn, Some("dhcp")).unwrap();
+    let dhcp = all(&conn, Some("dhcp"));
     assert!(dhcp.iter().all(|e| e.role == "dhcp"));
     // The relayed OFFER is credited to the server it names (option 54), not to the relay.
     assert!(dhcp.iter().all(|e| e.ip == IpAddr::V4(v4(192, 168, 1, 1))));
@@ -192,6 +210,120 @@ fn evidence_of_every_role() {
         .query_row("SELECT count(*) FROM server_roles", [], |r| r.get(0))
         .unwrap();
     assert_eq!(roles, 8);
+    // The light view of the Overview counter agrees with the evidence view.
+    assert_eq!(
+        rows(
+            &conn,
+            "SELECT role || ' ' || ip FROM server_roles ORDER BY 1"
+        ),
+        rows(
+            &conn,
+            "SELECT DISTINCT role || ' ' || ip FROM server_evidence ORDER BY 1"
+        )
+    );
+}
+
+#[test]
+fn many_servers_of_one_role_never_hide_another_role() {
+    let conn = db();
+    // An HTTP scan: 21 000 distinct responders (more than any global cut), and one DHCP server.
+    conn.execute_batch(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 21000)
+         INSERT INTO http_transactions (flow_id, seq, client_ip, client_port, server_ip,
+             server_port, ts, end_ts, method_group, status_key, status_class, resp_ts)
+         SELECT i, 0, '10.0.0.1', 40000, '172.16.' || (i / 256) || '.' || (i % 256), 80,
+                i, i, 'GET', 200, '2xx', i FROM n;",
+    )
+    .unwrap();
+    let mut ack = dhcp(5, 2, "ack", v4(192, 168, 1, 1), 1);
+    ack.yiaddr = Some(v4(192, 168, 1, 30));
+    ServerRow::Dhcp(Box::new(ack)).insert(&conn).unwrap();
+    let q = EvidenceQuery {
+        role: None,
+        categories: None,
+        limit: 50,
+    };
+    let got = evidence(&conn, &q).unwrap();
+    assert_eq!(
+        got.totals,
+        vec![("dhcp".to_owned(), 1), ("http".to_owned(), 21_000)]
+    );
+    assert_eq!(got.entries.iter().filter(|e| e.role == "http").count(), 50);
+    assert!(got.entries.iter().any(|e| e.role == "dhcp"));
+}
+
+#[test]
+fn the_category_filter_applies_before_the_limit() {
+    let conn = db();
+    conn.execute_batch(
+        "INSERT INTO hosts (ip, category, first_ts, last_ts) VALUES
+             ('198.51.100.1', 'public', 0, 1), ('198.51.100.2', 'public', 0, 1),
+             ('192.168.1.80', 'private', 0, 1);
+         INSERT INTO http_transactions (flow_id, seq, client_ip, client_port, server_ip,
+             server_port, ts, end_ts, method_group, status_key, status_class, resp_ts) VALUES
+             (1, 0, '10.0.0.1', 1, '198.51.100.1', 80, 1, 1, 'GET', 200, '2xx', 1),
+             (1, 1, '10.0.0.1', 1, '198.51.100.1', 80, 2, 2, 'GET', 200, '2xx', 2),
+             (2, 0, '10.0.0.1', 1, '198.51.100.2', 80, 3, 3, 'GET', 200, '2xx', 3),
+             (2, 1, '10.0.0.1', 1, '198.51.100.2', 80, 4, 4, 'GET', 200, '2xx', 4),
+             (3, 0, '10.0.0.1', 1, '192.168.1.80', 80, 5, 5, 'GET', 200, '2xx', 5),
+             (4, 0, '10.0.0.1', 1, '203.0.113.9', 80, 6, 6, 'GET', 200, '2xx', 6);",
+    )
+    .unwrap();
+    let private = ["private".to_owned()];
+    let q = EvidenceQuery {
+        role: Some("http"),
+        categories: Some(&private),
+        limit: 1,
+    };
+    let got = evidence(&conn, &q).unwrap();
+    // The weakest server is the only private one; 203.0.113.9 has no host row: kept for the
+    // caller, which decides from the address.
+    assert_eq!(got.totals, vec![("http".to_owned(), 2)]);
+    assert_eq!(got.entries.len(), 1);
+    let ips: Vec<String> = all(&conn, Some("http"))
+        .iter()
+        .map(|e| e.ip.to_string())
+        .collect();
+    assert_eq!(
+        ips,
+        [
+            "198.51.100.1",
+            "198.51.100.2",
+            "192.168.1.80",
+            "203.0.113.9"
+        ]
+    );
+    assert!(
+        ["192.168.1.80", "203.0.113.9"].contains(&got.entries[0].ip.to_string().as_str()),
+        "{:?}",
+        got.entries
+    );
+}
+
+#[test]
+fn a_relayed_reply_seen_on_both_legs_counts_once() {
+    let conn = db();
+    let server = v4(10, 0, 0, 1);
+    let relay = v4(192, 168, 5, 1);
+    // Server -> relay, then relay -> client (sent from giaddr), same transaction.
+    let mut to_relay = dhcp(10, 2, "offer", server, 77);
+    to_relay.giaddr = Some(relay);
+    to_relay.server_id = Some(server);
+    let mut to_client = to_relay.clone();
+    to_client.ts = 11;
+    to_client.src_ip = IpAddr::V4(relay);
+    // Only the relay leg of another transaction: still counted.
+    let mut alone = to_client.clone();
+    alone.xid = 78;
+    for d in [to_relay, to_client, alone] {
+        ServerRow::Dhcp(Box::new(d)).insert(&conn).unwrap();
+    }
+    let dhcp = all(&conn, Some("dhcp"));
+    assert_eq!(dhcp.len(), 1);
+    assert_eq!(
+        (dhcp[0].ip.to_string().as_str(), dhcp[0].count),
+        ("10.0.0.1", 2)
+    );
 }
 
 #[test]
@@ -204,7 +336,7 @@ fn upserts_do_not_depend_on_arrival_order() {
     reversed.reverse();
     insert(&b, &reversed);
     let dump = |conn: &Connection| {
-        let (entries, _) = evidence(conn, None).unwrap();
+        let entries = all(conn, None);
         let ntp: String = conn
             .query_row(
                 "SELECT group_concat(server_ip || client_ip || responses || version || stratum \

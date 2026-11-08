@@ -115,7 +115,9 @@ SELECT CASE o.port WHEN 53 THEN 'dns' WHEN 67 THEN 'dhcp' WHEN 88 THEN 'kerberos
 FROM open_ports o
 WHERE o.port IN (53, 67, 88, 123, 139, 389, 445, 636, 3268, 3269)
 UNION ALL
--- DHCP: OFFER, ACK and NAK sent; the example is the address of the latest one.
+-- DHCP: OFFER, ACK and NAK sent; the example is the address of the latest one. A relayed reply
+-- seen on both legs (server -> relay, then relay -> client, sent from giaddr) counts once: the
+-- relay leg is dropped when the server leg of the same transaction was captured.
 SELECT 'dhcp', d.server_ip, 'dhcp_' || d.msg_type, count(*), count(DISTINCT d.client_mac),
        min(d.ts), max(d.ts),
        (SELECT x.yiaddr FROM dhcp_messages x
@@ -123,6 +125,10 @@ SELECT 'dhcp', d.server_ip, 'dhcp_' || d.msg_type, count(*), count(DISTINCT d.cl
         ORDER BY x.ts DESC, x.yiaddr DESC LIMIT 1)
 FROM dhcp_messages d
 WHERE d.op = 2 AND d.msg_type IN ('offer', 'ack', 'nak')
+  AND NOT (d.src_ip IS d.giaddr AND EXISTS (
+      SELECT 1 FROM dhcp_messages s
+      WHERE s.xid = d.xid AND s.client_mac IS d.client_mac AND s.op = 2
+        AND s.msg_type = d.msg_type AND s.src_ip IS NOT d.giaddr))
 GROUP BY d.server_ip, d.msg_type
 UNION ALL
 -- LDAP and Kerberos located by DNS SRV records (target name learned by a host).
@@ -170,6 +176,42 @@ FROM http_transactions
 WHERE resp_ts IS NOT NULL
 GROUP BY server_ip;
 
--- One row per (role, server): backs the Overview module card.
+-- One row per (role, server): backs the Overview module card, read on every session summary.
+-- Same sources and conditions as server_evidence (a test checks that both agree), without the
+-- aggregates nor the examples: plain distinct scans of the covering indexes.
 CREATE VIEW server_roles (role, ip) AS
-    SELECT DISTINCT role, ip FROM server_evidence;
+WITH srv AS (
+    SELECT owner, lower(substr(v, length(rtrim(v, replace(v, ' ', ''))) + 1)) AS target
+    FROM (SELECT lower(json_extract(a.value, '$.n')) AS owner, json_extract(a.value, '$.v') AS v
+          FROM dns_messages m, json_each(m.answers) a
+          WHERE m.qtype = 'SRV' AND m.has_response = 1 AND json_extract(a.value, '$.t') = 'SRV')
+    WHERE owner LIKE '\_ldap.\_tcp.%' ESCAPE '\' OR owner LIKE '\_gc.\_tcp.%' ESCAPE '\'
+       OR owner LIKE '\_kerberos.\_tcp.%' ESCAPE '\' OR owner LIKE '\_kerberos.\_udp.%' ESCAPE '\'
+),
+named AS (
+    SELECT h.ip, lower(n.value) AS name
+    FROM hosts h, json_each(h.names) n
+    WHERE h.names <> '[]' AND lower(n.value) IN (SELECT target FROM srv)
+)
+SELECT 'dns', coalesce(responder_ip, server_ip) FROM dns_messages
+WHERE proto = 'dns' AND has_response = 1
+UNION
+SELECT CASE port WHEN 53 THEN 'dns' WHEN 67 THEN 'dhcp' WHEN 88 THEN 'kerberos'
+                 WHEN 123 THEN 'ntp' WHEN 139 THEN 'smb' WHEN 445 THEN 'smb' ELSE 'ldap' END, ip
+FROM open_ports WHERE port IN (53, 67, 88, 123, 139, 389, 445, 636, 3268, 3269)
+UNION
+SELECT 'dhcp', server_ip FROM dhcp_messages
+WHERE op = 2 AND msg_type IN ('offer', 'ack', 'nak')
+UNION
+SELECT CASE WHEN s.owner LIKE '\_kerberos.%' ESCAPE '\' THEN 'kerberos' ELSE 'ldap' END, n.ip
+FROM srv s JOIN named n ON n.name = s.target
+UNION
+SELECT 'ntp', server_ip FROM ntp_responses
+UNION
+SELECT 'kerberos', server_ip FROM kerberos_replies
+UNION
+SELECT 'smb', server_ip FROM smb_sessions
+UNION
+SELECT 'smb', src_ip FROM smb_announces WHERE server_type & 26 <> 0
+UNION
+SELECT 'http', server_ip FROM http_transactions WHERE resp_ts IS NOT NULL;

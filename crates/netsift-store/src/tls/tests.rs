@@ -213,7 +213,16 @@ fn stats_and_certificates() {
         }
         put(&conn, s);
     }
-    let st = stats(&conn, 15).unwrap();
+    let st = stats(
+        &conn,
+        StatsLimits {
+            versions: 8,
+            suites: 15,
+            sni: 15,
+        },
+    )
+    .unwrap();
+    assert_eq!((st.other_versions, st.other_suites), (0, 0));
     assert_eq!(st.sessions, 4);
     assert_eq!(st.weak_sessions, 1);
     assert_eq!(st.cert_issue_sessions, 1);
@@ -263,6 +272,44 @@ fn stats_and_certificates() {
         Some("shared.example.test")
     );
     assert!(certificate(&conn, "zz").unwrap().is_none());
+}
+
+#[test]
+fn stats_stay_bounded_with_many_distinct_versions_and_suites() {
+    let conn = db();
+    for i in 0..300u16 {
+        let mut s = session(
+            u64::from(i) + 1,
+            i64::from(i),
+            Some(0x1000 + i),
+            Some(0x2000 + i),
+        );
+        s.cipher_names.clear();
+        s.client_hello = None;
+        s.server_hello = None;
+        put(&conn, s);
+    }
+    // Two frequent ones.
+    for i in 0..5u64 {
+        put(&conn, session(1000 + i, 0, Some(0x0304), Some(0x1301)));
+    }
+    let limits = StatsLimits {
+        versions: 8,
+        suites: 15,
+        sni: 15,
+    };
+    let st = stats(&conn, limits).unwrap();
+    assert_eq!(st.versions.len(), 8);
+    assert_eq!(st.versions[0], (Some(0x0304), 5));
+    assert_eq!(st.other_versions, 305 - 5 - 7);
+    assert_eq!(st.suites.len(), 15);
+    assert_eq!(st.other_suites, 305 - 5 - 14);
+    assert!(st.pairs.len() <= 9 * 16, "{}", st.pairs.len());
+    let total: u64 = st.pairs.iter().map(|p| p.2).sum();
+    assert_eq!(total, 305);
+    assert!(st.pairs.contains(&(Some(0x0304), Some(0x1301), 5)));
+    assert!(st.pairs.iter().any(|p| p.0.is_none() && p.1.is_none()));
+    assert_eq!(st.sni.len(), 15);
 }
 
 #[test]

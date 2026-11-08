@@ -87,12 +87,16 @@ impl Env {
         self.raw(path).await.0
     }
 
-    fn blob(&self, sha256: &str) -> Vec<u8> {
+    fn blob_path(&self, sha256: &str) -> PathBuf {
         let catalog = Catalog::open(&self.data).unwrap();
         let session = catalog
             .open_session(&self.id.parse().unwrap(), OpenMode::ReadOnly)
             .unwrap();
-        std::fs::read(session.blob_path(sha256).unwrap()).unwrap()
+        session.blob_path(sha256).unwrap()
+    }
+
+    fn blob(&self, sha256: &str) -> Vec<u8> {
+        std::fs::read(self.blob_path(sha256)).unwrap()
     }
 }
 
@@ -114,6 +118,7 @@ async fn stats_of_the_showcase() {
     assert_eq!(st["cert_issue_sessions"], 3);
     assert_eq!(st["encrypted_cert_sessions"], 2);
     assert_eq!(st["certificates"], 5);
+    assert_eq!(st["other_versions"], 0);
     assert_eq!(
         st["versions"],
         serde_json::json!([
@@ -314,6 +319,13 @@ async fn certificates_and_downloads() {
     let pem = String::from_utf8(pem).unwrap();
     assert_eq!(pem, to_pem(&der));
     assert!(pem.starts_with("-----BEGIN CERTIFICATE-----\nMII"));
+
+    // A truncated blob is refused, not served.
+    std::fs::write(env.blob_path(sha), &der[..10]).unwrap();
+    assert_eq!(
+        env.status(&format!("/tls/certificates/{sha}/der")).await,
+        StatusCode::CONFLICT
+    );
 
     for bad in [
         "/tls/certificates/zz/der".to_owned(),

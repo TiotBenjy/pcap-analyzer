@@ -42,6 +42,9 @@ use crate::{ApiError, AppState, blocking};
 pub(crate) const TOP_SUITES: usize = 15;
 /// Server names listed by the statistics.
 const TOP_SNI: u32 = 15;
+/// Versions listed by the statistics (others summed): real versions are few, but the field is
+/// a free 16-bit value in hostile traffic.
+const TOP_VERSIONS: u32 = 8;
 /// Longest accepted search text.
 const MAX_QUERY_LEN: usize = 256;
 
@@ -60,7 +63,8 @@ pub(crate) fn routes() -> Router<Arc<AppState>> {
 // DTOs
 // ------------------------------------------------------------------------------------------
 
-/// Sessions of one negotiated version (`null`: no `ServerHello` seen).
+/// Sessions of one negotiated version (`null`: no `ServerHello` seen). Versions beyond the top 8
+/// are summed in [`TlsStats::other_versions`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct TlsVersionCount {
@@ -80,7 +84,8 @@ pub struct TlsSuiteCount {
     pub count: u64,
 }
 
-/// One cell of the version x suite matrix (`suite` `null`: the other suites).
+/// One cell of the version x suite matrix (`version` `null`: the versions outside the top 8;
+/// `suite` `null`: the suites outside the top 15).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct TlsMatrixCell {
@@ -110,11 +115,13 @@ pub struct TlsStats {
     pub encrypted_cert_sessions: u64,
     /// Distinct certificates.
     pub certificates: u64,
-    /// Most frequent first.
+    /// Top 8, most frequent first.
     pub versions: Vec<TlsVersionCount>,
+    /// Sessions of the other versions.
+    pub other_versions: u64,
     /// Top 15 negotiated suites, most frequent first, then the others summed (`suite` `null`).
     pub suites: Vec<TlsSuiteCount>,
-    /// Version x suite counts over the suites of `suites` (non-zero cells only).
+    /// Version x suite counts, folded like `versions` and `suites` (non-zero cells only).
     pub matrix: Vec<TlsMatrixCell>,
     /// Top 15 server names.
     pub sni: Vec<TlsSniCount>,
@@ -406,49 +413,42 @@ fn server_hello(sh: ServerHelloRow, suites: &Suites) -> TlsServerHelloInfo {
 // ------------------------------------------------------------------------------------------
 
 fn build_stats(session: &Session) -> Result<TlsStats, ApiError> {
-    let rows = store::stats(session.conn(), TOP_SNI)?;
-    let top: Vec<u16> = rows
-        .suites
-        .iter()
-        .take(TOP_SUITES)
-        .map(|s| s.suite)
-        .collect();
+    let rows = store::stats(
+        session.conn(),
+        store::StatsLimits {
+            versions: TOP_VERSIONS,
+            suites: u32::try_from(TOP_SUITES).unwrap_or(u32::MAX),
+            sni: TOP_SNI,
+        },
+    )?;
     let mut suites: Vec<TlsSuiteCount> = rows
         .suites
-        .iter()
-        .take(TOP_SUITES)
+        .into_iter()
         .map(|s| TlsSuiteCount {
             suite: Some(s.suite),
-            name: s.name.clone(),
-            weak: s.weak.clone(),
+            name: s.name,
+            weak: s.weak,
             count: s.count,
         })
         .collect();
-    let others: u64 = rows.suites.iter().skip(TOP_SUITES).map(|s| s.count).sum();
-    if others > 0 {
+    if rows.other_suites > 0 {
         suites.push(TlsSuiteCount {
             suite: None,
             name: None,
             weak: None,
-            count: others,
+            count: rows.other_suites,
         });
     }
-    // Pairs of the other suites are folded into one column per version.
-    let mut matrix: Vec<TlsMatrixCell> = Vec::new();
-    for (version, suite, count) in rows.pairs {
-        let suite = top.contains(&suite).then_some(suite);
-        match matrix
-            .iter_mut()
-            .find(|c| c.version == version && c.suite == suite)
-        {
-            Some(cell) => cell.count += count,
-            None => matrix.push(TlsMatrixCell {
-                version,
-                suite,
-                count,
-            }),
-        }
-    }
+    // Already folded and bounded by the store: one cell per row.
+    let mut matrix: Vec<TlsMatrixCell> = rows
+        .pairs
+        .into_iter()
+        .map(|(version, suite, count)| TlsMatrixCell {
+            version,
+            suite,
+            count,
+        })
+        .collect();
     matrix.sort_by_key(|c| (c.version, c.suite));
     Ok(TlsStats {
         sessions: rows.sessions,
@@ -461,6 +461,7 @@ fn build_stats(session: &Session) -> Result<TlsStats, ApiError> {
             .into_iter()
             .map(|(version, count)| TlsVersionCount { version, count })
             .collect(),
+        other_versions: rows.other_versions,
         suites,
         matrix,
         sni: rows
@@ -692,6 +693,13 @@ fn read_der(
             ApiError::Internal
         }
     })?;
+    // A blob cut short (interrupted write, damaged disk) is never served as a certificate.
+    if u64::try_from(bytes.len()).ok() != Some(row.size) {
+        tracing::warn!("a certificate blob does not have its recorded size");
+        return Err(ApiError::Conflict(
+            "the stored certificate file is incomplete".to_owned(),
+        ));
+    }
     Ok((row, bytes))
 }
 

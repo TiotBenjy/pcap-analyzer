@@ -584,7 +584,18 @@ pub struct SuiteCount {
     pub count: u64,
 }
 
-/// Aggregates of the TLS view.
+/// Bounds of the chart aggregates (the result never grows with hostile input).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatsLimits {
+    /// Negotiated versions listed (the absence of version counts as one); the others are summed.
+    pub versions: u32,
+    /// Negotiated suites listed; the others are summed.
+    pub suites: u32,
+    /// Server names listed.
+    pub sni: u32,
+}
+
+/// Aggregates of the TLS view, bounded by [`StatsLimits`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TlsStatsRows {
     pub sessions: u64,
@@ -592,13 +603,19 @@ pub struct TlsStatsRows {
     pub cert_issue_sessions: u64,
     pub encrypted_cert_sessions: u64,
     pub certificates: u64,
-    /// `(negotiated version or NULL, count)`, most frequent first.
+    /// `(negotiated version or NULL without ServerHello, count)`, most frequent first.
     pub versions: Vec<(Option<u16>, u64)>,
-    /// Negotiated suites, most frequent first (sessions without `ServerHello` excluded).
+    /// Sessions of the versions not listed in `versions`.
+    pub other_versions: u64,
+    /// Top negotiated suites, most frequent first (sessions without `ServerHello` excluded).
     pub suites: Vec<SuiteCount>,
-    /// `(version, suite, count)` for every pair (sessions without `ServerHello` excluded).
-    pub pairs: Vec<(Option<u16>, u16, u64)>,
-    /// `(sni, count)`, most frequent first, at most `top` rows.
+    /// Sessions of the suites not listed in `suites`.
+    pub other_suites: u64,
+    /// `(version, suite, count)` of the sessions with a suite, folded: a NULL version stands for
+    /// the versions outside the top, a NULL suite for the suites outside the top. At most
+    /// `(versions + 1) x (suites + 1)` rows.
+    pub pairs: Vec<(Option<u16>, Option<u16>, u64)>,
+    /// `(sni, count)`, most frequent first.
     pub sni: Vec<(String, u64)>,
 }
 
@@ -606,32 +623,35 @@ fn unsigned(v: i64) -> u64 {
     u64::try_from(v).unwrap_or(0)
 }
 
-/// Aggregates for the charts: grouped in SQL (the result is bounded by the distinct values).
-pub fn stats(conn: &Connection, top_sni: u32) -> Result<TlsStatsRows> {
-    let (sessions, weak, issues, encrypted): (i64, i64, i64, i64) = conn.query_row(
-        "SELECT count(*), coalesce(sum(cipher_weak IS NOT NULL), 0), \
-         coalesce(sum(cert_issues != 0), 0), coalesce(sum(cert_status = 'encrypted'), 0) \
-         FROM tls_sessions",
-        [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-    )?;
+/// Aggregates for the charts, grouped and bounded in SQL.
+pub fn stats(conn: &Connection, limits: StatsLimits) -> Result<TlsStatsRows> {
+    let (sessions, weak, issues, encrypted, with_suite): (i64, i64, i64, i64, i64) = conn
+        .query_row(
+            "SELECT count(*), coalesce(sum(cipher_weak IS NOT NULL), 0), \
+             coalesce(sum(cert_issues != 0), 0), coalesce(sum(cert_status = 'encrypted'), 0), \
+             coalesce(sum(cipher_suite IS NOT NULL), 0) FROM tls_sessions",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )?;
     let certificates: i64 =
         conn.query_row("SELECT count(*) FROM tls_certificates", [], |r| r.get(0))?;
 
     let mut stmt = conn.prepare(
         "SELECT version, count(*) AS n FROM tls_sessions GROUP BY version \
-         ORDER BY n DESC, version",
+         ORDER BY n DESC, version LIMIT ?1",
     )?;
-    let versions = stmt
-        .query_map([], |r| Ok((r.get(0)?, unsigned(r.get(1)?))))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let versions: Vec<(Option<u16>, u64)> = stmt
+        .query_map([limits.versions], |r| Ok((r.get(0)?, unsigned(r.get(1)?))))?
+        .collect::<rusqlite::Result<_>>()?;
+    let listed: u64 = versions.iter().map(|(_, n)| n).sum();
 
     let mut stmt = conn.prepare(
         "SELECT cipher_suite, max(cipher_name), max(cipher_weak), count(*) AS n FROM tls_sessions \
-         WHERE cipher_suite IS NOT NULL GROUP BY cipher_suite ORDER BY n DESC, cipher_suite",
+         WHERE cipher_suite IS NOT NULL GROUP BY cipher_suite ORDER BY n DESC, cipher_suite \
+         LIMIT ?1",
     )?;
-    let suites = stmt
-        .query_map([], |r| {
+    let suites: Vec<SuiteCount> = stmt
+        .query_map([limits.suites], |r| {
             Ok(SuiteCount {
                 suite: r.get(0)?,
                 name: r.get(1)?,
@@ -639,14 +659,23 @@ pub fn stats(conn: &Connection, top_sni: u32) -> Result<TlsStatsRows> {
                 count: unsigned(r.get(3)?),
             })
         })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+        .collect::<rusqlite::Result<_>>()?;
+    let listed_suites: u64 = suites.iter().map(|s| s.count).sum();
 
+    // Same tops as above (same ordering), then every session folded into its cell.
     let mut stmt = conn.prepare(
-        "SELECT version, cipher_suite, count(*) FROM tls_sessions \
-         WHERE cipher_suite IS NOT NULL GROUP BY version, cipher_suite",
+        "WITH tv AS (SELECT version FROM tls_sessions WHERE version IS NOT NULL \
+                     GROUP BY version ORDER BY count(*) DESC, version LIMIT ?1), \
+              ts AS (SELECT cipher_suite FROM tls_sessions WHERE cipher_suite IS NOT NULL \
+                     GROUP BY cipher_suite ORDER BY count(*) DESC, cipher_suite LIMIT ?2) \
+         SELECT CASE WHEN version IN (SELECT version FROM tv) THEN version END AS v, \
+                CASE WHEN cipher_suite IN (SELECT cipher_suite FROM ts) THEN cipher_suite END AS c, \
+                count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL GROUP BY v, c",
     )?;
     let pairs = stmt
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, unsigned(r.get(2)?))))?
+        .query_map([limits.versions, limits.suites], |r| {
+            Ok((r.get(0)?, r.get(1)?, unsigned(r.get(2)?)))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     let mut stmt = conn.prepare(
@@ -654,7 +683,7 @@ pub fn stats(conn: &Connection, top_sni: u32) -> Result<TlsStatsRows> {
          GROUP BY sni ORDER BY n DESC, sni LIMIT ?1",
     )?;
     let sni = stmt
-        .query_map([top_sni], |r| Ok((r.get(0)?, unsigned(r.get(1)?))))?
+        .query_map([limits.sni], |r| Ok((r.get(0)?, unsigned(r.get(1)?))))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     Ok(TlsStatsRows {
@@ -663,7 +692,9 @@ pub fn stats(conn: &Connection, top_sni: u32) -> Result<TlsStatsRows> {
         cert_issue_sessions: unsigned(issues),
         encrypted_cert_sessions: unsigned(encrypted),
         certificates: unsigned(certificates),
+        other_versions: unsigned(sessions).saturating_sub(listed),
         versions,
+        other_suites: unsigned(with_suite).saturating_sub(listed_suites),
         suites,
         pairs,
         sni,

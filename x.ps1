@@ -52,6 +52,9 @@ function Run-In {
     "-e","CARGO_TARGET_DIR=/cache/target/$(Slug)",
     "-e","CARGO_HOME=/cache/cargo",
     "-e","SCCACHE_DIR=/cache/sccache",
+    # sccache evince lui-meme ses entrees les plus anciennes au-dela de ce plafond (defaut 10 GiB) ;
+    # 5 GiB suffisent aux dependances du workspace et laissent de la place aux targets.
+    "-e","SCCACHE_CACHE_SIZE=5G",
     "-e","RUSTC_WRAPPER=$scc",
     "-e","npm_config_cache=/cache/npm",
     "-e","PLAYWRIGHT_BROWSERS_PATH=/usr/local/pw-browsers",
@@ -77,7 +80,7 @@ switch ($Cmd) {
   "deny"      { Run-In @() "cargo deny check $r" -Tty }
   "npm"       { Run-In @() "cd ui && npm $r" -Tty }
   "ui"        { Run-In @() "cd ui && npm run $r" -Tty }
-  "check"     { Run-In @() "set -e; bash scripts/check-version.sh >/dev/null; bash scripts/tests/check-version.sh; bash scripts/tests/release.sh; cargo fmt --all --check; cargo clippy --workspace --all-targets --all-features -- -D warnings; cargo nextest run --workspace; if [ -f ui/package.json ]; then cd ui && (npm ci || npm install) && npm run -s lint && npm run -s typecheck && npm run -s test -- --run; fi; echo OK" }
+  "check"     { Run-In @() "set -e; bash scripts/check-version.sh >/dev/null; bash scripts/tests/check-version.sh; bash scripts/tests/release.sh; bash scripts/tests/cache.sh; cargo fmt --all --check; cargo clippy --workspace --all-targets --all-features -- -D warnings; cargo nextest run --workspace; if [ -f ui/package.json ]; then cd ui && (npm ci || npm install) && npm run -s lint && npm run -s typecheck && npm run -s test -- --run; fi; echo OK" }
   "dev" {
     $up = UiPort; $ap = ApiPort
     Write-Host ">> UI  : http://localhost:$up"

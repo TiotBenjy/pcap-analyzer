@@ -1,7 +1,6 @@
-import { act, configure, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../api/client';
 import { ApiError } from '../../api/client';
 import * as overviewApi from '../../api/overview';
@@ -12,6 +11,7 @@ import type { TrafficSeries } from '../../api/types/TrafficSeries';
 import type { Chart } from '../../components/Chart';
 import { renderApp, setViewportWide } from '../../test/renderApp';
 import { session } from '../../test/sessionFixtures';
+import { setupUser } from '../../test/user';
 import { moduleState, MODULE_ITEMS } from './modules';
 import { buildTrafficOption, byteAxis, tooltipHtml, type TrafficFormat, zoomOfEvent } from './trafficChart';
 
@@ -89,13 +89,7 @@ interface SeriesProbe {
 const optionOf = () => (chart.props?.option ?? {}) as { series?: SeriesProbe[]; legend?: unknown };
 const seriesNames = () => (optionOf().series ?? []).map((s) => s.name);
 
-// The first render loads the lazy route and the whole app shell: on a loaded machine it takes
-// seconds, so queries wait longer than the 1 s default.
-describe('Overview view', { timeout: 20_000 }, () => {
-  beforeAll(() => {
-    configure({ asyncUtilTimeout: 5_000 });
-  });
-
+describe('Overview view', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     chart.props = null;
@@ -133,7 +127,7 @@ describe('Overview view', { timeout: 20_000 }, () => {
     expect(optionOf().series?.every((s) => s.stack === 'traffic')).toBe(true);
     expect(overviewApi.getTraffic).toHaveBeenCalledWith(ID, { points: 500 }, expect.anything());
 
-    const user = userEvent.setup();
+    const user = setupUser();
     await user.click(screen.getByRole('button', { name: /Protocols/ }));
     const panel = within(screen.getByRole('group', { name: 'Protocols' }));
     await user.click(panel.getByRole('checkbox', { name: /HTTP/ }));
@@ -155,7 +149,7 @@ describe('Overview view', { timeout: 20_000 }, () => {
     await waitFor(() => {
       expect(optionOf().series?.[0]?.data.map((d) => d[1])).toEqual([100, 0, 300]);
     });
-    const user = userEvent.setup();
+    const user = setupUser();
     await user.click(screen.getByRole('radio', { name: 'Packets' }));
     expect(optionOf().series?.[0]?.data.map((d) => d[1])).toEqual([1, 0, 3]);
 
@@ -181,7 +175,8 @@ describe('Overview view', { timeout: 20_000 }, () => {
     });
     // Same option object: the renderer does not re-apply it while the user drags.
     expect(chart.props?.option).toBe(before);
-    await userEvent.click(reset);
+    const user = setupUser();
+    await user.click(reset);
     expect(chart.dispatchAction).toHaveBeenCalledWith({ type: 'dataZoom', start: 0, end: 100 });
     expect(reset).toBeDisabled();
     expect(chart.props?.option).toBe(before);
@@ -215,7 +210,8 @@ describe('Overview view', { timeout: 20_000 }, () => {
       expect(chart.props?.error).toBe('The traffic series could not be loaded');
     });
     vi.mocked(overviewApi.getOverviewSummary).mockResolvedValue(summary());
-    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    const user = setupUser();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('123,456')).toBeInTheDocument();
   });
 

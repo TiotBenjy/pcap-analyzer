@@ -1,5 +1,4 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../api/client';
 import { ApiError } from '../../api/client';
@@ -8,17 +7,22 @@ import { resetImportTracker } from '../../app/importTracker';
 import { getLastSessionId, rememberSession } from '../../app/session';
 import { renderApp, setViewportWide } from '../../test/renderApp';
 import { page, session } from '../../test/sessionFixtures';
+import { setupUser } from '../../test/user';
 
 vi.mock('../../api/sessions');
 vi.mock('../../api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof client>()),
   apiGet: vi.fn(),
 }));
+// Some navigations end on the Overview: its charts would import ECharts (about 2 s) mid-test.
+vi.mock('../../components/Chart', () => ({ Chart: () => null }));
 
 const m = vi.mocked(api);
+let user: ReturnType<typeof setupUser>;
 
 beforeEach(() => {
   vi.resetAllMocks();
+  user = setupUser();
   vi.mocked(client.apiGet).mockResolvedValue({ version: 'test', read_only: false, can_browse: true, status: 'ok' });
   resetImportTracker();
   setViewportWide(true);
@@ -64,7 +68,7 @@ describe('Captures view', () => {
     m.listSessions.mockRejectedValueOnce(new Error('boom')).mockResolvedValue(page([session()]));
     renderApp('/captures');
     expect(await screen.findByText('Sessions could not be loaded')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByRole('table', { name: 'Sessions' })).toBeInTheDocument();
   });
 
@@ -72,7 +76,7 @@ describe('Captures view', () => {
     m.listSessions.mockResolvedValue(page([session()]));
     m.getSession.mockResolvedValue(session());
     const { router } = renderApp('/captures');
-    await userEvent.click(await screen.findByText('office-uplink'));
+    await user.click(await screen.findByText('office-uplink'));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/sessions/01JC0FFEE0000000000000000A/overview');
     });
@@ -83,12 +87,12 @@ describe('Captures view', () => {
     m.listSessions.mockResolvedValue(page([s]));
     m.renameSession.mockResolvedValue({ ...s, name: 'hq-uplink' });
     const { router } = renderApp('/captures');
-    await userEvent.click(await screen.findByRole('button', { name: 'Rename office-uplink' }));
+    await user.click(await screen.findByRole('button', { name: 'Rename office-uplink' }));
     const dialog = screen.getByRole('dialog', { name: 'Rename session' });
     const input = within(dialog).getByLabelText('Name');
     expect(input).toHaveFocus();
-    await userEvent.clear(input);
-    await userEvent.type(input, 'hq-uplink{Enter}');
+    await user.clear(input);
+    await user.type(input, 'hq-uplink{Enter}');
     expect(m.renameSession).toHaveBeenCalledWith(s.id, 'hq-uplink');
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -106,16 +110,16 @@ describe('Captures view', () => {
     renderApp('/captures');
 
     // Escape cancels, focus starts on Cancel.
-    await userEvent.click(await screen.findByRole('button', { name: 'Delete office-uplink' }));
+    await user.click(await screen.findByRole('button', { name: 'Delete office-uplink' }));
     const dialog = screen.getByRole('dialog', { name: 'Delete session' });
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
     expect(dialog).toHaveTextContent('source capture files are not modified');
-    await userEvent.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(m.deleteSession).not.toHaveBeenCalled();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Delete office-uplink' }));
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
+    await user.click(screen.getByRole('button', { name: 'Delete office-uplink' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
     expect(m.deleteSession).toHaveBeenCalledWith(s.id);
     await waitFor(() => {
       expect(screen.queryByText('office-uplink')).not.toBeInTheDocument();
@@ -130,11 +134,11 @@ describe('Captures view', () => {
     renderApp('/captures');
     const action = await screen.findByRole('button', { name: 'Show the import progress of office-uplink' });
     expect(screen.queryByRole('button', { name: 'Delete office-uplink' })).not.toBeInTheDocument();
-    await userEvent.click(action);
+    await user.click(action);
     const dialog = await screen.findByRole('dialog', { name: 'Import progress' });
     expect(await within(dialog).findByText('Connection lost')).toBeInTheDocument();
-    await userEvent.keyboard('{Escape}');
-    await userEvent.click(screen.getByRole('button', { name: 'Show the import progress of office-uplink' }));
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Show the import progress of office-uplink' }));
     await waitFor(() => {
       expect(m.streamImportEvents).toHaveBeenCalledTimes(2);
     });
@@ -145,8 +149,8 @@ describe('Captures view', () => {
     m.listSessions.mockResolvedValue(page([s]));
     m.renameSession.mockRejectedValue(new ApiError(409, 'urn:netsift:problem:conflict', 'import running'));
     renderApp('/captures');
-    await userEvent.click(await screen.findByRole('button', { name: 'Rename office-uplink' }));
-    await userEvent.type(screen.getByLabelText('Name'), 'x{Enter}');
+    await user.click(await screen.findByRole('button', { name: 'Rename office-uplink' }));
+    await user.type(screen.getByLabelText('Name'), 'x{Enter}');
     const alert = await within(screen.getByRole('dialog')).findByRole('alert');
     expect(alert).toHaveTextContent('Rename failed: Conflict with an operation in progress');
     expect(alert).toHaveTextContent('import running');
@@ -155,13 +159,13 @@ describe('Captures view', () => {
   it('keeps focus inside a dialog with Tab', async () => {
     m.listSessions.mockResolvedValue(page([session()]));
     renderApp('/captures');
-    await userEvent.click(await screen.findByRole('button', { name: 'Delete office-uplink' }));
+    await user.click(await screen.findByRole('button', { name: 'Delete office-uplink' }));
     const dialog = screen.getByRole('dialog');
     for (let i = 0; i < 5; i++) {
-      await userEvent.tab();
+      await user.tab();
       expect(dialog.contains(document.activeElement)).toBe(true);
     }
-    await userEvent.tab({ shift: true });
+    await user.tab({ shift: true });
     expect(dialog.contains(document.activeElement)).toBe(true);
   });
 });

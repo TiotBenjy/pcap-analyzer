@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { availableParallelism } from 'node:os';
 import { defineConfig } from 'vite';
 
 // Dev mode (./x.sh dev): the browser talks to Vite only; Vite proxies /api to the Rust backend
@@ -43,5 +44,13 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
+    // Hang detector, not a speed limit: above Testing Library's asyncUtilTimeout (5 s,
+    // src/test/setup.ts) so that a missing element reports its query. The slowest test takes
+    // about 2 s on an idle machine and up to 4x that with the load average at 100 on 22 cores.
+    testTimeout: 20_000,
+    // Several gates (worktrees, release) often run at once on one machine. Measured on 22 cores,
+    // idle: 4 workers run the suite in about 10 s against 7.5 s with one fork per file (14), and
+    // every extra jsdom fork takes CPU from the other gates.
+    maxWorkers: Math.min(4, Math.max(1, availableParallelism() - 1)),
   },
 });

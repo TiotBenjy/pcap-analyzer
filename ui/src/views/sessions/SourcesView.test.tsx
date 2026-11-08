@@ -127,13 +127,22 @@ describe('anomaly texts', () => {
   });
 });
 
+// The view tests render every chunk as a table row and a timeline segment: a dozen chunks cover the
+// same cases (missing number, time gap) as the 50 above at a fraction of the jsdom cost.
+// 12 chunks: number 5 missing, a 43 s gap after number 8 (chunk ids skip the missing number).
+const VIEW_CHUNKS = chunks(12, [5], 8);
+const VIEW_ANOMALIES = [
+  anomaly('missing_sequence', 4, { first: 5, last: 5 }),
+  anomaly('time_gap', 7, { previous: 6, gap_us: 44_000_000, threshold_us: 5_000_000 }),
+];
+
 describe('Sources view', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(client.apiGet).mockResolvedValue({ version: 'test', read_only: true, can_browse: false, status: 'ok' });
     m.getSession.mockResolvedValue(session());
-    m.listChunks.mockResolvedValue(page(CHUNKS));
-    m.listAnomalies.mockResolvedValue(page(ANOMALIES));
+    m.listChunks.mockResolvedValue(page(VIEW_CHUNKS));
+    m.listAnomalies.mockResolvedValue(page(VIEW_ANOMALIES));
   });
 
   it('shows the timeline with the gap and the missing file, the chunks and the anomalies', async () => {
@@ -141,13 +150,13 @@ describe('Sources view', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Sources' })).toBeInTheDocument();
     expect(await screen.findByText('office-uplink')).toBeInTheDocument();
 
-    const timeline = await screen.findByRole('img', { name: 'Coverage timeline of 49 chunks' });
-    expect(timeline).toHaveAccessibleDescription(/49 chunks from .* Time gaps: 1\. Overlaps: 0\. Missing files: 1\./);
-    expect(within(timeline as unknown as HTMLElement).getAllByTestId('coverage-segment')).toHaveLength(49);
+    const timeline = await screen.findByRole('img', { name: 'Coverage timeline of 11 chunks' });
+    expect(timeline).toHaveAccessibleDescription(/11 chunks from .* Time gaps: 1\. Overlaps: 0\. Missing files: 1\./);
+    expect(within(timeline as unknown as HTMLElement).getAllByTestId('coverage-segment')).toHaveLength(11);
     const gap = within(timeline as unknown as HTMLElement).getByTestId('coverage-gap');
     expect(gap.querySelector('title')).toHaveTextContent('Time gap of 44 s');
     const missing = within(timeline as unknown as HTMLElement).getByTestId('coverage-missing');
-    expect(missing.querySelector('title')).toHaveTextContent('Missing file: #13');
+    expect(missing.querySelector('title')).toHaveTextContent('Missing file: #5');
 
     expect(screen.getByTestId('anomaly-summary')).toHaveTextContent(
       '1 missing file in the sequence, 1 time gap of 44 s',
@@ -155,7 +164,7 @@ describe('Sources view', () => {
 
     const chunkTable = screen.getByRole('table', { name: 'Chunks of the session' });
     expect(timeline).toHaveAttribute('aria-details', chunkTable.parentElement?.parentElement?.id ?? 'missing');
-    expect(within(chunkTable).getAllByRole('row')).toHaveLength(50);
+    expect(within(chunkTable).getAllByRole('row')).toHaveLength(12);
     // Middle truncation keeps the end of the name; the full path is the tooltip.
     const name = within(chunkTable).getByTitle('/captures/office/ring_00001_20261108.pcapng');
     expect(name).toHaveTextContent('ring_00001_20261108.pcapng');
@@ -176,7 +185,7 @@ describe('Sources view', () => {
 
     const anomalyTable = screen.getByRole('table', { name: 'Anomalies' });
     expect(within(anomalyTable).getByText('Missing files in the sequence')).toBeInTheDocument();
-    expect(within(anomalyTable).getByText('Number 13')).toBeInTheDocument();
+    expect(within(anomalyTable).getByText('Number 5')).toBeInTheDocument();
     expect(within(anomalyTable).getByText('Time gap')).toBeInTheDocument();
   });
 

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::analyzer::{Analyzer, AnalyzerId};
 use crate::connections::{ConnectionsAnalyzer, ConnectionsConfig};
 use crate::core::CoreAnalyzer;
+use crate::dns::{DnsAnalyzer, DnsConfig};
 use crate::geo::GeoDb;
 use crate::http::{HttpAnalyzer, HttpConfig};
 use crate::ports::{PortsAnalyzer, PortsConfig};
@@ -39,6 +40,7 @@ pub struct AnalyzerConfig {
     // --- per-analyzer settings: registration point, one field per analyzer, sorted ---
     pub connections: ConnectionsConfig,
     pub core: CoreConfig,
+    pub dns: DnsConfig,
     pub http: HttpConfig,
     pub ports: PortsConfig,
     pub tls: crate::tls::TlsConfig,
@@ -65,6 +67,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (CoreAnalyzer::ID, factory(CoreAnalyzer::boxed)),
         // --- analyzers: one line each, sorted alphabetically by id ---
         (ConnectionsAnalyzer::ID, factory(ConnectionsAnalyzer::boxed)),
+        (DnsAnalyzer::ID, factory(DnsAnalyzer::boxed)),
         (HttpAnalyzer::ID, factory(HttpAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
         (TlsAnalyzer::ID, factory(TlsAnalyzer::boxed)),
@@ -177,6 +180,7 @@ mod tests {
 
     #[test]
     fn filter_and_replace() {
+        // Keep only `core`, then drop it: every other built-in analyzer is filtered out too.
         let registry = Registry::default().filtered(|id| id == CoreAnalyzer::ID);
         assert_eq!(registry.ids(), vec![CoreAnalyzer::ID]);
         let registry = registry.filtered(|id| id != CoreAnalyzer::ID);

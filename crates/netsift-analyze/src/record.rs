@@ -31,6 +31,8 @@ pub enum Record {
     // --- analyzers: registration point, one variant per analyzer, sorted alphabetically ---
     /// `connections`: flows from a client to a server, folded per IP pair (additive).
     Conversation(ConversationDelta),
+    /// A DNS, mDNS, LLMNR or NBNS transaction (`dns` analyzer).
+    Dns(Box<crate::dns::DnsTransaction>),
     /// `connections`: traffic sent and received by one host (additive).
     HostTraffic(HostTrafficDelta),
     /// An HTTP request and its response (`http` analyzer), boxed: much larger than the others.

@@ -36,6 +36,7 @@ pub mod registry;
 pub mod services;
 #[cfg(test)]
 mod testutil;
+pub mod tls;
 
 pub use analyzer::{Analyzer, AnalyzerId, BlobRef, RecordSink};
 pub use classify::AppProto;

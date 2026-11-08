@@ -2,7 +2,8 @@
 //!
 //! Writes, under `<data-dir>/demo-captures/`:
 //! - `chunked/`: about 50 dumpcap chunks (`demo_NNNNN_<time>.pcapng`) of the fixtures demo
-//!   scenario, with one file missing (sequence hole) and a ten-minute pause (time gap);
+//!   scenario plus varied TLS sessions, with one file missing (sequence hole) and a ten-minute
+//!   pause (time gap);
 //! - `single/demo-single.pcap`: one capture file;
 //!
 //! then imports each one as a `ready` session of the data directory.
@@ -13,7 +14,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use netsift_engine::{CancelToken, IngestOptions, ingest};
-use netsift_fixtures::scenarios::{Kind, generate};
+use netsift_fixtures::scenario::Scenario;
+use netsift_fixtures::scenarios::{Kind, generate, tls_showcase_from_port};
 use netsift_fixtures::time::NS_PER_SEC;
 use netsift_fixtures::writer::{Encoding, encode};
 use netsift_fixtures::{Naming, SplitBy, SplitOptions, split_to_dir};
@@ -41,9 +43,25 @@ pub struct DemoArgs {
     pub force: bool,
 }
 
+/// Rounds of the TLS showcase (versions, weak suites, certificates) merged into the chunked
+/// capture, one every `TLS_SHOWCASE_EVERY_SECONDS` from the fifth second.
+const TLS_SHOWCASE_ROUNDS: u16 = 8;
+const TLS_SHOWCASE_EVERY_SECONDS: i64 = 20;
+
+fn add_tls_showcase(packets: &mut Vec<netsift_fixtures::Packet>, start: i64) {
+    for round in 0..TLS_SHOWCASE_ROUNDS {
+        let at = start + (5 + i64::from(round) * TLS_SHOWCASE_EVERY_SECONDS) * NS_PER_SEC;
+        let mut sc = Scenario::starting_at(at).with_seed(u64::from(round) + 100);
+        tls_showcase_from_port(&mut sc, 40_000 + round * 10);
+        packets.extend(sc.into_packets());
+    }
+    packets.sort_by_key(|p| p.ts_ns);
+}
+
 fn write_chunked(dir: &Path) -> Result<usize> {
     let mut packets = generate(Kind::Demo, ROUNDS, 7);
     let start = packets.first().map_or(0, |p| p.ts_ns);
+    add_tls_showcase(&mut packets, start);
     let pause_at = start + PAUSE_AFTER_SECONDS * NS_PER_SEC;
     for p in &mut packets {
         if p.ts_ns >= pause_at {
@@ -169,6 +187,19 @@ mod tests {
             .parse()
             .unwrap();
         assert!(packets > 1000);
+        // Varied TLS sessions for the TLS view: TLS 1.0 to 1.3, weak suites, certificates.
+        let (versions, weak, certs): (i64, i64, i64) = session
+            .conn()
+            .query_row(
+                "SELECT count(DISTINCT version), sum(cipher_weak IS NOT NULL), \
+                 (SELECT count(*) FROM tls_certificates) FROM tls_sessions",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(versions, 3);
+        assert!(weak >= 24, "{weak}");
+        assert!(certs >= 5, "{certs}");
 
         // Populated: refused without --force, replaced with it.
         assert!(run(&args, &mut Vec::new()).is_err());

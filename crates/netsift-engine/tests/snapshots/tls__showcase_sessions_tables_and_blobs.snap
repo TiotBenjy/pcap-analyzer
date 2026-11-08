@@ -1,0 +1,12 @@
+---
+source: crates/netsift-engine/tests/tls.rs
+expression: render(&session)
+---
+40001 | 198.51.100.43:443 | www.example.test | 0304>0304 | TLS_AES_128_GCM_SHA256 | - | ["h2","http/1.1"] | - | t13d0809h2_e84746f5673c_3a1aba1cf808 | complete | alert=- | encrypted | certs=0 | issues=0 | -
+40002 | 203.0.113.80:443 | api.example.test | 0304>0304 | TLS_AES_256_GCM_SHA384 | - | ["h2","http/1.1"] | - | t13d0809h2_e84746f5673c_3a1aba1cf808 | complete | alert=- | encrypted | certs=0 | issues=0 | -
+40003 | 203.0.113.80:443 | shop.example.test | 0303>0303 | TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 | - | ["http/1.1"] | http/1.1 | t12d1207h1_d34a8e72043a_bb157cc35868 | complete | alert=- | present | certs=2 | issues=0 | shop.example.test
+40004 | 198.51.100.43:443 | legacy.example.test | 0303>0303 | TLS_RSA_WITH_AES_128_CBC_SHA | cbc_sha1 | [] | - | t12d030600_5704bdfc91c6_bb157cc35868 | partial | alert=42 | present | certs=1 | issues=5 | legacy.example.test
+40005 | 192.168.1.20:4443 | printer.example.test | 0301>0301 | TLS_RSA_WITH_3DES_EDE_CBC_SHA | 3des | [] | - | t10d030600_4c8807af48f0_bb157cc35868 | complete | alert=- | present | certs=1 | issues=4 | printer.example.test
+40006 | 192.168.1.20:8443 | intranet.example.test | 0303>0303 | TLS_RSA_WITH_RC4_128_SHA | rc4 | ["h2","http/1.1"] | http/1.1 | t12d0207h2_0c4df421b05e_bb157cc35868 | complete | alert=- | present | certs=1 | issues=4 | intranet.example.test
+40007 | 198.51.100.43:443 | blocked.example.test | 0304>0000 | - | - | ["h2","http/1.1"] | - | t13d0809h2_e84746f5673c_3a1aba1cf808 | partial | alert=- | none | certs=0 | issues=0 | -
+40008 | 203.0.113.80:443 | refused.example.test | 0304>0000 | - | - | ["h2","http/1.1"] | - | t13d0809h2_e84746f5673c_3a1aba1cf808 | partial | alert=40 | none | certs=0 | issues=0 | -

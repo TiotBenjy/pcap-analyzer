@@ -238,6 +238,11 @@ Suivis de la vague 3.A :
   extended security (défi dans la réponse NEGOTIATE), dialecte et signature SMB1 non extraits ; pas de
   filtre ni de recherche dans l'en-tête de carte ; P4.1 : cibles de fuzz NetBIOS, SMB et NTLMSSP.
   `count_rows` accepte les vues SQL et le marqueur d'ADR-013 enregistre aussi les vues.
+- Sécurité : alerte Dependabot #13 (GHSA-wrw7-89jp-8q8g, `glib` 0.18.5, unsound `VariantStrIter`) non
+  corrigeable : `glib` vient des liaisons GTK3 0.18 tirées par Tauri/wry/webkit2gtk sous Linux, le correctif
+  exige `glib` 0.20 (liaisons GTK4). À revoir quand Tauri change de pile GTK ; alerte à clore sur GitHub
+  (« risque tolérable »). Les 12 alertes npm sont corrigées par `fix/npm-audit` (vite 7.3.7, echarts 6.1.0,
+  override minimatch 11, à retirer quand eslint l'acceptera).
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).

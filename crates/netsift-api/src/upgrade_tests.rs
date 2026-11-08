@@ -121,6 +121,12 @@ const BEFORE_0400: &str = "DROP INDEX flows_service; DROP TABLE conversations; \
 /// build that predates SMB.
 const BEFORE_0500: &str = "DROP VIEW smb_items; DROP TABLE smb_announces; \
     DROP TABLE smb_sessions; DELETE FROM schema_migrations WHERE version = 500;";
+/// Undoes migration 0800 (servers), views included: the session looks imported by a build that
+/// predates the Servers view.
+const BEFORE_0800: &str = "DROP VIEW server_roles; DROP VIEW server_evidence; \
+    DROP INDEX dns_messages_responder; DROP INDEX http_transactions_server; \
+    DROP TABLE dhcp_messages; DROP TABLE ntp_responses; DROP TABLE kerberos_replies; \
+    DELETE FROM schema_migrations WHERE version = 800;";
 /// Forgets the core migration: the session looks created by a build that lacked it, and the
 /// upgrade fails because its tables already exist.
 const FORGET_CORE: &str = "DELETE FROM schema_migrations WHERE version = 1;";
@@ -193,6 +199,28 @@ async fn an_smb_view_added_on_upgrade_is_not_listed_as_run() {
     assert_eq!(status, StatusCode::OK, "{summary}");
     assert!(!env.outdated(&id), "migrated by the read");
     assert!(!module_ids(&summary).contains(&"smb"), "{summary}");
+}
+
+#[tokio::test]
+async fn servers_added_on_upgrade_are_not_analyzed() {
+    // A session imported before the Servers view: the module is absent (not run) and the view
+    // answers `analyzed: false` without listing the DNS servers its old tables could show.
+    let env = Env::new(false);
+    let id = env.import();
+    env.tamper(&id, BEFORE_0800);
+    assert!(env.outdated(&id));
+
+    let (status, _, summary) = env.get(&format!("/api/v1/sessions/{id}/summary")).await;
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert!(!env.outdated(&id), "migrated by the read");
+    assert!(module_ids(&summary).contains(&"dns"), "{summary}");
+    assert!(!module_ids(&summary).contains(&"servers"), "{summary}");
+    let (status, _, json) = env.get(&format!("/api/v1/sessions/{id}/servers")).await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(json["analyzed"], false);
+    let roles = json["roles"].as_array().unwrap();
+    assert_eq!(roles.len(), 7);
+    assert!(roles.iter().all(|r| r["total"] == 0), "{json}");
 }
 
 #[tokio::test]

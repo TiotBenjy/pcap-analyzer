@@ -20,6 +20,7 @@ pub mod ports;
 pub mod query;
 pub mod records;
 pub mod schema;
+pub mod servers;
 pub mod session;
 pub mod smb;
 mod time;

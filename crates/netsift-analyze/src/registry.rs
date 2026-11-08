@@ -11,6 +11,7 @@ use crate::dns::{DnsAnalyzer, DnsConfig};
 use crate::geo::GeoDb;
 use crate::http::{HttpAnalyzer, HttpConfig};
 use crate::ports::{PortsAnalyzer, PortsConfig};
+use crate::smb::{SmbAnalyzer, SmbConfig};
 use crate::tls::TlsAnalyzer;
 
 /// Settings of the `core` analyzer.
@@ -43,6 +44,7 @@ pub struct AnalyzerConfig {
     pub dns: DnsConfig,
     pub http: HttpConfig,
     pub ports: PortsConfig,
+    pub smb: SmbConfig,
     pub tls: crate::tls::TlsConfig,
     // --- shared resources (read-only, shared by every shard), sorted ---
     /// `blobs/` directory of the session being imported (set by the engine).
@@ -70,6 +72,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (DnsAnalyzer::ID, factory(DnsAnalyzer::boxed)),
         (HttpAnalyzer::ID, factory(HttpAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
+        (SmbAnalyzer::ID, factory(SmbAnalyzer::boxed)),
         (TlsAnalyzer::ID, factory(TlsAnalyzer::boxed)),
     ]
 }

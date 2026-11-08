@@ -17,6 +17,7 @@ mod extract;
 mod fs;
 mod geoip;
 mod guard;
+mod http;
 mod imports;
 mod overview;
 mod ports;
@@ -209,6 +210,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         // Registration point: one `.merge(<module>::routes())` line per feature, sorted.
         .merge(connections::routes())
         .merge(fs::routes())
+        .merge(http::routes())
         .merge(imports::routes())
         .merge(overview::routes())
         .merge(ports::routes())

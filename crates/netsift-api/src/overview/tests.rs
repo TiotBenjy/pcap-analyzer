@@ -185,6 +185,9 @@ async fn mixed_capture_shows_dns_http_and_tls_with_exact_totals() {
     assert_eq!(module("openPorts"), Some(4.into()));
     // Five TLS handshakes (rounds of the TLS scenario).
     assert_eq!(module("tls"), Some(5.into()));
+    // One HTTP transaction (7 header lines) per round of the HTTP scenario.
+    assert_eq!(module("http"), Some(3.into()));
+    assert_eq!(module("httpHeaders"), Some(21.into()));
 }
 
 #[tokio::test]

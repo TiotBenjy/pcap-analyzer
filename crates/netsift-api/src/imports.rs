@@ -1,7 +1,8 @@
 //! Import routes: scan, background import, cancellation and the SSE progress stream.
 //!
 //! An import runs on a dedicated thread around [`netsift_engine::ingest`]. Its state is kept in
-//! an in-memory [`Registry`]: the latest progress, the warnings and the final event, published
+//! an in-memory [`Registry`]: the latest progress, the warnings (continuity anomalies as the
+//! engine finds them, see `Progress::new_anomalies`) and the final event, published
 //! through a `watch` channel that any number of SSE subscribers read (each one at most every
 //! [`PROGRESS_INTERVAL`]). Finished imports stay in the registry (bounded), so a late subscriber
 //! immediately gets the final event; sessions unknown to the registry (previous run, CLI) get
@@ -25,7 +26,7 @@ use netsift_engine::{
     kind_name, plan_input,
 };
 use netsift_store::catalog::MAX_NAME_LEN;
-use netsift_store::{Catalog, SessionId, SessionState as StoreState};
+use netsift_store::{AnomalyRow, Catalog, SessionId, SessionState as StoreState};
 use tokio::sync::{oneshot, watch};
 
 use crate::contract::{
@@ -33,7 +34,7 @@ use crate::contract::{
     ScanGroup, ScanRequest, ScanResponse, ScanSkippedFile,
 };
 use crate::extract::ApiJson;
-use crate::sessions::{FAILED_MESSAGE, Stats, first_anomalies, info, parse_id, session_dir};
+use crate::sessions::{FAILED_MESSAGE, Stats, info, parse_id, session_dir};
 use crate::{ApiError, AppState, blocking, convert, fs};
 
 /// Engine progress interval and minimum time between two `progress` events of a stream.
@@ -42,8 +43,8 @@ pub(crate) const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 const KEEP_ALIVE: Duration = Duration::from_secs(15);
 /// Polling interval of a session imported by another process.
 const STORED_POLL: Duration = Duration::from_secs(1);
-/// Warnings (stored anomalies) sent before the final event.
-const MAX_WARNINGS: u32 = 200;
+/// Warnings (continuity anomalies) published per import.
+const MAX_WARNINGS: usize = 200;
 /// Finished imports kept in memory for late subscribers.
 const MAX_FINISHED: usize = 32;
 /// Anomalies listed per group, and skipped files listed, by a scan.
@@ -82,15 +83,28 @@ pub(crate) struct ImportHandle {
 }
 
 impl ImportHandle {
-    fn publish(&self, progress: ImportProgress) {
-        self.status.send_modify(|s| s.progress = Some(progress));
+    /// Latest progress, plus the anomalies found since the previous callback (at most
+    /// [`MAX_WARNINGS`] over an import; the full list is in the `anomalies` table).
+    fn publish(&self, progress: Option<ImportProgress>, anomalies: &[AnomalyRow]) {
+        self.status.send_modify(|s| {
+            if let Some(p) = progress {
+                s.progress = Some(p);
+            }
+            let room = MAX_WARNINGS.saturating_sub(s.warnings.len());
+            if room > 0 && !anomalies.is_empty() {
+                let warnings = Arc::make_mut(&mut s.warnings);
+                warnings.extend(
+                    anomalies
+                        .iter()
+                        .take(room)
+                        .map(|a| convert::anomaly_preview(a.clone(), None)),
+                );
+            }
+        });
     }
 
-    fn finish(&self, warnings: Vec<AnomalyInfo>, last: ImportEvent) {
-        self.status.send_modify(|s| {
-            s.warnings = Arc::new(warnings);
-            s.last = Some(last);
-        });
+    fn finish(&self, last: ImportEvent) {
+        self.status.send_modify(|s| s.last = Some(last));
     }
 
     fn is_finished(&self) -> bool {
@@ -101,8 +115,6 @@ impl ImportHandle {
 pub(crate) struct Registry {
     imports: Mutex<HashMap<String, Arc<ImportHandle>>>,
     next_order: AtomicU64,
-    /// Held from the start of an import until its session is identified (see `run_import`).
-    creation: Mutex<()>,
     /// Cancellation tokens of the live import threads.
     running: Mutex<HashMap<u64, CancelToken>>,
     /// Number of live import threads.
@@ -118,7 +130,6 @@ impl Registry {
         Self {
             imports: Mutex::new(HashMap::new()),
             next_order: AtomicU64::new(0),
-            creation: Mutex::new(()),
             running: Mutex::new(HashMap::new()),
             active: watch::Sender::new(0),
         }
@@ -447,27 +458,6 @@ async fn spawn_import(state: &Arc<AppState>, job: Job) -> Result<String, ApiErro
 
 type Reply = oneshot::Sender<Result<String, ApiError>>;
 
-/// The session `ingest` has just created: `importing`, same source, created after `since` and
-/// not registered yet. Imports of this process are serialized until their session is
-/// identified (`Registry::creation`), so the newest match is ours.
-fn find_new_session(
-    catalog: &Catalog,
-    root: &PathBuf,
-    since_ns: i64,
-    registry: &Registry,
-) -> Option<SessionId> {
-    let sessions = catalog.list().ok()?;
-    sessions
-        .into_iter()
-        .find(|i| {
-            i.state == StoreState::Importing
-                && i.sources.as_slice() == std::slice::from_ref(root)
-                && i.created_ns >= since_ns
-                && registry.get(i.id.as_str()).is_none()
-        })
-        .map(|i| i.id)
-}
-
 fn attach(
     state: &AppState,
     id: &SessionId,
@@ -512,61 +502,41 @@ fn run_import(state: &AppState, job: &Job, cancel: &CancelToken, reply: Reply) {
     };
     let mut reply = Some(reply);
     let mut handle: Option<Arc<ImportHandle>> = None;
-    // One second of margin: the catalog dates come from the same clock.
-    let since_ns = convert::now_ns().saturating_sub(1_000_000_000);
-    let mut creation = Some(lock(&state.imports.creation));
     let result = ingest(
         &catalog,
         &job.root,
         &job.options,
         cancel,
         &mut |p: &Progress| {
-            if handle.is_none()
-                && let Some(id) = find_new_session(&catalog, &job.root, since_ns, &state.imports)
-            {
-                handle = Some(attach(state, &id, cancel, &mut reply));
-                creation = None;
-            }
-            if let (Some(h), Some(progress)) = (&handle, progress_dto(p)) {
-                h.publish(progress);
-            }
+            // The first callback names the session: the client gets its id right away.
+            let h = handle.get_or_insert_with(|| attach(state, &p.session, cancel, &mut reply));
+            h.publish(progress_dto(p), &p.new_anomalies);
         },
     );
-    drop(creation);
     match result {
         Ok(report) => {
             let h = handle.unwrap_or_else(|| attach(state, &report.session, cancel, &mut reply));
-            let warnings = first_anomalies(&session_dir(state, &report.session), MAX_WARNINGS);
-            h.finish(
-                warnings,
-                ImportEvent::Done {
-                    state: convert::state(report.state),
-                    packets: report.packets,
-                    flows: report.flows,
-                    anomalies: u32::try_from(report.anomalies).unwrap_or(u32::MAX),
-                    duration_s: report.duration.as_secs_f64(),
-                },
-            );
+            h.finish(ImportEvent::Done {
+                state: convert::state(report.state),
+                packets: report.packets,
+                flows: report.flows,
+                anomalies: u32::try_from(report.anomalies).unwrap_or(u32::MAX),
+                duration_s: report.duration.as_secs_f64(),
+            });
         }
         Err(EngineError::ImportFailed { session, reason }) => {
             tracing::warn!(session = %session, "import failed: {reason}");
             let h = handle.unwrap_or_else(|| attach(state, &session, cancel, &mut reply));
-            h.finish(
-                Vec::new(),
-                ImportEvent::Failed {
-                    message: FAILED_MESSAGE.to_owned(),
-                },
-            );
+            h.finish(ImportEvent::Failed {
+                message: FAILED_MESSAGE.to_owned(),
+            });
         }
         Err(e) => match handle {
             Some(h) => {
                 tracing::warn!("import failed: {e}");
-                h.finish(
-                    Vec::new(),
-                    ImportEvent::Failed {
-                        message: FAILED_MESSAGE.to_owned(),
-                    },
-                );
+                h.finish(ImportEvent::Failed {
+                    message: FAILED_MESSAGE.to_owned(),
+                });
             }
             None => {
                 if let Some(reply) = reply.take() {
@@ -791,6 +761,30 @@ mod tests {
         );
         assert!(session_name(Some("a\nb".into())).is_err());
         assert!(session_name(Some("x".repeat(MAX_NAME_LEN + 1))).is_err());
+    }
+
+    #[test]
+    fn published_warnings_are_bounded() {
+        let handle = ImportHandle {
+            cancel: CancelToken::new(),
+            status: watch::Sender::new(Status::default()),
+            order: 0,
+        };
+        let row = AnomalyRow {
+            kind: "time_gap".to_owned(),
+            chunk_id: Some(1),
+            ts: Some(5_000),
+            detail: serde_json::json!({ "gap_ns": 7_000 }),
+        };
+        // 250 rows over two callbacks: the first 200 are kept.
+        handle.publish(None, &vec![row.clone(); 150]);
+        handle.publish(None, &vec![row; 100]);
+        let status = handle.status.borrow();
+        assert_eq!(status.warnings.len(), MAX_WARNINGS);
+        let first = &status.warnings[0];
+        assert_eq!((first.id.clone(), first.ts_us), (None, Some(5)));
+        assert_eq!(first.detail["gap_us"], 7);
+        assert!(status.progress.is_none() && status.last.is_none());
     }
 
     #[test]

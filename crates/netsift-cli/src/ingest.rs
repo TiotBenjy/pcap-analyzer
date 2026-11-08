@@ -244,6 +244,7 @@ mod tests {
     #[test]
     fn progress_line_mentions_chunk_and_rate() {
         let p = Progress {
+            session: netsift_store::SessionId::generate(),
             phase: Phase::Reading,
             bytes_read: 512,
             bytes_total: 1024,
@@ -252,6 +253,7 @@ mod tests {
             chunk_name: Some("cap_00002_20231114221320.pcapng".into()),
             chunks_total: 3,
             elapsed: Duration::from_secs(1),
+            new_anomalies: Vec::new(),
         };
         let line = progress_line(&p);
         assert!(line.contains(" 50.0%"), "{line}");

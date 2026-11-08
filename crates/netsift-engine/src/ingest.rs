@@ -377,17 +377,24 @@ impl RunCtx<'_> {
             duration: self.started.elapsed(),
             writer: writer_stats,
         };
-        progress(&Progress {
+        progress(&self.done_progress(&report, reader.source.total_bytes()));
+        Ok(report)
+    }
+
+    /// Last callback, once everything is written.
+    fn done_progress(&self, report: &IngestReport, bytes_total: u64) -> Progress {
+        Progress {
+            session: self.session.clone(),
             phase: Phase::Done,
             bytes_read: report.bytes_read,
-            bytes_total: reader.source.total_bytes(),
+            bytes_total,
             packets: report.packets,
             chunk: None,
             chunk_name: None,
             chunks_total: report.chunks_read,
             elapsed: report.duration,
-        });
-        Ok(report)
+            new_anomalies: Vec::new(),
+        }
     }
 
     fn counts(&self) -> netsift_store::Result<(u64, u64)> {
@@ -413,6 +420,7 @@ impl RunCtx<'_> {
         use std::sync::atomic::Ordering;
         let chunk = shared.chunk();
         Progress {
+            session: self.session.clone(),
             phase,
             bytes_read: shared.bytes_read.load(Ordering::Relaxed),
             bytes_total: total,
@@ -423,6 +431,7 @@ impl RunCtx<'_> {
                 .map(|m| m.entry.name.clone()),
             chunks_total: self.group.active().count(),
             elapsed: self.started.elapsed(),
+            new_anomalies: shared.take_anomalies(),
         }
     }
 
@@ -488,6 +497,8 @@ impl RunCtx<'_> {
         let source = self.source();
         let total = source.total_bytes();
         let shared = Shared::default();
+        // Inventory findings (missing files, duplicates...) reach the first progress callback.
+        shared.update(&source, 0);
         let parts = self.parts(shards);
         let capacity = parts.capacity;
         let limits = parts.limits;

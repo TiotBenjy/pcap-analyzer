@@ -9,6 +9,8 @@ import { Chart } from './Chart';
 import { DataTable } from './DataTable';
 import { EmptyState } from './EmptyState';
 import { type FilterOption, FilterBar } from './FilterBar';
+import { MultiSelect } from './MultiSelect';
+import { StatCard } from './StatCard';
 import { Toggle } from './Toggle';
 
 describe('Toggle', () => {
@@ -109,5 +111,36 @@ describe('EmptyState and Badge', () => {
     );
     expect(screen.getByText('Nothing here')).toBeInTheDocument();
     expect(screen.getByText('42')).toBeInTheDocument();
+  });
+});
+
+describe('StatCard', () => {
+  it('shows the value with its full title, or a placeholder while loading', () => {
+    const { rerender } = render(<StatCard label="Packets" value={null} />);
+    expect(screen.queryByTestId('truncatable')).toBeNull();
+    rerender(<StatCard label="Packets" value="1.2 MiB" title="1,258,291 B" hint="Link: Ethernet" />);
+    expect(screen.getByTestId('truncatable')).toHaveAttribute('title', '1,258,291 B');
+    expect(screen.getByText('Link: Ethernet')).toBeInTheDocument();
+  });
+});
+
+describe('MultiSelect', () => {
+  it('reports the new selection and closes on Escape', async () => {
+    const onChange = vi.fn();
+    const options = [
+      { value: 'dns', label: 'DNS', detail: '3' },
+      { value: 'tls', label: 'TLS' },
+    ] as const;
+    render(<MultiSelect label="Protocols" options={options} selected={new Set(['dns'])} onChange={onChange} />);
+    const button = screen.getByRole('button', { name: /Protocols/ });
+    expect(button).toHaveTextContent('1/2');
+    await userEvent.click(button);
+    await userEvent.click(screen.getByRole('checkbox', { name: /TLS/ }));
+    expect(onChange).toHaveBeenLastCalledWith(new Set(['dns', 'tls']));
+    await userEvent.click(screen.getByRole('button', { name: 'None' }));
+    expect(onChange).toHaveBeenLastCalledWith(new Set());
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('group', { name: 'Protocols' })).toBeNull();
+    expect(button).toHaveFocus();
   });
 });

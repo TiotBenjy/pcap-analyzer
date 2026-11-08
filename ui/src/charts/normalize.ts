@@ -17,9 +17,23 @@ function asList(v: unknown): Obj[] | null {
   return isObj(v) ? [v] : null;
 }
 
-function withAxisDefaults(axis: Obj): Obj {
-  const label = isObj(axis.axisLabel) ? axis.axisLabel : {};
-  return { ...axis, axisLabel: { hideOverlap: true, ...label } };
+/** `base` under `over`, one level deep for nested objects (`lineStyle`, `textStyle`...). */
+function mergeUnder(base: Obj, over: Obj): Obj {
+  const out: Obj = { ...base, ...over };
+  for (const [k, v] of Object.entries(base)) {
+    const o = over[k];
+    if (isObj(v) && isObj(o)) out[k] = { ...v, ...o };
+  }
+  return out;
+}
+
+function withAxisDefaults(axis: Obj, theme: Readonly<Obj>): Obj {
+  const out: Obj = { ...axis };
+  for (const [key, value] of Object.entries(theme)) {
+    if (isObj(value)) out[key] = mergeUnder(value, isObj(axis[key]) ? axis[key] : {});
+  }
+  const label = isObj(out.axisLabel) ? out.axisLabel : {};
+  return { ...out, axisLabel: { hideOverlap: true, ...label } };
 }
 
 function withSeriesDefaults(series: Obj): Obj {
@@ -31,12 +45,14 @@ export function normalizeOption(
   option: EChartsCoreOption,
   width: number,
   legendDefaults: Readonly<Obj> = {},
+  /** Theme colors of every axis (`axisLabel`, `axisLine`, `splitLine`...), under the view's values. */
+  axisDefaults: Readonly<Obj> = {},
 ): EChartsCoreOption {
   const out: Obj = { ...(option as Obj) };
 
   for (const key of ['xAxis', 'yAxis'] as const) {
     const axes = asList(out[key]);
-    if (axes !== null) out[key] = axes.map(withAxisDefaults);
+    if (axes !== null) out[key] = axes.map((a) => withAxisDefaults(a, axisDefaults));
   }
   const series = asList(out.series);
   if (series !== null) out.series = series.map(withSeriesDefaults);

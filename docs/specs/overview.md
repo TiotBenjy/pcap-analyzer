@@ -39,3 +39,17 @@ Vue d'ensemble d'une session : volume de trafic dans le temps par protocole, ré
 - Fixture mixte (DNS, HTTP, TLS) : les trois protocoles apparaissent avec les bons totaux (test API).
 - Session de 24 h simulée : la série renvoie ≤ 2 000 points (test API) et s'affiche en < 500 ms.
 - `./x.sh shots overview` vert aux 4 largeurs, clair et sombre.
+
+## Notes d'implémentation (P2.4)
+
+- Routes : `crates/netsift-api/src/overview.rs`, requêtes : `crates/netsift-store/src/traffic.rs`.
+  `timeseries?from_us&to_us&points&metric&protocols` : `points` vaut 1000 par défaut, borné à 1..=2000 ;
+  intervalles « ronds » (1 s, 2 s, 5 s ... 1 min, 2 min ... 1 h ... jours) alignés sur l'horloge ;
+  `metric=bytes|packets` omet l'autre mesure ; `protocols=` vide = aucun ; 409 pendant l'import ou après échec.
+- Les libellés stockés (`timeseries.proto`, classification par port du core) sont repliés dans les séries
+  de la spec : `ftp`, `imap`, `ldap`, `pop3`, `rdp`, `smtp`, `telnet`, `tcp` -> Other TCP ; `ntp`, `sip`,
+  `ssdp`, `syslog`, `udp` -> Other UDP ; `kerberos`, `icmp`, `ip`, `non_ip` et libellés inconnus -> Other.
+  QUIC et 802.11 mgmt n'apparaîtront que lorsque le core produira ces libellés.
+- Compteurs de modules : registre `MODULES` (une ligne triée par module, `(id de vue, table)`), présent
+  seulement si la table existe dans la session. Aujourd'hui : `connections` (flows) et `hosts`.
+- L'UI demande 500 points (200 sous 640 px) ; zoom côté client (dataZoom) sur la série chargée.

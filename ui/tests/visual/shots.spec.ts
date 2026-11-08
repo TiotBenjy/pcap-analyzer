@@ -10,12 +10,36 @@ import { fileURLToPath } from 'node:url';
 //   4. every [data-testid="truncatable"] element has a title
 // Select views with SHOT_VIEW=<name>|all.
 
-/** Views covered by the visual tests. Add a line when a view is implemented. */
-const VIEWS: Record<string, string> = {
+/**
+ * Views covered by the visual tests. Add a line when a view is implemented. Session views resolve
+ * their path at run time, on the demo session created by `netsift demo-session`.
+ */
+const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
-  overview: '/overview',
+  overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   settings: '/settings',
+  sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
 };
+
+/** Placeholder id when no session exists: the session views then render their error or not-found state. */
+const NO_SESSION = '00000000000000000000000000';
+
+/**
+ * Demo session used by the session views: the ready session with the most anomalies, then the
+ * most chunks (best coverage timeline). Read through the `vite preview` proxy, which adds the token.
+ */
+async function demoSessionId(page: Page): Promise<string> {
+  const res = await page.request.get('/api/v1/sessions?limit=1000');
+  if (!res.ok()) return NO_SESSION;
+  const body = (await res.json()) as { items?: { id: string; state: string; anomaly_count: number; chunk_count: number }[] };
+  const ranked = [...(body.items ?? [])].sort(
+    (a, b) =>
+      Number(b.state === 'ready') - Number(a.state === 'ready') ||
+      b.anomaly_count - a.anomaly_count ||
+      b.chunk_count - a.chunk_count,
+  );
+  return ranked[0]?.id ?? NO_SESSION;
+}
 
 const WIDTHS = [375, 768, 1280, 1920] as const;
 const THEMES = ['light', 'dark'] as const;
@@ -89,7 +113,7 @@ test.beforeAll(() => {
   mkdirSync(OUT_DIR, { recursive: true });
 });
 
-for (const [view, path] of views) {
+for (const [view, target] of views) {
   for (const theme of THEMES) {
     for (const width of WIDTHS) {
       test(`${view} ${width}px ${theme}`, async ({ page }) => {
@@ -105,6 +129,7 @@ for (const [view, path] of views) {
         await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
         await page.setViewportSize({ width, height: HEIGHT });
 
+        const path = typeof target === 'string' ? target : await target(page);
         await page.goto(`/#${path}`);
         await page.locator('#main h1').first().waitFor();
         await page.waitForLoadState('networkidle');

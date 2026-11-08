@@ -36,12 +36,14 @@ jobs:
       - run: bash scripts/check-version.sh
       - run: bash scripts/tests/check-version.sh
       - run: bash scripts/tests/release.sh
+      - run: bash scripts/tests/cache.sh
       # shellcheck est préinstallé sur les runners Ubuntu.
       - name: shellcheck (scripts de version et de release)
         run: |
           shellcheck --version | head -2
           shellcheck -x scripts/check-version.sh scripts/release.sh scripts/release-status.sh \
-            scripts/tests/check-version.sh scripts/tests/release.sh scripts/ct/cliff.sh
+            scripts/tests/check-version.sh scripts/tests/release.sh scripts/ct/cliff.sh \
+            scripts/lib/cache.sh scripts/ct/cache.sh scripts/tests/cache.sh
 
   rust:
     name: Rust (fmt, clippy, tests, bindings)

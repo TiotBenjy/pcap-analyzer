@@ -9,7 +9,11 @@
 #   scripts/wt.sh push <branche>                 git push -u origin <branche> (si remote)
 #   scripts/wt.sh merge <branche> [--push] [--cleanup] [--no-check]
 #                                                sync + check + merge --no-ff dans main
-#   scripts/wt.sh rm <branche> [--delete-branch] supprime le worktree
+#   scripts/wt.sh rm <branche> [--delete-branch] supprime le worktree et son target de build
+#
+# `new` et `merge --cleanup` lancent aussi `./x.sh clean --auto` (targets orphelins du cache,
+# silencieux s'il n'y a rien à supprimer) ; NETSIFT_NO_AUTO_CLEAN=1 le désactive.
+# Un échec du nettoyage du cache n'est qu'un avertissement : il ne bloque jamais une commande.
 set -euo pipefail
 
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel)"
@@ -22,6 +26,16 @@ die() { echo "wt: $*" >&2; exit 1; }
 has_remote() { git remote | grep -q .; }
 branch_exists() { git show-ref --verify --quiet "refs/heads/$1"; }
 wt_path() { echo "$WT_DIR/$1"; }
+warn() { echo "wt: avertissement : $*" >&2; }
+
+# Nettoyage du cache de build (via le conteneur : les fichiers appartiennent à l'UID mappé).
+clean_worktree_target() { # <chemin du worktree supprimé>
+  "$ROOT/x.sh" clean --worktree "$1" || warn "target de $1 non supprimé (./x.sh clean le retrouvera)"
+}
+auto_clean() {
+  [[ "${NETSIFT_NO_AUTO_CLEAN:-0}" == "1" ]] && return 0
+  "$ROOT/x.sh" clean --auto || warn "nettoyage automatique du cache ignoré"
+}
 
 cmd_new() {
   local br="${1:?branche requise}" base="${2:-$MAIN}"
@@ -40,6 +54,7 @@ cmd_new() {
   fi
   echo ">> Worktree prêt : $path  (branche $br sur $base)"
   echo ">> Exécuter des commandes dedans : ./x.sh -C $path <cmd>"
+  auto_clean
 }
 
 cmd_list() {
@@ -102,7 +117,7 @@ cmd_merge() {
       git push origin "$br" || true
     fi
   fi
-  if [[ "$do_cleanup" == "1" ]]; then cmd_rm "$br" --delete-branch; fi
+  if [[ "$do_cleanup" == "1" ]]; then cmd_rm "$br" --delete-branch; auto_clean; fi
   echo ">> $br fusionné dans $MAIN."
 }
 
@@ -113,6 +128,7 @@ cmd_rm() {
   git worktree prune
   [[ "$del" == "--delete-branch" ]] && branch_exists "$br" && git branch -D "$br" || true
   echo ">> Worktree $br supprimé."
+  [[ -e "$path" ]] || clean_worktree_target "$path"
 }
 
 sub="${1:-}"; shift || true
@@ -124,5 +140,5 @@ case "$sub" in
   push) cmd_push "$@";;
   merge) cmd_merge "$@";;
   rm|remove) cmd_rm "$@";;
-  *) sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//';;
+  *) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//';;
 esac

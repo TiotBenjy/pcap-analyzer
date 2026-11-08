@@ -10,6 +10,7 @@ mod auth;
 mod connections;
 pub mod contract;
 mod convert;
+mod dns;
 mod dto;
 mod endpoint;
 mod error;
@@ -209,6 +210,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
     let protected = Router::new()
         // Registration point: one `.merge(<module>::routes())` line per feature, sorted.
         .merge(connections::routes())
+        .merge(dns::routes())
         .merge(fs::routes())
         .merge(http::routes())
         .merge(imports::routes())

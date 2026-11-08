@@ -200,6 +200,7 @@ struct TrafficQuery {
 /// summary with the row count of its table when the table exists in the session.
 const MODULES: &[(&str, &str)] = &[
     ("connections", "conversations"),
+    ("dns", "dns_messages"),
     ("hosts", "hosts"),
     ("http", "http_transactions"),
     ("httpHeaders", "http_headers"),

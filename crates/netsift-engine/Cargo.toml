@@ -13,6 +13,7 @@ netsift-analyze.workspace = true
 netsift-capture.workspace = true
 netsift-store.workspace = true
 serde_json.workspace = true
+sha2 = "0.11.1"
 thiserror.workspace = true
 tracing.workspace = true
 

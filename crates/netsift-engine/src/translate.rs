@@ -12,6 +12,9 @@ use netsift_store::{
 };
 use serde_json::{Value, json};
 
+// --- analyzers: one translation module each, sorted ---
+mod tls;
+
 /// Store row of an analyzer record. Registration point: each analyzer that adds a [`Record`]
 /// variant adds **one arm** in the sorted zone.
 pub fn to_store(record: Record) -> StoreRecord {
@@ -24,6 +27,7 @@ pub fn to_store(record: Record) -> StoreRecord {
         Record::Conversation(c) => StoreRecord::Conversation(conversation_row(&c)),
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
+        Record::Tls(s) => StoreRecord::Tls(Box::new(tls::session_row(*s))),
     }
 }
 
@@ -56,6 +60,7 @@ pub fn approx_size(record: &StoreRecord) -> usize {
                 + p.banner.as_ref().map_or(0, String::len)
         }
         StoreRecord::HostTraffic(_) => 0,
+        StoreRecord::Tls(t) => t.approx_size(),
         // Rows of analyzers: a conservative estimate until they provide their own.
         _ => 1024,
     };

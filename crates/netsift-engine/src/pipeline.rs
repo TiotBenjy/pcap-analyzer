@@ -30,11 +30,12 @@ use netsift_analyze::dissect::{Decoded, decode};
 use netsift_analyze::flow::{
     Direction, FlowCtx, FlowSink, FlowTable, PacketCtx, StreamCtx, shard_hash,
 };
-use netsift_analyze::{Analyzer, AnalyzerId, Record, RecordSink};
+use netsift_analyze::{Analyzer, AnalyzerId, BlobRef, Record, RecordSink};
 use netsift_capture::chunkset::{AnomalyKind, ChunkSetSource};
 use netsift_capture::{PacketSource, RawPacket};
 use netsift_store::{AnomalyRow, StoreError, StoreRecord, StoreSender};
 
+use crate::blobs::BlobWriter;
 use crate::options::CancelToken;
 use crate::translate::{anomaly_row_with, approx_size, to_store};
 
@@ -403,6 +404,8 @@ struct WriterSink {
     max_bytes: usize,
     error: Option<StoreError>,
     fault: Option<Arc<WriterFault>>,
+    /// Extracted objects of the session (`None`: not supported, e.g. no session directory).
+    blobs: Option<BlobWriter>,
 }
 
 impl WriterSink {
@@ -443,6 +446,10 @@ impl WriterSink {
 impl RecordSink for WriterSink {
     fn emit(&mut self, record: Record) {
         self.push(to_store(record));
+    }
+
+    fn put_blob(&mut self, data: &[u8]) -> Option<BlobRef> {
+        self.blobs.as_mut()?.put(data)
     }
 }
 
@@ -555,6 +562,8 @@ pub(crate) struct ShardSetup {
     pub fault: Option<Arc<WriterFault>>,
     /// Latest packet time of the whole capture, set by the reader (see [`ReaderSetup`]).
     pub end_ts: Arc<OnceLock<i64>>,
+    /// `blobs/` directory of the session (`RecordSink::put_blob`).
+    pub blobs_dir: Option<Arc<std::path::PathBuf>>,
 }
 
 pub(crate) fn run_shard(
@@ -570,6 +579,7 @@ pub(crate) fn run_shard(
         max_record_bytes,
         fault,
         end_ts,
+        blobs_dir,
     } = setup;
     let mut slots: Vec<Slot> = analyzers
         .into_iter()
@@ -587,6 +597,7 @@ pub(crate) fn run_shard(
         max_bytes: max_record_bytes.max(1),
         error: None,
         fault,
+        blobs: blobs_dir.map(|dir| BlobWriter::new(dir, index)),
     };
     let mut packets = 0u64;
     let mut panicked = 0u64;

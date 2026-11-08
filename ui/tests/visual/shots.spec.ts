@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
+  dns: async (page) => `/sessions/${await demoSessionId(page)}/dns`,
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
@@ -207,6 +208,19 @@ for (const [view, target] of views) {
           await page.getByRole('list', { name: list }).getByRole('button', { expanded: false }).first().click();
           await expect(page.getByRole('table', { name: 'Request headers' }).first()).toBeVisible();
           await page.waitForLoadState('networkidle');
+        }
+        if (view === 'dns' && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('img', { name: 'DNS transactions by result' })).toBeVisible();
+          const pairs = page.getByRole('table', { name: 'DNS clients and servers' });
+          await expect(pairs.or(page.getByRole('list', { name: 'DNS clients and servers' }))).toBeVisible();
+          // The first pair expanded: its queries are laid out and checked too.
+          await page.getByRole('button', { name: /^Show the queries of/ }).first().click();
+          await expect(
+            page.getByRole('table', { name: /^Queries of/ }).or(page.getByRole('list', { name: /^Queries of/ })),
+          ).toBeVisible();
+          await page.waitForLoadState('networkidle');
+          // Clicking scrolled the main column: back to the top for the capture.
+          await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
         }
 
         if (view === 'settings') {

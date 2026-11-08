@@ -16,7 +16,7 @@ export function PageHeader({ title, subtitle, count, actions }: PageHeaderProps)
           <h1 className="truncate text-page font-semibold">{title}</h1>
           {count}
         </div>
-        {subtitle !== undefined && <p className="mt-0.5 text-muted">{subtitle}</p>}
+        {subtitle !== undefined && <p className="mt-0.5 text-muted [overflow-wrap:anywhere]">{subtitle}</p>}
       </div>
       {actions !== undefined && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>

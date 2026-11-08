@@ -84,6 +84,12 @@ export const en = {
       mode: 'Mode',
       readOnly: 'Read-only',
       readWrite: 'Read and write',
+      geoip: {
+        label: 'GeoIP',
+        attribution: 'IP geolocation by DB-IP',
+        source: 'https://db-ip.com',
+        license: 'Licensed under CC BY 4.0',
+      },
     },
     notFound: {
       title: 'Page not found',

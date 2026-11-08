@@ -139,7 +139,9 @@ function Overview({ item }: { item: TlsSessionItem }) {
       </Field>
       <Field label={t('views.tls.detail.field.certificates')}>
         <span className="flex flex-wrap items-center gap-1.5">
-          <span>{certSummary(t, item)}</span>
+          <span>
+            {certSummary(item, { encrypted: t('views.tls.cert.encrypted'), none: t('views.tls.cert.none') })}
+          </span>
           <IssueBadges issues={item.cert_issues} />
         </span>
       </Field>
@@ -147,11 +149,11 @@ function Overview({ item }: { item: TlsSessionItem }) {
   );
 }
 
-type T = ReturnType<typeof useTranslation>['t'];
-
-function certSummary(t: T, item: TlsSessionItem): string {
-  if (item.cert_status === 'encrypted') return t('views.tls.cert.encrypted');
-  if (item.cert_count === 0) return t('views.tls.cert.none');
+// Labels passed in rather than `t`: a `t` parameter typed from the whole dictionary makes the
+// compiler instantiate too deep a type once every view has its strings.
+function certSummary(item: TlsSessionItem, labels: { encrypted: string; none: string }): string {
+  if (item.cert_status === 'encrypted') return labels.encrypted;
+  if (item.cert_count === 0) return labels.none;
   return item.leaf_subject_cn ?? String(item.cert_count);
 }
 

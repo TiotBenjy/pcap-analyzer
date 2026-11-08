@@ -190,12 +190,12 @@ Suivis de la vague 2.B :
 
 ### Vague 3.A (parallèle, indépendantes)
 
-- [ ] **P3.1** `feat/dns` — DNS + mDNS + NBNS (+ LLMNR) : transactions, codes réponse, types. `specs/dns.md`.
-- [ ] **P3.2** `feat/http` — HTTP/1.x : transactions, en-têtes, corps bornés, décompression gzip/deflate/br,
+- [~] **P3.1** `feat/dns` — DNS + mDNS + NBNS (+ LLMNR) : transactions, codes réponse, types. `specs/dns.md`.
+- [~] **P3.2** `feat/http` — HTTP/1.x : transactions, en-têtes, corps bornés, décompression gzip/deflate/br,
       chunked ; vues HTTP et HTTP Headers. `specs/http.md`, `specs/http-headers.md`.
-- [ ] **P3.3** `feat/tls` — TLS : ClientHello/ServerHello, versions, suites, SNI, ALPN, JA3/JA4 (client),
+- [~] **P3.3** `feat/tls` — TLS : ClientHello/ServerHello, versions, suites, SNI, ALPN, JA3/JA4 (client),
       certificats X.509 (export DER/PEM). `specs/tls.md`.
-- [ ] **P3.4** `feat/connections-ports` — Agrégats de flux, ports ouverts (SYN-ACK / réponses UDP), table
+- [~] **P3.4** `feat/connections-ports` — Agrégats de flux, ports ouverts (SYN-ACK / réponses UDP), table
       IANA des services embarquée. `specs/connections.md`, `specs/open-ports.md`.
 - [ ] **P3.5** `feat/smb-netbios` — Annonces NetBIOS browser (OS, types), SMB1/2 négociation, NTLMSSP
       (v1/v2 -> lignes hashcat 5500/5600). `specs/smb.md`.

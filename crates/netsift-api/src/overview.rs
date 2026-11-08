@@ -15,7 +15,7 @@ use axum::extract::{Path as UrlPath, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use netsift_store::traffic::{self, BucketPlan};
-use netsift_store::{OpenMode, Session, SessionId, SessionInfo, SessionState as StoreState};
+use netsift_store::{Session, SessionId, SessionInfo, SessionState as StoreState};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -206,6 +206,7 @@ const MODULES: &[(&str, &str)] = &[
 ];
 
 /// Opens a session whose data can be shown: 404 when unknown, 409 while importing or failed.
+/// A session created by an older build is upgraded first (ADR-013).
 pub(crate) fn open_ready(
     state: &AppState,
     id: &SessionId,
@@ -224,7 +225,7 @@ pub(crate) fn open_ready(
     if !dir.join(netsift_store::session::SESSION_DB).is_file() {
         return Err(ApiError::NotFound);
     }
-    let session = Session::open(dir, OpenMode::ReadOnly)?;
+    let session = Session::open_upgrading(dir)?;
     Ok((info, session))
 }
 

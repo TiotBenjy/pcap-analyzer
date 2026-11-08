@@ -1,0 +1,45 @@
+---
+source: crates/netsift-engine/tests/servers.rs
+assertion_line: 98
+expression: expected
+---
+# dhcp_messages (8 rows)
+1700000004356500000 0.0.0.0 -> 255.255.255.255 op=1 discover xid=956560166 mac=02:00:5e:10:00:30 yiaddr=- server=0.0.0.0 requested=- mask=- routers=[] dns=[] lease=- hostname=laptop-30
+1700000004357000000 192.168.1.1 -> 255.255.255.255 op=2 offer xid=956560166 mac=02:00:5e:10:00:30 yiaddr=192.168.1.30 server=192.168.1.1 requested=- mask=255.255.255.0 routers=["192.168.1.1"] dns=["192.168.1.1"] lease=86400 hostname=-
+1700000004357500000 0.0.0.0 -> 255.255.255.255 op=1 request xid=956560166 mac=02:00:5e:10:00:30 yiaddr=- server=192.168.1.1 requested=192.168.1.30 mask=- routers=[] dns=[] lease=- hostname=laptop-30
+1700000004358000000 192.168.1.1 -> 255.255.255.255 op=2 ack xid=956560166 mac=02:00:5e:10:00:30 yiaddr=192.168.1.30 server=192.168.1.1 requested=- mask=255.255.255.0 routers=["192.168.1.1"] dns=["192.168.1.1"] lease=86400 hostname=-
+1700000004375000000 0.0.0.0 -> 255.255.255.255 op=1 discover xid=956560166 mac=02:00:5e:10:00:30 yiaddr=- server=0.0.0.0 requested=- mask=- routers=[] dns=[] lease=- hostname=laptop-30
+1700000004375500000 192.168.1.1 -> 255.255.255.255 op=2 offer xid=956560166 mac=02:00:5e:10:00:30 yiaddr=192.168.1.30 server=192.168.1.1 requested=- mask=255.255.255.0 routers=["192.168.1.1"] dns=["192.168.1.1"] lease=86400 hostname=-
+1700000004376000000 0.0.0.0 -> 255.255.255.255 op=1 request xid=956560166 mac=02:00:5e:10:00:30 yiaddr=- server=192.168.1.1 requested=192.168.1.30 mask=- routers=[] dns=[] lease=- hostname=laptop-30
+1700000004376500000 192.168.1.1 -> 255.255.255.255 op=2 ack xid=956560166 mac=02:00:5e:10:00:30 yiaddr=192.168.1.30 server=192.168.1.1 requested=- mask=255.255.255.0 routers=["192.168.1.1"] dns=["192.168.1.1"] lease=86400 hostname=-
+# ntp_responses (1 rows)
+203.0.113.123 -> 192.168.1.30 n=2 v4 stratum=2 ref=192.0.2.1 1700000004359000000..1700000004377500000
+# kerberos_replies (3 rows)
+192.168.1.5 -> 192.168.1.30 as_rep n=2 realm=CORP.EXAMPLE error=- 1700000004369000000..1700000004387500000
+192.168.1.5 -> 192.168.1.30 error n=2 realm=CORP.EXAMPLE error=25 1700000004368000000..1700000004386500000
+192.168.1.5 -> 192.168.1.30 tgs_rep n=2 realm=CORP.EXAMPLE error=- 1700000004372000000..1700000004390500000
+# hosts with names (5 rows)
+192.168.1.20 ["FILESRV01"]
+192.168.1.30 ["laptop-30"]
+192.168.1.5 ["dc.corp.example"]
+198.51.100.43 ["edge.cdn.example.net","secure.example.test"]
+203.0.113.80 ["www.example.test"]
+# server_evidence (18 rows)
+dhcp 192.168.1.1 dhcp_ack n=2 clients=1 1700000004358000000..1700000004376500000 192.168.1.30
+dhcp 192.168.1.1 dhcp_offer n=2 clients=1 1700000004357000000..1700000004375500000 192.168.1.30
+dns 192.168.1.1 dns_response n=18 clients=2 1700000000052000000..1700000004380500000 -
+dns 192.168.1.1 open_port n=16 clients=2 1700000000052000000..1700000004380500000 53/udp
+dns 2001:db8:1::1 dns_response n=4 clients=1 1700000000053000000..1700000004070000000 -
+dns 2001:db8:1::1 open_port n=4 clients=1 1700000000053000000..1700000004070000000 53/udp
+http 203.0.113.80 http_response n=4 clients=1 1700000000108000000..1700000004125000000 -
+kerberos 192.168.1.5 dns_srv n=2 clients=- 1700000004361000000..1700000004379500000 _kerberos._tcp.corp.example
+kerberos 192.168.1.5 kdc_as_rep n=2 clients=1 1700000004369000000..1700000004387500000 CORP.EXAMPLE
+kerberos 192.168.1.5 kdc_error n=2 clients=1 1700000004368000000..1700000004386500000 CORP.EXAMPLE
+kerberos 192.168.1.5 kdc_tgs_rep n=2 clients=1 1700000004372000000..1700000004390500000 CORP.EXAMPLE
+kerberos 192.168.1.5 open_port n=2 clients=1 1700000004370000000..1700000004390500000 88/tcp
+kerberos 192.168.1.5 open_port n=2 clients=1 1700000004368000000..1700000004387500000 88/udp
+ldap 192.168.1.5 dns_srv n=2 clients=- 1700000004360000000..1700000004378500000 _ldap._tcp.dc._msdcs.corp.example
+ldap 192.168.1.5 open_port n=2 clients=1 1700000004363000000..1700000004383500000 389/tcp
+ntp 203.0.113.123 ntp_response n=2 clients=1 1700000004359000000..1700000004377500000 stratum 2, 192.0.2.1
+ntp 203.0.113.123 open_port n=2 clients=1 1700000004359000000..1700000004377500000 123/udp
+smb 192.168.1.20 browser_server n=4 clients=- 1700000000227500000..1700000004244500000 FILESRV01

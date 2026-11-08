@@ -22,7 +22,10 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
+import { OTHER_COLOR } from '../../charts/palette';
 import { formatCount, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { useMediaQuery } from '../../lib/useMediaQuery';
+import { useTheme } from '../../theme/theme';
 import { CertificatesPanel } from './CertificatesPanel';
 import { IssueBadges, MonoValue, SuiteName } from './parts';
 import { SessionDetail } from './SessionDetail';
@@ -30,7 +33,6 @@ import {
   buildMatrixOption,
   buildSuitesOption,
   buildVersionsOption,
-  DONUT_CENTER_Y,
   matrixHeight,
   matrixVersions,
   suiteOfRow,
@@ -40,6 +42,11 @@ import {
 import { isWeakness, suiteLabel, versionLabel, versionTone } from './tlsFormat';
 
 const route = getRouteApi('/sessions/$sessionId');
+
+/** Value of the "all versions" segment. */
+const ANY = 'any';
+/** From this width every column of the sessions table fits; below, secondary ones are hidden. */
+const WIDE_TABLE_QUERY = '(min-width: 1800px)';
 
 type Tab = 'sessions' | 'certificates';
 
@@ -146,7 +153,12 @@ function StatBand({ stats }: { stats: TlsStats }) {
       <StatCard icon={Lock} label={t('views.tls.stat.sessions')} value={formatCount(stats.sessions)} />
       <StatCard icon={TriangleAlert} label={t('views.tls.stat.weak')} value={formatCount(stats.weak_sessions)} />
       <StatCard icon={ShieldAlert} label={t('views.tls.stat.certIssues')} value={formatCount(stats.cert_issue_sessions)} />
-      <StatCard icon={ShieldOff} label={t('views.tls.stat.encrypted')} value={formatCount(stats.encrypted_cert_sessions)} />
+      <StatCard
+        icon={ShieldOff}
+        label={t('views.tls.stat.encrypted')}
+        value={formatCount(stats.encrypted_cert_sessions)}
+        hint={t('views.tls.stat.encryptedHint')}
+      />
       <StatCard icon={FileKey} label={t('views.tls.stat.certificates')} value={formatCount(stats.certificates)} />
     </section>
   );
@@ -162,6 +174,7 @@ function useChartFormat(): TlsChartFormat {
       other: t('common.other'),
       sessions: (count) => t('views.tls.charts.sessions', { count }),
       weak: (w) => (isWeakness(w) ? t(`views.tls.weak.${w}`) : t('views.tls.weak.other')),
+      count: (n) => formatCount(n),
     };
   }, [t, i18n.language]);
 }
@@ -184,12 +197,18 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
   const filters: TlsSessionFilters = { version, suite, q, weak, certIssues };
   const list = useTlsSessions(sessionId, filters, true);
   const fmt = useChartFormat();
-  const versionId = useId();
   const suiteId = useId();
+  const { theme } = useTheme();
+  const wideTable = useMediaQuery(WIDE_TABLE_QUERY);
+  // Theme text color of the bar value labels (read again when the theme changes).
+  const labelColor = useMemo(() => {
+    void theme;
+    return getComputedStyle(document.documentElement).getPropertyValue('--ns-muted').trim() || OTHER_COLOR;
+  }, [theme]);
 
   const versionsOption = useMemo(() => buildVersionsOption(stats, fmt), [stats, fmt]);
-  const suitesOption = useMemo(() => buildSuitesOption(stats, fmt), [stats, fmt]);
-  const matrixOption = useMemo(() => buildMatrixOption(stats, fmt), [stats, fmt]);
+  const suitesOption = useMemo(() => buildSuitesOption(stats, fmt, labelColor), [stats, fmt, labelColor]);
+  const matrixOption = useMemo(() => buildMatrixOption(stats, fmt, theme === 'dark'), [stats, fmt, theme]);
   const columnsOfMatrix = useMemo(() => matrixVersions(stats), [stats]);
 
   const pieEvents = useMemo<ChartEvents>(
@@ -227,11 +246,10 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
     [stats, columnsOfMatrix],
   );
 
-  const columns = useSessionColumns(oneDay);
+  const columns = useSessionColumns(oneDay, wideTable);
   const filtered = version !== undefined || suite !== undefined || q !== '' || weak || certIssues;
   const selectedItem = list.data?.items.find((s) => s.id === selected);
   const suiteCount = stats.suites.length;
-  const versionTotal = stats.versions.reduce((n, v) => n + v.count, 0);
 
   let table: ReactNode;
   if (list.isPending) table = <Skeleton height={160} />;
@@ -269,22 +287,12 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))]">
         <Card title={t('views.tls.charts.versions')}>
-          <div className="relative">
-            <Chart
-              option={versionsOption}
-              height={CHART_HEIGHT.donut}
-              ariaLabel={t('views.tls.charts.versionsLabel')}
-              onEvents={pieEvents}
-            />
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 flex flex-col items-center leading-tight"
-              style={{ top: Math.round(CHART_HEIGHT.donut * DONUT_CENTER_Y) - 18 }}
-            >
-              <span className="num text-card font-semibold">{formatCount(versionTotal)}</span>
-              <span className="text-meta text-muted">{t('views.tls.charts.sessions', { count: versionTotal })}</span>
-            </div>
-          </div>
+          <Chart
+            option={versionsOption}
+            height={CHART_HEIGHT.donut}
+            ariaLabel={t('views.tls.charts.versionsLabel')}
+            onEvents={pieEvents}
+          />
         </Card>
         <Card title={t('views.tls.charts.suites')}>
           <div className="flex flex-col gap-2">
@@ -313,85 +321,83 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
         </Card>
       )}
 
-      <div className="flex min-w-0 flex-col gap-2">
-        <FilterBar
-          filters={[
-            { id: 'weak', label: t('views.tls.filters.weak'), count: stats.weak_sessions, active: weak },
-            {
-              id: 'certIssues',
-              label: t('views.tls.filters.certIssues'),
-              count: stats.cert_issue_sessions,
-              active: certIssues,
-            },
-          ]}
-          onToggle={(id, active) => {
-            if (id === 'weak') setWeak(active);
-            else setCertIssues(active);
-          }}
-          search={search}
-          onSearch={setSearch}
-          searchPlaceholder={t('views.tls.filters.search')}
-        />
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <label htmlFor={versionId} className="sr-only">
-            {t('views.tls.filters.version')}
-          </label>
-          <select
-            id={versionId}
-            value={version ?? ''}
-            onChange={(e) => {
-              setVersion(e.target.value === '' ? undefined : Number(e.target.value));
-            }}
-            className="h-8 max-w-full min-w-0 rounded-md border border-line bg-surface px-2 text-body"
-          >
-            <option value="">{t('views.tls.filters.anyVersion')}</option>
-            {stats.versions
-              .filter((v) => v.version !== null)
-              .map((v) => (
-                <option key={v.version} value={v.version ?? ''}>
-                  {`${versionLabel(v.version) ?? ''} (${formatCount(v.count)})`}
-                </option>
-              ))}
-          </select>
-          <label htmlFor={suiteId} className="sr-only">
-            {t('views.tls.filters.suite')}
-          </label>
-          <select
-            id={suiteId}
-            value={suite ?? ''}
-            onChange={(e) => {
-              setSuite(e.target.value === '' ? undefined : Number(e.target.value));
-            }}
-            className="h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-body sm:w-auto sm:max-w-80"
-          >
-            <option value="">{t('views.tls.filters.anySuite')}</option>
-            {stats.suites
-              .filter((s) => s.suite !== null)
-              .map((s) => (
-                <option key={s.suite} value={s.suite ?? ''}>
-                  {`${suiteLabel(s.name, s.suite)} (${formatCount(s.count)})`}
-                </option>
-              ))}
-          </select>
-          {filtered && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setSearch('');
-                setVersion(undefined);
-                setSuite(undefined);
-                setWeak(false);
-                setCertIssues(false);
+      <Card
+        title={t('views.tls.table.label')}
+        actions={
+          <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="tls-filters">
+            <FilterBar
+              filters={[
+                { id: 'weak', label: t('views.tls.filters.weak'), count: stats.weak_sessions, active: weak },
+                {
+                  id: 'certIssues',
+                  label: t('views.tls.filters.certIssues'),
+                  count: stats.cert_issue_sessions,
+                  active: certIssues,
+                },
+              ]}
+              onToggle={(id, active) => {
+                if (id === 'weak') setWeak(active);
+                else setCertIssues(active);
               }}
+              search={search}
+              onSearch={setSearch}
+              searchPlaceholder={t('views.tls.filters.search')}
+            />
+            <SegmentedControl
+              hideLabel
+              label={t('views.tls.filters.version')}
+              value={version === undefined ? ANY : String(version)}
+              options={[
+                { value: ANY, label: t('views.tls.filters.anyVersion') },
+                ...stats.versions
+                  .filter((v) => v.version !== null)
+                  .map((v) => ({ value: String(v.version), label: versionLabel(v.version) ?? '' })),
+              ]}
+              onChange={(v) => {
+                setVersion(v === ANY ? undefined : Number(v));
+              }}
+            />
+            {/* Up to 15 long names: a native list stays usable on every width. */}
+            <label htmlFor={suiteId} className="sr-only">
+              {t('views.tls.filters.suite')}
+            </label>
+            <select
+              id={suiteId}
+              value={suite ?? ''}
+              onChange={(e) => {
+                setSuite(e.target.value === '' ? undefined : Number(e.target.value));
+              }}
+              className="h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-body sm:w-auto sm:max-w-72"
             >
-              {t('views.tls.filters.clear')}
-            </Button>
-          )}
-          <span className="text-meta text-muted">{t('views.tls.charts.filterHint')}</span>
-        </div>
-      </div>
-
-      <Card flush>{table}</Card>
+              <option value="">{t('views.tls.filters.anySuite')}</option>
+              {stats.suites
+                .filter((s) => s.suite !== null)
+                .map((s) => (
+                  <option key={s.suite} value={s.suite ?? ''}>
+                    {`${suiteLabel(s.name, s.suite)} (${formatCount(s.count)})`}
+                  </option>
+                ))}
+            </select>
+            {filtered && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSearch('');
+                  setVersion(undefined);
+                  setSuite(undefined);
+                  setWeak(false);
+                  setCertIssues(false);
+                }}
+              >
+                {t('views.tls.filters.clear')}
+              </Button>
+            )}
+          </div>
+        }
+        flush
+      >
+        {table}
+      </Card>
 
       {selectedItem !== undefined && (
         <SessionDetail
@@ -407,10 +413,14 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
   );
 }
 
-function useSessionColumns(oneDay: boolean): ColumnDef<TlsSessionItem, unknown>[] {
+/**
+ * Columns of the sessions table. Below `WIDE_TABLE_QUERY`, client and ALPN are hidden (they are
+ * in the details) and the others narrower, so that JA3, JA4 and the certificate stay in view.
+ */
+function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSessionItem, unknown>[] {
   const { t } = useTranslation();
-  return useMemo<ColumnDef<TlsSessionItem, unknown>[]>(
-    () => [
+  return useMemo<ColumnDef<TlsSessionItem, unknown>[]>(() => {
+    const all: ColumnDef<TlsSessionItem, unknown>[] = [
       {
         id: 'time',
         accessorFn: (s) => s.ts_us,
@@ -506,10 +516,26 @@ function useSessionColumns(oneDay: boolean): ColumnDef<TlsSessionItem, unknown>[
         size: 220,
         cell: ({ row }) => <CertificateCell item={row.original} />,
       },
-    ],
-    [t, oneDay],
-  );
+    ];
+    return all
+      .filter((c) => wide || (c.id !== 'client' && c.id !== 'alpn'))
+      .map((c) => {
+        const narrow = c.id === undefined ? undefined : NARROW_SIZES[c.id];
+        return wide || narrow === undefined ? c : { ...c, size: narrow };
+      });
+  }, [t, oneDay, wide]);
 }
+
+/** Column widths below `WIDE_TABLE_QUERY` (about 1000 px in all). */
+const NARROW_SIZES: Readonly<Record<string, number>> = {
+  server: 140,
+  sni: 130,
+  version: 80,
+  suite: 170,
+  ja3: 100,
+  ja4: 140,
+  certificate: 150,
+};
 
 function Endpoint({ ip, port }: { ip: string; port: number }) {
   const text = ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;

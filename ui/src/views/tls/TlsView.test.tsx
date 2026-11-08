@@ -62,6 +62,7 @@ function stats(overrides: Partial<TlsStats> = {}): TlsStats {
       { version: 771, count: 2 },
       { version: 772, count: 1 },
     ],
+    other_versions: 0,
     suites: [
       { suite: 0xc02f, name: 'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256', weak: null, count: 1 },
       { suite: 0x1301, name: 'TLS_AES_128_GCM_SHA256', weak: null, count: 1 },
@@ -188,6 +189,7 @@ const FORMAT: TlsChartFormat = {
   other: 'Other',
   sessions: (count) => `${count} sessions`,
   weak: (w) => w.toUpperCase(),
+  count: (n) => String(n),
 };
 
 describe('TLS view', () => {
@@ -241,7 +243,7 @@ describe('TLS view', () => {
         expect.anything(),
       );
     });
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Version' }), '772');
+    await user.click(screen.getByRole('radio', { name: 'TLS 1.3' }));
     await waitFor(() => {
       expect(tlsApi.listTlsSessions).toHaveBeenLastCalledWith(
         ID,
@@ -258,7 +260,7 @@ describe('TLS view', () => {
       expect(screen.getByRole('combobox', { name: 'Cipher suite' })).toHaveValue(String(0x0005));
     });
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getByRole('combobox', { name: 'Version' })).toHaveValue('');
+    expect(screen.getByRole('radio', { name: 'All versions' })).toBeChecked();
     expect(screen.getByRole('combobox', { name: 'Cipher suite' })).toHaveValue('');
   });
 
@@ -329,6 +331,10 @@ describe('TLS charts and formats', () => {
     expect(option.legend.formatter('none')).toBe('No ServerHello');
     expect(versionOfPie({ name: '772' })).toBe(772);
     expect(versionOfPie({ name: 'none' })).toBeUndefined();
+    expect(versionOfPie({ name: 'other' })).toBeUndefined();
+    const others = buildVersionsOption(stats({ other_versions: 3 }), FORMAT) as typeof option;
+    expect(others.series[0]?.data.at(-1)).toMatchObject({ name: 'other', value: 3 });
+    expect(others.legend.formatter('other')).toBe('Other');
     const withNone = buildVersionsOption(stats({ versions: [{ version: null, count: 2 }] }), FORMAT) as {
       series: { data: { name: string }[] }[];
     };
@@ -336,13 +342,17 @@ describe('TLS charts and formats', () => {
   });
 
   it('marks weak suites in the bar labels and keeps the most frequent on top', () => {
-    const option = buildSuitesOption(stats(), FORMAT) as {
+    const option = buildSuitesOption(stats(), FORMAT, '#71717a') as {
+      xAxis: { show: boolean };
       yAxis: { data: string[]; axisLabel: { formatter: (v: string, i: number) => string } };
+      series: { label: { show: boolean; color: string; textBorderColor: string } }[];
     };
+    expect(option.xAxis.show).toBe(false);
+    expect(option.series[0]?.label).toMatchObject({ show: true, color: '#71717a', textBorderColor: 'transparent' });
     expect(option.yAxis.data).toEqual(['RSA_WITH_RC4_128_SHA', 'AES_128_GCM_SHA256', 'ECDHE_RSA_WITH_AES_128_GCM_SHA256']);
     expect(option.yAxis.axisLabel.formatter('RSA_WITH_RC4_128_SHA', 0)).toBe('{w|}{n|RSA_WITH_RC4_128_SHA}');
     expect(option.yAxis.axisLabel.formatter('ECDHE_RSA_WITH_AES_128_GCM_SHA256', 2)).toBe(
-      '{s|}{n|ECDHE_RSA_WITH_AES_128_…}',
+      '{s|}{n|ECDHE_RSA_WI…_GCM_SHA256}',
     );
     expect(suiteOfRow(stats(), 0)).toBe(5);
     const withOthers = stats({ suites: [...stats().suites, { suite: null, name: null, weak: null, count: 4 }] });
@@ -350,12 +360,18 @@ describe('TLS charts and formats', () => {
   });
 
   it('places the matrix cells on version columns and suite rows', () => {
-    const option = buildMatrixOption(stats(), FORMAT) as {
+    const option = buildMatrixOption(stats(), FORMAT, false) as {
       xAxis: { data: string[] };
+      visualMap: { inRange: { color: string[] } };
       series: { data: { value: [number, number, number] }[] }[];
     };
     expect(option.xAxis.data).toEqual(['1.2', '1.3']);
     expect(matrixVersions(stats())).toEqual([771, 772]);
+    const dark = buildMatrixOption(stats(), FORMAT, true) as typeof option;
+    expect(dark.visualMap.inRange.color[0]).toBe('#172554');
+    expect(option.visualMap.inRange.color[0]).toBe('#dbeafe');
+    const folded = buildMatrixOption(stats({ matrix: [{ version: null, suite: null, count: 2 }] }), FORMAT, false) as typeof option;
+    expect(folded.xAxis.data).toEqual(['Other']);
     expect(option.series[0]?.data.map((d) => d.value)).toEqual([
       [0, 2, 1],
       [0, 0, 1],

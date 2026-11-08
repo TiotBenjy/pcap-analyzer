@@ -18,7 +18,8 @@ export const tlsEn = {
     sessions: 'Sessions',
     weak: 'Weak suites',
     certIssues: 'Certificate issues',
-    encrypted: 'Certificates encrypted (TLS 1.3)',
+    encrypted: 'TLS 1.3 sessions',
+    encryptedHint: 'Certificates encrypted',
     certificates: 'Distinct certificates',
   },
   charts: {
@@ -32,7 +33,6 @@ export const tlsEn = {
     sessions_other: '{{count}} sessions',
     share: '{{count}} sessions ({{pct}})',
     weakNote: 'Weak suites are marked with an amber dot.',
-    filterHint: 'Select a version or a suite to filter the table.',
     noServerHello: 'No ServerHello',
   },
   filters: {
@@ -217,7 +217,8 @@ export const tlsFr: Widen<typeof tlsEn> = {
     sessions: 'Sessions',
     weak: 'Suites faibles',
     certIssues: 'Certificats problématiques',
-    encrypted: 'Certificats chiffrés (TLS 1.3)',
+    encrypted: 'Sessions TLS 1.3',
+    encryptedHint: 'Certificats chiffrés',
     certificates: 'Certificats distincts',
   },
   charts: {
@@ -231,7 +232,6 @@ export const tlsFr: Widen<typeof tlsEn> = {
     sessions_other: '{{count}} sessions',
     share: '{{count}} sessions ({{pct}})',
     weakNote: 'Les suites faibles sont signalées par une pastille ambre.',
-    filterHint: 'Choisissez une version ou une suite pour filtrer le tableau.',
     noServerHello: 'Sans ServerHello',
   },
   filters: {

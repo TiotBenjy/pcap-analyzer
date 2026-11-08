@@ -34,12 +34,12 @@ export function CopyButton({ value, name }: { value: string; name: string }) {
           setCopied(true);
         });
       }}
-      className="inline-flex size-6 shrink-0 items-center justify-center rounded text-faint hover:bg-subtle hover:text-fg"
+      className="-my-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-subtle hover:text-fg"
     >
       {copied ? (
-        <Check aria-hidden size={14} strokeWidth={1.75} />
+        <Check aria-hidden size={16} strokeWidth={1.75} />
       ) : (
-        <Copy aria-hidden size={14} strokeWidth={1.75} />
+        <Copy aria-hidden size={16} strokeWidth={1.75} />
       )}
     </button>
   );

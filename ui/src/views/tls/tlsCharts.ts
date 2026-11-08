@@ -1,7 +1,7 @@
 import type { EChartsCoreOption } from 'echarts/core';
 import type { TlsStats } from '../../api/types/TlsStats';
-import { CATEGORICAL, OTHER_COLOR, SEQUENTIAL } from '../../charts/palette';
-import { suiteLabel, truncateLabel } from './tlsFormat';
+import { CATEGORICAL, OTHER_COLOR, SEQUENTIAL, SEQUENTIAL_DARK } from '../../charts/palette';
+import { suiteLabel, truncateMiddle } from './tlsFormat';
 
 // ECharts options of the TLS view (pure functions, unit tested).
 
@@ -38,6 +38,8 @@ export interface TlsChartFormat {
   sessions: (count: number) => string;
   /** Localized weakness label. */
   weak: (w: string) => string;
+  /** Localized count (bar value labels). */
+  count: (n: number) => string;
 }
 
 /** Plain text for tooltips (names come from the capture). */
@@ -45,47 +47,45 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-export const DONUT_CENTER_Y = 0.42;
-
-/** Donut item name of the sessions without `ServerHello`. */
+/** Donut item names that are not versions (ECharts drops legend entries with an empty name). */
 const NO_VERSION = 'none';
+const OTHER_VERSIONS = 'other';
 
+/** Version of a donut item name; `null` for "no ServerHello" and for the other versions. */
 function versionOfName(name: string): number | null {
-  if (name === NO_VERSION) return null;
+  if (name === NO_VERSION || name === OTHER_VERSIONS) return null;
   const v = Number(name);
   return Number.isInteger(v) ? v : null;
 }
 
-/**
- * Donut of the negotiated versions (the view draws the total in the center, in HTML: SVG title
- * boxes overlap). Item names are the version values.
- */
+/** Donut of the negotiated versions (top 8, then the other versions summed). */
 export function buildVersionsOption(stats: TlsStats, fmt: TlsChartFormat): EChartsCoreOption {
-  const total = stats.versions.reduce((n, v) => n + v.count, 0);
+  const total = stats.versions.reduce((n, v) => n + v.count, 0) + stats.other_versions;
+  const label = (name: string) => (name === OTHER_VERSIONS ? fmt.other : fmt.version(versionOfName(name)));
+  const data = stats.versions.map((v) => ({
+    name: v.version === null ? NO_VERSION : String(v.version),
+    value: v.count,
+    itemStyle: { color: versionColor(v.version) },
+  }));
+  if (stats.other_versions > 0) {
+    data.push({ name: OTHER_VERSIONS, value: stats.other_versions, itemStyle: { color: OTHER_COLOR } });
+  }
   return {
     tooltip: {
       trigger: 'item',
       formatter: (p: { name: string; value: number }) =>
-        `${escapeHtml(fmt.version(versionOfName(p.name)))}<br/>${escapeHtml(fmt.share(p.value, total))}`,
+        `${escapeHtml(label(p.name))}<br/>${escapeHtml(fmt.share(p.value, total))}`,
     },
     // A plain legend wraps on narrow cards (a scrolled one leaves entries outside the SVG).
-    legend: {
-      type: 'plain',
-      formatter: (name: string) => fmt.version(versionOfName(name)),
-    },
+    legend: { type: 'plain', formatter: label },
     series: [
       {
         type: 'pie',
-        radius: ['52%', '72%'],
-        center: ['50%', `${DONUT_CENTER_Y * 100}%`],
+        radius: ['50%', '72%'],
+        center: ['50%', '42%'],
         label: { show: false },
         labelLine: { show: false },
-        data: stats.versions.map((v) => ({
-          // ECharts drops legend entries with an empty name: `none` stands for no ServerHello.
-          name: v.version === null ? NO_VERSION : String(v.version),
-          value: v.count,
-          itemStyle: { color: versionColor(v.version) },
-        })),
+        data,
       },
     ],
   };
@@ -96,14 +96,18 @@ export function suiteRowLabel(s: { suite: number | null; name: string | null }, 
   return s.suite === null ? other : suiteLabel(s.name, s.suite);
 }
 
-/** Horizontal bars of the top suites; weak ones get an amber dot before their label. */
-export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat): EChartsCoreOption {
+/**
+ * Horizontal bars of the top suites: weak ones get an amber dot before their label (cut in the
+ * middle, full name in the tooltip), the count is written at the end of each bar (no value axis,
+ * so that narrow cards keep a useful plot area). `labelColor`: theme text color.
+ */
+export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat, labelColor: string): EChartsCoreOption {
   const total = stats.suites.reduce((n, s) => n + s.count, 0);
   // Category axes draw from the bottom: reverse so that the most frequent is on top.
   const rows = [...stats.suites].reverse();
   return {
-    // Generous outer margins: axis label boxes must stay inside the SVG (visual tests).
-    grid: { left: 4, right: 16, top: 8, bottom: 28, containLabel: true },
+    // The right margin holds the value labels (series labels are outside `containLabel`).
+    grid: { left: 4, right: 56, top: 4, bottom: 4, containLabel: true },
     tooltip: {
       trigger: 'item',
       formatter: (p: { dataIndex: number }) => {
@@ -113,7 +117,7 @@ export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat): ECharts
         return `${escapeHtml(s.suite === null ? fmt.other : (s.name ?? suiteLabel(null, s.suite)))}<br/>${escapeHtml(fmt.share(s.count, total))}${weak}`;
       },
     },
-    xAxis: { type: 'value', minInterval: 1, axisLabel: { hideOverlap: true } },
+    xAxis: { type: 'value', show: false },
     yAxis: {
       type: 'category',
       data: rows.map((s) => suiteRowLabel(s, fmt.other)),
@@ -121,7 +125,7 @@ export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat): ECharts
       axisLabel: {
         formatter: (value: string, index: number) => {
           const weak = rows[index]?.weak !== null && rows[index]?.weak !== undefined;
-          return `{${weak ? 'w' : 's'}|}{n|${truncateLabel(value)}}`;
+          return `{${weak ? 'w' : 's'}|}{n|${truncateMiddle(value)}}`;
         },
         rich: {
           w: { width: 8, height: 8, borderRadius: 4, backgroundColor: WEAK_COLOR },
@@ -134,6 +138,14 @@ export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat): ECharts
       {
         type: 'bar',
         barMaxWidth: 20,
+        label: {
+          show: true,
+          position: 'right',
+          color: labelColor,
+          // zrender ignores `textBorderWidth: 0`: a transparent border keeps the text plain.
+          textBorderColor: 'transparent',
+          formatter: (p: { value: number }) => fmt.count(p.value),
+        },
         data: rows.map((s) => ({
           value: s.count,
           itemStyle: { color: s.suite === null ? OTHER_COLOR : CATEGORICAL[1] },
@@ -143,9 +155,9 @@ export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat): ECharts
   };
 }
 
-/** Height of the heatmap for `rows` suites. */
+/** Height of the heatmap for `rows` suites (plus the column labels). */
 export function matrixHeight(rows: number): number {
-  return Math.min(32 * Math.max(rows, 1) + 56, 560);
+  return Math.min(32 * Math.max(rows, 1) + 30, 540);
 }
 
 /** Columns of the heatmap: the versions of the matrix, oldest first. */
@@ -155,8 +167,11 @@ export function matrixVersions(stats: TlsStats): (number | null)[] {
   );
 }
 
-/** Version (columns) x suite (rows) heatmap over the suites of the bars chart. */
-export function buildMatrixOption(stats: TlsStats, fmt: TlsChartFormat): EChartsCoreOption {
+/**
+ * Version (columns) x suite (rows) heatmap over the folded suites and versions. The blue scale
+ * follows the theme (`dark`: dark to bright, so that light cells do not glare).
+ */
+export function buildMatrixOption(stats: TlsStats, fmt: TlsChartFormat, dark: boolean): EChartsCoreOption {
   const versions = matrixVersions(stats);
   const rows = [...stats.suites].reverse();
   const max = Math.max(1, ...stats.matrix.map((c) => c.count));
@@ -164,25 +179,30 @@ export function buildMatrixOption(stats: TlsStats, fmt: TlsChartFormat): ECharts
     const x = versions.indexOf(c.version);
     const y = rows.findIndex((s) => s.suite === c.suite);
     if (x < 0 || y < 0) return [];
-    const dark = c.count / max > 0.5;
-    return [{ value: [x, y, c.count], label: { color: dark ? '#ffffff' : '#1e3a8a' } }];
+    const high = c.count / max > 0.5;
+    // Light text on dark cells: high values in the light theme, low ones in the dark theme.
+    const lightText = dark ? !high : high;
+    return [{ value: [x, y, c.count], label: { color: lightText ? '#ffffff' : '#172554' } }];
   });
+  const columnLabel = (v: number | null) => (v === null ? fmt.other : fmt.version(v).replace(/^TLS /, ''));
   return {
-    grid: { left: 4, right: 12, top: 32, bottom: 8, containLabel: true },
+    // `containLabel` ignores the labels of a top axis: the top margin holds them.
+    grid: { left: 4, right: 12, top: 22, bottom: 4, containLabel: true },
     tooltip: {
       trigger: 'item',
       formatter: (p: { value: [number, number, number] }) => {
         const [x, y, count] = p.value;
         const s = rows[y];
         const name = s === undefined ? '' : s.suite === null ? fmt.other : (s.name ?? suiteLabel(null, s.suite));
-        return `${escapeHtml(fmt.version(versions[x] ?? null))}<br/>${escapeHtml(name)}<br/>${escapeHtml(fmt.sessions(count))}`;
+        const v = versions[x] ?? null;
+        return `${escapeHtml(v === null ? fmt.other : fmt.version(v))}<br/>${escapeHtml(name)}<br/>${escapeHtml(fmt.sessions(count))}`;
       },
     },
     xAxis: {
       type: 'category',
       position: 'top',
       // Short labels (`1.2`): the card title names the axis, and four columns fit at 375 px.
-      data: versions.map((v) => fmt.version(v).replace(/^TLS /, '')),
+      data: versions.map(columnLabel),
       splitArea: { show: false },
       axisTick: { show: false },
       axisLabel: { interval: 0, hideOverlap: true },
@@ -191,14 +211,14 @@ export function buildMatrixOption(stats: TlsStats, fmt: TlsChartFormat): ECharts
       type: 'category',
       data: rows.map((s) => suiteRowLabel(s, fmt.other)),
       axisTick: { show: false },
-      axisLabel: { interval: 0, formatter: (v: string) => truncateLabel(v) },
+      axisLabel: { interval: 0, formatter: (v: string) => truncateMiddle(v) },
     },
     visualMap: {
       show: false,
       min: 0,
       max,
       dimension: 2,
-      inRange: { color: [...SEQUENTIAL] },
+      inRange: { color: dark ? [...SEQUENTIAL_DARK] : [...SEQUENTIAL] },
     },
     series: [
       {
@@ -211,7 +231,7 @@ export function buildMatrixOption(stats: TlsStats, fmt: TlsChartFormat): ECharts
   };
 }
 
-/** Version of a donut click (`undefined` for the sessions without `ServerHello`). */
+/** Version of a donut click (`undefined` without `ServerHello` and for the other versions). */
 export function versionOfPie(params: unknown): number | undefined {
   const name = (params as { name?: unknown }).name;
   return typeof name === 'string' ? (versionOfName(name) ?? undefined) : undefined;

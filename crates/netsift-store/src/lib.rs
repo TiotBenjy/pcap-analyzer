@@ -10,7 +10,9 @@
 
 pub mod catalog;
 pub mod connections;
+pub mod dns;
 mod error;
+pub mod finalize;
 pub mod http;
 mod id;
 pub mod migrate;
@@ -27,6 +29,7 @@ pub mod writer;
 pub use catalog::{Catalog, SessionInfo, SessionState};
 pub use connections::{ConversationRow, HostTrafficRow};
 pub use error::{Result, StoreError};
+pub use finalize::{FinalizeReport, run_finalizers};
 pub use id::SessionId;
 pub use ports::OpenPortRow;
 pub use query::{Keyset, Page, PageRequest, keyset_page};

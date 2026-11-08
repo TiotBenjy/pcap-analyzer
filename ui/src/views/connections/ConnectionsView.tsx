@@ -24,7 +24,7 @@ import { Toggle } from '../../components/Toggle';
 import { formatBytes, formatCount, formatDuration, formatTimestamp } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { ChordDiagram, type ChordNodeView } from './ChordDiagram';
-import { countryName } from './countries';
+import { countryName } from '../../lib/countries';
 import { rankedPairs, truncateLabel } from './chordLayout';
 import { LoadMore } from './LoadMore';
 import { isViewable } from './session';

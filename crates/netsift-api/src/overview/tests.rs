@@ -188,6 +188,11 @@ async fn mixed_capture_shows_dns_http_and_tls_with_exact_totals() {
     // One HTTP transaction (7 header lines) per round of the HTTP scenario.
     assert_eq!(module("http"), Some(3.into()));
     assert_eq!(module("httpHeaders"), Some(21.into()));
+    assert!(
+        module("dns")
+            .and_then(|n| n.as_u64())
+            .is_some_and(|n| n > 0)
+    );
 }
 
 #[tokio::test]

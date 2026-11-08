@@ -1,0 +1,11 @@
+---
+source: crates/netsift-analyze/src/dns/tests.rs
+expression: render(&run(&packets))
+---
+dns 17 192.168.1.10:49155 -> 192.168.1.1:53 responder=None id=0x1d0b QUERY "www.example.test" A suffix=None rcode=Some("NOERROR") latency=Some(500000) q=1 r=1 pending=0 answers=["www.example.test A 203.0.113.80 ttl=300"]
+dns 17 2001:db8:1::10:49156 -> 2001:db8:1::1:53 responder=None id=0xb346 QUERY "www.example.test" AAAA suffix=None rcode=Some("NOERROR") latency=Some(500000) q=1 r=1 pending=0 answers=["www.example.test AAAA 2001:db8:80::80 ttl=300"]
+dns 17 192.168.1.10:49157 -> 192.168.1.1:53 responder=None id=0x9ceb QUERY "secure.example.test" A suffix=None rcode=Some("NOERROR") latency=Some(500000) q=1 r=1 pending=0 answers=["secure.example.test CNAME edge.cdn.example.net ttl=3600", "edge.cdn.example.net A 198.51.100.43 ttl=60"]
+dns 17 192.168.1.10:49158 -> 192.168.1.1:53 responder=None id=0x12a7 QUERY "missing.example.test" A suffix=None rcode=Some("NXDOMAIN") latency=Some(500000) q=1 r=1 pending=0 answers=[]
+nbns 17 192.168.1.20:137 -> 192.168.1.255:137 responder=None id=0x7101 REGISTRATION "FILESRV01" NB suffix=Some(32) rcode=None latency=None q=1 r=0 pending=1 answers=["FILESRV01 NB 192.168.1.20 ttl=300000"]
+nbns 17 192.168.1.10:137 -> 192.168.1.255:137 responder=None id=0x7102 QUERY "FILESRV01" NB suffix=Some(32) rcode=Some("timeout") latency=None q=1 r=0 pending=1 answers=[]
+nbns 17 192.168.1.10:137 -> 192.168.1.20:137 responder=None id=0x7102 QUERY "FILESRV01" NB suffix=Some(32) rcode=Some("NOERROR") latency=None q=0 r=1 pending=0 answers=["FILESRV01 NB 192.168.1.20 ttl=300000"]

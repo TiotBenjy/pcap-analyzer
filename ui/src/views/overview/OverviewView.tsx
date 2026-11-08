@@ -28,6 +28,7 @@ import { MultiSelect } from '../../components/MultiSelect';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { StatCard } from '../../components/StatCard';
+import { sessionVersionMessage } from '../../lib/errors';
 import { formatBytes, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { SessionStateBadge } from '../sessions/SessionStateBadge';
@@ -121,7 +122,7 @@ export default function OverviewView() {
       <>
         <SummaryBand
           summary={summary.data ?? null}
-          error={summary.isError}
+          error={summary.isError ? summary.error : null}
           onRetry={() => {
             void summary.refetch();
           }}
@@ -176,14 +177,15 @@ function SummaryBand({
   onRetry,
 }: {
   summary: OverviewSummary | null;
-  error: boolean;
+  /** Error of the summary query, `null` when none. */
+  error: unknown;
   onRetry: () => void;
 }) {
   const { t } = useTranslation();
-  if (error) {
+  if (error !== null) {
     return (
       <Card>
-        <ErrorState message={t('views.overview.loadError')} onRetry={onRetry} />
+        <ErrorState message={sessionVersionMessage(t, error) ?? t('views.overview.loadError')} onRetry={onRetry} />
       </Card>
     );
   }

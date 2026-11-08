@@ -104,7 +104,7 @@ sessions/<session_id>/
   thumbs/ab/...       miniatures PNG générées côté Rust (crate `image`, décodeurs purs Rust)
 catalog.db            liste des sessions (nom, chemins sources, état, tailles)
 exports/              fichiers exportés (seul dossier que l'UI desktop peut ouvrir)
-geoip/                base GeoIP facultative, prioritaire sur celle du bundle
+geoip/                base GeoIP facultative (téléchargée ou importée depuis l'app), prioritaire sur celle du bundle
 ```
 
 Les captures sources ne sont **jamais copiées** : la session référence les chemins des chunks
@@ -159,11 +159,14 @@ jusqu'à un réimport (ADR-013).
   les sessions annulées passent `incomplete`.
 - Plugins : `dialog` (choix de dossier ou de fichier, `nativePicker()` côté UI), `opener` (limité au
   dossier `<données>/exports`). Capabilities minimales, sans `core:default`.
-- GeoIP : `<données>/geoip/dbip-country-lite.mmdb` si présent, sinon la base du bundle
-  (`resources/geoip/`). L'état est visible dans « Paramètres > À propos » (`GET /server-info`).
+- GeoIP : `<données>/geoip/dbip-country-lite.mmdb` si présent et lisible, sinon la base du bundle
+  (`resources/geoip/`, jamais écrite). L'état est visible dans « Paramètres > À propos » (`GET /server-info`),
+  d'où l'utilisateur peut télécharger la dernière base ou importer un fichier : la copie de `<données>/geoip/`
+  est alors remplacée atomiquement et rechargée à chaud par l'API (ADR-015).
 - CSP stricte : `default-src 'self'; connect-src http://127.0.0.1:*; img-src 'self' http://127.0.0.1:* data:`,
   plus `style-src 'self' 'unsafe-inline'` pour le SVG d'ECharts et des directives fermées (détail : ADR-006).
-- Aucune autre fenêtre, aucun accès réseau sortant.
+- Aucune autre fenêtre, aucun accès réseau sortant, sauf le téléchargement de la base GeoIP sur clic de
+  l'utilisateur, fait par l'API Rust et non par la webview (ADR-015).
 - Bundles publiés par `release.yml` sur tag `vX.Y.Z` (ADR-011, procédure dans `docs/GIT_WORKFLOW.md`) :
   Linux `.AppImage`, `.deb`, `.rpm` (Ubuntu 22.04 pour la compatibilité glibc), Windows NSIS + MSI
   (`windows-latest`), macOS `.dmg` universel Apple Silicon + Intel (`macos-15`, macOS 11 minimum),
@@ -177,6 +180,10 @@ jusqu'à un réimport (ADR-013).
 - Base pays **DB-IP IP to Country Lite** (format mmdb, licence CC BY 4.0, attribution dans « À propos »).
   Téléchargée par `./x.sh geoip` en dev (`./x.sh desktop` la copie dans le bundle) et par `release.yml`
   pour les bundles (`scripts/ci/geoip.sh`). L'application fonctionne sans (pays inconnu).
+- Mise à jour depuis l'application (ADR-015) : `POST /geoip/download` (DB-IP, mois courant puis précédent,
+  HTTPS, tailles bornées) ou `POST /geoip/import { path }` ; validation (`netsift_geo::install`) puis
+  renommage atomique dans `<données>/geoip/` et rechargement à chaud. C'est la **seule** requête réseau
+  sortante de l'application. Les sessions déjà importées gardent leurs pays (ADR-009).
 - Classification d'adresses : privée (RFC 1918 / ULA), publique, broadcast, multicast, link-local, loopback,
   CGNAT. Utilisée pour les filtres et légendes (LAN / Public / Broadcast / Multicast / Link-local / Loopback).
 

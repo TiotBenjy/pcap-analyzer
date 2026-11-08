@@ -34,7 +34,9 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-i18next": "18.0.0",
-    "sigma": "3.0.2"
+    "sigma": "3.0.2",
+    "topojson-client": "3.1.0",
+    "world-atlas": "2.0.2"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -45,9 +47,12 @@
     "@testing-library/user-event": "14.6.8",
     "@types/d3-chord": "3.0.6",
     "@types/d3-shape": "3.2.0",
+    "@types/geojson": "7946.0.16",
     "@types/node": "22.20.5",
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",
+    "@types/topojson-client": "3.1.5",
+    "@types/topojson-specification": "1.0.5",
     "@vitejs/plugin-react": "5.1.0",
     "eslint": "10.14.0",
     "eslint-plugin-react-hooks": "7.1.1",

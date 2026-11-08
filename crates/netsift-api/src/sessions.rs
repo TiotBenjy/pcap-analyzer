@@ -303,13 +303,3 @@ async fn anomalies(
     .await
     .map(Json)
 }
-
-/// First anomalies of a session, as import warnings.
-pub(crate) fn first_anomalies(dir: &Path, limit: u32) -> Vec<AnomalyInfo> {
-    let Ok(session) = Session::open(dir, OpenMode::ReadOnly) else {
-        return Vec::new();
-    };
-    anomalies_page(session.conn(), &PageRequest::first(limit))
-        .map(|p| p.items.into_iter().map(convert::anomaly).collect())
-        .unwrap_or_default()
-}

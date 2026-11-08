@@ -1,7 +1,5 @@
 //! Conversions between store rows and contract DTOs (nanoseconds -> microseconds, ADR-008).
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use netsift_store::query::AnomalyEntry;
 use netsift_store::{AnomalyRow, ChunkRow, ChunkStatus};
 use serde_json::Value;
@@ -11,13 +9,6 @@ use crate::contract::{AnomalyInfo, ChunkInfo, SessionState};
 /// Nanoseconds to microseconds (floor, also for dates before 1970).
 pub(crate) fn us(ns: i64) -> i64 {
     ns.div_euclid(1_000)
-}
-
-/// Wall clock, nanoseconds since the Unix epoch (same clock as the catalog dates).
-pub(crate) fn now_ns() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX))
 }
 
 pub(crate) fn state(s: netsift_store::SessionState) -> SessionState {

@@ -9,7 +9,7 @@ use std::time::Duration;
 use netsift_analyze::Registry;
 use netsift_analyze::flow::FlowConfig;
 use netsift_capture::chunkset::{Opener, ReadOptions};
-use netsift_store::WriterConfig;
+use netsift_store::{AnomalyRow, SessionId, WriterConfig};
 
 use crate::plan::GroupSelection;
 
@@ -169,6 +169,9 @@ pub enum Phase {
 /// Progress snapshot passed to the progress callback.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Progress {
+    /// Session being written: known from the first callback, so that a caller can follow an
+    /// import (or cancel it) without waiting for its end.
+    pub session: SessionId,
     pub phase: Phase,
     /// Bytes consumed from the chunk files (compressed size for `.gz`).
     pub bytes_read: u64,
@@ -183,6 +186,14 @@ pub struct Progress {
     pub chunks_total: usize,
     /// Wall-clock time since the start of the import.
     pub elapsed: Duration,
+    /// Continuity anomalies found since the previous callback, in discovery order: those
+    /// known from the inventory (first callback), reader warnings and errors as chunks are
+    /// read, then time gaps, overlaps and the `out_of_order` summary (`Finishing` callback:
+    /// the source updates `out_of_order` in place until reading stops). Same rows as the
+    /// `anomalies` table, which stays the authoritative list (timestamps may be refined there
+    /// once every chunk is read; analyzer failures are only stored). Bounded over an import by
+    /// `netsift_capture::chunkset::MAX_ANOMALIES`.
+    pub new_anomalies: Vec<AnomalyRow>,
 }
 
 impl Progress {

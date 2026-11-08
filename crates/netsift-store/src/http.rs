@@ -9,6 +9,7 @@ use std::net::IpAddr;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Row, ToSql, params};
 
+use crate::connections::EndpointInfo;
 use crate::error::{Result, StoreError};
 use crate::query::{Keyset, Page, PageRequest, keyset_page};
 use crate::records::conversion;
@@ -270,9 +271,9 @@ pub struct HttpEntry {
     pub id: i64,
     pub flow_id: i64,
     pub seq: u32,
-    pub client_ip: String,
+    pub client_ip: IpAddr,
     pub client_port: u16,
-    pub server_ip: String,
+    pub server_ip: IpAddr,
     pub server_port: u16,
     pub ts: i64,
     pub end_ts: i64,
@@ -291,12 +292,32 @@ pub struct HttpEntry {
     pub req_body_len: Option<u64>,
     pub resp_body_len: u64,
     pub resp_body_state: Option<String>,
+    /// What `hosts` knows about both ends.
+    pub client: EndpointInfo,
+    pub server: EndpointInfo,
 }
+
+/// Transactions with the `hosts` rows of both ends.
+const ENTRY_FROM: &str = "http_transactions t \
+    LEFT JOIN hosts hc ON hc.ip = t.client_ip LEFT JOIN hosts hs ON hs.ip = t.server_ip";
+/// Columns of [`ENTRY_COLUMNS`].
+const ENTRY_LEN: usize = 30;
 
 const ENTRY_COLUMNS: &str = "t.id, t.flow_id, t.seq, t.client_ip, t.client_port, t.server_ip, \
     t.server_port, t.ts, t.end_ts, t.method, t.uri, t.host, t.path, t.query, t.version, t.status, \
     t.reason, t.content_type, t.user_agent, t.req_ts, t.resp_ts, t.req_body_len, t.resp_body_len, \
-    t.resp_body_state";
+    t.resp_body_state, hc.names, hc.category, hc.country, hs.names, hs.category, hs.country";
+
+fn ip(raw: &str, col: usize) -> rusqlite::Result<IpAddr> {
+    raw.parse().map_err(|e| conversion(col, e))
+}
+
+fn names(raw: Option<String>, col: usize) -> rusqlite::Result<Vec<String>> {
+    raw.map_or_else(
+        || Ok(Vec::new()),
+        |raw| serde_json::from_str(&raw).map_err(|e| conversion(col, e)),
+    )
+}
 
 impl HttpEntry {
     fn from_row(r: &Row<'_>) -> rusqlite::Result<Self> {
@@ -304,9 +325,9 @@ impl HttpEntry {
             id: r.get(0)?,
             flow_id: r.get(1)?,
             seq: r.get(2)?,
-            client_ip: r.get(3)?,
+            client_ip: ip(&r.get::<_, String>(3)?, 3)?,
             client_port: r.get(4)?,
-            server_ip: r.get(5)?,
+            server_ip: ip(&r.get::<_, String>(5)?, 5)?,
             server_port: r.get(6)?,
             ts: r.get(7)?,
             end_ts: r.get(8)?,
@@ -325,6 +346,16 @@ impl HttpEntry {
             req_body_len: r.get(21)?,
             resp_body_len: r.get(22)?,
             resp_body_state: r.get(23)?,
+            client: EndpointInfo {
+                names: names(r.get(24)?, 24)?,
+                category: r.get(25)?,
+                country: r.get(26)?,
+            },
+            server: EndpointInfo {
+                names: names(r.get(27)?, 27)?,
+                category: r.get(28)?,
+                country: r.get(29)?,
+            },
         })
     }
 }
@@ -413,7 +444,7 @@ pub fn transactions_page(
 ) -> Result<Page<HttpEntry>> {
     let params = FilterParams::new(filter)?;
     let query = Keyset {
-        from: "http_transactions t",
+        from: ENTRY_FROM,
         select: ENTRY_COLUMNS,
         sort: match sort {
             HttpSort::Time => "t.ts",
@@ -502,17 +533,17 @@ pub fn transaction(conn: &Connection, id: i64) -> Result<Option<HttpDetail>> {
          t.resp_ts, t.resp_frame, t.resp_head_len, t.resp_body_wire, t.resp_body_len, \
          t.resp_body_state, t.resp_chunked, t.resp_encoding, t.content_type, t.resp_mime_magic, \
          t.resp_sha256, t.resp_preview, f.first_ts, f.last_ts \
-         FROM http_transactions t LEFT JOIN flows f ON f.id = t.flow_id WHERE t.id = ?1"
+         FROM {ENTRY_FROM} LEFT JOIN flows f ON f.id = t.flow_id WHERE t.id = ?1"
     );
     let detail = conn
         .query_row(&sql, [id], |r| {
             Ok(HttpDetail {
                 entry: HttpEntry::from_row(r)?,
-                referer: r.get(24)?,
-                request: message_detail(r, 25)?,
-                response: message_detail(r, 37)?,
-                flow_first_ts: r.get(49)?,
-                flow_last_ts: r.get(50)?,
+                referer: r.get(ENTRY_LEN)?,
+                request: message_detail(r, ENTRY_LEN + 1)?,
+                response: message_detail(r, ENTRY_LEN + 13)?,
+                flow_first_ts: r.get(ENTRY_LEN + 25)?,
+                flow_last_ts: r.get(ENTRY_LEN + 26)?,
             })
         })
         .optional()?;

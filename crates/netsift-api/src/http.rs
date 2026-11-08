@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::contract::Page;
+use crate::endpoint::Endpoint;
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
 use crate::sessions::{DEFAULT_LIMIT, MAX_LIMIT, parse_id};
@@ -101,14 +102,6 @@ pub struct HttpHeaderStats {
     pub names: Vec<HttpCount>,
 }
 
-/// One side of a connection.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct HttpEndpoint {
-    pub ip: String,
-    pub port: u16,
-}
-
 /// Row of the transaction lists.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
@@ -118,8 +111,11 @@ pub struct HttpTransactionSummary {
     pub flow_id: String,
     /// Order of the transaction in its connection.
     pub seq: u32,
-    pub client: HttpEndpoint,
-    pub server: HttpEndpoint,
+    /// Both ends, with what the session knows about them (`hosts`).
+    pub client: Endpoint,
+    pub client_port: u16,
+    pub server: Endpoint,
+    pub server_port: u16,
     /// Request time, else response time.
     pub ts_us: i64,
     pub end_ts_us: i64,
@@ -199,14 +195,10 @@ fn summary(e: HttpEntry) -> HttpTransactionSummary {
         id: e.id,
         flow_id: e.flow_id.to_string(),
         seq: e.seq,
-        client: HttpEndpoint {
-            ip: e.client_ip,
-            port: e.client_port,
-        },
-        server: HttpEndpoint {
-            ip: e.server_ip,
-            port: e.server_port,
-        },
+        client: Endpoint::new(e.client_ip, e.client),
+        client_port: e.client_port,
+        server: Endpoint::new(e.server_ip, e.server),
+        server_port: e.server_port,
         ts_us: convert::us(e.ts),
         end_ts_us: convert::us(e.end_ts),
         response_time_us: e

@@ -47,7 +47,8 @@ pub fn migrate(conn: &mut Connection, set: &MigrationSet) -> Result<Vec<u32>> {
 }
 
 /// [`migrate`], calling `on_applied` inside the transaction of each migration it applies, with
-/// the names of the tables that migration created (sorted). Bookkeeping written there commits
+/// the names of the tables that migration created (sorted; shadow tables of virtual tables are
+/// left out). Bookkeeping written there commits
 /// atomically with the migration, so concurrent callers never apply nor record it twice.
 pub fn migrate_with<F>(
     conn: &mut Connection,
@@ -124,10 +125,12 @@ pub fn applied_versions(conn: &Connection) -> Result<Vec<u32>> {
     Ok(rows.collect::<rusqlite::Result<Vec<u32>>>()?)
 }
 
-/// Names of the tables of the database, internal `sqlite_*` tables excluded.
+/// Names of the tables of the database: ordinary and virtual tables, without the internal
+/// `sqlite_*` tables nor the shadow tables of virtual tables (FTS5 `*_data`, `*_idx`...).
 fn table_names(conn: &Connection) -> Result<BTreeSet<String>> {
     let mut stmt = conn.prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
+        "SELECT name FROM pragma_table_list WHERE schema = 'main' \
+         AND type IN ('table', 'virtual') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
     )?;
     let rows = stmt.query_map([], |r| r.get(0))?;
     Ok(rows.collect::<rusqlite::Result<BTreeSet<String>>>()?)

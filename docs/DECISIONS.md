@@ -108,3 +108,25 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - progression lue par `fetch` en flux (pas `EventSource`, qui ne peut pas envoyer `Authorization`).
 - Conséquences : aucune perte de précision côté UI ; conversions ns <-> µs aux frontières de l'API ;
   un champ ajouté au contrat se fait en ajout rétrocompatible (optionnel côté client).
+
+## ADR-009 — Catégories d'adresses et GeoIP pendant l'import
+
+- Contexte : P2.2 ; `hosts.category` et `hosts.country` alimentent filtres, légendes et cartes de
+  plusieurs onglets (Overview, Hosts, réseau, carte du monde), développés plus tard en parallèle.
+- Décision :
+  - classification pure dans `netsift-geo` (`AddressCategory`), sans base, d'après les registres IANA
+    des adresses à usage spécial ; libellés stables en minuscules stockés tels quels en base :
+    `private`, `public`, `broadcast`, `multicast`, `link_local`, `loopback`, `cgnat`, `unspecified`,
+    `reserved`. L'UI les associe à sa légende (`private` = « LAN », `link_local` = « Link-local ») ;
+  - seul `255.255.255.255` est `broadcast` : le broadcast dirigé d'un sous-réseau est indécidable sans
+    masque et garde la catégorie de sa plage ; les IPv4 mappées en IPv6 sont classées comme leur IPv4 ;
+  - pays (ISO alpha-2) calculé **pendant l'import** par l'analyseur `core`, uniquement pour les adresses
+    `public`, à partir d'un `Arc<GeoDb>` partagé par les shards (cache LRU borné) ; une session garde
+    donc les pays de la base présente lors de son import ;
+  - base absente ou invalide : pays inconnu, un avertissement par processus, l'import n'échoue jamais ;
+    emplacement par défaut `<data_dir>/geoip/dbip-country-lite.mmdb`, surchargeable par
+    `IngestOptions::geoip_path` ;
+  - les tests construisent leurs bases mmdb avec un petit writer écrit d'après la spécification
+    publique du format (feature `test-util` de `netsift-geo`), sans données sous licence.
+- Conséquences : requêtes de filtrage par catégorie/pays en SQL pur (colonnes indexées) ; changer de base
+  GeoIP n'affecte que les imports suivants ; ajouter une catégorie est un changement de contrat (UI, API).

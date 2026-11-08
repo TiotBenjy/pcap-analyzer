@@ -62,8 +62,8 @@ fn host_row(h: HostSeen) -> HostRow {
         ip: h.ip,
         macs: h.macs,
         names: h.names,
-        country: None,
-        category: None,
+        country: h.country.map(|c| c.as_str().to_owned()),
+        category: Some(h.category.as_str().to_owned()),
         first_ts: h.first_ts,
         last_ts: h.last_ts,
     }

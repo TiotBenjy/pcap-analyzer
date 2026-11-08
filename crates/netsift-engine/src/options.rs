@@ -1,6 +1,7 @@
 //! Import options, cancellation token and progress snapshots.
 
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -32,6 +33,11 @@ pub struct IngestOptions {
     pub read: ReadOptions,
     /// Analyzers instantiated in every shard.
     pub analyzers: Registry,
+    /// Country database (DB-IP IP-to-Country Lite, mmdb). `None` = the default location
+    /// `<data_dir>/geoip/dbip-country-lite.mmdb` (where `./x.sh geoip` writes in dev). A
+    /// missing or invalid database is not an error: countries are then unknown. Ignored when
+    /// `analyzers` already holds a database (`AnalyzerConfig::geo`).
+    pub geoip_path: Option<PathBuf>,
     pub writer: WriterConfig,
     /// A packet batch (reader -> decoder -> shard) is sent at this many packets...
     pub batch_packets: usize,
@@ -68,6 +74,7 @@ impl Default for IngestOptions {
             flow: FlowConfig::default(),
             read: ReadOptions::default(),
             analyzers: Registry::default(),
+            geoip_path: None,
             writer: WriterConfig {
                 // Messages are record batches of at most `record_batch_bytes`.
                 channel_capacity: 32,
@@ -96,6 +103,7 @@ impl fmt::Debug for IngestOptions {
             .field("flow", &self.flow)
             .field("read", &self.read)
             .field("analyzers", &self.analyzers)
+            .field("geoip_path", &self.geoip_path)
             .field("writer", &self.writer)
             .field("batch_packets", &self.batch_packets)
             .field("batch_bytes", &self.batch_bytes)

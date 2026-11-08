@@ -1,0 +1,29 @@
+---
+source: crates/netsift-store/src/network/tests.rs
+expression: out
+---
+== hosts
+hosts=6 shown=6 edges=5/5 orphans=0 bytes=99848
+node h:192.168.1.10 hosts=1 sent=6064 received=93664 packets=8 ["dns", "http", "icmp", "tcp", "tls", "udp"]
+node h:81.0.0.1 hosts=1 sent=90000 received=5000 packets=2 ["tcp", "tls"]
+node h:5.0.0.1 hosts=1 sent=3000 received=700 packets=2 ["http", "tcp"]
+node h:192.168.1.1 hosts=1 sent=720 received=300 packets=4 ["dns", "mdns", "udp"]
+node h:fe80::1 hosts=1 sent=64 received=64 packets=2 ["icmp"]
+node h:224.0.0.251 hosts=1 sent=0 received=120 packets=2 ["mdns", "udp"]
+edge h:192.168.1.10 h:81.0.0.1 fwd=5000 rev=90000 conversations=1 flows=1 ["tcp", "tls"]
+edge h:192.168.1.10 h:5.0.0.1 fwd=700 rev=3000 conversations=1 flows=1 ["http", "tcp"]
+edge h:192.168.1.1 h:192.168.1.10 fwd=600 rev=300 conversations=1 flows=1 ["dns", "udp"]
+edge h:192.168.1.10 h:fe80::1 fwd=64 rev=64 conversations=1 flows=1 ["icmp"]
+edge h:192.168.1.1 h:224.0.0.251 fwd=120 rev=0 conversations=1 flows=1 ["mdns", "udp"]
+== https
+hosts=2 shown=2 edges=1/1 orphans=4 bytes=95000
+node h:81.0.0.1 hosts=1 sent=90000 received=5000 packets=2 ["tcp", "tls"]
+node h:192.168.1.10 hosts=1 sent=5000 received=90000 packets=2 ["tcp", "tls"]
+edge h:192.168.1.10 h:81.0.0.1 fwd=5000 rev=90000 conversations=1 flows=1 ["tcp", "tls"]
+== countries
+hosts=6 shown=0 edges=2/2 orphans=0 bytes=99848
+node local hosts=4 sent=6184 received=93664 packets=10 ["dns", "http", "icmp", "mdns", "tcp", "tls", "udp"]
+node c:FR hosts=1 sent=90000 received=5000 packets=2 ["tcp", "tls"]
+node c:DE hosts=1 sent=3000 received=700 packets=2 ["http", "tcp"]
+edge c:FR local fwd=90000 rev=5000 conversations=1 flows=1 ["tcp", "tls"]
+edge c:DE local fwd=3000 rev=700 conversations=1 flows=1 ["http", "tcp"]

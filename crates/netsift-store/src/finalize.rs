@@ -78,6 +78,21 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         reads: &["http_transactions"],
         run: crate::objects::finalize,
     },
+    Finalizer {
+        id: "network",
+        version: 1,
+        after: &[],
+        fills: &[
+            "network_hosts",
+            "network_edges",
+            "network_country_edges",
+            "network_expand",
+            "network_host_counts",
+            "network_protocols",
+        ],
+        reads: &["conversations", "hosts", "host_traffic"],
+        run: crate::network::finalize,
+    },
 ];
 
 /// Outcome of [`run_finalizers`].

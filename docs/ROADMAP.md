@@ -119,7 +119,7 @@ Suivis de la phase 1 :
       génération des types ts-rs, client API typé côté UI.
 - [x] **P2.2** `feat/geoip` — `netsift-geo` : lecture mmdb, cache LRU, classification d'adresses ;
       `./x.sh geoip` ; attribution DB-IP dans « À propos ».
-- [~] **P2.3** `feat/ui-captures` — Vue Captures : liste des sessions, import (dialogue natif desktop /
+- [x] **P2.3** `feat/ui-captures` — Vue Captures : liste des sessions, import (dialogue natif desktop /
       navigateur de dossiers en dev), progression, frise des chunks et anomalies. Spec : `specs/captures.md`.
 
 Suivis de la vague 2.A :
@@ -142,6 +142,8 @@ Suivis de la vague 2.A :
   interne) ; rendre visible le trou d'un fichier manquant (aujourd'hui ~3 px sous la ligne pointillée).
 - P2.3 : `useSessions` ignore le drapeau `truncated` (liste coupée à 5 000 sans avertissement) ; les shots
   Sources supposent une session démo `ready` avec chunks.
+- P2.3 : à 375 px, les tableaux Anomalies et Chunks de Sources défilent horizontalement (State, Time,
+  Detail hors champ) : passer en cartes sous `md`, comme la liste des sessions.
 - P2.4 : sous-titre d'Overview avec le nom de la session, comme Sources.
 - Settings : aligner les valeurs entre cartes, largeur maximale des formulaires à 1920 px.
 - Sidebar : « Captures » est rangé sous l'intitulé « Session » alors que la vue est globale.

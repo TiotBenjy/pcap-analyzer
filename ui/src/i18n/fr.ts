@@ -659,7 +659,6 @@ export const fr: Dictionary = {
       categories: "Catégories d'adresses",
       notRunTitle: 'Non analysé dans cette session',
       notRunText: 'Cette session a été importée par une version antérieure. Importez-la de nouveau pour détecter ses serveurs.',
-      truncated: 'Session très volumineuse : les nombres sont des minimums.',
       empty: 'Aucun serveur {{role}} détecté',
       serverCount_one: '{{count}} serveur',
       serverCount_other: '{{count}} serveurs',

@@ -108,7 +108,7 @@ export default function ServersView() {
           ) : !data.analyzed ? (
             <EmptyState icon={Server} title={t('views.servers.notRunTitle')} description={t('views.servers.notRunText')} />
           ) : (
-            <RoleBadges roles={data.roles} labels={roleLabels} truncated={data.truncated} />
+            <RoleBadges roles={data.roles} labels={roleLabels} />
           )}
         </Card>
         {data?.analyzed === true && <RoleGrid roles={data.roles} labels={roleLabels} />}
@@ -117,19 +117,10 @@ export default function ServersView() {
   );
 }
 
-function RoleBadges({
-  roles,
-  labels,
-  truncated,
-}: {
-  roles: readonly RoleServers[];
-  labels: Record<ServerRole, string>;
-  truncated: boolean;
-}) {
+function RoleBadges({ roles, labels }: { roles: readonly RoleServers[]; labels: Record<ServerRole, string> }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-2">
-      <ul aria-label={t('views.servers.rolesLabel')} className="flex flex-wrap gap-2">
+    <ul aria-label={t('views.servers.rolesLabel')} className="flex flex-wrap gap-2">
         {roles.map((r) => {
           const Icon = ROLE_ICONS[r.role];
           return (
@@ -149,9 +140,7 @@ function RoleBadges({
             </li>
           );
         })}
-      </ul>
-      {truncated && <p className="text-meta text-warning">{t('views.servers.truncated')}</p>}
-    </div>
+    </ul>
   );
 }
 
@@ -281,9 +270,7 @@ function OtherRoles({
   return (
     <span className="flex flex-wrap gap-1" title={t('views.servers.otherRoles')}>
       {others.map((r) => (
-        <Badge key={r} tone="accent">
-          {labels[r]}
-        </Badge>
+        <Badge key={r}>{labels[r]}</Badge>
       ))}
     </span>
   );
@@ -328,7 +315,7 @@ function ServerTable({ role, labels, byAddress }: ServerListProps) {
             const detailId = `${baseId}-${s.endpoint.ip}`;
             return (
               <Fragment key={s.endpoint.ip}>
-                <tr className={cn('border-b border-line align-top last:border-b-0', expanded && 'bg-subtle')}>
+                <tr className="border-b border-line align-top last:border-b-0">
                   <td className="px-2 py-2">
                     <ExpandButton server={s} expanded={expanded} controls={detailId} onToggle={() => toggle(s.endpoint.ip)} />
                   </td>
@@ -413,7 +400,7 @@ function ServerCards({ role, labels, byAddress }: ServerListProps) {
         const expanded = open.has(s.endpoint.ip);
         const detailId = `${baseId}-${s.endpoint.ip}`;
         return (
-          <li key={s.endpoint.ip} className={cn('flex min-w-0 flex-col gap-1.5 px-3 py-2.5', expanded && 'bg-subtle')}>
+          <li key={s.endpoint.ip} className="flex min-w-0 flex-col gap-1.5 px-3 py-2.5">
             <div className="flex min-w-0 items-start gap-1">
               <ExpandButton server={s} expanded={expanded} controls={detailId} onToggle={() => toggle(s.endpoint.ip)} />
               <span className="min-w-0 flex-1">
@@ -426,7 +413,7 @@ function ServerCards({ role, labels, byAddress }: ServerListProps) {
             {expanded && (
               <ul id={detailId} aria-label={t('views.servers.evidenceLabel', { server: serverName(s) })} className="flex flex-col gap-2 pt-1">
                 {s.evidence.map((e, i) => (
-                  <li key={`${e.kind}-${i}`} className="flex min-w-0 flex-col gap-0.5 rounded-md border border-line px-2.5 py-2 text-meta">
+                  <li key={`${e.kind}-${i}`} className="flex min-w-0 flex-col gap-0.5 rounded-md border border-line bg-app px-2.5 py-2 text-meta">
                     <span className="flex min-w-0 items-center justify-between gap-2">
                       <span className="truncate font-medium" title={t(`views.servers.kinds.${e.kind}`)}>
                         {t(`views.servers.kinds.${e.kind}`)}

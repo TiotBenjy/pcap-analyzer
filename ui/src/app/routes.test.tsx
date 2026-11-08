@@ -84,7 +84,7 @@ describe('session routes', () => {
       expect(second.router.state.location.pathname).toBe(`/sessions/${ID}/overview`);
     });
     // Code-split placeholder of a later view, still inside the session.
-    await second.router.navigate({ to: `/sessions/${ID}/dns` });
+    await second.router.navigate({ to: `/sessions/${ID}/wifi` });
     expect(await screen.findByText('Not available yet')).toBeInTheDocument();
   });
 

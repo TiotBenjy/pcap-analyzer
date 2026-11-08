@@ -238,7 +238,7 @@ CREATE TABLE tls_certificates (
 CREATE INDEX tls_certificates_not_after ON tls_certificates (not_after);
 
 -- index tls_certificates_subject_cn
-CREATE INDEX tls_certificates_subject_cn ON tls_certificates (coalesce(subject_cn, ''), sha256);
+CREATE INDEX tls_certificates_subject_cn ON tls_certificates (lower(coalesce(subject_cn, '')), sha256);
 
 -- table tls_cipher_suites
 CREATE TABLE tls_cipher_suites (

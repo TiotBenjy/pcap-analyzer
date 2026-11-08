@@ -794,7 +794,8 @@ pub struct CertificateEntry {
 pub struct CertificateFilter {
     /// Substring of the subject, issuer or SAN.
     pub q: Option<String>,
-    /// Only expired (at `capture_end`), not yet valid (at `capture_start`) or self-signed ones.
+    /// Only expired (at `capture_end`), not yet valid (at `capture_start`) or self-signed ones
+    /// (CA roots excluded).
     pub problems_only: bool,
     /// Capture period (ns) used by `problems_only`.
     pub capture_start: Option<i64>,
@@ -803,9 +804,9 @@ pub struct CertificateFilter {
 
 const CERT_FILTER: &str = "(?1 IS NULL OR c.subject LIKE ?1 ESCAPE '\\' \
     OR c.issuer LIKE ?1 ESCAPE '\\' OR c.san LIKE ?1 ESCAPE '\\') \
-    AND (?2 = 0 OR c.self_signed = 1 OR c.not_after < ?3 OR c.not_before > ?4)";
+    AND (?2 = 0 OR (c.self_signed = 1 AND c.is_ca = 0) OR c.not_after < ?3 OR c.not_before > ?4)";
 
-/// One page of certificates by subject CN.
+/// One page of certificates by subject CN (case-insensitive for ASCII).
 pub fn certificates_page(
     conn: &Connection,
     filter: &CertificateFilter,
@@ -817,7 +818,7 @@ pub fn certificates_page(
                  c.issuer, c.issuer_cn, c.serial, c.not_before, c.not_after, c.san, \
                  c.key_algorithm, c.key_bits, c.signature_algorithm, c.self_signed, c.is_ca, \
                  (SELECT count(*) FROM tls_session_certificates AS sc WHERE sc.sha256 = c.sha256)",
-        sort: "coalesce(c.subject_cn, '')",
+        sort: "lower(coalesce(c.subject_cn, ''))",
         tiebreak: "c.sha256",
         descending: false,
         filter: Some(CERT_FILTER),

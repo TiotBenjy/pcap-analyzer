@@ -1,12 +1,14 @@
 import type { ButtonHTMLAttributes, Ref } from 'react';
 import { cn } from '../lib/cn';
 
-type Variant = 'primary' | 'secondary' | 'ghost';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'bg-accent text-white hover:opacity-90',
   secondary: 'border border-line bg-surface text-fg hover:bg-subtle',
   ghost: 'text-muted hover:bg-subtle hover:text-fg',
+  /** Destructive confirmation only (delete). */
+  danger: 'bg-danger text-white hover:opacity-90',
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

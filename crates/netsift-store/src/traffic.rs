@@ -9,6 +9,7 @@
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::{Result, StoreError};
+use crate::session::tables_added_after_import;
 
 /// Round bucket widths, in seconds; beyond the last one, whole days.
 const NICE_STEPS: [i64; 20] = [
@@ -175,7 +176,9 @@ pub fn linktypes(conn: &Connection) -> Result<Vec<u32>> {
 }
 
 /// Number of rows of `table`, `None` when the session has no such table (a module added by a
-/// later version). `table` comes from a static registry; anything but `[a-z0-9_]` is refused.
+/// later version) or when the table was created by an upgrade after the import, so its analyzer
+/// did not run (ADR-013). `table` comes from a static registry; anything but `[a-z0-9_]` is
+/// refused.
 pub fn count_rows(conn: &Connection, table: &'static str) -> Result<Option<u64>> {
     let valid = !table.is_empty()
         && table
@@ -195,7 +198,7 @@ pub fn count_rows(conn: &Connection, table: &'static str) -> Result<Option<u64>>
         )
         .optional()?
         .is_some();
-    if !exists {
+    if !exists || tables_added_after_import(conn)?.contains(table) {
         return Ok(None);
     }
     let n: i64 = conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
@@ -319,6 +322,14 @@ mod tests {
         assert_eq!(linktypes(&conn).unwrap(), vec![1, 127]);
         assert_eq!(count_rows(&conn, "chunks").unwrap(), Some(4));
         assert_eq!(count_rows(&conn, "dns_queries").unwrap(), None);
+        // A table created by an upgrade after the import: its analyzer did not run.
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, 'anomalies,chunks')",
+            [crate::session::TABLES_ADDED_AFTER_IMPORT],
+        )
+        .unwrap();
+        assert_eq!(count_rows(&conn, "chunks").unwrap(), None);
+        assert_eq!(count_rows(&conn, "flows").unwrap(), Some(0));
         assert!(count_rows(&conn, "chunks; DROP TABLE meta").is_err());
         assert!(count_rows(&conn, "").is_err());
     }

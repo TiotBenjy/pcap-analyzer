@@ -188,10 +188,24 @@ fn content_detection() {
         (b"RFB 003.008\n", 5900, Some("vnc")),
     ];
     for (data, port, expected) in cases {
-        assert_eq!(detect_service(data, port), expected, "{data:?}");
+        assert_eq!(detect_service(data, port, true), expected, "{data:?}");
     }
-    assert_eq!(detect_service(b"", 80), None);
-    assert_eq!(detect_service(b"\x00", 445), None);
+    assert_eq!(detect_service(b"", 80, true), None);
+    assert_eq!(detect_service(b"\x00", 445, true), None);
+    // Greetings only count when the server speaks first; content-based protocols always do.
+    for greeting in [
+        &b"+OK\r\n"[..],
+        b"* OK ready\r\n",
+        b"220 (vsFTPd 3.0.5)\r\n",
+        b"RFB 003.008\n",
+    ] {
+        assert_eq!(detect_service(greeting, 21, false), None, "{greeting:?}");
+    }
+    assert_eq!(
+        detect_service(b"HTTP/1.1 200 OK\r\n", 80, false),
+        Some("http")
+    );
+    assert_eq!(detect_service(b"SSH-2.0-x\r\n", 22, false), Some("ssh"));
 }
 
 #[test]
@@ -249,7 +263,66 @@ fn hostile_payloads_never_panic() {
                 seed.to_le_bytes()[0]
             })
             .collect();
-        let service = detect_service(&data, 21);
+        let service = detect_service(&data, 21, true);
         let _ = banner(&data, service.or(Some("ssh")));
     }
+}
+
+#[test]
+fn a_reply_after_a_client_command_is_not_a_greeting() {
+    // Redis answers `+OK` to a command: not POP3, and no banner.
+    let mut sc = Scenario::new();
+    let mut redis = sc.tcp_open(hosts::workstation(), target(), &TcpOptions::new(6379));
+    redis.client_send(b"*3\r\n$3\r\nSET\r\n$1\r\nk\r\n$1\r\nv\r\n");
+    redis.server_send(b"+OK\r\n");
+    redis.close();
+    let ports = ports_of(&sc.into_packets(), &AnalyzerConfig::default());
+    assert_eq!(ports.len(), 1);
+    assert_eq!(ports[0].port, 6379);
+    assert_eq!(ports[0].detected, None);
+    assert_eq!(ports[0].banner, None);
+}
+
+#[test]
+fn udp_flows_picked_up_midstream_never_open_the_ephemeral_port() {
+    // The capture starts in the middle of a QUIC session: the first datagram comes from the
+    // server (443) to the workstation's ephemeral port, which then answers.
+    let mut sc = Scenario::new();
+    let ws = hosts::workstation();
+    let server = Host::v4(hosts::router().mac, [81, 2, 3, 4]);
+    for _ in 0..3 {
+        sc.udp(server, ws, 443, 51_234, &[0x40; 1200]);
+        sc.udp(ws, server, 51_234, 443, &[0x40; 40]);
+    }
+    let ports = ports_of(&sc.into_packets(), &AnalyzerConfig::default());
+    assert!(ports.iter().all(|p| p.port != 51_234), "{}", render(&ports));
+    assert!(ports.iter().all(|p| p.port == 443), "{}", render(&ports));
+}
+
+#[test]
+fn the_strongest_evidence_wins_whatever_the_order() {
+    let seen = |evidence| OpenPortSeen {
+        ip: target().ip,
+        transport: ip_proto::TCP,
+        port: 80,
+        evidence,
+        detected: None,
+        banner: None,
+        first_ts: 0,
+        last_ts: 0,
+    };
+    let all = [
+        PortEvidence::ServerData,
+        PortEvidence::UdpReply,
+        PortEvidence::SynAck,
+    ];
+    for a in all {
+        for b in all {
+            let merged = merge_ports(&[Record::OpenPort(seen(a)), Record::OpenPort(seen(b))]);
+            let expected = if a.rank() >= b.rank() { a } else { b };
+            assert_eq!(merged[0].evidence, expected, "{a:?} + {b:?}");
+        }
+    }
+    assert!(PortEvidence::SynAck.rank() > PortEvidence::UdpReply.rank());
+    assert!(PortEvidence::UdpReply.rank() > PortEvidence::ServerData.rank());
 }

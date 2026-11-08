@@ -96,7 +96,7 @@ fn all(conn: &Connection, filter: &PortFilter, limit: u32) -> Vec<HostPorts> {
 }
 
 #[test]
-fn merges_are_commutative_and_keep_the_smallest_values() {
+fn merges_are_commutative_and_keep_the_strongest_evidence() {
     let conn = db();
     fixture(&conn);
     let hosts = all(&conn, &PortFilter::default(), 100);
@@ -105,7 +105,8 @@ fn merges_are_commutative_and_keep_the_smallest_values() {
         .find(|h| h.ip.to_string() == "192.168.1.50")
         .unwrap();
     let web = &lan.ports.iter().find(|p| p.row.port == 80).unwrap().row;
-    assert_eq!(web.evidence, "server_data");
+    // syn_ack then server_data: the SYN-ACK is the stronger evidence.
+    assert_eq!(web.evidence, "syn_ack");
     assert_eq!(web.service.as_deref(), Some("http"));
     assert_eq!(web.detected.as_deref(), Some("http"));
     assert_eq!((web.first_ts, web.last_ts), (50, 900));
@@ -239,6 +240,22 @@ fn stats_rank_ports_by_hosts() {
     assert_eq!((distinct, total), (4, 5));
     let (top, distinct, _) = port_stats(&conn, &PortFilter::default(), 1).unwrap();
     assert_eq!((top.len(), distinct), (1, 4));
+}
+
+#[test]
+fn evidence_ranking_does_not_depend_on_arrival_order() {
+    let labels = ["server_data", "udp_reply", "syn_ack"];
+    for a in labels {
+        for b in labels {
+            let conn = db();
+            insert(&conn, StoreRecord::OpenPort(port("10.0.0.1", 6, 80, a)));
+            insert(&conn, StoreRecord::OpenPort(port("10.0.0.1", 6, 80, b)));
+            let rank = |l: &str| labels.iter().position(|x| *x == l).unwrap();
+            let expected = if rank(a) >= rank(b) { a } else { b };
+            let hosts = all(&conn, &PortFilter::default(), 10);
+            assert_eq!(hosts[0].ports[0].row.evidence, expected, "{a} + {b}");
+        }
+    }
 }
 
 #[test]

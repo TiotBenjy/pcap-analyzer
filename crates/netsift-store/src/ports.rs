@@ -2,8 +2,8 @@
 //! the read queries of the Open Ports view.
 //!
 //! Merge rules (commutative, see `records.rs`): `first_ts` = min, `last_ts` = max;
-//! `evidence`, `service`, `detected` and `banner`: a non-NULL value wins over NULL, the
-//! smallest one between two. Client counts are not stored: they come from `flows` at read time
+//! `evidence`: the strongest (`syn_ack` > `udp_reply` > `server_data`); `service`, `detected`
+//! and `banner`: a non-NULL value wins over NULL, the smallest one between two. Client counts are not stored: they come from `flows` at read time
 //! (index `flows_service`).
 
 use std::net::IpAddr;
@@ -60,7 +60,10 @@ impl OpenPortRow {
             "INSERT INTO open_ports (ip, transport, port, evidence, service, detected, banner, \
              first_ts, last_ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
              ON CONFLICT (ip, transport, port) DO UPDATE SET \
-             evidence = min(open_ports.evidence, excluded.evidence), \
+             evidence = CASE WHEN (CASE excluded.evidence WHEN 'syn_ack' THEN 2 \
+             WHEN 'udp_reply' THEN 1 ELSE 0 END) > (CASE open_ports.evidence \
+             WHEN 'syn_ack' THEN 2 WHEN 'udp_reply' THEN 1 ELSE 0 END) \
+             THEN excluded.evidence ELSE open_ports.evidence END, \
              service = coalesce(min(open_ports.service, excluded.service), open_ports.service, excluded.service), \
              detected = coalesce(min(open_ports.detected, excluded.detected), open_ports.detected, excluded.detected), \
              banner = coalesce(min(open_ports.banner, excluded.banner), open_ports.banner, excluded.banner), \

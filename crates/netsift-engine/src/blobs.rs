@@ -3,8 +3,9 @@
 //! travel through the writer channel, only their [`BlobRef`].
 //!
 //! Every shard draws from one budget of bytes per session ([`BlobBudget`],
-//! `IngestOptions::max_blob_bytes`): only new files are charged (a content already stored costs
-//! nothing). Once it is spent, `put` returns `None` and the analyzers keep the metadata without
+//! `IngestOptions::max_blob_bytes`) for the objects (`RecordSink::put_object`, HTTP bodies):
+//! only new files are charged (a content already stored costs nothing). Blobs already bounded
+//! by their analyzer (`put_blob`: TLS certificates) are not charged. Once it is spent, `put` returns `None` and the analyzers keep the metadata without
 //! content. Which objects are stored then depends on the shard timing: the import is only
 //! independent of the number of shards while the budget lasts.
 
@@ -87,7 +88,7 @@ impl BlobWriter {
 
     /// Stores `data` unless an identical blob exists. The file appears atomically (temporary
     /// file then rename), so concurrent shards storing the same content are harmless.
-    pub(crate) fn put(&mut self, data: &[u8]) -> Option<BlobRef> {
+    pub(crate) fn put(&mut self, data: &[u8], charged: bool) -> Option<BlobRef> {
         if data.len() > MAX_BLOB_SIZE {
             return None;
         }
@@ -103,7 +104,7 @@ impl BlobWriter {
         let path = self.dir.join(blob_relpath(&name)?);
         let stored = if path.is_file() {
             Ok(())
-        } else if !self.budget.take(blob.size) {
+        } else if charged && !self.budget.take(blob.size) {
             if !self.warned_budget {
                 self.warned_budget = true;
                 tracing::warn!(
@@ -114,7 +115,7 @@ impl BlobWriter {
             return None;
         } else {
             let written = self.write(&path, &name, data);
-            if written.is_err() {
+            if charged && written.is_err() {
                 self.budget.give_back(blob.size);
             }
             written
@@ -177,8 +178,8 @@ mod tests {
         let budget = Arc::new(BlobBudget::new(u64::MAX));
         let mut a = BlobWriter::new(Arc::clone(&dir), Arc::clone(&budget), 0);
         let mut b = BlobWriter::new(Arc::clone(&dir), budget, 1);
-        let r1 = a.put(b"certificate").unwrap();
-        let r2 = b.put(b"certificate").unwrap();
+        let r1 = a.put(b"certificate", true).unwrap();
+        let r2 = b.put(b"certificate", true).unwrap();
         assert_eq!(r1, r2);
         assert_eq!(r1.size, 11);
         let name = r1.to_hex();
@@ -186,10 +187,10 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"certificate");
         let files: Vec<_> = std::fs::read_dir(dir.join(&name[..2])).unwrap().collect();
         assert_eq!(files.len(), 1, "no temporary file left");
-        assert!(a.put(&vec![0; MAX_BLOB_SIZE + 1]).is_none());
+        assert!(a.put(&vec![0; MAX_BLOB_SIZE + 1], true).is_none());
         // Known digests skip the file system: a removed file is not written again by `a`.
         std::fs::remove_file(&path).unwrap();
-        assert_eq!(a.put(b"certificate"), Some(r1));
+        assert_eq!(a.put(b"certificate", true), Some(r1));
         assert!(!path.exists());
     }
 
@@ -200,8 +201,8 @@ mod tests {
         std::fs::write(&file, b"x").unwrap();
         let budget = Arc::new(BlobBudget::new(100));
         let mut w = BlobWriter::new(Arc::new(file), Arc::clone(&budget), 0);
-        assert!(w.put(b"data").is_none());
-        assert!(w.put(b"other").is_none());
+        assert!(w.put(b"data", true).is_none());
+        assert!(w.put(b"other", true).is_none());
         // Failed writes give their bytes back.
         assert_eq!(budget.remaining.load(Ordering::Acquire), 100);
     }
@@ -213,15 +214,17 @@ mod tests {
         let budget = Arc::new(BlobBudget::new(10));
         let mut a = BlobWriter::new(Arc::clone(&dir), Arc::clone(&budget), 0);
         let mut b = BlobWriter::new(Arc::clone(&dir), Arc::clone(&budget), 1);
-        assert!(a.put(b"123456").is_some());
+        assert!(a.put(b"123456", true).is_some());
         // Same content from another shard: already on disk, free.
-        assert!(b.put(b"123456").is_some());
-        assert!(b.put(b"abcd").is_some());
+        assert!(b.put(b"123456", true).is_some());
+        assert!(b.put(b"abcd", true).is_some());
         assert_eq!(budget.remaining.load(Ordering::Acquire), 0);
-        assert!(a.put(b"x").is_none(), "budget spent");
+        assert!(a.put(b"x", true).is_none(), "budget spent");
         assert!(
-            b.put(b"abcd").is_some(),
+            b.put(b"abcd", true).is_some(),
             "known content is still referenced"
         );
+        // Uncharged blobs (certificates) are stored whatever the budget.
+        assert!(a.put(b"certificate", false).is_some());
     }
 }

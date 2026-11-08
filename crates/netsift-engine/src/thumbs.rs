@@ -11,8 +11,9 @@
 //!   A panic of a codec on hostile data is caught and reported as a failure.
 //! - When: [`generate_pending`] runs once at the end of the import, after the writer and its
 //!   end-of-import steps (which build `objects`), never in a shard: decoding costs much more
-//!   than parsing. It uses a few threads, stops on cancellation and after a time limit; what is
-//!   left stays `pending` and is rendered on demand by the API ([`render`], not cached).
+//!   than parsing. It reads the objects by batches, uses two threads, stops on cancellation and
+//!   after a time limit; what is left stays `pending` and is rendered on demand by the API
+//!   ([`render`], then [`store_thumbnail`] unless the server is read-only).
 
 use std::io::Cursor;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -37,12 +38,15 @@ pub const PREVIEW_SIZE: u32 = 1600;
 pub const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 /// Largest width or height decoded, in pixels.
 pub const MAX_DIMENSION: u32 = 16_384;
-/// Largest allocation of a decoder, in bytes.
-pub const MAX_DECODE_ALLOC: u64 = 128 * 1024 * 1024;
+/// Largest allocation of a decoder, in bytes (some decoders hold uncounted buffers on top, such
+/// as the coefficients of a progressive JPEG: kept low with few workers).
+pub const MAX_DECODE_ALLOC: u64 = 64 * 1024 * 1024;
 /// Time given to the end-of-import pass.
 pub const PASS_TIME_LIMIT: Duration = Duration::from_secs(60);
 /// Decoding threads of the end-of-import pass.
-const MAX_WORKERS: usize = 4;
+const MAX_WORKERS: usize = 2;
+/// Objects read from the database at a time by the end-of-import pass.
+const BATCH: u32 = 256;
 
 /// Why an image has no thumbnail.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -137,46 +141,49 @@ pub fn generate_pending(
     time_limit: Duration,
 ) -> Result<ThumbReport, StoreError> {
     let mut session = Session::open(session_dir, OpenMode::ReadWrite)?;
-    let pending = objects::pending_thumbs(session.conn())?;
-    if pending.is_empty() {
-        return Ok(ThumbReport::default());
-    }
     let dirs = Dirs {
         blobs: session.blobs_dir(),
         thumbs: session.thumbs_dir(),
     };
     let deadline = Instant::now() + time_limit;
-    let next = AtomicUsize::new(0);
-    let updates = Mutex::new(Vec::with_capacity(pending.len()));
     let workers = thread::available_parallelism()
         .map_or(1, std::num::NonZero::get)
-        .clamp(1, MAX_WORKERS)
-        .min(pending.len());
-    thread::scope(|s| {
-        for _ in 0..workers {
-            s.spawn(|| {
-                while !cancel.is_cancelled() && Instant::now() < deadline {
-                    let Some(item) = pending.get(next.fetch_add(1, Ordering::Relaxed)) else {
-                        break;
-                    };
-                    if let Some(update) = dirs.process(item)
-                        && let Ok(mut all) = updates.lock()
-                    {
-                        all.push(update);
+        .clamp(1, MAX_WORKERS);
+    let mut report = ThumbReport::default();
+    let mut after = 0;
+    let stopped = || cancel.is_cancelled() || Instant::now() >= deadline;
+    while !stopped() {
+        let batch = objects::pending_thumbs(session.conn(), after, BATCH)?;
+        let Some(last) = batch.last() else {
+            break;
+        };
+        after = last.id;
+        let next = AtomicUsize::new(0);
+        let updates = Mutex::new(Vec::with_capacity(batch.len()));
+        thread::scope(|s| {
+            for _ in 0..workers.min(batch.len()) {
+                s.spawn(|| {
+                    while !stopped() {
+                        let Some(item) = batch.get(next.fetch_add(1, Ordering::Relaxed)) else {
+                            break;
+                        };
+                        if let Some(update) = dirs.process(item)
+                            && let Ok(mut all) = updates.lock()
+                        {
+                            all.push(update);
+                        }
                     }
-                }
-            });
-        }
-    });
-    let updates = updates.into_inner().unwrap_or_default();
-    objects::set_thumbs(session.conn_mut(), &updates)?;
-    let ready = updates.iter().filter(|u| u.state == thumb::READY).count();
-    let failed = updates.len() - ready;
-    Ok(ThumbReport {
-        ready,
-        failed,
-        left: pending.len() - updates.len(),
-    })
+                });
+            }
+        });
+        let updates = updates.into_inner().unwrap_or_default();
+        objects::set_thumbs(session.conn_mut(), &updates)?;
+        let ready = updates.iter().filter(|u| u.state == thumb::READY).count();
+        report.ready += ready;
+        report.failed += updates.len() - ready;
+    }
+    report.left = usize::try_from(objects::count_pending_thumbs(session.conn())?).unwrap_or(0);
+    Ok(report)
 }
 
 struct Dirs {
@@ -228,6 +235,19 @@ pub fn read_blob(path: &Path, size: u64) -> Option<Vec<u8>> {
     (u64::try_from(data.len()).ok()? == size).then_some(data)
 }
 
+/// Writes a thumbnail produced by [`render`] at `thumbs/<aa>/<sha256>.png` (`thumbs_dir` is the
+/// `thumbs/` directory of the session), atomically. `false` when the digest is malformed.
+pub fn store_thumbnail(thumbs_dir: &Path, sha256: &str, png: &[u8]) -> std::io::Result<bool> {
+    let Some(rel) = thumb_relpath(sha256) else {
+        return Ok(false);
+    };
+    write_atomic(&thumbs_dir.join(rel), png).map(|()| true)
+}
+
+/// Names temporary files: unique per process and call (the API may write the same thumbnail
+/// from two requests).
+static TMP_SEQ: AtomicUsize = AtomicUsize::new(0);
+
 fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     let parent = path
         .parent()
@@ -237,7 +257,8 @@ fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let tmp = parent.join(format!(".{name}.{}.tmp", std::process::id()));
+    let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = parent.join(format!(".{name}.{}.{seq}.tmp", std::process::id()));
     if let Err(e) = std::fs::write(&tmp, data) {
         let _ = std::fs::remove_file(&tmp);
         return Err(e);

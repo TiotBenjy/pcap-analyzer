@@ -451,7 +451,11 @@ impl RecordSink for WriterSink {
     }
 
     fn put_blob(&mut self, data: &[u8]) -> Option<BlobRef> {
-        self.blobs.as_mut()?.put(data)
+        self.blobs.as_mut()?.put(data, false)
+    }
+
+    fn put_object(&mut self, data: &[u8]) -> Option<BlobRef> {
+        self.blobs.as_mut()?.put(data, true)
     }
 }
 

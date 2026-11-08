@@ -14,6 +14,8 @@ vi.mock('../../api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof client>()),
   apiGet: vi.fn(),
 }));
+// Some navigations end on the Overview: its charts would import ECharts (about 2 s) mid-test.
+vi.mock('../../components/Chart', () => ({ Chart: () => null }));
 
 const m = vi.mocked(api);
 let user: ReturnType<typeof setupUser>;

@@ -33,7 +33,7 @@ pub use records::{
     AnomalyRow, ChunkFormat, ChunkRow, ChunkStatus, FlowRow, HostRow, MetaRow, StoreRecord,
     TimeseriesRow,
 };
-pub use session::{OpenMode, Session};
+pub use session::{OpenMode, Session, Upgrade};
 pub use writer::{StoreSender, StoreWriter, WriterConfig, WriterStats};
 
 /// Crate name, used by smoke tests and diagnostics.

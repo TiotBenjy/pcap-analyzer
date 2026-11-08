@@ -238,6 +238,16 @@ describe('Overview view', () => {
     expect(screen.getByText('import failed (details in the application log)')).toBeInTheDocument();
     expect(overviewApi.getTraffic).not.toHaveBeenCalled();
   });
+
+  it('explains a session this version cannot open', async () => {
+    vi.mocked(overviewApi.getOverviewSummary).mockRejectedValue(
+      new ApiError(409, 'urn:netsift:problem:session-too-new', 'newer'),
+    );
+    renderApp(`/sessions/${ID}/overview`);
+    expect(
+      await screen.findByText('This session was created by a newer version of NetSift. Update the application to open it.'),
+    ).toBeInTheDocument();
+  });
 });
 
 const FORMAT: TrafficFormat = {

@@ -24,6 +24,14 @@ pub enum ApiError {
     Conflict(String),
     #[error("too many imports running")]
     TooManyImports,
+    #[error("session created by a newer version")]
+    SessionTooNew,
+    #[error("session upgrade failed")]
+    SessionUpgradeFailed,
+    #[error("session upgrade needed")]
+    SessionUpgradeNeeded,
+    #[error("session busy")]
+    SessionBusy,
     #[error("internal error")]
     Internal,
 }
@@ -61,6 +69,26 @@ impl ApiError {
                 "too-many-imports",
                 "Too many imports running; wait for one to end",
             ),
+            Self::SessionTooNew => (
+                StatusCode::CONFLICT,
+                "session-too-new",
+                "The session was created by a newer version of NetSift",
+            ),
+            Self::SessionUpgradeFailed => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "session-upgrade-failed",
+                "The session could not be upgraded to this version of NetSift",
+            ),
+            Self::SessionUpgradeNeeded => (
+                StatusCode::CONFLICT,
+                "session-upgrade-needed",
+                "The session must be upgraded to this version of NetSift, which a read-only server does not do",
+            ),
+            Self::SessionBusy => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "session-busy",
+                "The session is being upgraded by another request; try again",
+            ),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",
@@ -89,6 +117,10 @@ impl IntoResponse for ApiError {
             header::CONTENT_TYPE,
             header::HeaderValue::from_static("application/problem+json"),
         );
+        if matches!(self, Self::SessionBusy) {
+            res.headers_mut()
+                .insert(header::RETRY_AFTER, header::HeaderValue::from_static("1"));
+        }
         if matches!(self, Self::Unauthorized) {
             res.headers_mut().insert(
                 header::WWW_AUTHENTICATE,
@@ -108,6 +140,18 @@ impl From<netsift_store::StoreError> for ApiError {
             }
             E::InvalidCursor => Self::BadRequest("invalid pagination cursor".to_owned()),
             E::InvalidValue { field, reason } => Self::BadRequest(format!("{field}: {reason}")),
+            E::SchemaTooNew { .. } => Self::SessionTooNew,
+            // Only reachable for sessions that are not upgraded on opening (importing, failed).
+            E::SchemaOutdated { .. } => Self::Conflict(
+                "the session was created by an older version and is not upgraded in this state"
+                    .to_owned(),
+            ),
+            E::UpgradeNeeded => Self::SessionUpgradeNeeded,
+            E::SessionBusy => Self::SessionBusy,
+            E::UpgradeFailed(source) => {
+                tracing::error!("session upgrade failed: {source}");
+                Self::SessionUpgradeFailed
+            }
             other => {
                 // Store errors carry paths and SQL details: logged, never returned.
                 tracing::error!("store error: {other}");

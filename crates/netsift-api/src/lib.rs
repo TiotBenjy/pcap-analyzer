@@ -362,3 +362,5 @@ pub(crate) async fn serve_with(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod upgrade_tests;

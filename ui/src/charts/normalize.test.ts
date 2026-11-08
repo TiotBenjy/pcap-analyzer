@@ -19,6 +19,20 @@ describe('normalizeOption', () => {
     expect(wide.legend[0]).toMatchObject({ type: 'scroll', orient: 'vertical', right: 0 });
   });
 
+  it('applies theme axis colors under the view values', () => {
+    const theme = { axisLabel: { color: 'grey' }, splitLine: { lineStyle: { color: 'line' } } };
+    const out = normalizeOption(
+      { yAxis: { splitLine: { lineStyle: { type: 'dashed' } }, axisLabel: { color: 'red' } } },
+      800,
+      {},
+      theme,
+    ) as { yAxis: Record<string, unknown>[] };
+    expect(out.yAxis[0]).toEqual({
+      axisLabel: { hideOverlap: true, color: 'red' },
+      splitLine: { lineStyle: { color: 'line', type: 'dashed' } },
+    });
+  });
+
   it('leaves options without axes, series or legend untouched', () => {
     expect(normalizeOption({ title: { text: 'x' } }, 500)).toEqual({ title: { text: 'x' } });
   });

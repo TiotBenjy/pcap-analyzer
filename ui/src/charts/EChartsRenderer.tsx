@@ -53,13 +53,17 @@ function baseOption(): EChartsCoreOption {
   };
 }
 
+/** ECharts event handlers by event name (`datazoom`, `click`...). */
+export type ChartEvents = Readonly<Record<string, (params: unknown) => void>>;
+
 interface Props {
   option: EChartsCoreOption;
   height: number;
   ariaLabel: string;
+  onEvents?: ChartEvents | undefined;
 }
 
-export default function EChartsRenderer({ option, height, ariaLabel }: Props) {
+export default function EChartsRenderer({ option, height, ariaLabel, onEvents }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<EChartsType | null>(null);
   const { theme } = useTheme();
@@ -91,9 +95,27 @@ export default function EChartsRenderer({ option, height, ariaLabel }: Props) {
     if (chart === null) return;
     chart.setOption(baseOption(), { notMerge: true });
     const muted = cssVar('--ns-muted');
+    const line = cssVar('--ns-line');
     const legendDefaults = { textStyle: { color: muted }, pageTextStyle: { color: muted } };
-    chart.setOption(normalizeOption(option, wide ? LEGEND_SIDE_MIN_WIDTH : 0, legendDefaults));
+    const axisDefaults = {
+      axisLabel: { color: muted },
+      axisLine: { lineStyle: { color: line } },
+      axisTick: { lineStyle: { color: line } },
+      splitLine: { lineStyle: { color: line } },
+    };
+    chart.setOption(normalizeOption(option, wide ? LEGEND_SIDE_MIN_WIDTH : 0, legendDefaults, axisDefaults));
   }, [option, theme, wide]);
+
+  // Handlers are (re)bound when they change; the chart instance outlives them.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (chart === null || onEvents === undefined) return;
+    const entries = Object.entries(onEvents);
+    for (const [name, handler] of entries) chart.on(name, handler);
+    return () => {
+      for (const [name, handler] of entries) chart.off(name, handler);
+    };
+  }, [onEvents]);
 
   return <div ref={ref} role="img" aria-label={ariaLabel} style={{ height }} className="w-full min-w-0" />;
 }

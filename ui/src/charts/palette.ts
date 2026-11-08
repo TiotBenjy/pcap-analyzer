@@ -15,16 +15,27 @@ export const CATEGORICAL = [
 
 export const OTHER_COLOR = CATEGORICAL[7];
 
-/** Fixed assignments for well-known protocol categories. */
+/**
+ * Fixed assignments for well-known protocol categories, including every series of the Overview
+ * traffic chart (`TrafficProtocol`). Eight hues for thirteen series: related protocols share a
+ * hue (SMB / NetBIOS, TLS / QUIC, DNS / DHCP, SSH / SNMP); the legend and tooltip name them.
+ */
 const FIXED: Readonly<Record<string, string>> = {
   http: CATEGORICAL[0],
   tls: CATEGORICAL[1],
+  quic: CATEGORICAL[1],
   dns: CATEGORICAL[2],
+  dhcp: CATEGORICAL[2],
   smb: CATEGORICAL[3],
   netbios: CATEGORICAL[3],
   udp: CATEGORICAL[4],
+  other_udp: CATEGORICAL[4],
+  wifi_mgmt: CATEGORICAL[4],
   tcp: CATEGORICAL[5],
+  other_tcp: CATEGORICAL[5],
   icmp: CATEGORICAL[6],
+  ssh: CATEGORICAL[6],
+  snmp: CATEGORICAL[6],
   other: OTHER_COLOR,
 };
 

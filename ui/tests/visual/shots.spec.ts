@@ -150,6 +150,18 @@ for (const [view, target] of views) {
           await expect(page.getByRole('table', { name: 'Chunks of the session' })).toBeVisible();
         }
 
+        if (view === 'overview' && !path.includes(NO_SESSION)) {
+          await expect(page.getByTestId('overview-summary')).toBeVisible();
+          await expect(page.getByRole('img', { name: /^Traffic by protocol/ })).toBeVisible();
+          // The demo session must show at least DNS, HTTP and TLS in the series.
+          const id = path.split('/')[2] ?? NO_SESSION;
+          const res = await page.request.get(`/api/v1/sessions/${id}/timeseries?points=200`);
+          expect(res.ok()).toBe(true);
+          const body = (await res.json()) as { series: { protocol: string }[] };
+          const protocols = body.series.map((s) => s.protocol);
+          for (const p of ['dns', 'http', 'tls']) expect(protocols).toContain(p);
+        }
+
         if (view === 'settings') {
           // /server-info is authenticated: "Read-only" proves the proxy injects a valid token.
           await expect(page.getByTestId('backend-status')).toContainText('Connected');

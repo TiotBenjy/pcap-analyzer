@@ -162,10 +162,21 @@ Suivis de la vague 2.A :
 
 - [x] **P2.4** `feat/ui-overview` — Vue Overview (`specs/overview.md`) : série temporelle par protocole,
       cartes de modules avec compteurs, résumé de session.
-- [~] **P2.5** `feat/desktop-integration` — Dialogue de dossier natif, jeton API, CSP, répertoire de données,
+- [x] **P2.5** `feat/desktop-integration` — Dialogue de dossier natif, jeton API, CSP, répertoire de données,
       fermeture propre pendant un import.
 
-Sortie de phase : importer un dossier depuis l'app desktop et voir l'Overview.
+Sortie de phase : importer un dossier depuis l'app desktop et voir l'Overview. **À vérifier par
+l'utilisateur** sur un bundle installé (liste des 11 vérifications manuelles dans l'ADR-012).
+
+Suivis de la vague 2.B :
+
+- Desktop : une session reste `importing` si le writer dépasse `STOP_LIMIT` à la sortie (récupérée au
+  lancement suivant) ; démarrage refusé si `catalog.db` est corrompu, sans réparation possible dans l'app ;
+  un second lancement pendant l'arrêt de l'API (~15 s) quitte sans fenêtre.
+- GeoIP : le cache de `/server-info` peut rester périmé si la base est remplacée dans la même seconde avec
+  la même taille.
+- Vue Network (sigma) : vérifier avec `freezePrototype` (WebGL requis au chargement, non testable sous jsdom).
+- Overview : performance au-delà de 24 h et zoom avec refetch, reportés dans P4.2.
 
 ---
 

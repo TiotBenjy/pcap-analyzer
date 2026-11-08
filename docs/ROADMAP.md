@@ -195,10 +195,24 @@ Suivis de la vague 2.B :
       chunked ; vues HTTP et HTTP Headers. `specs/http.md`, `specs/http-headers.md`.
 - [~] **P3.3** `feat/tls` — TLS : ClientHello/ServerHello, versions, suites, SNI, ALPN, JA3/JA4 (client),
       certificats X.509 (export DER/PEM). `specs/tls.md`.
-- [~] **P3.4** `feat/connections-ports` — Agrégats de flux, ports ouverts (SYN-ACK / réponses UDP), table
+- [x] **P3.4** `feat/connections-ports` — Agrégats de flux, ports ouverts (SYN-ACK / réponses UDP), table
       IANA des services embarquée. `specs/connections.md`, `specs/open-ports.md`.
 - [~] **P3.5** `feat/smb-netbios` — Annonces NetBIOS browser (OS, types), SMB1/2 négociation, NTLMSSP
       (v1/v2 -> lignes hashcat 5500/5600). `specs/smb.md`.
+
+Suivis de la vague 3.A :
+
+- P3.4 (fusionnée le 2026-11-08) : cartes choroplèthes de Connections absentes (top 5 pays à la place ;
+  réutiliser le composant carte du monde extrait par P3.1) ; routes `/open-ports*` au lieu de `/ports*`
+  de la spec ; conversations orientées par l'initiateur ; pas de sélecteur de tri ni de filtre
+  protocole/catégorie dans l'UI (l'API les propose) ; étiquettes du chord masquées en haut du cercle
+  (collision sur boîtes alignées, adapter le contrôle de chevauchement des shots avant de passer aux
+  boîtes tournées) ; tableau des conversations sans indice de défilement à 375/768 px ; badges de la
+  sidebar non alimentés (`AppShell` ne transmet aucun compteur) ; P4.2 : `hosts_page` (deux
+  `count(DISTINCT)` par hôte), `HOSTS_FROM` ré-agrégé à chaque page, `count_conversations` en scan.
+- Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
+  16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
+  l'en-tête de carte, tableaux en cartes sous `md`).
 
 ### Vague 3.B (dépend de 3.A)
 

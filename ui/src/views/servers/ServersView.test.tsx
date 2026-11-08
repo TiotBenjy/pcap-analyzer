@@ -49,7 +49,7 @@ function overview(overrides: Partial<ServersOverview> = {}, filled: Partial<Reco
     const servers = filled[role] ?? [];
     return { role, total: servers.length, servers };
   });
-  return { analyzed: true, roles, truncated: false, ...overrides };
+  return { analyzed: true, roles, ...overrides };
 }
 
 beforeEach(() => {
@@ -65,7 +65,8 @@ it('shows populated role cards with their evidence and an empty state for the ot
   expect(within(dns).getByText('DNS responses')).toBeInTheDocument();
   expect(within(dns).getByText('Open port 53/udp')).toBeInTheDocument();
   // The same host also plays the DHCP role: shown as a badge.
-  expect(within(dns).getByText('DHCP')).toBeInTheDocument();
+  const other = within(dns).getByText('DHCP');
+  expect(other.className).not.toContain('text-accent');
   expect(screen.getByRole('table', { name: 'DHCP servers' })).toBeInTheDocument();
   expect(screen.getByText('No LDAP server detected')).toBeInTheDocument();
   expect(screen.getByText('No Kerberos server detected')).toBeInTheDocument();

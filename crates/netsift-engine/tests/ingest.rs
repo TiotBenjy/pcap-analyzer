@@ -530,6 +530,65 @@ fn continuity_anomalies_are_recorded() {
 }
 
 #[test]
+fn progress_carries_the_session_and_anomalies_as_they_are_found() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let dir = tmp.path().join("chunks");
+    // A ten-minute pause in the middle (time gap, found at the end of reading) and a missing
+    // file (known from the inventory, before the first packet).
+    let mut packets = traffic();
+    let middle = packets[packets.len() / 2].ts_ns;
+    for p in &mut packets {
+        if p.ts_ns >= middle {
+            p.ts_ns += 600_000_000_000;
+        }
+    }
+    let opts = SplitOptions::new(SplitBy::Duration(1_000_000_000), Naming::Dumpcap);
+    let files = split_to_dir(&dir, &packets, &opts).unwrap().1;
+    remove_chunk(&files[1]).unwrap();
+
+    let mut seen: Vec<Progress> = Vec::new();
+    let report = ingest(
+        &catalog,
+        &dir,
+        &IngestOptions::default(),
+        &CancelToken::new(),
+        &mut |p: &Progress| seen.push(p.clone()),
+    )
+    .unwrap();
+    assert!(seen.iter().all(|p| p.session == report.session));
+    let first = seen.first().unwrap();
+    assert_eq!(first.phase, Phase::Reading);
+    assert!(
+        first
+            .new_anomalies
+            .iter()
+            .any(|a| a.kind == "missing_sequence"),
+        "{:?}",
+        first.new_anomalies
+    );
+    let finishing = seen.iter().find(|p| p.phase == Phase::Finishing).unwrap();
+    assert!(
+        finishing.new_anomalies.iter().any(|a| a.kind == "time_gap"),
+        "{:?}",
+        finishing.new_anomalies
+    );
+    // Each anomaly is delivered once, and they are the stored ones.
+    let mut live: Vec<String> = seen
+        .iter()
+        .flat_map(|p| p.new_anomalies.iter().map(|a| a.kind.clone()))
+        .collect();
+    live.sort();
+    let session = catalog
+        .open_session(&report.session, OpenMode::ReadOnly)
+        .unwrap();
+    let mut stored = rows(&session, "SELECT kind FROM anomalies");
+    stored.sort();
+    assert_eq!(live, stored);
+    assert_eq!(live.len(), report.anomalies);
+}
+
+#[test]
 fn large_packets_stay_within_the_byte_budget() {
     let tmp = TempDir::new().unwrap();
     let catalog = Catalog::open(tmp.path().join("data")).unwrap();

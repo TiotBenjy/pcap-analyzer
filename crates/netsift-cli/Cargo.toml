@@ -17,6 +17,7 @@ anyhow.workspace = true
 clap.workspace = true
 netsift-api.workspace = true
 netsift-engine.workspace = true
+netsift-fixtures = { workspace = true, optional = true }
 netsift-store.workspace = true
 tokio.workspace = true
 tracing.workspace = true
@@ -28,3 +29,7 @@ workspace = true
 [dev-dependencies]
 netsift-fixtures.workspace = true
 tempfile = "3.27.0"
+
+[features]
+# `netsift demo-session`: synthetic demo data for screenshots and previews (never in releases).
+demo = ["dep:netsift-fixtures"]

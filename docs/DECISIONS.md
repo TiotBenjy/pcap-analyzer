@@ -91,3 +91,20 @@ acceptée : la remplacer par une nouvelle qui la référence.
   nombre de shards, sauf l'éviction LRU (`max_flows`, par table) et des reculs d'horloge
   supérieurs à 5 s. `max_flows` et `max_defrag_bytes` sont des bornes par table : l'engine
   divise ses bornes globales par le nombre de shards.
+
+## ADR-008 — Conventions JSON de l'API et contrat des sessions
+
+- Contexte : vague 2.A, backend (P2.1) et vue Captures (P2.3) développés en parallèle ; les horodatages
+  en nanosecondes (~1,7e18) et les identifiants de flux sur 63 bits dépassent la précision exacte des
+  nombres JavaScript (2^53).
+- Décision :
+  - le contrat des routes sessions/import/SSE/fs est figé dans `netsift-api/src/contract.rs` (types
+    ts-rs exportés vers `ui/src/api/types/`), modifiable seulement d'un commun accord ;
+  - horodatages JSON en **microsecondes** (`*_us`, exacts jusqu'en 2255) ; la base garde les nanosecondes ;
+  - identifiants pouvant dépasser 2^53 (flux, lignes) transmis en **chaînes** ; sessions en ULID ;
+  - compteurs (octets, paquets) en nombres ; `TS_RS_LARGE_INT = "number"` pour que ts-rs n'émette pas
+    de `bigint` (que `JSON.parse` ne produit jamais) ;
+  - champs en `snake_case`, énumérations en chaînes minuscules, événements SSE étiquetés par `type` ;
+  - progression lue par `fetch` en flux (pas `EventSource`, qui ne peut pas envoyer `Authorization`).
+- Conséquences : aucune perte de précision côté UI ; conversions ns <-> µs aux frontières de l'API ;
+  un champ ajouté au contrat se fait en ajout rétrocompatible (optionnel côté client).

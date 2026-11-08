@@ -23,6 +23,8 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   settings: '/settings',
+  smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
+  'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
 };

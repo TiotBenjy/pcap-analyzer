@@ -25,6 +25,7 @@ ts-rs.workspace = true
 [dev-dependencies]
 netsift-capture.workspace = true
 netsift-fixtures.workspace = true
+netsift-geo = { workspace = true, features = ["test-util"] }
 tempfile = "3.27.0"
 tokio = { workspace = true, features = ["io-util"] }
 tower.workspace = true

@@ -7,6 +7,8 @@ import type { TrafficProtocol } from "./TrafficProtocol";
  */
 export type ProtocolSeries = { protocol: TrafficProtocol, bytes: Array<number> | null, packets: Array<number> | null, 
 /**
- * Totals over the requested period (both metrics, always).
+ * Totals over the buckets, both metrics, always: the aligned period
+ * `[start_us, start_us + points * step_us)`, which contains the requested one. They equal the
+ * sums of the bucket values.
  */
 total_bytes: number, total_packets: number, };

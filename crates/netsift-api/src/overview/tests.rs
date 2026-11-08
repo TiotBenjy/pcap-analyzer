@@ -288,6 +288,8 @@ async fn unknown_importing_failed_and_invalid_requests_are_problems() {
         "metric=volume",
         "points=-1",
         "from_us=10000000&to_us=0",
+        // Reversed within the same second.
+        "from_us=1500000&to_us=1000000",
         "from_us=abc",
     ] {
         let (status, kind, json) = env

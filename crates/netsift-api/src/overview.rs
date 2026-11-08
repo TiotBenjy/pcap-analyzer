@@ -153,7 +153,9 @@ pub struct ProtocolSeries {
     pub protocol: TrafficProtocol,
     pub bytes: Option<Vec<u64>>,
     pub packets: Option<Vec<u64>>,
-    /// Totals over the requested period (both metrics, always).
+    /// Totals over the buckets, both metrics, always: the aligned period
+    /// `[start_us, start_us + points * step_us)`, which contains the requested one. They equal the
+    /// sums of the bucket values.
     pub total_bytes: u64,
     pub total_packets: u64,
 }
@@ -221,18 +223,30 @@ fn open_ready(state: &AppState, id: &SessionId) -> Result<(SessionInfo, Session)
 fn build_summary(state: &AppState, id: &SessionId) -> Result<OverviewSummary, ApiError> {
     let (info, session) = open_ready(state, id)?;
     let conn = session.conn();
-    let stats = Stats::read(session.dir());
+    let stats = Stats::of(&session);
     let (bytes, ts_packets) = traffic::traffic_totals(conn)?;
-    let host_count = traffic::count_rows(conn, "hosts")?.unwrap_or(0);
+    // Each table is counted once: `flows` (core schema) comes with the stats, the others are
+    // counted on first use (module registry, host figure).
+    let mut counts: BTreeMap<&'static str, Option<u64>> =
+        BTreeMap::from([("flows", Some(stats.flows))]);
+    let mut count = |table: &'static str| -> Result<Option<u64>, ApiError> {
+        if let Some(n) = counts.get(table) {
+            return Ok(*n);
+        }
+        let n = traffic::count_rows(conn, table)?;
+        counts.insert(table, n);
+        Ok(n)
+    };
     let mut modules = Vec::with_capacity(MODULES.len());
     for (module, table) in MODULES {
-        if let Some(count) = traffic::count_rows(conn, table)? {
+        if let Some(count) = count(table)? {
             modules.push(ModuleCount {
                 id: (*module).to_owned(),
                 count,
             });
         }
     }
+    let host_count = count("hosts")?.unwrap_or(0);
     let duration_us = stats
         .first_ts
         .zip(stats.last_ts)
@@ -302,6 +316,13 @@ fn build_series(
     let (_, session) = open_ready(state, id)?;
     let conn = session.conn();
 
+    if let (Some(from), Some(to)) = (query.from_us, query.to_us)
+        && to < from
+    {
+        return Err(ApiError::BadRequest(
+            "range: the end is before the start".to_owned(),
+        ));
+    }
     let to_s = |us: i64| us.div_euclid(US_PER_S);
     let bounds = traffic::traffic_bounds(conn)?;
     let (from_s, to_s) = match (query.from_us.map(to_s), query.to_us.map(to_s), bounds) {

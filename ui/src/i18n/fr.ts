@@ -84,7 +84,7 @@ export const fr: Dictionary = {
         actions: 'Actions',
       },
       state: {
-        importing: 'Import en cours',
+        importing: 'En cours',
         ready: 'Prête',
         incomplete: 'Incomplète',
         failed: 'Échec',

@@ -206,7 +206,7 @@ const MODULES: &[(&str, &str)] = &[
 ];
 
 /// Opens a session whose data can be shown: 404 when unknown, 409 while importing or failed.
-/// A session created by an older build is upgraded first (ADR-013).
+/// A session created by an older build is upgraded first, except on a read-only server (ADR-013).
 pub(crate) fn open_ready(
     state: &AppState,
     id: &SessionId,
@@ -225,7 +225,7 @@ pub(crate) fn open_ready(
     if !dir.join(netsift_store::session::SESSION_DB).is_file() {
         return Err(ApiError::NotFound);
     }
-    let session = Session::open_upgrading(dir)?;
+    let session = Session::open_finished(dir, crate::sessions::upgrade_policy(state))?;
     Ok((info, session))
 }
 

@@ -10,7 +10,7 @@ use axum::{Json, Router};
 use netsift_store::catalog::SESSIONS_DIR;
 use netsift_store::query::{anomalies_page, chunks_page, get_meta};
 use netsift_store::{
-    OpenMode, PageRequest, Session, SessionId, SessionInfo, SessionState as StoreState,
+    OpenMode, PageRequest, Session, SessionId, SessionInfo, SessionState as StoreState, Upgrade,
 };
 use serde::Deserialize;
 
@@ -78,14 +78,30 @@ fn open(state: &AppState, id: &SessionId) -> Result<Session, ApiError> {
     if !dir.join(netsift_store::session::SESSION_DB).is_file() {
         return Err(ApiError::NotFound);
     }
-    Ok(open_db(dir, info.state)?)
+    Ok(open_db(state, dir, info.state)?)
+}
+
+/// Upgrades of older sessions are applied, except on a read-only server: an upgrade cannot be
+/// undone, so a mere read would make the session unreadable by the previous version (ADR-013).
+pub(crate) fn upgrade_policy(state: &AppState) -> Upgrade {
+    if state.config.read_only {
+        Upgrade::Refuse
+    } else {
+        Upgrade::Apply
+    }
 }
 
 /// Opens a session database for reading. Finished sessions (`ready`, `incomplete`) created by an
 /// older build are upgraded first (ADR-013); one being imported, or failed, is never written.
-pub(crate) fn open_db(dir: PathBuf, state: StoreState) -> netsift_store::Result<Session> {
-    match state {
-        StoreState::Ready | StoreState::Incomplete => Session::open_upgrading(dir),
+pub(crate) fn open_db(
+    state: &AppState,
+    dir: PathBuf,
+    session_state: StoreState,
+) -> netsift_store::Result<Session> {
+    match session_state {
+        StoreState::Ready | StoreState::Incomplete => {
+            Session::open_finished(dir, upgrade_policy(state))
+        }
         StoreState::Importing | StoreState::Failed => Session::open(dir, OpenMode::ReadOnly),
     }
 }
@@ -114,8 +130,8 @@ fn count(session: &Session, table: &str) -> u32 {
 }
 
 impl Stats {
-    pub(crate) fn read(dir: PathBuf, state: StoreState) -> Self {
-        open_db(dir, state).map_or_else(|_| Self::default(), |s| Self::of(&s))
+    pub(crate) fn read(state: &AppState, dir: PathBuf, session_state: StoreState) -> Self {
+        open_db(state, dir, session_state).map_or_else(|_| Self::default(), |s| Self::of(&s))
     }
 
     /// Figures of an already open session.
@@ -144,7 +160,7 @@ impl Stats {
 }
 
 pub(crate) fn summary(state: &AppState, info: &SessionInfo) -> SessionSummary {
-    let stats = Stats::read(session_dir(state, &info.id), info.state);
+    let stats = Stats::read(state, session_dir(state, &info.id), info.state);
     let live = state.imports.live_progress(&info.id);
     SessionSummary {
         id: info.id.to_string(),

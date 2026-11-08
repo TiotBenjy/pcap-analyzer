@@ -181,7 +181,10 @@ fn classify_v6(ip: Ipv6Addr) -> AddressCategory {
         _ if in_v6(a, v6([0xff00, 0, 0, 0, 0, 0, 0, 0]), 8) => C::Multicast,
         _ if in_v6(a, v6([0x64, 0xff9b, 0, 0, 0, 0, 0, 0]), 96) => C::Public,
         _ if global_in_2001 => C::Public,
-        _ if in_v6(a, v6([0x2001, 0, 0, 0, 0, 0, 0, 0]), 23) // IETF protocol assignments
+        // IETF protocol assignments. Includes Teredo `2001::/32` (RFC 4380): a tunnel address
+        // whose server IPv4 (bits 32-63) and obfuscated client IPv4 (last 32 bits) do not locate
+        // the host itself, so it is `reserved` and never looked up in the country database.
+        _ if in_v6(a, v6([0x2001, 0, 0, 0, 0, 0, 0, 0]), 23)
             || in_v6(a, v6([0x2001, 0xdb8, 0, 0, 0, 0, 0, 0]), 32) // documentation
             || in_v6(a, v6([0x3fff, 0, 0, 0, 0, 0, 0, 0]), 20) =>
         // documentation (RFC 9637)

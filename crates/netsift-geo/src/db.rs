@@ -1,7 +1,8 @@
 //! Country lookups in a DB-IP IP-to-Country Lite database (`MaxMind` DB format).
 
 use std::fmt;
-use std::net::IpAddr;
+use std::io::Read as _;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,7 +21,7 @@ pub const DB_FILE_NAME: &str = "dbip-country-lite.mmdb";
 /// Number of addresses kept by the lookup cache of a [`GeoDb`].
 pub const DEFAULT_CACHE_CAPACITY: usize = 65_536;
 /// Larger files are refused (the country database is about 10 MiB).
-pub const MAX_DB_BYTES: u64 = 256 << 20;
+pub const MAX_DB_BYTES: u64 = 64 << 20;
 
 /// The cache is split in independently locked shards so that flow shards rarely contend.
 const CACHE_SHARDS: usize = 16;
@@ -73,11 +74,15 @@ impl fmt::Debug for GeoDb {
 impl GeoDb {
     /// Reads the database at `path` into memory.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, GeoError> {
-        let path = path.as_ref();
-        if std::fs::metadata(path)?.len() > MAX_DB_BYTES {
+        // Bounded read (no gap between a size check and the read).
+        let mut bytes = Vec::new();
+        std::fs::File::open(path.as_ref())?
+            .take(MAX_DB_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_DB_BYTES {
             return Err(GeoError::TooLarge);
         }
-        Self::from_bytes(std::fs::read(path)?)
+        Self::from_bytes(bytes)
     }
 
     /// Database held in memory.
@@ -113,11 +118,18 @@ impl GeoDb {
 
     /// Country of `ip`: `None` for addresses that are not [`AddressCategory::Public`] (without
     /// any lookup) and for addresses unknown to the database. IPv4-mapped IPv6 addresses are
-    /// looked up as IPv4.
+    /// looked up as IPv4, and so are NAT64 (`64:ff9b::/96`) and 6to4 (`2002::/16`) addresses
+    /// whose embedded IPv4 address is public: the IPv4 host is the actual peer.
     pub fn country(&self, ip: IpAddr) -> Option<CountryCode> {
-        let ip = ip.to_canonical();
+        let mut ip = ip.to_canonical();
         if AddressCategory::of(ip) != AddressCategory::Public {
             return None;
+        }
+        if let IpAddr::V6(v6) = ip
+            && let Some(v4) = embedded_ipv4(v6)
+            && AddressCategory::of(IpAddr::V4(v4)) == AddressCategory::Public
+        {
+            ip = IpAddr::V4(v4);
         }
         let shard = self.cache.get(shard_of(ip))?;
         if let Some(hit) = shard
@@ -154,6 +166,16 @@ impl GeoDb {
                 None
             }
         }
+    }
+}
+
+/// IPv4 address carried by a NAT64 well-known prefix address (`64:ff9b::/96`, last 32 bits)
+/// or a 6to4 address (`2002:AABB:CCDD::/48`, bits 16 to 47).
+fn embedded_ipv4(v6: Ipv6Addr) -> Option<Ipv4Addr> {
+    let pair = |hi: u16, lo: u16| Ipv4Addr::from((u32::from(hi) << 16) | u32::from(lo));
+    match v6.segments() {
+        [0x64, 0xff9b, 0, 0, 0, 0, hi, lo] | [0x2002, hi, lo, ..] => Some(pair(hi, lo)),
+        _ => None,
     }
 }
 
@@ -239,6 +261,24 @@ mod tests {
     }
 
     #[test]
+    fn nat64_and_6to4_use_their_public_embedded_ipv4() {
+        let db = GeoDb::from_bytes(sample()).unwrap();
+        // 64:ff9b::81.2.3.4 and 2002:5102:0304:: carry 81.2.3.4.
+        assert_eq!(country(&db, "64:ff9b::5102:304").as_deref(), Some("FR"));
+        assert_eq!(country(&db, "2002:5102:304::1").as_deref(), Some("FR"));
+        assert_eq!(country(&db, "64:ff9b::808:808").as_deref(), Some("US"));
+        // Embedded IPv4 private or unknown: no country from the IPv4 side.
+        assert_eq!(country(&db, "64:ff9b::a00:1"), None);
+        assert_eq!(country(&db, "2002:a00:1::1"), None);
+        assert_eq!(country(&db, "2002:909:909::1"), None);
+        assert_eq!(
+            embedded_ipv4("2001:db8::1".parse().unwrap()),
+            None,
+            "only NAT64 and 6to4 embed an IPv4 address"
+        );
+    }
+
+    #[test]
     fn non_public_and_unknown_addresses_have_no_country() {
         let db = GeoDb::from_bytes(sample()).unwrap();
         for s in [
@@ -310,6 +350,14 @@ mod tests {
         let err = GeoDb::open(&corrupt).unwrap_err();
         assert!(matches!(err, GeoError::Invalid(_)), "{err}");
         assert!(open_or_warn(&corrupt).is_none());
+
+        // Oversized (sparse file): refused after reading at most MAX_DB_BYTES + 1 bytes.
+        let huge = dir.join("huge.mmdb");
+        std::fs::File::create(&huge)
+            .unwrap()
+            .set_len(MAX_DB_BYTES + 1)
+            .unwrap();
+        assert!(matches!(GeoDb::open(&huge), Err(GeoError::TooLarge)));
 
         // Truncated: the metadata marker is gone.
         let mut truncated = sample();

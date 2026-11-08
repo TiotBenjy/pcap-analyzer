@@ -5,7 +5,9 @@
 //! (a dedicated table rather than `user_version`, so that a migration merged later with a
 //! lower number than an already-applied one is still detected and applied).
 
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use std::collections::BTreeSet;
+
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::{Result, StoreError};
 use crate::time::now_ns;
@@ -41,6 +43,21 @@ const CREATE_TABLE: &str = "CREATE TABLE IF NOT EXISTS schema_migrations (
 /// Applies all pending migrations. Returns the versions applied by this call (empty when the
 /// schema was already up to date).
 pub fn migrate(conn: &mut Connection, set: &MigrationSet) -> Result<Vec<u32>> {
+    migrate_with(conn, set, |_, _| Ok(()))
+}
+
+/// [`migrate`], calling `on_applied` inside the transaction of each migration it applies, with
+/// the names of the tables that migration created (sorted; shadow tables of virtual tables are
+/// left out). Bookkeeping written there commits
+/// atomically with the migration, so concurrent callers never apply nor record it twice.
+pub fn migrate_with<F>(
+    conn: &mut Connection,
+    set: &MigrationSet,
+    mut on_applied: F,
+) -> Result<Vec<u32>>
+where
+    F: FnMut(&Transaction<'_>, &[String]) -> Result<()>,
+{
     check_application_id(conn, set, true)?;
     conn.execute_batch(CREATE_TABLE)?;
     check_not_newer(conn, set)?;
@@ -58,12 +75,15 @@ pub fn migrate(conn: &mut Connection, set: &MigrationSet) -> Result<Vec<u32>> {
         if done.is_some() {
             continue; // dropping `tx` rolls back the (empty) transaction
         }
+        let before = table_names(&tx)?;
         tx.execute_batch(m.sql)
             .map_err(|source| StoreError::Migration {
                 version: m.version,
                 name: m.name,
                 source,
             })?;
+        let created: Vec<String> = table_names(&tx)?.difference(&before).cloned().collect();
+        on_applied(&tx, &created)?;
         tx.execute(
             "INSERT INTO schema_migrations (version, name, applied_ns) VALUES (?1, ?2, ?3)",
             params![m.version, m.name, now_ns()],
@@ -103,6 +123,17 @@ pub fn applied_versions(conn: &Connection) -> Result<Vec<u32>> {
     let mut stmt = conn.prepare("SELECT version FROM schema_migrations ORDER BY version")?;
     let rows = stmt.query_map([], |r| r.get(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<u32>>>()?)
+}
+
+/// Names of the tables of the database: ordinary and virtual tables, without the internal
+/// `sqlite_*` tables nor the shadow tables of virtual tables (FTS5 `*_data`, `*_idx`...).
+fn table_names(conn: &Connection) -> Result<BTreeSet<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT name FROM pragma_table_list WHERE schema = 'main' \
+         AND type IN ('table', 'virtual') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
+    )?;
+    let rows = stmt.query_map([], |r| r.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<BTreeSet<String>>>()?)
 }
 
 fn check_not_newer(conn: &Connection, set: &MigrationSet) -> Result<()> {
@@ -191,6 +222,36 @@ mod tests {
         migrate(&mut conn, &set(&[V1, V100])).unwrap();
         assert_eq!(migrate(&mut conn, &set(&[V1, V2, V100])).unwrap(), vec![2]);
         check_current(&conn, &set(&[V1, V2, V100])).unwrap();
+    }
+
+    #[test]
+    fn migrate_with_reports_created_tables_inside_the_transaction() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let mut seen = Vec::new();
+        let applied = migrate_with(&mut conn, &set(&[V1, V2, V100]), |tx, created| {
+            assert!(
+                !tx.is_autocommit(),
+                "called inside the migration transaction"
+            );
+            seen.push(created.to_vec());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(applied, vec![1, 2, 100]);
+        assert_eq!(seen, vec![vec!["t1"], vec!["t2"], vec!["t100"]]);
+
+        // A failing callback rolls its migration back.
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn, &set(&[V1])).unwrap();
+        let err = migrate_with(&mut conn, &set(&[V1, V2]), |_, _| {
+            Err(StoreError::InvalidValue {
+                field: "test",
+                reason: "refused",
+            })
+        })
+        .unwrap_err();
+        assert!(matches!(err, StoreError::InvalidValue { .. }), "{err}");
+        assert_eq!(applied_versions(&conn).unwrap(), vec![1]);
     }
 
     #[test]

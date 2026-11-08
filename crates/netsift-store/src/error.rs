@@ -22,7 +22,8 @@ pub enum StoreError {
     )]
     SchemaTooNew { version: u32 },
     #[error(
-        "database schema is out of date (migration {version} pending); open it read-write first"
+        "database schema is out of date (migration {version} pending); open it read-write or \
+         upgrading first"
     )]
     SchemaOutdated { version: u32 },
     #[error("migration {version} ({name}) failed: {source}")]
@@ -32,6 +33,12 @@ pub enum StoreError {
         #[source]
         source: rusqlite::Error,
     },
+    #[error("could not upgrade the session schema: {0}")]
+    UpgradeFailed(#[source] Box<StoreError>),
+    #[error("the session must be upgraded before it can be read, which is not allowed here")]
+    UpgradeNeeded,
+    #[error("the session is locked by another connection; try again")]
+    SessionBusy,
     #[error("not a NetSift {expected} database")]
     ForeignDatabase { expected: &'static str },
     #[error("session not found: {0}")]

@@ -22,6 +22,7 @@ mod http;
 mod imports;
 mod overview;
 mod ports;
+mod servers;
 mod sessions;
 mod smb;
 mod tls;
@@ -225,6 +226,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(imports::routes())
         .merge(overview::routes())
         .merge(ports::routes())
+        .merge(servers::routes())
         .merge(sessions::routes())
         .merge(smb::routes())
         .merge(tls::routes())

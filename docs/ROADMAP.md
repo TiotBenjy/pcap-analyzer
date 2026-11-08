@@ -197,7 +197,7 @@ Suivis de la vague 2.B :
       certificats X.509 (export DER/PEM). `specs/tls.md`.
 - [~] **P3.4** `feat/connections-ports` — Agrégats de flux, ports ouverts (SYN-ACK / réponses UDP), table
       IANA des services embarquée. `specs/connections.md`, `specs/open-ports.md`.
-- [ ] **P3.5** `feat/smb-netbios` — Annonces NetBIOS browser (OS, types), SMB1/2 négociation, NTLMSSP
+- [~] **P3.5** `feat/smb-netbios` — Annonces NetBIOS browser (OS, types), SMB1/2 négociation, NTLMSSP
       (v1/v2 -> lignes hashcat 5500/5600). `specs/smb.md`.
 
 ### Vague 3.B (dépend de 3.A)

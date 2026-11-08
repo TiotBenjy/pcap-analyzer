@@ -52,8 +52,14 @@ fn hostile_or_foreign_content_fails_cleanly() {
     assert!(render(&images::dimension_bomb_png(16_384, 16_384), THUMB_SIZE).is_err());
     assert!(started.elapsed() < Duration::from_secs(5));
     // Not raster images: SVG is never rasterized, text and empty input are not images.
-    assert_eq!(render(&images::svg(), THUMB_SIZE), Err(ThumbError::Unsupported));
-    assert_eq!(render(b"<html></html>", THUMB_SIZE), Err(ThumbError::Unsupported));
+    assert_eq!(
+        render(&images::svg(), THUMB_SIZE),
+        Err(ThumbError::Unsupported)
+    );
+    assert_eq!(
+        render(b"<html></html>", THUMB_SIZE),
+        Err(ThumbError::Unsupported)
+    );
     assert_eq!(render(b"", THUMB_SIZE), Err(ThumbError::Unsupported));
     assert_eq!(
         render(&vec![0u8; MAX_INPUT_BYTES + 1], THUMB_SIZE),

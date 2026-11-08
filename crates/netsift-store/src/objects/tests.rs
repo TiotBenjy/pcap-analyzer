@@ -8,7 +8,16 @@ fn session() -> (tempfile::TempDir, Session) {
 }
 
 /// `(flow_id, seq, response time, sha, mime, size, host, uri)`.
-type Tx = (i64, i64, i64, Option<&'static str>, Option<&'static str>, i64, &'static str, &'static str);
+type Tx = (
+    i64,
+    i64,
+    i64,
+    Option<&'static str>,
+    Option<&'static str>,
+    i64,
+    &'static str,
+    &'static str,
+);
 
 const SHA_A: &str = "aa00000000000000000000000000000000000000000000000000000000000000";
 const SHA_B: &str = "bb00000000000000000000000000000000000000000000000000000000000000";
@@ -16,12 +25,57 @@ const SHA_S: &str = "cc000000000000000000000000000000000000000000000000000000000
 
 fn transactions() -> Vec<Tx> {
     vec![
-        (7, 0, 300, Some(SHA_A), Some("image/png"), 1000, "cdn.test", "/a.png"),
-        (3, 1, 100, Some(SHA_A), Some("image/png"), 1000, "www.test", "/logo.png"),
-        (3, 0, 100, Some(SHA_B), Some("image/jpeg"), 5000, "www.test", "/photo.jpg"),
-        (9, 0, 50, Some(SHA_S), Some("image/svg+xml"), 400, "www.test", "/icon.svg"),
+        (
+            7,
+            0,
+            300,
+            Some(SHA_A),
+            Some("image/png"),
+            1000,
+            "cdn.test",
+            "/a.png",
+        ),
+        (
+            3,
+            1,
+            100,
+            Some(SHA_A),
+            Some("image/png"),
+            1000,
+            "www.test",
+            "/logo.png",
+        ),
+        (
+            3,
+            0,
+            100,
+            Some(SHA_B),
+            Some("image/jpeg"),
+            5000,
+            "www.test",
+            "/photo.jpg",
+        ),
+        (
+            9,
+            0,
+            50,
+            Some(SHA_S),
+            Some("image/svg+xml"),
+            400,
+            "www.test",
+            "/icon.svg",
+        ),
         (9, 1, 60, None, Some("text/html"), 20, "www.test", "/"),
-        (5, 0, 100, Some(SHA_A), Some("image/png"), 1000, "cdn.test", "/a.png?v=2"),
+        (
+            5,
+            0,
+            100,
+            Some(SHA_A),
+            Some("image/png"),
+            1000,
+            "cdn.test",
+            "/a.png?v=2",
+        ),
     ]
 }
 
@@ -84,7 +138,10 @@ fn a_replay_keeps_the_thumbnails() {
     finalize(s.conn()).unwrap();
     let pending = pending_thumbs(s.conn()).unwrap();
     assert_eq!(
-        pending.iter().map(|p| p.sha256.as_str()).collect::<Vec<_>>(),
+        pending
+            .iter()
+            .map(|p| p.sha256.as_str())
+            .collect::<Vec<_>>(),
         vec![SHA_B, SHA_A]
     );
     set_thumbs(
@@ -99,7 +156,10 @@ fn a_replay_keeps_the_thumbnails() {
     .unwrap();
     finalize(s.conn()).unwrap();
     let a = object(s.conn(), SHA_A).unwrap().unwrap();
-    assert_eq!((a.thumb.as_str(), a.width, a.height), ("ready", Some(16), Some(8)));
+    assert_eq!(
+        (a.thumb.as_str(), a.width, a.height),
+        ("ready", Some(16), Some(8))
+    );
     assert_eq!(a.occurrences, 3);
     assert_eq!(pending_thumbs(s.conn()).unwrap().len(), 1);
     assert!(object(s.conn(), "missing").unwrap().is_none());

@@ -457,7 +457,16 @@ fn bodies_are_not_offered_as_objects_when_switched_off() {
     assert!(b.blob.is_none());
     // On by default: the image is offered.
     let txs = run_with(&generate(Kind::Demo, 1, 7), HttpConfig::default(), true);
-    assert!(txs[0].response.as_ref().unwrap().message.body.blob.is_some());
+    assert!(
+        txs[0]
+            .response
+            .as_ref()
+            .unwrap()
+            .message
+            .body
+            .blob
+            .is_some()
+    );
 }
 
 #[test]
@@ -465,18 +474,34 @@ fn only_image_responses_are_offered_as_objects() {
     let png = netsift_fixtures::proto::png::png_image(16, 16);
     // Responses with a `Content-Length`.
     let sized = |status: &str, headers: &str, body: &[u8]| {
-        response(status, &format!("{headers}Content-Length: {}\r\n", body.len()), body)
+        response(
+            status,
+            &format!("{headers}Content-Length: {}\r\n", body.len()),
+            body,
+        )
     };
     let mut sc = Scenario::new();
     let mut s = sc.tcp_open(hosts::workstation(), hosts::web_server(), &opts(80));
     // Page, image served as octet-stream, HTML labelled as an image, a login form posted
     // (request body), an image uploaded (request body), a partial image (206).
     s.client_send(&request("GET", "/", "", b""));
-    s.server_send(&sized("200 OK", "Content-Type: text/html\r\n", b"<!doctype html><p>hi</p>"));
+    s.server_send(&sized(
+        "200 OK",
+        "Content-Type: text/html\r\n",
+        b"<!doctype html><p>hi</p>",
+    ));
     s.client_send(&request("GET", "/a.bin", "", b""));
-    s.server_send(&sized("200 OK", "Content-Type: application/octet-stream\r\n", &png));
+    s.server_send(&sized(
+        "200 OK",
+        "Content-Type: application/octet-stream\r\n",
+        &png,
+    ));
     s.client_send(&request("GET", "/fake.png", "", b""));
-    s.server_send(&sized("200 OK", "Content-Type: image/png\r\n", b"<html><body>not an image</body></html>"));
+    s.server_send(&sized(
+        "200 OK",
+        "Content-Type: image/png\r\n",
+        b"<html><body>not an image</body></html>",
+    ));
     s.client_send(&request(
         "POST",
         "/login",
@@ -484,17 +509,32 @@ fn only_image_responses_are_offered_as_objects() {
         b"user=alice&password=secret-password-1234",
     ));
     s.server_send(&sized("204 No Content", "", b""));
-    s.client_send(&request("POST", "/upload", "Content-Type: image/png\r\n", &png));
+    s.client_send(&request(
+        "POST",
+        "/upload",
+        "Content-Type: image/png\r\n",
+        &png,
+    ));
     s.server_send(&sized("201 Created", "", b""));
     s.client_send(&request("GET", "/part.png", "Range: bytes=0-\r\n", b""));
-    s.server_send(&sized("206 Partial Content", "Content-Type: image/png\r\n", &png));
+    s.server_send(&sized(
+        "206 Partial Content",
+        "Content-Type: image/png\r\n",
+        &png,
+    ));
     s.close();
     let txs = run_with(sc.packets(), HttpConfig::default(), true);
     let stored: Vec<(String, bool, bool)> = txs
         .iter()
         .map(|t| {
-            let req = t.request.as_ref().is_some_and(|r| r.message.body.blob.is_some());
-            let resp = t.response.as_ref().is_some_and(|r| r.message.body.blob.is_some());
+            let req = t
+                .request
+                .as_ref()
+                .is_some_and(|r| r.message.body.blob.is_some());
+            let resp = t
+                .response
+                .as_ref()
+                .is_some_and(|r| r.message.body.blob.is_some());
             (t.path().unwrap_or_default(), req, resp)
         })
         .collect();

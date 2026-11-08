@@ -516,6 +516,8 @@ export const fr: Dictionary = {
     sessionTooNew: "Cette session a été créée par une version plus récente de NetSift. Mettez l'application à jour pour l'ouvrir.",
     sessionUpgradeFailed:
       "Cette session n'a pas pu être mise à niveau pour cette version. Vérifiez que le dossier de données est accessible en écriture, ou importez à nouveau la capture.",
+    sessionUpgradeNeeded: 'Cette session doit être mise à niveau pour cette version, ce qui est impossible en lecture seule.',
+    sessionBusy: 'Cette session est en cours de mise à niveau. Réessayez dans un instant.',
     route: {
       title: "Cette vue n'a pas pu s'afficher",
       text: "Une erreur inattendue a interrompu la vue. Rechargez l'application ; si elle se reproduit, copiez les détails pour la signaler.",

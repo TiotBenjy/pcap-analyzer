@@ -6,6 +6,14 @@ TARGET="${1:-linux}"
 TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 mkdir -p dist
 
+# Base GeoIP embarquée (bundle.resources) : reprend celle de `./x.sh geoip` si le bundle n'en a pas.
+GEOIP_SRC="${NETSIFT_DATA_DIR:-.data}/geoip/dbip-country-lite.mmdb"
+GEOIP_DST="apps/desktop/resources/geoip/dbip-country-lite.mmdb"
+if [ ! -f "$GEOIP_DST" ] && [ -f "$GEOIP_SRC" ]; then
+  cp -v "$GEOIP_SRC" "$GEOIP_DST"
+fi
+[ -f "$GEOIP_DST" ] || echo ">> Pas de base GeoIP (./x.sh geoip) : le bundle n'aura pas de pays."
+
 case "$TARGET" in
   linux)
     echo ">> Build Tauri (Linux : AppImage + .deb)…"

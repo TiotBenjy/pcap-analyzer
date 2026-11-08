@@ -25,6 +25,10 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
+tempfile = "3.27.0"
+
 # Not the workspace lints: Tauri's generated code is outside our `unsafe_code = "forbid"` policy.
 [lints.rust]
 unsafe_code = "deny"

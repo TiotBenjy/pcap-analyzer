@@ -1,11 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal permissions for the main window: native folder dialog and opening the export folder.",
+  "description": "Minimal permissions for the main window: native open dialog, and opening the export folder only.",
   "windows": ["main"],
   "permissions": [
-    "core:default",
     "dialog:allow-open",
-    "opener:allow-open-path"
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$LOCALDATA/NetSift/exports" },
+        { "path": "$LOCALDATA/NetSift/exports/**" }
+      ]
+    }
   ]
 }

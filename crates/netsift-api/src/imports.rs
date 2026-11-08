@@ -187,6 +187,11 @@ impl Registry {
         }
     }
 
+    /// Number of live import threads.
+    pub(crate) fn running_count(&self) -> usize {
+        *self.active.borrow()
+    }
+
     pub(crate) async fn wait_idle(&self) {
         let mut rx = self.active.subscribe();
         let _ = rx.wait_for(|n| *n == 0).await;

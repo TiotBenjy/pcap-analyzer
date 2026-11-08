@@ -15,6 +15,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "NetSift",
         "width": 1440,
         "height": 900,
@@ -55,7 +56,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {},
+    "resources": {
+      "resources/geoip/": "geoip/"
+    },
     "homepage": "https://github.com/TiotBenjy/pcap-analyzer",
     "linux": {
       "deb": {

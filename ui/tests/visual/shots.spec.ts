@@ -127,7 +127,11 @@ for (const [view, target] of views) {
           } catch {
             /* ignore */
           }
+          // Same as the desktop webview (`freezePrototype` in tauri.conf.json).
+          Object.freeze(Object.prototype);
         });
+        const pageErrors: string[] = [];
+        page.on('pageerror', (e) => pageErrors.push(e.message));
         await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
         await page.setViewportSize({ width, height: HEIGHT });
 
@@ -177,6 +181,7 @@ for (const [view, target] of views) {
           expect(r.untitled, `truncatable elements without title (${when})`).toEqual([]);
         };
         await check(`${HEIGHT}px high`);
+        expect(pageErrors, 'uncaught errors in the page (frozen Object.prototype)').toEqual([]);
 
         // `#main` scrolls, not the page, so `fullPage` alone would only capture the first screen:
         // grow the viewport to the content height (same width, same layout) before the capture.

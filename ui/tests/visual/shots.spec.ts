@@ -137,6 +137,17 @@ for (const [view, target] of views) {
 
         await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /\bdark\b/ : /^(?!.*\bdark\b)/);
 
+        // With the demo sessions, the data views must show data, not an empty or error state.
+        if (view === 'captures' && (await demoSessionId(page)) !== NO_SESSION) {
+          await expect(
+            page.getByRole('table', { name: 'Sessions' }).or(page.getByRole('list', { name: 'Sessions' })),
+          ).toBeVisible();
+        }
+        if (view === 'sources' && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('img', { name: /^Coverage timeline/ })).toBeVisible();
+          await expect(page.getByRole('table', { name: 'Chunks of the session' })).toBeVisible();
+        }
+
         if (view === 'settings') {
           // /server-info is authenticated: "Read-only" proves the proxy injects a valid token.
           await expect(page.getByTestId('backend-status')).toContainText('Connected');

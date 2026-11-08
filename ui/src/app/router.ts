@@ -77,6 +77,7 @@ const SESSION_VIEWS: Partial<Record<string, () => Promise<{ default: ComponentTy
   '/http-headers': () => import('../views/http/HttpHeadersView'),
   '/open-ports': () => import('../views/openPorts/OpenPortsView'),
   '/overview': () => import('../views/overview/OverviewView'),
+  '/pictures': () => import('../views/pictures/PicturesView'),
   '/servers': () => import('../views/servers/ServersView'),
   '/smb': () => import('../views/smb/SmbView'),
   '/sources': () => import('../views/sessions/SourcesView'),

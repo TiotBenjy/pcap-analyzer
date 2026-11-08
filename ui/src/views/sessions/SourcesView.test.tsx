@@ -21,7 +21,7 @@ const t = i18n.t.bind(i18n);
 const CHUNKS = chunks(50, [13], 30);
 const ANOMALIES = [
   anomaly('missing_sequence', 12, { first: 13, last: 13 }),
-  anomaly('time_gap', 29, { previous: 28, gap_ns: 44_000_000_000, threshold_ns: 5_000_000_000 }),
+  anomaly('time_gap', 29, { previous: 28, gap_us: 44_000_000, threshold_us: 5_000_000 }),
 ];
 
 describe('buildCoverage', () => {
@@ -77,7 +77,10 @@ describe('anomaly texts', () => {
 
   it('describes details and summarizes', () => {
     expect(anomalyDetail(t, anomaly('missing_sequence', 3, { first: 4, last: 6 }))).toBe('Numbers 4 to 6');
-    expect(anomalyDetail(t, anomaly('time_gap', 3, { gap_ns: 43e9 }))).toBe('43 s without packets');
+    expect(anomalyDetail(t, anomaly('time_gap', 3, { gap_us: 43e6 }))).toBe('43 s without packets');
+    expect(anomalyDetail(t, anomaly('overlap', 3, { previous: 2, overlap_us: 2.5e6 }))).toBe(
+      '2.5 s overlap with chunk 2',
+    );
     expect(anomalyDetail(t, anomaly('analyzer_panicked', 3, { analyzer: 'dns', message: 'secret' }))).toBe(
       'Analyzer dns',
     );

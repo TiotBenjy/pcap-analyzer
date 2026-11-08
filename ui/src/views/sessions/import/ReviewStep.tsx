@@ -12,7 +12,7 @@ import { Badge } from '../../../components/Badge';
 import { Button } from '../../../components/Button';
 import { ErrorState } from '../../../components/ErrorState';
 import { Skeleton } from '../../../components/Skeleton';
-import { baseName, formatBytes, formatPeriod } from '../../../lib/format';
+import { baseName, formatBytes, formatTimestamp, sameLocalDay } from '../../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
 import { WizardDialog } from './WizardDialog';
 
@@ -22,10 +22,16 @@ const isSkipReason = (r: string): r is SkipReason => (SKIP_REASONS as Set<string
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** Groups preselected after a scan: the only group, else the first one. */
-function defaultSelection(scan: ScanResponse): Set<number> {
-  const first = scan.groups[0];
-  return first === undefined ? new Set() : new Set([first.id]);
+/**
+ * What gets imported: one group, or all of them merged. The API accepts exactly these cases
+ * (a subset of several groups is refused), so the choice is a radio group, not checkboxes.
+ */
+type GroupChoice = number | 'all';
+
+function groupIds(scan: ScanResponse, choice: GroupChoice | null): number[] {
+  if (choice === 'all') return scan.groups.map((g) => g.id);
+  const id = choice ?? scan.groups[0]?.id;
+  return id === undefined ? [] : [id];
 }
 
 interface ReviewStepProps {
@@ -40,7 +46,8 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
   const qc = useQueryClient();
   const readOnly = useServerInfo().data?.read_only === true;
   const [recursive, setRecursive] = useState(false);
-  const [picked, setPicked] = useState<Set<number> | null>(null);
+  const [choice, setChoice] = useState<GroupChoice | null>(null);
+  const radioName = useId();
   const [name, setName] = useState(() => baseName(path));
   const nameId = useId();
 
@@ -51,13 +58,14 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
     staleTime: 0,
     gcTime: 0,
   });
-  const selected = picked ?? (scan.data === undefined ? new Set<number>() : defaultSelection(scan.data));
+  const selected = scan.data === undefined ? [] : groupIds(scan.data, choice);
+  const effectiveChoice: GroupChoice | undefined = choice ?? scan.data?.groups[0]?.id;
 
   const start = useMutation({
     mutationFn: () =>
       startImport({
         path,
-        group_ids: [...selected].sort((a, b) => a - b),
+        group_ids: selected,
         name: name.trim() === '' ? null : name.trim(),
         recursive,
       }),
@@ -66,13 +74,6 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
       void qc.invalidateQueries({ queryKey: sessionKeys.all });
     },
   });
-
-  const toggle = (id: number, on: boolean) => {
-    const next = new Set(selected);
-    if (on) next.add(id);
-    else next.delete(id);
-    setPicked(next);
-  };
 
   return (
     <WizardDialog
@@ -83,7 +84,7 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
           <Button onClick={onBack}>{t('common.back')}</Button>
           <Button
             variant="primary"
-            disabled={selected.size === 0 || start.isPending || readOnly || scan.data === undefined}
+            disabled={selected.length === 0 || start.isPending || readOnly || scan.data === undefined}
             title={readOnly ? t('views.import.readOnly') : undefined}
             onClick={() => {
               start.mutate();
@@ -105,7 +106,7 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
                 type="checkbox"
                 checked={recursive}
                 onChange={(e) => {
-                  setPicked(null);
+                  setChoice(null);
                   setRecursive(e.target.checked);
                 }}
               />
@@ -135,19 +136,36 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
               {scan.data.groups.length === 0 ? (
                 <p className="text-muted">{t('views.import.noGroup')}</p>
               ) : (
-                scan.data.groups.map((g) => (
-                  <GroupOption
-                    key={g.id}
-                    group={g}
-                    checked={selected.has(g.id)}
-                    onChange={(on) => {
-                      toggle(g.id, on);
-                    }}
-                  />
-                ))
+                <>
+                  {scan.data.groups.map((g) => (
+                    <GroupOption
+                      key={g.id}
+                      group={g}
+                      name={radioName}
+                      checked={effectiveChoice === g.id}
+                      onSelect={() => {
+                        setChoice(g.id);
+                      }}
+                    />
+                  ))}
+                  {scan.data.groups.length > 1 && (
+                    <label className="flex min-w-0 items-center gap-3 rounded-md border border-line p-3">
+                      <input
+                        type="radio"
+                        name={radioName}
+                        className="shrink-0"
+                        checked={effectiveChoice === 'all'}
+                        onChange={() => {
+                          setChoice('all');
+                        }}
+                      />
+                      <span className="font-medium">{t('views.import.allGroups')}</span>
+                    </label>
+                  )}
+                </>
               )}
             </fieldset>
-            {selected.size > 1 && <Notice>{t('views.import.merge')}</Notice>}
+            {effectiveChoice === 'all' && <Notice>{t('views.import.merge')}</Notice>}
             {scan.data.skipped.length > 0 && (
               <details className="min-w-0 text-body">
                 <summary className="cursor-pointer text-muted">
@@ -202,20 +220,37 @@ function Notice({ children }: { children: string }) {
   );
 }
 
-function GroupOption({ group, checked, onChange }: { group: ScanGroup; checked: boolean; onChange: (on: boolean) => void }) {
+interface GroupOptionProps {
+  group: ScanGroup;
+  name: string;
+  checked: boolean;
+  onSelect: () => void;
+}
+
+function GroupOption({ group, name, checked, onSelect }: GroupOptionProps) {
   const { t } = useTranslation();
-  const period = formatPeriod(group.first_ts_us, group.last_ts_us);
+  // The scan does not read whole files: `last_ts_us` is the start of the last chunk (null for a
+  // single file). Only the start is exact; the last file start is given as an indication.
+  const since = group.first_ts_us === null ? '' : t('views.import.since', { start: formatTimestamp(group.first_ts_us) });
+  const lastStart =
+    group.last_ts_us === null || group.file_count < 2
+      ? ''
+      : t('views.import.approxEnd', {
+          end: formatTimestamp(
+            group.last_ts_us,
+            group.first_ts_us === null || !sameLocalDay(group.first_ts_us, group.last_ts_us),
+          ),
+        });
   const titleId = useId();
   return (
     <div className="flex min-w-0 gap-3 rounded-md border border-line p-3" data-testid="scan-group">
       <input
-        type="checkbox"
+        type="radio"
+        name={name}
         className="mt-1 shrink-0"
         checked={checked}
         aria-labelledby={titleId}
-        onChange={(e) => {
-          onChange(e.target.checked);
-        }}
+        onChange={onSelect}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div id={titleId} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -229,7 +264,8 @@ function GroupOption({ group, checked, onChange }: { group: ScanGroup; checked: 
         <div className="num flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-meta text-muted">
           <span>{t('views.import.files', { count: group.file_count })}</span>
           <span>{formatBytes(group.total_bytes)}</span>
-          {period !== '' && <span>{period}</span>}
+          {since !== '' && <span>{since}</span>}
+          {lastStart !== '' && <span>{lastStart}</span>}
         </div>
         {group.anomalies.length === 0 ? (
           <span className="text-meta text-muted">{t('views.import.noExpected')}</span>

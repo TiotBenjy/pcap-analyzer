@@ -13,27 +13,30 @@ mod dto;
 mod error;
 mod extract;
 mod fs;
+mod geoip;
 mod guard;
 mod imports;
 mod overview;
 mod sessions;
 
 use std::future::{Future, IntoFuture};
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::Duration;
 
 use axum::Router;
 use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::routing::get;
 use netsift_engine::IngestOptions;
-use netsift_store::Catalog;
+use netsift_store::{Catalog, StoreError};
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-pub use dto::HealthResponse;
+pub use dto::{GeoipInfo, GeoipStatus, HealthResponse};
 pub use error::ApiError;
+/// Location of the country database: the desktop app resolves it, the server reports it.
+pub use netsift_geo::{DB_FILE_NAME as GEOIP_FILE_NAME, default_path as default_geoip_path};
 
 /// Crate name, used by smoke tests and diagnostics.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
@@ -66,6 +69,9 @@ pub struct ApiConfig {
     /// Imports allowed to run at the same time (at least 1; [`DEFAULT_MAX_IMPORTS`]). Beyond,
     /// `POST /sessions/import` answers 409 `urn:netsift:problem:too-many-imports`.
     pub max_imports: usize,
+    /// Country database read by the imports and reported by `GET /server-info`. `None` = the
+    /// default location `<data_dir>/geoip/dbip-country-lite.mmdb` (`./x.sh geoip` in dev).
+    pub geoip_path: Option<PathBuf>,
 }
 
 /// Default of [`ApiConfig::max_imports`]: each import already uses every core.
@@ -81,6 +87,7 @@ impl std::fmt::Debug for ApiConfig {
             .field("cors_origins", &self.cors_origins)
             .field("allow_any_path", &self.allow_any_path)
             .field("max_imports", &self.max_imports)
+            .field("geoip_path", &self.geoip_path)
             .finish()
     }
 }
@@ -95,18 +102,27 @@ pub(crate) struct AppState {
     pub(crate) imports: imports::Registry,
     /// Options of every import (name, selection and recursion are set per request).
     pub(crate) ingest_template: IngestOptions,
+    /// State of the country database the imports read.
+    pub(crate) geoip: geoip::GeoipProbe,
     shutdown: watch::Sender<bool>,
 }
 
 impl AppState {
-    fn new(config: ApiConfig, ingest_template: IngestOptions) -> Self {
+    fn new(config: ApiConfig, mut ingest_template: IngestOptions) -> Self {
         let roots = fs::canonical_roots(&config.captures_roots);
+        let geoip_path = config
+            .geoip_path
+            .clone()
+            .unwrap_or_else(|| netsift_geo::default_path(&config.data_dir));
+        // Same file for the imports and for the state reported to the UI.
+        ingest_template.geoip_path = Some(geoip_path.clone());
         Self {
             config,
             roots,
             catalog: Mutex::new(None),
             imports: imports::Registry::new(),
             ingest_template,
+            geoip: geoip::GeoipProbe::new(geoip_path),
             shutdown: watch::Sender::new(false),
         }
     }
@@ -226,6 +242,70 @@ fn cors_layer(origins: &[HeaderValue]) -> CorsLayer {
         ])
 }
 
+/// A server ready to run. Use it instead of [`serve`] when the embedding application needs a
+/// [`ServerMonitor`] (the desktop app asks for confirmation before closing during an import).
+pub struct Server {
+    app: Router,
+    state: Arc<AppState>,
+}
+
+impl Server {
+    pub fn new(config: ApiConfig) -> Self {
+        let (app, state) = build(config, default_ingest_options());
+        Self { app, state }
+    }
+
+    /// Read-only view of the server state, usable from any thread.
+    pub fn monitor(&self) -> ServerMonitor {
+        ServerMonitor(Arc::downgrade(&self.state))
+    }
+
+    /// Same as [`serve`].
+    pub async fn serve(
+        self,
+        listener: TcpListener,
+        shutdown: impl Future<Output = ()> + Send + 'static,
+    ) -> std::io::Result<()> {
+        serve_with(listener, (self.app, self.state), shutdown).await
+    }
+}
+
+/// Read-only view of a [`Server`], valid while the server exists.
+#[derive(Clone)]
+pub struct ServerMonitor(Weak<AppState>);
+
+impl ServerMonitor {
+    /// Number of imports running now (0 once the server is gone).
+    pub fn running_imports(&self) -> usize {
+        self.0
+            .upgrade()
+            .map_or(0, |state| state.imports.running_count())
+    }
+}
+
+/// Error of [`recover_interrupted`].
+#[derive(Debug, thiserror::Error)]
+pub enum RecoverError {
+    #[error("cannot open the catalog in {path}: {source}")]
+    Catalog { path: PathBuf, source: StoreError },
+    #[error("cannot recover the interrupted imports: {0}")]
+    Engine(#[from] netsift_engine::EngineError),
+}
+
+/// Marks the sessions left `importing` by a previous run (crash, kill, import that did not stop
+/// within [`IMPORT_GRACE`]) as `incomplete`, and returns their ids. Call it once at startup,
+/// before serving, and not in read-only mode.
+pub fn recover_interrupted(data_dir: &Path) -> Result<Vec<String>, RecoverError> {
+    let catalog = Catalog::open(data_dir).map_err(|source| RecoverError::Catalog {
+        path: data_dir.to_owned(),
+        source,
+    })?;
+    Ok(netsift_engine::recover_interrupted(&catalog)?
+        .into_iter()
+        .map(|id| id.to_string())
+        .collect())
+}
+
 /// Serves the API on an already-bound listener until `shutdown` resolves.
 ///
 /// Binding is left to the caller so the desktop app can bind `127.0.0.1:0` and read the port.
@@ -237,7 +317,7 @@ pub async fn serve(
     config: ApiConfig,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
-    serve_with(listener, build(config, default_ingest_options()), shutdown).await
+    Server::new(config).serve(listener, shutdown).await
 }
 
 pub(crate) async fn serve_with(

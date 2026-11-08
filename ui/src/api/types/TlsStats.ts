@@ -25,15 +25,19 @@ encrypted_cert_sessions: number,
  */
 certificates: number, 
 /**
- * Most frequent first.
+ * Top 8, most frequent first.
  */
 versions: Array<TlsVersionCount>, 
+/**
+ * Sessions of the other versions.
+ */
+other_versions: number, 
 /**
  * Top 15 negotiated suites, most frequent first, then the others summed (`suite` `null`).
  */
 suites: Array<TlsSuiteCount>, 
 /**
- * Version x suite counts over the suites of `suites` (non-zero cells only).
+ * Version x suite counts, folded like `versions` and `suites` (non-zero cells only).
  */
 matrix: Array<TlsMatrixCell>, 
 /**

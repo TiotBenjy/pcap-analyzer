@@ -2,6 +2,7 @@
 //! `netsift_store::session::blob_relpath`). Each shard writes its own blobs: contents never
 //! travel through the writer channel, only their [`BlobRef`].
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -11,6 +12,8 @@ use sha2::{Digest as _, Sha256};
 
 /// Largest object stored (docs/ARCHITECTURE.md, "Performance").
 pub const MAX_BLOB_SIZE: usize = 64 * 1024 * 1024;
+/// Digests remembered per shard to skip the file system check of objects already written.
+const MAX_KNOWN: usize = 65_536;
 
 /// Blob store of one shard.
 #[derive(Debug)]
@@ -21,6 +24,8 @@ pub(crate) struct BlobWriter {
     seq: u64,
     /// One warning per shard is enough.
     warned: bool,
+    /// Digests of the blobs this shard wrote or found (bounded: cleared when full).
+    known: HashSet<[u8; 32]>,
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -40,6 +45,7 @@ impl BlobWriter {
             shard,
             seq: 0,
             warned: false,
+            known: HashSet::new(),
         }
     }
 
@@ -54,13 +60,24 @@ impl BlobWriter {
             sha256,
             size: u64::try_from(data.len()).ok()?,
         };
-        let name = hex(&sha256);
-        let path = self.dir.join(blob_relpath(&name)?);
-        if path.is_file() {
+        if self.known.contains(&sha256) {
             return Some(blob);
         }
-        match self.write(&path, &name, data) {
-            Ok(()) => Some(blob),
+        let name = hex(&sha256);
+        let path = self.dir.join(blob_relpath(&name)?);
+        let stored = if path.is_file() {
+            Ok(())
+        } else {
+            self.write(&path, &name, data)
+        };
+        match stored {
+            Ok(()) => {
+                if self.known.len() >= MAX_KNOWN {
+                    self.known.clear();
+                }
+                self.known.insert(sha256);
+                Some(blob)
+            }
             Err(e) => {
                 if !self.warned {
                     self.warned = true;
@@ -83,11 +100,15 @@ impl BlobWriter {
             self.shard,
             self.seq
         ));
-        std::fs::write(&tmp, data)?;
+        if let Err(e) = std::fs::write(&tmp, data) {
+            // A partial temporary file (disk full) must not stay behind.
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
         if let Err(e) = std::fs::rename(&tmp, path) {
             let _ = std::fs::remove_file(&tmp);
-            // Another shard may have stored the same content meanwhile (Windows refuses to
-            // replace an existing file).
+            // Another shard may hold the same content open meanwhile (Windows then refuses to
+            // replace it); an existing target has the same content, so that is not an error.
             if !path.is_file() {
                 return Err(e);
             }
@@ -116,6 +137,10 @@ mod tests {
         let files: Vec<_> = std::fs::read_dir(dir.join(&name[..2])).unwrap().collect();
         assert_eq!(files.len(), 1, "no temporary file left");
         assert!(a.put(&vec![0; MAX_BLOB_SIZE + 1]).is_none());
+        // Known digests skip the file system: a removed file is not written again by `a`.
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(a.put(b"certificate"), Some(r1));
+        assert!(!path.exists());
     }
 
     #[test]

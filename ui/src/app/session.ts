@@ -9,8 +9,16 @@ import { readPref, writePref } from '../lib/storage';
 const STORAGE_KEY = 'netsift.session.last';
 const SESSION_PATH = /^\/sessions\/([^/]+)(\/.*)?$/;
 
+/** Crockford base32 ULID, the only session id format written to storage. */
+const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
+
+export function isSessionId(id: string): boolean {
+  return ULID.test(id);
+}
+
 const listeners = new Set<() => void>();
-let lastId: string | null = readPref(STORAGE_KEY);
+const stored = readPref(STORAGE_KEY);
+let lastId: string | null = stored !== null && isSessionId(stored) ? stored : null;
 
 function emit(): void {
   listeners.forEach((l) => {
@@ -27,8 +35,9 @@ export function getLastSessionId(): string | null {
   return lastId;
 }
 
+/** Remembers `id` as the last opened session; ignores anything that is not a ULID. */
 export function rememberSession(id: string): void {
-  if (lastId === id) return;
+  if (lastId === id || !isSessionId(id)) return;
   lastId = id;
   writePref(STORAGE_KEY, id);
   emit();

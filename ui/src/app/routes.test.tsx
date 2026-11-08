@@ -15,7 +15,7 @@ vi.mock('../api/client', async (importOriginal) => ({
 }));
 
 const m = vi.mocked(api);
-const ID = '01JTESTSESSION0000000000AA';
+const ID = '01JC0FFEE0000000000000000A';
 
 async function sidebar() {
   // Desktop sidebar (>= 1024 px).
@@ -43,6 +43,12 @@ describe('session paths', () => {
     if (overview === undefined) throw new Error('missing overview');
     expect(navHref(overview, null)).toBeNull();
     expect(navHref(overview, ID)).toBe(`/sessions/${ID}/overview`);
+    // Only ULIDs reach the storage.
+    rememberSession('../../etc');
+    expect(getLastSessionId()).toBeNull();
+    rememberSession(ID);
+    expect(getLastSessionId()).toBe(ID);
+    forgetSession(ID);
   });
 });
 
@@ -81,9 +87,9 @@ describe('session routes', () => {
   });
 
   it('forgets an unknown session and shows a not-found state', async () => {
-    rememberSession('GONE');
+    rememberSession('01JD0NE00000000000000000GZ');
     m.getSession.mockRejectedValue(new ApiError(404, 'not_found', 'no such session'));
-    renderApp('/sessions/GONE/overview');
+    renderApp('/sessions/01JD0NE00000000000000000GZ/overview');
     expect(await screen.findByRole('heading', { level: 1, name: 'Session not found' })).toBeInTheDocument();
     await waitFor(() => {
       expect(getLastSessionId()).toBeNull();

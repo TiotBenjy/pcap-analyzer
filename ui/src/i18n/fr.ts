@@ -110,7 +110,13 @@ export const fr: Dictionary = {
     sources: {
       subtitle: 'Chunks et continuité de la session',
       coverage: 'Couverture',
-      coverageLabel: 'Frise de couverture de {{count}} chunks',
+      coverageLabel_one: 'Frise de couverture de {{count}} chunk',
+      coverageLabel_other: 'Frise de couverture de {{count}} chunks',
+      coverageSummary_one: '{{count}} chunk du {{start}} au {{end}}. Trous : {{gaps}}. Chevauchements : {{overlaps}}. Fichiers manquants : {{missing}}. Détail dans le tableau des chunks.',
+      coverageSummary_other: '{{count}} chunks du {{start}} au {{end}}. Trous : {{gaps}}. Chevauchements : {{overlaps}}. Fichiers manquants : {{missing}}. Détail dans le tableau des chunks.',
+      crowded: 'Le dernier couloir regroupe les chunks aux chevauchements multiples.',
+      outliers_one: '{{count}} chunk a des horodatages très éloignés de la capture et est dessiné au bord.',
+      outliers_other: '{{count}} chunks ont des horodatages très éloignés de la capture et sont dessinés au bord.',
       legendChunk: 'Chunk',
       legendIssue: 'Tronqué, doublon ou ignoré',
       legendGap: 'Trou temporel',
@@ -130,6 +136,7 @@ export const fr: Dictionary = {
       overlapTitle: 'Chevauchement de {{duration}}',
       col: {
         index: 'N°',
+        seq: 'Séq.',
         name: 'Fichier',
         size: 'Taille',
         start: 'Début',
@@ -237,7 +244,9 @@ export const fr: Dictionary = {
       done: 'Import terminé',
       doneIncomplete: 'Import interrompu : la session est incomplète',
       failed: "Échec de l'import",
-      lost: "Le flux de progression a été interrompu. Vérifiez l'état de la session dans la liste.",
+      lost: "Le flux de progression a été interrompu. L'import continue peut-être sur le serveur.",
+      lostTitle: 'Connexion perdue',
+      reconnect: 'Reconnecter',
       open: 'Ouvrir la session',
       flows: 'Flux',
       anomalies: 'Anomalies',
@@ -247,6 +256,7 @@ export const fr: Dictionary = {
       indicatorLabel: "Afficher la progression de l'import",
       indicatorDone: 'Import terminé',
       indicatorFailed: "Échec de l'import",
+      indicatorLost: 'Connexion perdue',
     },
     overview: {
       subtitle: 'Synthèse du trafic de la session courante',
@@ -300,6 +310,15 @@ export const fr: Dictionary = {
     save: 'Enregistrer',
     delete: 'Supprimer',
     back: 'Retour',
+  },
+  errors: {
+    generic: 'Une erreur est survenue',
+    network: 'Le serveur est injoignable',
+    badRequest: 'La requête a été refusée comme invalide',
+    unauthorized: "Accès refusé : jeton d'API absent ou invalide",
+    forbidden: 'Non autorisé : le serveur est en lecture seule',
+    notFound: 'Introuvable : peut-être supprimé',
+    conflict: 'Conflit avec une opération en cours',
   },
   anomalies: {
     codes: {

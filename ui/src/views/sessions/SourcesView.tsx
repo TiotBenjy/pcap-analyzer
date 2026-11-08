@@ -1,7 +1,7 @@
 import { getRouteApi } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { FileStack, TriangleAlert } from 'lucide-react';
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAnomalies, useChunks, useSession } from '../../api/sessionQueries';
 import type { AnomalyInfo } from '../../api/types/AnomalyInfo';
@@ -18,7 +18,7 @@ import { anomalyDetail, anomalyLabel, anomalySummary, anomalyWhere } from './ano
 import { buildCoverage } from './coverage';
 import { CoverageTimeline } from './CoverageTimeline';
 
-const route = getRouteApi('/sessions/$sessionId/sources');
+const route = getRouteApi('/sessions/$sessionId');
 
 const CHUNK_TONES: Record<string, BadgeTone> = {
   ok: 'success',
@@ -35,8 +35,10 @@ export default function SourcesView() {
   const { t } = useTranslation();
   const { sessionId } = route.useParams();
   const session = useSession(sessionId);
-  const chunks = useChunks(sessionId);
-  const anomalies = useAnomalies(sessionId);
+  const live = session.data?.state === 'importing';
+  const chunks = useChunks(sessionId, live);
+  const anomalies = useAnomalies(sessionId, live);
+  const chunkTableId = useId();
 
   const coverage = useMemo(
     () => (chunks.data === undefined ? null : buildCoverage(chunks.data.items, anomalies.data?.items ?? [])),
@@ -57,7 +59,7 @@ export default function SourcesView() {
     );
   else if (chunks.data.items.length === 0) timeline = <EmptyState icon={FileStack} title={t('views.sources.noChunks')} />;
   else if (coverage === null) timeline = <EmptyState icon={FileStack} title={t('views.sources.noTimestamps')} />;
-  else timeline = <CoverageTimeline coverage={coverage} />;
+  else timeline = <CoverageTimeline coverage={coverage} detailsId={chunkTableId} />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -86,7 +88,9 @@ export default function SourcesView() {
       </Card>
 
       <Card title={t('views.sources.chunks')} flush>
-        <ChunkTable query={chunks} />
+        <div id={chunkTableId}>
+          <ChunkTable query={chunks} />
+        </div>
       </Card>
 
       <Card title={t('views.sources.anomalies')} flush>
@@ -144,6 +148,13 @@ function ChunkTable({ query }: { query: ListQuery<ChunkInfo> }) {
         header: t('views.sources.col.index'),
         size: 64,
         cell: ({ row }) => <span className="num font-mono text-meta">{row.original.id}</span>,
+      },
+      {
+        id: 'seq',
+        accessorFn: (c) => c.seq ?? -1,
+        header: t('views.sources.col.seq'),
+        size: 72,
+        cell: ({ row }) => <span className="num font-mono text-meta">{row.original.seq ?? ''}</span>,
       },
       {
         id: 'name',

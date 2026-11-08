@@ -14,7 +14,7 @@ export function page<T>(items: T[]): Page<T> {
 
 export function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
-    id: '01JTESTSESSION0000000000AA',
+    id: '01JC0FFEE0000000000000000A',
     name: 'office-uplink',
     sources: ['/captures/office'],
     created_us: T0,

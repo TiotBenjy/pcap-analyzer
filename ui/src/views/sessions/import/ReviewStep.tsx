@@ -10,7 +10,9 @@ import type { ScanResponse } from '../../../api/types/ScanResponse';
 import { type PickKind, trackImport } from '../../../app/importTracker';
 import { Badge } from '../../../components/Badge';
 import { Button } from '../../../components/Button';
+import { ErrorNote } from '../../../components/ErrorNote';
 import { ErrorState } from '../../../components/ErrorState';
+import { describeError } from '../../../lib/errors';
 import { Skeleton } from '../../../components/Skeleton';
 import { baseName, formatBytes, formatTimestamp, sameLocalDay } from '../../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
@@ -19,8 +21,6 @@ import { WizardDialog } from './WizardDialog';
 const SKIP_REASONS = new Set(['empty', 'too_short', 'unrecognized', 'unreadable', 'not_regular'] as const);
 type SkipReason = typeof SKIP_REASONS extends Set<infer S> ? S : never;
 const isSkipReason = (r: string): r is SkipReason => (SKIP_REASONS as Set<string>).has(r);
-
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * What gets imported: one group, or all of them merged. The API accepts exactly these cases
@@ -123,7 +123,7 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
           </div>
         ) : scan.isError ? (
           <ErrorState
-            message={t('views.import.scanError', { message: errorText(scan.error) })}
+            message={t('views.import.scanError', { message: describeError(t, scan.error).message })}
             onRetry={() => {
               void scan.refetch();
             }}
@@ -202,9 +202,7 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
           </>
         )}
         {start.isError && (
-          <p role="alert" className="text-meta text-danger">
-            {t('views.import.startError', { message: errorText(start.error) })}
-          </p>
+          <ErrorNote error={start.error} format={(message) => t('views.import.startError', { message })} />
         )}
       </div>
     </WizardDialog>

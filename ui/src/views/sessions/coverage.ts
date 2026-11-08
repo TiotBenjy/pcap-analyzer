@@ -31,10 +31,51 @@ export interface MissingMark {
 
 export interface Coverage extends Interval {
   lanes: number;
+  /** The last lane holds every chunk that found no free lane (multiple overlaps). */
+  crowded: boolean;
+  /** Chunks whose timestamps lie far outside the capture: clamped to the displayed range. */
+  outliers: number;
   segments: Segment[];
   gaps: Gap[];
   overlaps: Interval[];
   missing: MissingMark[];
+}
+
+/** Maximum number of lanes; further overlapping chunks share the last one. */
+export const MAX_LANES = 8;
+/** Fence factor of the robust range (Tukey's "far out" values use 3). */
+const FENCE = 3;
+
+function quantile(sorted: readonly number[], q: number): number {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const a = sorted[lo] ?? 0;
+  const b = sorted[Math.min(lo + 1, sorted.length - 1)] ?? a;
+  return a + (b - a) * (pos - lo);
+}
+
+/**
+ * Displayed time range, robust to aberrant timestamps (a chunk dated 1970 would otherwise squash
+ * the whole capture into a pixel): chunk midpoints beyond Q1 - 3 IQR or Q3 + 3 IQR are outliers.
+ * The spread is at least the median chunk duration, so a regular capture never loses a chunk.
+ */
+function robustRange(spans: readonly Interval[]): Interval & { inside: (s: Interval) => boolean } {
+  const mids = spans.map((s) => (s.start + s.end) / 2).sort((a, b) => a - b);
+  const durations = spans.map((s) => s.end - s.start).sort((a, b) => a - b);
+  const q1 = quantile(mids, 0.25);
+  const q3 = quantile(mids, 0.75);
+  const spread = Math.max(q3 - q1, quantile(durations, 0.5), 1_000_000);
+  const lo = q1 - FENCE * spread;
+  const hi = q3 + FENCE * spread;
+  const inside = (s: Interval) => (s.start + s.end) / 2 >= lo && (s.start + s.end) / 2 <= hi;
+  let start = Infinity;
+  let end = -Infinity;
+  for (const s of spans) {
+    if (!inside(s)) continue;
+    start = Math.min(start, s.start);
+    end = Math.max(end, s.end);
+  }
+  return { start, end, inside };
 }
 
 /** Builds the timeline model; `null` when no chunk has timestamps. */
@@ -43,23 +84,32 @@ export function buildCoverage(chunks: readonly ChunkInfo[], anomalies: readonly 
     .filter((c): c is ChunkInfo & { first_ts_us: number; last_ts_us: number } => c.first_ts_us !== null && c.last_ts_us !== null)
     .map((c) => ({ chunk: c, start: c.first_ts_us, end: Math.max(c.first_ts_us, c.last_ts_us) }))
     .sort((a, b) => a.start - b.start || a.chunk.id - b.chunk.id);
-  const first = timed[0];
-  if (first === undefined) return null;
+  if (timed.length === 0) return null;
+  const range = robustRange(timed);
+  const clamp = (v: number) => Math.min(Math.max(v, range.start), range.end);
+  let outliers = 0;
 
-  // Greedy lane assignment and overlap detection, in start order.
+  // Greedy lane assignment (bounded) and overlap detection, in start order.
   const laneEnds: number[] = [];
   const segments: Segment[] = [];
   const overlaps: Interval[] = [];
+  let crowded = false;
   let maxEnd = -Infinity;
-  for (const t of timed) {
+  for (const raw of timed) {
+    const t = range.inside(raw) ? raw : { ...raw, start: clamp(raw.start), end: clamp(raw.end) };
+    if (t !== raw) outliers += 1;
     let lane = laneEnds.findIndex((end) => end <= t.start);
-    if (lane < 0) {
+    if (lane < 0 && laneEnds.length < MAX_LANES) {
       lane = laneEnds.length;
       laneEnds.push(t.end);
+    } else if (lane < 0) {
+      lane = MAX_LANES - 1;
+      crowded = true;
+      laneEnds[lane] = Math.max(laneEnds[lane] ?? t.end, t.end);
     } else {
       laneEnds[lane] = t.end;
     }
-    segments.push({ ...t, lane, issue: t.chunk.state !== 'ok' });
+    segments.push({ chunk: t.chunk, start: t.start, end: t.end, lane, issue: t.chunk.state !== 'ok' || t !== raw });
     if (t.start < maxEnd) {
       const o = { start: t.start, end: Math.min(t.end, maxEnd) };
       const last = overlaps.at(-1);
@@ -90,20 +140,23 @@ export function buildCoverage(chunks: readonly ChunkInfo[], anomalies: readonly 
       const seconds = detailSeconds(a.detail, 'gap');
       const start = seconds === null ? previousEnd(end) : end - seconds * 1e6;
       if (start === null || start >= end) continue;
-      gaps.push({ start, end, seconds: (end - start) / 1e6 });
+      // The duration is the real one; the drawn interval stays inside the displayed range.
+      if (clamp(start) < clamp(end)) gaps.push({ start: clamp(start), end: clamp(end), seconds: (end - start) / 1e6 });
     } else if (a.code === 'missing_sequence') {
-      const range = missingRange(a);
+      const seqRange = missingRange(a);
       const next = startOf(a);
-      if (range === null || next === null) continue;
+      if (seqRange === null || next === null) continue;
       const prev = previousEnd(next);
-      missing.push({ at: prev === null ? next : (prev + next) / 2, ...range });
+      missing.push({ at: clamp(prev === null ? next : (prev + next) / 2), ...seqRange });
     }
   }
 
   return {
-    start: first.start,
-    end: Math.max(maxEnd, first.start),
+    start: range.start,
+    end: Math.max(range.end, range.start),
     lanes: Math.max(1, laneEnds.length),
+    crowded,
+    outliers,
     segments,
     gaps,
     overlaps,

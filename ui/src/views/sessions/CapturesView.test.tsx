@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../api/client';
+import { ApiError } from '../../api/client';
 import * as api from '../../api/sessions';
 import { resetImportTracker } from '../../app/importTracker';
 import { getLastSessionId, rememberSession } from '../../app/session';
@@ -73,7 +74,7 @@ describe('Captures view', () => {
     const { router } = renderApp('/captures');
     await userEvent.click(await screen.findByText('office-uplink'));
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe('/sessions/01JTESTSESSION0000000000AA/overview');
+      expect(router.state.location.pathname).toBe('/sessions/01JC0FFEE0000000000000000A/overview');
     });
   });
 
@@ -120,6 +121,35 @@ describe('Captures view', () => {
       expect(screen.queryByText('office-uplink')).not.toBeInTheDocument();
     });
     expect(getLastSessionId()).toBeNull();
+  });
+
+  it('reconnects to an importing session whose progress stream was lost', async () => {
+    const s = session({ state: 'importing' });
+    m.listSessions.mockResolvedValue(page([s]));
+    m.streamImportEvents.mockResolvedValue(undefined); // ends without a final event: lost
+    renderApp('/captures');
+    const action = await screen.findByRole('button', { name: 'Show the import progress of office-uplink' });
+    expect(screen.queryByRole('button', { name: 'Delete office-uplink' })).not.toBeInTheDocument();
+    await userEvent.click(action);
+    const dialog = await screen.findByRole('dialog', { name: 'Import progress' });
+    expect(await within(dialog).findByText('Connection lost')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Show the import progress of office-uplink' }));
+    await waitFor(() => {
+      expect(m.streamImportEvents).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('shows translated errors with the raw message as a detail', async () => {
+    const s = session();
+    m.listSessions.mockResolvedValue(page([s]));
+    m.renameSession.mockRejectedValue(new ApiError(409, 'busy', 'import running'));
+    renderApp('/captures');
+    await userEvent.click(await screen.findByRole('button', { name: 'Rename office-uplink' }));
+    await userEvent.type(screen.getByLabelText('Name'), 'x{Enter}');
+    const alert = await within(screen.getByRole('dialog')).findByRole('alert');
+    expect(alert).toHaveTextContent('Rename failed: Conflict with an operation in progress');
+    expect(alert).toHaveTextContent('import running');
   });
 
   it('keeps focus inside a dialog with Tab', async () => {

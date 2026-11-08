@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { baseName, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
 import { type Coverage, ticks } from './coverage';
@@ -18,8 +18,15 @@ const FALLBACK_WIDTH = 640;
  * HTML), details are in `<title>` tooltips. Scrolls horizontally inside its own container when
  * there are too many chunks for the width.
  */
-export function CoverageTimeline({ coverage }: { coverage: Coverage }) {
-  const { t } = useTranslation();
+interface CoverageTimelineProps {
+  coverage: Coverage;
+  /** Id of the chunk table, the detailed equivalent of the timeline (`aria-details`). */
+  detailsId?: string;
+}
+
+export function CoverageTimeline({ coverage, detailsId }: CoverageTimelineProps) {
+  const { t, i18n } = useTranslation();
+  const summaryId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [available, setAvailable] = useState(0);
   const hatchId = `hatch-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -47,6 +54,29 @@ export function CoverageTimeline({ coverage }: { coverage: Coverage }) {
   const laneY = (lane: number) => TOP + lane * (LANE + LANE_GAP);
   const bandBottom = height - 2;
 
+  // Tooltips are formatted once per data set, not on every resize.
+  const segmentTitles = useMemo(
+    () =>
+      coverage.segments.map((s) =>
+        t('views.sources.segmentTitle', {
+          name: baseName(s.chunk.path),
+          period: formatPeriod(s.start, s.end),
+          packets: formatCount(s.chunk.packets),
+        }),
+      ),
+    // i18n.language: titles follow a language switch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [coverage, t, i18n.language],
+  );
+  const summary = t('views.sources.coverageSummary', {
+    count: coverage.segments.length,
+    start: formatTimestamp(coverage.start),
+    end: formatTimestamp(coverage.end),
+    gaps: coverage.gaps.length,
+    overlaps: coverage.overlaps.length,
+    missing: coverage.missing.reduce((n, m) => n + Math.max(1, m.last - m.first + 1), 0),
+  });
+
   const tickCount = Math.max(2, Math.min(12, Math.floor(width / TICK_SPACING)));
   const sameDay = sameLocalDay(coverage.start, coverage.end);
   const tickLabel = (us: number) => (sameDay ? formatTimestamp(us, false) : formatTimestamp(us).slice(5, 16));
@@ -60,6 +90,8 @@ export function CoverageTimeline({ coverage }: { coverage: Coverage }) {
             height={height}
             role="img"
             aria-label={t('views.sources.coverageLabel', { count: coverage.segments.length })}
+            aria-describedby={summaryId}
+            {...(detailsId === undefined ? {} : { 'aria-details': detailsId })}
             className="block"
           >
             <defs>
@@ -88,7 +120,7 @@ export function CoverageTimeline({ coverage }: { coverage: Coverage }) {
               );
             })}
 
-            {coverage.segments.map((s) => {
+            {coverage.segments.map((s, i) => {
               const sx = x(s.start);
               const raw = x(s.end) - sx;
               const w = raw > 3 ? raw - 1 : Math.max(2, raw);
@@ -103,13 +135,7 @@ export function CoverageTimeline({ coverage }: { coverage: Coverage }) {
                   rx={2}
                   className={s.issue ? 'fill-warning/60' : 'fill-accent/70'}
                 >
-                  <title>
-                    {t('views.sources.segmentTitle', {
-                      name: baseName(s.chunk.path),
-                      period: formatPeriod(s.start, s.end),
-                      packets: formatCount(s.chunk.packets),
-                    })}
-                  </title>
+                  <title>{segmentTitles[i]}</title>
                 </rect>
               );
             })}
@@ -159,6 +185,15 @@ export function CoverageTimeline({ coverage }: { coverage: Coverage }) {
         </div>
       </div>
 
+      <p id={summaryId} className="sr-only">
+        {summary}
+      </p>
+      {(coverage.crowded || coverage.outliers > 0) && (
+        <div className="flex flex-col gap-0.5 text-meta text-muted">
+          {coverage.crowded && <p>{t('views.sources.crowded')}</p>}
+          {coverage.outliers > 0 && <p>{t('views.sources.outliers', { count: coverage.outliers })}</p>}
+        </div>
+      )}
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-meta text-muted">
         <LegendItem label={t('views.sources.legendChunk')}>
           <rect x="1" y="2" width="14" height="8" rx="2" className="fill-accent/70" />

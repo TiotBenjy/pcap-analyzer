@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useServerInfo } from '../../api/queries';
 import { useSessions } from '../../api/sessionQueries';
 import type { SessionSummary } from '../../api/types/SessionSummary';
-import { openImportWizard, reopenImportProgress, trackImport, useImportState } from '../../app/importTracker';
+import { isActive, openImportWizard, reopenImportProgress, trackImport, useImportState } from '../../app/importTracker';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -17,11 +17,11 @@ import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
 import { formatBytes, formatCount, formatPeriod, formatSpan, timeZoneLabel } from '../../lib/format';
 import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
+import { DeleteDialog, RenameDialog } from './SessionDialogs';
+import { SessionStateBadge } from './SessionStateBadge';
 
 /** Below this width the table drops its Duration column (still in the period tooltip). */
 const XXL_QUERY = '(min-width: 1536px)';
-import { DeleteDialog, RenameDialog } from './SessionDialogs';
-import { SessionStateBadge } from './SessionStateBadge';
 
 type PendingAction = { kind: 'rename' | 'delete'; session: SessionSummary } | null;
 
@@ -336,7 +336,8 @@ function SessionActions({ session, readOnly, onOpen, onRename, onDelete }: Actio
   const icon = { 'aria-hidden': true, size: 16, strokeWidth: 1.75 } as const;
 
   const showProgress = () => {
-    if (current?.sessionId !== session.id) trackImport(session.id, session.name);
+    // (Re)connect unless this import is already followed live (a lost stream reconnects).
+    if (current?.sessionId !== session.id || !isActive(current)) trackImport(session.id, session.name);
     reopenImportProgress();
   };
 

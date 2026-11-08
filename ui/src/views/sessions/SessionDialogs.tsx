@@ -5,8 +5,7 @@ import type { SessionSummary } from '../../api/types/SessionSummary';
 import { forgetSession } from '../../app/session';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
-
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+import { ErrorNote } from '../../components/ErrorNote';
 
 export function RenameDialog({ session, onClose }: { session: SessionSummary; onClose: () => void }) {
   const { t } = useTranslation();
@@ -56,9 +55,7 @@ export function RenameDialog({ session, onClose }: { session: SessionSummary; on
           className="h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2"
         />
         {rename.isError && (
-          <p role="alert" className="text-meta text-danger">
-            {t('views.captures.renameError', { message: errorText(rename.error) })}
-          </p>
+          <ErrorNote error={rename.error} format={(message) => t('views.captures.renameError', { message })} />
         )}
       </form>
     </Dialog>
@@ -99,9 +96,7 @@ export function DeleteDialog({ session, onClose }: { session: SessionSummary; on
         <p className="[overflow-wrap:anywhere]">{t('views.captures.deleteText', { name: session.name })}</p>
         <p className="text-muted">{t('views.captures.deleteSafe')}</p>
         {del.isError && (
-          <p role="alert" className="text-meta text-danger">
-            {t('views.captures.deleteError', { message: errorText(del.error) })}
-          </p>
+          <ErrorNote error={del.error} format={(message) => t('views.captures.deleteError', { message })} />
         )}
       </div>
     </Dialog>

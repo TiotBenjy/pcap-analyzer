@@ -109,7 +109,13 @@ export const en = {
     sources: {
       subtitle: 'Chunks and continuity of the session',
       coverage: 'Coverage',
-      coverageLabel: 'Coverage timeline of {{count}} chunks',
+      coverageLabel_one: 'Coverage timeline of {{count}} chunk',
+      coverageLabel_other: 'Coverage timeline of {{count}} chunks',
+      coverageSummary_one: '{{count}} chunk from {{start}} to {{end}}. Time gaps: {{gaps}}. Overlaps: {{overlaps}}. Missing files: {{missing}}. Details in the Chunks table.',
+      coverageSummary_other: '{{count}} chunks from {{start}} to {{end}}. Time gaps: {{gaps}}. Overlaps: {{overlaps}}. Missing files: {{missing}}. Details in the Chunks table.',
+      crowded: 'The last lane groups chunks with multiple overlaps.',
+      outliers_one: '{{count}} chunk has timestamps far outside the capture and is drawn at the edge.',
+      outliers_other: '{{count}} chunks have timestamps far outside the capture and are drawn at the edge.',
       legendChunk: 'Chunk',
       legendIssue: 'Truncated, duplicate or skipped',
       legendGap: 'Time gap',
@@ -129,6 +135,7 @@ export const en = {
       overlapTitle: 'Overlap of {{duration}}',
       col: {
         index: 'No.',
+        seq: 'Seq.',
         name: 'File',
         size: 'Size',
         start: 'Start',
@@ -236,7 +243,9 @@ export const en = {
       done: 'Import finished',
       doneIncomplete: 'Import stopped: the session is incomplete',
       failed: 'Import failed',
-      lost: 'The progress stream was interrupted. Check the session state in the list.',
+      lost: 'The progress stream was interrupted. The import may still be running on the server.',
+      lostTitle: 'Connection lost',
+      reconnect: 'Reconnect',
       open: 'Open session',
       flows: 'Flows',
       anomalies: 'Anomalies',
@@ -246,6 +255,7 @@ export const en = {
       indicatorLabel: 'Show the import progress',
       indicatorDone: 'Import finished',
       indicatorFailed: 'Import failed',
+      indicatorLost: 'Connection lost',
     },
     overview: {
       subtitle: 'Traffic summary of the current session',
@@ -299,6 +309,15 @@ export const en = {
     save: 'Save',
     delete: 'Delete',
     back: 'Back',
+  },
+  errors: {
+    generic: 'Something went wrong',
+    network: 'The backend cannot be reached',
+    badRequest: 'The request was refused as invalid',
+    unauthorized: 'Access refused: the API token is missing or invalid',
+    forbidden: 'Not allowed: the server is read-only',
+    notFound: 'Not found: it may have been deleted',
+    conflict: 'Conflict with an operation in progress',
   },
   anomalies: {
     codes: {

@@ -7,6 +7,7 @@ import {
   lazyRouteComponent,
   redirect,
 } from '@tanstack/react-router';
+import type { ComponentType } from 'react';
 import { AppShell } from '../components/AppShell';
 import { NotFoundView } from '../views/NotFoundView';
 import { NAV_ITEMS } from './nav';
@@ -57,26 +58,21 @@ const sessionIndexRoute = createRoute({
   },
 });
 
-const overviewRoute = createRoute({
-  getParentRoute: () => sessionRoute,
-  path: '/overview',
-  component: lazyRouteComponent(() => import('../views/overview/OverviewView')),
-});
+// REGISTRATION POINT (ADR-010): one line per implemented session view, sorted by path, so that
+// views developed in parallel merge without conflicts. A session nav item (src/app/nav.ts) without
+// an entry gets the shared placeholder module. Every module stays code-split.
+const SESSION_VIEWS: Partial<Record<string, () => Promise<{ default: ComponentType }>>> = {
+  '/overview': () => import('../views/overview/OverviewView'),
+  '/sources': () => import('../views/sessions/SourcesView'),
+};
 
-const sourcesRoute = createRoute({
-  getParentRoute: () => sessionRoute,
-  path: '/sources',
-  component: lazyRouteComponent(() => import('../views/sessions/SourcesView')),
-});
-
-// Session views planned for later phases: empty routes sharing one placeholder module.
-const IMPLEMENTED = new Set(['/overview', '/sources']);
+const loadPlaceholder = () => import('../views/PlaceholderView');
 const SESSION_ITEMS = NAV_ITEMS.filter((i) => i.scope === 'session');
-const placeholderRoutes = SESSION_ITEMS.filter((i) => !IMPLEMENTED.has(i.path)).map((item) =>
+const sessionViewRoutes = SESSION_ITEMS.map((item) =>
   createRoute({
     getParentRoute: () => sessionRoute,
     path: item.path,
-    component: lazyRouteComponent(() => import('../views/PlaceholderView')),
+    component: lazyRouteComponent(SESSION_VIEWS[item.path] ?? loadPlaceholder),
   }),
 );
 
@@ -97,7 +93,10 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   capturesRoute,
   settingsRoute,
-  sessionRoute.addChildren([sessionIndexRoute, overviewRoute, sourcesRoute, ...placeholderRoutes]),
+  sessionRoute.addChildren([
+    sessionIndexRoute,
+    ...sessionViewRoutes,
+  ]),
   ...legacyRoutes,
 ]);
 

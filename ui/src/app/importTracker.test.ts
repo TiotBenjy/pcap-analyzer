@@ -30,16 +30,47 @@ describe('import tracker', () => {
     const off = onImportSettled(settled);
     trackImport('S1', 'office');
     await flush();
-    expect(getImportState().current).toMatchObject({ status: 'failed', lost: true, error: null });
+    expect(getImportState().current).toMatchObject({ status: 'lost', error: null, streamError: null });
     expect(settled).toHaveBeenCalledTimes(1);
     off();
   });
 
-  it('reports HTTP errors of the stream', async () => {
-    m.streamImportEvents.mockRejectedValue(new ApiError(404, 'not_found', 'no such session'));
+  it('reports HTTP errors of the stream as failures, network errors as a lost connection', async () => {
+    const http = new ApiError(404, 'not_found', 'no such session');
+    m.streamImportEvents.mockRejectedValue(http);
     trackImport('S1', 'office');
     await flush();
-    expect(getImportState().current).toMatchObject({ status: 'failed', lost: false, error: 'no such session' });
+    expect(getImportState().current).toMatchObject({ status: 'failed', streamError: http });
+
+    m.streamImportEvents.mockRejectedValue(new ApiError(0, 'network', 'Backend unreachable'));
+    trackImport('S1', 'office');
+    await flush();
+    expect(getImportState().current?.status).toBe('lost');
+  });
+
+  it('reconnects a lost import with a fresh stream', async () => {
+    m.streamImportEvents.mockResolvedValueOnce(undefined);
+    trackImport('S1', 'office');
+    await flush();
+    expect(getImportState().current?.status).toBe('lost');
+    m.streamImportEvents.mockReturnValue(new Promise(() => undefined));
+    trackImport('S1', 'office');
+    expect(getImportState().current?.status).toBe('running');
+    expect(m.streamImportEvents).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts the previous stream when another import is tracked and ignores its late events', () => {
+    const streams: { signal: AbortSignal; emit: (e: ImportEvent) => void }[] = [];
+    m.streamImportEvents.mockImplementation((_id, onEvent, signal) => {
+      streams.push({ signal, emit: onEvent });
+      return new Promise(() => undefined);
+    });
+    trackImport('S1', 'office');
+    trackImport('S2', 'dmz');
+    expect(streams[0]?.signal.aborted).toBe(true);
+    expect(streams[1]?.signal.aborted).toBe(false);
+    streams[0]?.emit({ type: 'failed', message: 'late' });
+    expect(getImportState().current).toMatchObject({ sessionId: 'S2', status: 'running' });
   });
 
   it('caps the warning log but counts every warning', async () => {
@@ -62,7 +93,8 @@ describe('import tracker', () => {
     m.cancelImport.mockRejectedValue(new Error('refused'));
     trackImport('S1', 'office');
     await cancelTrackedImport();
-    expect(getImportState().current).toMatchObject({ status: 'running', cancelError: 'refused' });
+    expect(getImportState().current).toMatchObject({ status: 'running' });
+    expect(getImportState().current?.cancelError?.message).toBe('refused');
   });
 
   it('keeps a running import when the wizard closes, forgets a finished one', async () => {

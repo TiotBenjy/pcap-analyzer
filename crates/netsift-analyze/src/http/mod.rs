@@ -34,7 +34,8 @@ mod types;
 
 use std::collections::{HashMap, VecDeque};
 
-use netsift_flow::{Direction, FlowCtx, FlowId, FlowKey, StreamCtx, TcpState};
+use netsift_dissect::{Decoded, Transport};
+use netsift_flow::{Direction, FlowCtx, FlowId, FlowKey, PacketCtx, StreamCtx, TcpState};
 
 use crate::analyzer::{Analyzer, AnalyzerId, RecordSink};
 use crate::record::Record;
@@ -60,8 +61,11 @@ pub struct HttpAnalyzer {
 
 #[derive(Debug)]
 enum Conn {
-    /// Not decided yet: segments seen so far.
-    Probing(u8),
+    /// Not decided yet: segments seen so far, FIN seen from the server.
+    Probing {
+        seen: u8,
+        server_fin: bool,
+    },
     NotHttp,
     Http(Box<FlowState>),
 }
@@ -93,20 +97,25 @@ impl Analyzer for HttpAnalyzer {
         data: &[u8],
         out: &mut dyn RecordSink,
     ) {
-        let conn = self.flows.entry(ctx.id).or_insert(Conn::Probing(0));
-        if let Conn::Probing(seen) = conn {
+        let conn = self.flows.entry(ctx.id).or_insert(Conn::Probing {
+            seen: 0,
+            server_fin: false,
+        });
+        if let Conn::Probing { seen, server_fin } = *conn {
             let starts = match dir {
                 Direction::ToServer => message::starts_request(data),
                 Direction::ToClient => message::starts_response(data),
             };
             if starts {
-                *conn = Conn::Http(Box::new(FlowState::new(ctx.key, ctx.id)));
+                let mut state = FlowState::new(ctx.key, ctx.id);
+                state.server_fin = server_fin;
+                *conn = Conn::Http(Box::new(state));
             } else {
                 let seen = seen.saturating_add(1);
                 *conn = if seen >= PROBE_SEGMENTS {
                     Conn::NotHttp
                 } else {
-                    Conn::Probing(seen)
+                    Conn::Probing { seen, server_fin }
                 };
                 return;
             }
@@ -119,9 +128,30 @@ impl Analyzer for HttpAnalyzer {
         }
     }
 
+    /// Only the FIN of the server matters: it ends a response read until the close.
+    fn on_packet(&mut self, ctx: &PacketCtx, pkt: &Decoded<'_>, _out: &mut dyn RecordSink) {
+        let (Some(flow), Some(Transport::Tcp(tcp))) = (ctx.flow, &pkt.transport) else {
+            return;
+        };
+        if flow.dir != Direction::ToClient || !tcp.flags.fin() {
+            return;
+        }
+        // The FIN may come with (or before) the first data of the connection.
+        let conn = self.flows.entry(flow.id).or_insert(Conn::Probing {
+            seen: 0,
+            server_fin: false,
+        });
+        match conn {
+            Conn::Probing { server_fin, .. } => *server_fin = true,
+            Conn::Http(state) => state.server_fin = true,
+            Conn::NotHttp => {}
+        }
+    }
+
     fn on_flow_end(&mut self, ctx: &FlowCtx, out: &mut dyn RecordSink) {
         if let Some(Conn::Http(mut state)) = self.flows.remove(&ctx.id) {
-            let clean = matches!(ctx.tcp_state, Some(TcpState::Closed | TcpState::Closing));
+            // A FIN from the client alone (half close) does not end a response.
+            let clean = state.server_fin || ctx.tcp_state == Some(TcpState::Closed);
             state.end(clean, ctx.last_ts_ns, &mut self.shared, out);
         }
     }
@@ -203,6 +233,8 @@ struct FlowState {
     key: FlowKey,
     id: FlowId,
     started: bool,
+    /// The server sent a FIN.
+    server_fin: bool,
     last_ts: i64,
     req: Phase,
     resp: Phase,
@@ -221,6 +253,7 @@ impl FlowState {
             key,
             id,
             started: false,
+            server_fin: false,
             last_ts: 0,
             req: Phase::Head(HeadBuf::default()),
             resp: Phase::Head(HeadBuf::default()),
@@ -610,12 +643,15 @@ impl FlowState {
                 }
             }
         } else {
-            // Its exchange was pushed out of the queue: the part goes alone.
+            // Its exchange was pushed out of the queue (and emitted, with `seq`, if it had a
+            // finished part): the part goes alone, under a new number.
             let (request, response) = match part {
                 Finished::Request(r) => (Some(r), None),
                 Finished::Response(r) => (None, Some(r)),
             };
-            self.emit_parts(seq, request, response, out);
+            let fresh = self.next_seq;
+            self.next_seq = self.next_seq.saturating_add(1);
+            self.emit_parts(fresh, request, response, out);
         }
         self.drain(false, out);
     }

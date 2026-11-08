@@ -10,8 +10,10 @@ Visualiser les hôtes et leurs communications, filtrables par protocole, pour co
 
 Noeuds = hôtes (`hosts`), arêtes = conversations (`flows` agrégés) avec protocoles applicatifs et volumes.
 Classification et pays via `netsift-geo`.
-API : `/network/graph?protocols=&include_orphans=&resolve_dns=&aggregate_country=` -> `{ nodes, edges }`
-déjà **bornés et agrégés** côté serveur (voir ci-dessous) ; `/network/node/{ip}` pour le panneau de détail.
+API : `/network/graph?mode=hosts|countries&protocols=&category=&ipv6=&include_orphans=&limit=&expand=`
+-> `{ nodes, edges, ... }` déjà **bornés et agrégés** côté serveur (voir ci-dessous et ADR-018) ;
+`/network/node/{ip}` pour le panneau de détail. La résolution des noms est un réglage d'affichage de l'UI
+(les noms accompagnent chaque nœud).
 
 ## Rendu (sigma.js + graphology)
 

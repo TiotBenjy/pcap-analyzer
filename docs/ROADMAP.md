@@ -191,7 +191,7 @@ Suivis de la vague 2.B :
 ### Vague 3.A (parallèle, indépendantes)
 
 - [~] **P3.1** `feat/dns` — DNS + mDNS + NBNS (+ LLMNR) : transactions, codes réponse, types. `specs/dns.md`.
-- [~] **P3.2** `feat/http` — HTTP/1.x : transactions, en-têtes, corps bornés, décompression gzip/deflate/br,
+- [x] **P3.2** `feat/http` — HTTP/1.x : transactions, en-têtes, corps bornés, décompression gzip/deflate/br,
       chunked ; vues HTTP et HTTP Headers. `specs/http.md`, `specs/http-headers.md`.
 - [x] **P3.3** `feat/tls` — TLS : ClientHello/ServerHello, versions, suites, SNI, ALPN, JA3/JA4 (client),
       certificats X.509 (export DER/PEM). `specs/tls.md`.
@@ -220,6 +220,13 @@ Suivis de la vague 3.A :
   des sessions `ready`/`incomplete`. Reste : vues Connections/Open Ports vides au lieu de « non analysé »
   sur une session migrée, messages d'erreur génériques hors Overview, `SessionGate` laisse passer une
   session trop récente, `Stats::read` avale les erreurs.
+- P3.2 (fusionnée le 2026-11-08) : corps HTTP jamais écrits sur disque (`HttpConfig::store_bodies = false`,
+  à activer par P3.6 avec ses règles de sélection) ; aperçu de corps 4 Kio au lieu de 64 ; un seul
+  `Content-Encoding` décodé ; compteurs de méthodes globaux (ignorent la recherche) ; connexion prise en
+  cours de route sans SYN-ACK mal orientée ; P4.2 : budget de corps par shard (32 Mio) à rendre global,
+  `WHERE` dynamique (filtres sans index), coût des deux FTS5 trigram ; P4.1 : cible de fuzz HTTP.
+  Piège i18n : passer `t` en paramètre d'un helper peut faire échouer `tsc` (type trop profond) quand le
+  dictionnaire grossit : passer plutôt les libellés.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).

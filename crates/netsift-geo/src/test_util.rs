@@ -9,10 +9,22 @@ use std::net::IpAddr;
 use std::path::Path;
 
 /// Builds a small country database. Networks must not overlap.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MmdbBuilder {
     /// `(network bits in the IPv6 tree, prefix length in that tree, country code)`.
     networks: Vec<(u128, u8, String)>,
+    database_type: String,
+    build_epoch: u64,
+}
+
+impl Default for MmdbBuilder {
+    fn default() -> Self {
+        Self {
+            networks: Vec::new(),
+            database_type: "NetSift-Test-Country".to_owned(),
+            build_epoch: 1_700_000_000,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +47,20 @@ const T_ARRAY: u8 = 11;
 impl MmdbBuilder {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// `database_type` of the metadata (default `NetSift-Test-Country`).
+    #[must_use]
+    pub fn database_type(mut self, kind: &str) -> Self {
+        kind.clone_into(&mut self.database_type);
+        self
+    }
+
+    /// `build_epoch` of the metadata, in seconds (default 1 700 000 000).
+    #[must_use]
+    pub fn build_epoch(mut self, epoch: u64) -> Self {
+        self.build_epoch = epoch;
+        self
     }
 
     /// Maps `ip/prefix_len` (IPv4 or IPv6) to `country` (stored as given).
@@ -78,7 +104,12 @@ impl MmdbBuilder {
         out.extend_from_slice(&[0; 16]);
         out.extend_from_slice(&data);
         out.extend_from_slice(MARKER);
-        encode_metadata(&mut out, u32::try_from(node_count).unwrap_or(u32::MAX));
+        encode_metadata(
+            &mut out,
+            u32::try_from(node_count).unwrap_or(u32::MAX),
+            &self.database_type,
+            self.build_epoch,
+        );
         out
     }
 
@@ -164,16 +195,16 @@ fn encode_country(out: &mut Vec<u8>, code: &str) {
     string(out, code);
 }
 
-fn encode_metadata(out: &mut Vec<u8>, node_count: u32) {
+fn encode_metadata(out: &mut Vec<u8>, node_count: u32, database_type: &str, build_epoch: u64) {
     control(out, T_MAP, 9);
     string(out, "binary_format_major_version");
     uint(out, T_UINT16, 2);
     string(out, "binary_format_minor_version");
     uint(out, T_UINT16, 0);
     string(out, "build_epoch");
-    uint(out, T_UINT64, 1_700_000_000);
+    uint(out, T_UINT64, build_epoch);
     string(out, "database_type");
-    string(out, "NetSift-Test-Country");
+    string(out, database_type);
     string(out, "description");
     control(out, T_MAP, 1);
     string(out, "en");

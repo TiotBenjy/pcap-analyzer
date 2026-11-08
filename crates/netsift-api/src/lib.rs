@@ -15,6 +15,7 @@ mod extract;
 mod fs;
 mod guard;
 mod imports;
+mod overview;
 mod sessions;
 
 use std::future::{Future, IntoFuture};
@@ -188,6 +189,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         // Registration point: one `.merge(<module>::routes())` line per feature, sorted.
         .merge(fs::routes())
         .merge(imports::routes())
+        .merge(overview::routes())
         .merge(sessions::routes())
         .route("/server-info", get(dto::server_info))
         .route_layer(axum::middleware::from_fn_with_state(

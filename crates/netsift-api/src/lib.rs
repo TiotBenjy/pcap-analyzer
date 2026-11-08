@@ -40,7 +40,7 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-pub use dto::{GeoipInfo, GeoipStatus, HealthResponse};
+pub use dto::{GeoipInfo, GeoipSource, GeoipStatus, HealthResponse};
 pub use error::ApiError;
 /// Location of the country database: the desktop app resolves it, the server reports it.
 pub use netsift_geo::{DB_FILE_NAME as GEOIP_FILE_NAME, default_path as default_geoip_path};
@@ -76,9 +76,11 @@ pub struct ApiConfig {
     /// Imports allowed to run at the same time (at least 1; [`DEFAULT_MAX_IMPORTS`]). Beyond,
     /// `POST /sessions/import` answers 409 `urn:netsift:problem:too-many-imports`.
     pub max_imports: usize,
-    /// Country database read by the imports and reported by `GET /server-info`. `None` = the
-    /// default location `<data_dir>/geoip/dbip-country-lite.mmdb` (`./x.sh geoip` in dev).
-    pub geoip_path: Option<PathBuf>,
+    /// Fallback country database, never written: read when the user copy
+    /// `<data_dir>/geoip/dbip-country-lite.mmdb` is missing or unusable (desktop: the copy shipped
+    /// in the bundle). The user copy is always read first; it is the file written by the updates
+    /// of Settings (`POST /geoip/download`, `POST /geoip/import`) and by `./x.sh geoip` in dev.
+    pub geoip_fallback_path: Option<PathBuf>,
 }
 
 /// Default of [`ApiConfig::max_imports`]: each import already uses every core.
@@ -94,7 +96,7 @@ impl std::fmt::Debug for ApiConfig {
             .field("cors_origins", &self.cors_origins)
             .field("allow_any_path", &self.allow_any_path)
             .field("max_imports", &self.max_imports)
-            .field("geoip_path", &self.geoip_path)
+            .field("geoip_fallback_path", &self.geoip_fallback_path)
             .finish()
     }
 }
@@ -109,27 +111,32 @@ pub(crate) struct AppState {
     pub(crate) imports: imports::Registry,
     /// Options of every import (name, selection and recursion are set per request).
     pub(crate) ingest_template: IngestOptions,
-    /// State of the country database the imports read.
-    pub(crate) geoip: geoip::GeoipProbe,
+    /// Country database of the imports (hot-swapped by the updates).
+    pub(crate) geoip: geoip::Geoip,
     shutdown: watch::Sender<bool>,
 }
 
 impl AppState {
     fn new(config: ApiConfig, mut ingest_template: IngestOptions) -> Self {
         let roots = fs::canonical_roots(&config.captures_roots);
-        let geoip_path = config
-            .geoip_path
-            .clone()
-            .unwrap_or_else(|| netsift_geo::default_path(&config.data_dir));
-        // Same file for the imports and for the state reported to the UI.
-        ingest_template.geoip_path = Some(geoip_path.clone());
+        let user_geoip = netsift_geo::default_path(&config.data_dir);
+        // Imports get the database loaded by `geoip` (`AnalyzerConfig::geo`); the engine reads
+        // this path only when none is usable.
+        ingest_template.geoip_path = Some(user_geoip.clone());
+        if !config.read_only {
+            let removed = netsift_geo::remove_orphan_temp_files(&user_geoip);
+            if removed > 0 {
+                tracing::info!(removed, "interrupted GeoIP update files removed");
+            }
+        }
+        let geoip = geoip::Geoip::new(user_geoip, config.geoip_fallback_path.clone());
         Self {
             config,
             roots,
             catalog: Mutex::new(None),
             imports: imports::Registry::new(),
             ingest_template,
-            geoip: geoip::GeoipProbe::new(geoip_path),
+            geoip,
             shutdown: watch::Sender::new(false),
         }
     }
@@ -213,6 +220,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(connections::routes())
         .merge(dns::routes())
         .merge(fs::routes())
+        .merge(geoip::routes())
         .merge(http::routes())
         .merge(imports::routes())
         .merge(overview::routes())

@@ -14,7 +14,7 @@ tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
 anyhow.workspace = true
-dirs = "6"
+dirs = "7"
 getrandom = "0.3"
 netsift-api.workspace = true
 serde.workspace = true

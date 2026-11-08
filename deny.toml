@@ -31,6 +31,16 @@ unused-allowed-license = "allow"
 
 [bans]
 multiple-versions = "warn"
+# Duplicates pulled by Tauri (GTK/WebKit, wry, codegen, plugins) or by test-only crates are outside
+# our control: ignore their subtrees so that the remaining warnings are the ones we can act on.
+# A duplicate between our own crates and these trees (e.g. sha2 0.11 here, 0.10 in wry) is also
+# hidden: we keep the latest version on our side rather than follow Tauri's lag.
+skip-tree = [
+  { crate = "tauri", reason = "GTK/WebKit, wry and codegen versions follow Tauri" },
+  { crate = "tauri-build", reason = "build-time dependencies of Tauri" },
+  { crate = "tauri-plugin", reason = "build-time dependencies of Tauri plugins" },
+  { crate = "proptest", reason = "test-only dependency" },
+]
 wildcards = "deny"
 # Internal path dependencies (publish = false) are not wildcards in practice.
 allow-wildcard-paths = true

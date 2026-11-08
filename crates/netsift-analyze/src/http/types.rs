@@ -14,7 +14,11 @@ pub struct HttpConfig {
     /// messages together. Past it, bodies are still decoded and counted but not kept (no
     /// object, no preview beyond what was kept). The bound is **per shard**: the engine runs
     /// one instance per shard, so the total is this value times the number of shards (a
-    /// budget shared by every shard is a follow-up of task P4.2).
+    /// budget shared by every shard is a follow-up of task P4.2). Only a response that may
+    /// become an object is kept beyond its preview: requests, `206` responses and bodies
+    /// announced larger than [`Self::object_max_bytes`] keep the preview only, and a body
+    /// whose first 512 decoded bytes have no image signature falls back to its preview, giving
+    /// the rest back at once (as does a body that cannot be kept whole: budget, size, gap).
     pub max_retained_bytes: usize,
     /// Store selected bodies as objects ([`crate::RecordSink::put_blob`], task P3.6, ADR-016).
     /// On by default. Selection ([`super::objects::selected`]): **response** bodies only,

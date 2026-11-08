@@ -73,9 +73,26 @@ describe('buildCoverage', () => {
     expect(buildCoverage(regular, [])?.outliers).toBe(0);
   });
 
-  it('returns null without timestamps and spaces ticks evenly', () => {
+  it('returns null without timestamps', () => {
     expect(buildCoverage([{ ...(CHUNKS[0] as (typeof CHUNKS)[number]), first_ts_us: null }], [])).toBeNull();
-    expect(ticks(0, 100, 3)).toEqual([0, 50, 100]);
+  });
+
+  it('puts ticks on round local times', () => {
+    const t0 = Date.UTC(2026, 10, 8, 10, 3, 0) * 1000;
+    const hour = 3_600_000_000;
+    // 1 h over 800 px, 180 px apart: 15 min steps, on the quarter hours.
+    const { values, step } = ticks(t0, t0 + hour, 800, 180, 0);
+    expect(step).toBe(15 * 60_000_000);
+    expect(values.map((v) => new Date(v / 1000).toISOString().slice(11, 16))).toEqual([
+      '10:15',
+      '10:30',
+      '10:45',
+      '11:00',
+    ]);
+    // Days align on local midnight (UTC+2: getTimezoneOffset() = -120).
+    const day = ticks(t0, t0 + 10 * 24 * hour, 400, 180, -120);
+    expect(day.step).toBe(7 * 24 * hour);
+    expect(new Date(((day.values[0] ?? 0) + 2 * hour) / 1000).toISOString().slice(11, 16)).toBe('00:00');
   });
 });
 
@@ -139,8 +156,23 @@ describe('Sources view', () => {
     const chunkTable = screen.getByRole('table', { name: 'Chunks of the session' });
     expect(timeline).toHaveAttribute('aria-details', chunkTable.parentElement?.parentElement?.id ?? 'missing');
     expect(within(chunkTable).getAllByRole('row')).toHaveLength(50);
-    const name = within(chunkTable).getByText('ring_00001_20261108.pcapng');
-    expect(name).toHaveAttribute('title', '/captures/office/ring_00001_20261108.pcapng');
+    // Middle truncation keeps the end of the name; the full path is the tooltip.
+    const name = within(chunkTable).getByTitle('/captures/office/ring_00001_20261108.pcapng');
+    expect(name).toHaveTextContent('ring_00001_20261108.pcapng');
+    expect(name.lastElementChild).toHaveTextContent(/^\d{8}\.pcapng$/);
+    // One-day session: time only, no date.
+    expect(within(chunkTable).getAllByText(/^\d{2}:\d{2}:\d{2}$/).length).toBeGreaterThan(0);
+    expect(within(chunkTable).getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Seq.',
+      'File',
+      'State',
+      'Start',
+      'End',
+      'Duration',
+      'Packets',
+      'Size',
+      'Format',
+    ]);
 
     const anomalyTable = screen.getByRole('table', { name: 'Anomalies' });
     expect(within(anomalyTable).getByText('Missing files in the sequence')).toBeInTheDocument();

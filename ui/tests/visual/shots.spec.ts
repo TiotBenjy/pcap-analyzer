@@ -44,6 +44,8 @@ async function demoSessionId(page: Page): Promise<string> {
 const WIDTHS = [375, 768, 1280, 1920] as const;
 const THEMES = ['light', 'dark'] as const;
 const HEIGHT = 900;
+/** Upper bound of a capture height (very long views are cut there). */
+const MAX_SHOT_HEIGHT = 6000;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(here, '../../../.artifacts/screens');
@@ -154,14 +156,52 @@ for (const [view, target] of views) {
           await expect(page.getByTestId('server-mode')).toHaveText('Read-only');
         }
 
-        await page.screenshot({ path: `${OUT_DIR}/${view}-${width}-${theme}.png`, fullPage: true });
+        const check = async (when: string) => {
+          const r = await inspectLayout(page);
+          expect(r.pageOverflow, `horizontal page overflow (${when})`).toBeNull();
+          expect(r.mainOverflow, `horizontal overflow in the main column (${when})`).toBeNull();
+          expect(r.overlaps, `overlapping chart labels (${when})`).toEqual([]);
+          expect(r.outside, `chart labels outside their SVG (${when})`).toEqual([]);
+          expect(r.untitled, `truncatable elements without title (${when})`).toEqual([]);
+        };
+        await check(`${HEIGHT}px high`);
 
-        const r = await inspectLayout(page);
-        expect(r.pageOverflow, 'horizontal page overflow').toBeNull();
-        expect(r.mainOverflow, 'horizontal overflow in the main column').toBeNull();
-        expect(r.overlaps, 'overlapping chart labels').toEqual([]);
-        expect(r.outside, 'chart labels outside their SVG').toEqual([]);
-        expect(r.untitled, 'truncatable elements without title').toEqual([]);
+        // `#main` scrolls, not the page, so `fullPage` alone would only capture the first screen:
+        // grow the viewport to the content height (same width, same layout) before the capture.
+        const contentHeight = await page.evaluate(() => {
+          const main = document.getElementById('main');
+          return main === null ? 0 : Math.ceil(main.getBoundingClientRect().top + main.scrollHeight);
+        });
+        if (contentHeight > HEIGHT) {
+          await page.setViewportSize({ width, height: Math.min(contentHeight, MAX_SHOT_HEIGHT) });
+          await page.waitForTimeout(100); // ResizeObserver-driven layouts (timeline) settle
+        }
+
+        // Key data must be visible in the capture, not clipped by an internal scroll.
+        const hidden = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-shot-visible]')]
+            .filter((el) => {
+              const r = el.getBoundingClientRect();
+              if (r.width === 0 || r.right > window.innerWidth || r.bottom > window.innerHeight) return true;
+              const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+              return hit === null || !el.contains(hit);
+            })
+            .map((el) => el.getAttribute('data-shot-visible')),
+        );
+        expect(hidden, 'key elements hidden or clipped in the capture').toEqual([]);
+        if (view === 'sources' && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('heading', { name: 'Anomalies' })).toBeInViewport();
+          // From 1280 px, every chunk column fits: no hidden internal horizontal scroll.
+          if (width >= 1280) {
+            await expect(page.getByRole('columnheader', { name: 'Format' })).toBeInViewport({ ratio: 1 });
+          }
+        }
+        if (view === 'captures' && width >= 1280 && (await demoSessionId(page)) !== NO_SESSION) {
+          await expect(page.getByRole('columnheader', { name: 'Actions' })).toBeInViewport({ ratio: 1 });
+        }
+
+        await page.screenshot({ path: `${OUT_DIR}/${view}-${width}-${theme}.png`, fullPage: true });
+        await check('full height');
       });
     }
   }

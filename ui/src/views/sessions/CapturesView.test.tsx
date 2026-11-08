@@ -143,7 +143,7 @@ describe('Captures view', () => {
   it('shows translated errors with the raw message as a detail', async () => {
     const s = session();
     m.listSessions.mockResolvedValue(page([s]));
-    m.renameSession.mockRejectedValue(new ApiError(409, 'busy', 'import running'));
+    m.renameSession.mockRejectedValue(new ApiError(409, 'urn:netsift:problem:conflict', 'import running'));
     renderApp('/captures');
     await userEvent.click(await screen.findByRole('button', { name: 'Rename office-uplink' }));
     await userEvent.type(screen.getByLabelText('Name'), 'x{Enter}');

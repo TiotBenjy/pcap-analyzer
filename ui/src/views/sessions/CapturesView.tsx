@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Activity, ArrowRight, File, FolderOpen, Pencil, Trash2 } from 'lucide-react';
+import { Activity, ArrowRight, File, FolderOpen, Lock, Pencil, Trash2 } from 'lucide-react';
 import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerInfo } from '../../api/queries';
@@ -16,7 +16,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
 import { formatBytes, formatCount, formatPeriod, formatSpan, timeZoneLabel } from '../../lib/format';
-import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
+import { LG_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { DeleteDialog, RenameDialog } from './SessionDialogs';
 import { SessionStateBadge } from './SessionStateBadge';
 
@@ -116,6 +116,12 @@ export default function CapturesView() {
         {...(sessions.data === undefined ? {} : { count: <Badge>{formatCount(sessions.data.length)}</Badge> })}
         actions={importButtons}
       />
+      {readOnly && (
+        <p data-testid="read-only-note" className="-mt-2 flex min-w-0 items-start gap-1.5 text-meta text-muted">
+          <Lock aria-hidden size={14} strokeWidth={1.75} className="mt-px shrink-0" />
+          <span className="min-w-0">{t('views.captures.readOnly')}</span>
+        </p>
+      )}
       <Card
         flush
         title={t('views.captures.tableLabel')}
@@ -147,9 +153,12 @@ function useOpenSession() {
   );
 }
 
-/** Table from 768 px, stacked cards below (docs/specs/captures.md, "Responsive"). */
+/**
+ * Table from 1024 px, stacked cards below (docs/specs/captures.md, "Responsive": cards under
+ * 768 px at least; up to 1024 px the table would hide the anomalies and actions in a scroll).
+ */
 function SessionList(props: ListProps) {
-  const wide = useMediaQuery(MD_QUERY);
+  const wide = useMediaQuery(LG_QUERY);
   return wide ? <SessionTable {...props} /> : <SessionCards {...props} />;
 }
 
@@ -181,6 +190,7 @@ function SessionTable({ sessions, readOnly, onRename, onDelete }: ListProps) {
       },
       {
         id: 'duration',
+        meta: { align: 'right' },
         accessorFn: (s) => (s.first_ts_us === null || s.last_ts_us === null ? -1 : s.last_ts_us - s.first_ts_us),
         header: t('views.captures.col.duration'),
         size: 96,
@@ -188,6 +198,7 @@ function SessionTable({ sessions, readOnly, onRename, onDelete }: ListProps) {
       },
       {
         id: 'size',
+        meta: { align: 'right' },
         accessorFn: (s) => s.source_bytes,
         header: t('views.captures.col.size'),
         size: 84,
@@ -195,6 +206,7 @@ function SessionTable({ sessions, readOnly, onRename, onDelete }: ListProps) {
       },
       {
         id: 'packets',
+        meta: { align: 'right' },
         accessorFn: (s) => s.packets,
         header: t('views.captures.col.packets'),
         size: 92,
@@ -202,6 +214,7 @@ function SessionTable({ sessions, readOnly, onRename, onDelete }: ListProps) {
       },
       {
         id: 'chunks',
+        meta: { align: 'right' },
         accessorFn: (s) => s.chunk_count,
         header: t('views.captures.col.chunks'),
         size: 68,
@@ -216,6 +229,7 @@ function SessionTable({ sessions, readOnly, onRename, onDelete }: ListProps) {
       },
       {
         id: 'anomalies',
+        meta: { align: 'right' },
         accessorFn: (s) => s.anomaly_count,
         header: t('views.captures.col.anomalies'),
         size: 84,
@@ -317,7 +331,12 @@ function Period({ session }: { session: SessionSummary }) {
 }
 
 function AnomalyCount({ count }: { count: number }) {
-  return <Badge tone={count > 0 ? 'warning' : 'neutral'}>{formatCount(count)}</Badge>;
+  // `data-shot-visible`: the visual tests check that the counter is never clipped (768 px).
+  return (
+    <span data-shot-visible="anomaly-count" className="inline-flex">
+      <Badge tone={count > 0 ? 'warning' : 'neutral'}>{formatCount(count)}</Badge>
+    </span>
+  );
 }
 
 interface ActionsProps {

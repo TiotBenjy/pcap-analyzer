@@ -29,7 +29,7 @@ export interface TrackedImport {
   result: ImportResult | null;
   /** Backend message of a `failed` event. */
   error: string | null;
-  /** HTTP error that ended the stream (`failed` without a backend message). */
+  /** 404 that ended the stream (`failed` without a backend message). */
   streamError: Error | null;
   /** Last cancel request failed. */
   cancelError: Error | null;
@@ -150,10 +150,11 @@ export function trackImport(sessionId: string, name: string): void {
       cancelError: null,
     },
   });
-  // End of the stream without a final event: lost, unless the backend answered with an HTTP error.
+  // End of the stream without a final event: lost (the import may go on: reconnecting is
+  // possible), except a 404 (the session no longer exists), which is a failure.
   const finish = (error: unknown) => {
     if (ctrl.signal.aborted) return;
-    const httpError = error instanceof ApiError && error.status !== 0 ? error : null;
+    const httpError = error instanceof ApiError && error.status === 404 ? error : null;
     update(sessionId, (cur) =>
       isActive(cur) ? (httpError === null ? { status: 'lost' } : { status: 'failed', streamError: httpError }) : {},
     );

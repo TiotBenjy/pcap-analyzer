@@ -88,7 +88,7 @@ describe('session routes', () => {
 
   it('forgets an unknown session and shows a not-found state', async () => {
     rememberSession('01JD0NE00000000000000000GZ');
-    m.getSession.mockRejectedValue(new ApiError(404, 'not_found', 'no such session'));
+    m.getSession.mockRejectedValue(new ApiError(404, 'urn:netsift:problem:not-found', 'no such session'));
     renderApp('/sessions/01JD0NE00000000000000000GZ/overview');
     expect(await screen.findByRole('heading', { level: 1, name: 'Session not found' })).toBeInTheDocument();
     await waitFor(() => {

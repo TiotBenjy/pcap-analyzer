@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { baseName, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { CATEGORICAL, OTHER_COLOR } from '../../charts/palette';
 import { type Coverage, ticks } from './coverage';
 
 const PAD = 8; // horizontal padding inside the SVG, px
@@ -10,7 +11,15 @@ const LANE_GAP = 4;
 const MIN_PX_PER_CHUNK = 6;
 const MAX_WIDTH = 40_000;
 const TICK_SPACING = 180;
+const EDGE = 56; // px from an edge under which a tick label is aligned inward
 const FALLBACK_WIDTH = 640;
+
+// Data colors (charts/palette.ts), legible in both themes and distinct from each other:
+// chunks neutral grey (not the accent, reserved for interactive elements), problem chunks amber,
+// overlaps violet; gaps are hatched and missing files red (semantic danger).
+const CHUNK = { fill: OTHER_COLOR, fillOpacity: 0.6 } as const;
+const ISSUE = { fill: CATEGORICAL[2], fillOpacity: 0.85 } as const;
+const OVERLAP = { fill: CATEGORICAL[3], fillOpacity: 0.25, stroke: CATEGORICAL[3] } as const;
 
 /**
  * Chunk coverage timeline (custom SVG): one segment per chunk, hatched time gaps, highlighted
@@ -77,9 +86,13 @@ export function CoverageTimeline({ coverage, detailsId }: CoverageTimelineProps)
     missing: coverage.missing.reduce((n, m) => n + Math.max(1, m.last - m.first + 1), 0),
   });
 
-  const tickCount = Math.max(2, Math.min(12, Math.floor(width / TICK_SPACING)));
+  const axis = ticks(coverage.start, coverage.end, width - 2 * PAD, TICK_SPACING);
   const sameDay = sameLocalDay(coverage.start, coverage.end);
-  const tickLabel = (us: number) => (sameDay ? formatTimestamp(us, false) : formatTimestamp(us).slice(5, 16));
+  const tickLabel = (us: number) => {
+    if (axis.step < 60_000_000) return formatTimestamp(us, false);
+    const hm = formatTimestamp(us, false).slice(0, 5);
+    return sameDay ? hm : `${formatTimestamp(us).slice(5, 10)} ${hm}`;
+  };
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -133,7 +146,7 @@ export function CoverageTimeline({ coverage, detailsId }: CoverageTimelineProps)
                   width={w}
                   height={LANE}
                   rx={2}
-                  className={s.issue ? 'fill-warning/60' : 'fill-accent/70'}
+                  {...(s.issue ? ISSUE : CHUNK)}
                 >
                   <title>{segmentTitles[i]}</title>
                 </rect>
@@ -150,8 +163,8 @@ export function CoverageTimeline({ coverage, detailsId }: CoverageTimelineProps)
                   y={TOP - 2}
                   width={Math.max(2, x(o.end) - ox)}
                   height={bandBottom - TOP + 2}
-                  className="fill-warning/25 stroke-warning"
-                  strokeWidth={1}
+                  {...OVERLAP}
+                  strokeWidth={1.5}
                 >
                   <title>{t('views.sources.overlapTitle', { duration: formatDuration((o.end - o.start) / 1e6) })}</title>
                 </rect>
@@ -173,10 +186,12 @@ export function CoverageTimeline({ coverage, detailsId }: CoverageTimelineProps)
 
           {/* Time axis (HTML: never overlaps chart text, aligned to the SVG scale). */}
           <div aria-hidden className="absolute inset-x-0 bottom-0 h-4 text-meta text-muted">
-            {ticks(coverage.start, coverage.end, tickCount).map((us, i, all) => {
-              const align = i === 0 ? 'translate-x-0' : i === all.length - 1 ? '-translate-x-full' : '-translate-x-1/2';
+            {axis.values.map((us) => {
+              // Labels near an edge are aligned inward so that they never leave the axis.
+              const lx = x(us);
+              const align = lx < EDGE ? 'translate-x-0' : lx > width - EDGE ? '-translate-x-full' : '-translate-x-1/2';
               return (
-                <span key={i} className={`num absolute top-0 whitespace-nowrap ${align}`} style={{ left: x(us) }}>
+                <span key={us} className={`num absolute top-0 whitespace-nowrap ${align}`} style={{ left: x(us) }}>
                   {tickLabel(us)}
                 </span>
               );
@@ -196,16 +211,16 @@ export function CoverageTimeline({ coverage, detailsId }: CoverageTimelineProps)
       )}
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-meta text-muted">
         <LegendItem label={t('views.sources.legendChunk')}>
-          <rect x="1" y="2" width="14" height="8" rx="2" className="fill-accent/70" />
+          <rect x="1" y="2" width="14" height="8" rx="2" {...CHUNK} />
         </LegendItem>
         <LegendItem label={t('views.sources.legendIssue')}>
-          <rect x="1" y="2" width="14" height="8" rx="2" className="fill-warning/60" />
+          <rect x="1" y="2" width="14" height="8" rx="2" {...ISSUE} />
         </LegendItem>
         <LegendItem label={t('views.sources.legendGap')}>
           <rect x="1" y="1" width="14" height="10" fill={`url(#${hatchId})`} className="stroke-faint" />
         </LegendItem>
         <LegendItem label={t('views.sources.legendOverlap')}>
-          <rect x="1" y="1" width="14" height="10" className="fill-warning/25 stroke-warning" />
+          <rect x="1" y="1" width="14" height="10" {...OVERLAP} strokeWidth={1.5} />
         </LegendItem>
         <LegendItem label={t('views.sources.legendMissing')}>
           <g className="stroke-danger fill-danger">

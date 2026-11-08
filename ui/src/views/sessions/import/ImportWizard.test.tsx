@@ -77,7 +77,7 @@ async function startTwoGroupImport() {
   expect(m.browse).toHaveBeenLastCalledWith('/captures/office', expect.anything());
   await user.click(within(dialog).getByRole('button', { name: 'Select this folder' }));
 
-  // Step 2: two groups, the first preselected; selecting both merges them.
+  // Step 2: two groups, the first preselected; the API accepts one group or all groups merged.
   dialog = await screen.findByRole('dialog', { name: 'Import a folder' });
   expect(dialog).toHaveAccessibleDescription('Step 2 of 3: Review');
   expect(m.scanImport).toHaveBeenCalledWith({ path: '/captures/office', recursive: false }, expect.anything());
@@ -87,12 +87,19 @@ async function startTwoGroupImport() {
   expect(within(dialog).getByText('tcpdump -C')).toBeInTheDocument();
   expect(within(dialog).getByText('1 expected anomaly')).toBeInTheDocument();
   expect(within(dialog).getByText('1 file ignored')).toBeInTheDocument();
-  const [first, second] = within(dialog).getAllByRole('checkbox', { name: /dumpcap|tcpdump/ });
+  // The scan only knows when the last file starts: the period is not shown as exact.
+  expect(within(dialog).getAllByText(/^From 2026-11-08/)).toHaveLength(2);
+  expect(within(dialog).getAllByText(/^Last file starts at/)).toHaveLength(2);
+  const radios = within(dialog).getAllByRole('radio');
+  expect(radios).toHaveLength(3);
+  const [first, second] = radios;
   expect(first).toBeChecked();
-  expect(second).not.toBeChecked();
-  expect(within(dialog).queryByText(/merged into one session/)).not.toBeInTheDocument();
+  expect(within(dialog).queryByText(/read as one session/)).not.toBeInTheDocument();
   await user.click(second as HTMLElement);
-  expect(within(dialog).getByText(/merged into one session/)).toBeInTheDocument();
+  expect(second).toBeChecked();
+  expect(first).not.toBeChecked();
+  await user.click(within(dialog).getByRole('radio', { name: 'All groups, merged' }));
+  expect(within(dialog).getByText(/read as one session/)).toBeInTheDocument();
   expect(within(dialog).getByLabelText('Session name')).toHaveValue('office');
 
   await user.click(within(dialog).getByRole('button', { name: 'Start import' }));

@@ -30,12 +30,13 @@ function text(detail: Record<string, unknown>, key: string): string | null {
   return null;
 }
 
-/** Duration in seconds of a `<name>_ns` (or `<name>_us`) detail field. */
+/** Duration in seconds of a `<name>_us` (or legacy `<name>_ns`) detail field. */
 export function detailSeconds(detail: Record<string, unknown>, name: string): number | null {
-  const ns = num(detail, `${name}_ns`);
-  if (ns !== null) return ns / 1e9;
+  // The API converts `*_ns` detail keys to microseconds (ADR-008); `_ns` is still accepted.
   const us = num(detail, `${name}_us`);
-  return us === null ? null : us / 1e6;
+  if (us !== null) return us / 1e6;
+  const ns = num(detail, `${name}_ns`);
+  return ns === null ? null : ns / 1e9;
 }
 
 /** Missing sequence numbers `first..=last` of a `missing_sequence` anomaly. */

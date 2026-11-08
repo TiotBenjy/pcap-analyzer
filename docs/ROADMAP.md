@@ -115,11 +115,11 @@ Suivis de la phase 1 :
 
 ### Vague 2.A (parallèle)
 
-- [ ] **P2.1** `feat/api-sessions` — Routes sessions (liste, import, SSE progression, suppression), `fs/browse`,
+- [~] **P2.1** `feat/api-sessions` — Routes sessions (liste, import, SSE progression, suppression), `fs/browse`,
       génération des types ts-rs, client API typé côté UI.
-- [ ] **P2.2** `feat/geoip` — `netsift-geo` : lecture mmdb, cache LRU, classification d'adresses ;
+- [~] **P2.2** `feat/geoip` — `netsift-geo` : lecture mmdb, cache LRU, classification d'adresses ;
       `./x.sh geoip` ; attribution DB-IP dans « À propos ».
-- [ ] **P2.3** `feat/ui-captures` — Vue Captures : liste des sessions, import (dialogue natif desktop /
+- [~] **P2.3** `feat/ui-captures` — Vue Captures : liste des sessions, import (dialogue natif desktop /
       navigateur de dossiers en dev), progression, frise des chunks et anomalies. Spec : `specs/captures.md`.
 
 ### Vague 2.B

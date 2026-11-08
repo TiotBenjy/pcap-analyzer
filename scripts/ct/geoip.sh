@@ -19,6 +19,11 @@ for YM in "$(date +%Y-%m)" "$(date -d "$(date +%Y-%m-15) -1 month" +%Y-%m)"; do
       echo "Fichier vide après décompression." >&2
       exit 1
     fi
+    # Marqueur de métadonnées MaxMind DB : écarte une page d'erreur ou un fichier tronqué.
+    if ! LC_ALL=C grep -qaF "$(printf '\xab\xcd\xefMaxMind.com')" "$TMP/db.mmdb"; then
+      echo "Fichier téléchargé invalide (marqueur mmdb absent)." >&2
+      exit 1
+    fi
     # Remplacement atomique : un import en cours ne lit jamais un fichier partiel.
     mv -f "$TMP/db.mmdb" "$FINAL"
     echo ">> Base GeoIP : $FINAL"

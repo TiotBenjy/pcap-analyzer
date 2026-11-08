@@ -26,6 +26,7 @@ fn config() -> ApiConfig {
         cors_origins: vec![HeaderValue::from_static("tauri://localhost")],
         allow_any_path: false,
         max_imports: DEFAULT_MAX_IMPORTS,
+        geoip_path: None,
     }
 }
 
@@ -1066,4 +1067,104 @@ fn debug_never_prints_the_token() {
     let printed = format!("{:?}", config());
     assert!(!printed.contains("s3cret-token"));
     assert!(printed.contains("<redacted>"));
+}
+
+#[tokio::test]
+async fn server_info_reports_the_geoip_database() {
+    let env = Env::writable();
+    let (status, json) = env.call("GET", "/api/v1/server-info", &Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        json["geoip"],
+        json!({ "status": "missing", "built_at_us": null })
+    );
+
+    // Installed at the default location while the server runs (`./x.sh geoip`).
+    let path = netsift_geo::default_path(&env.tmp.path().join("data"));
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    netsift_geo::test_util::MmdbBuilder::new()
+        .network("8.8.8.0".parse().unwrap(), 24, "US")
+        .write(&path)
+        .unwrap();
+    let (_, json) = env.call("GET", "/api/v1/server-info", &Value::Null).await;
+    assert_eq!(json["geoip"]["status"], "available");
+    assert!(json["geoip"]["built_at_us"].is_i64());
+    // The imports read the same file.
+    assert_eq!(env.state.ingest_template.geoip_path.as_ref(), Some(&path));
+}
+
+#[tokio::test]
+async fn server_info_reads_the_configured_geoip_path() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("bundle").join("country.mmdb");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"garbage").unwrap();
+    let config = ApiConfig {
+        data_dir: tmp.path().join("data"),
+        geoip_path: Some(path.clone()),
+        ..config()
+    };
+    let (app, state) = build(config, default_ingest_options());
+    assert_eq!(state.ingest_template.geoip_path.as_ref(), Some(&path));
+    let (status, _, json) = read(
+        app.oneshot(req("GET", "/api/v1/server-info", &Value::Null))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["geoip"]["status"], "invalid");
+}
+
+#[tokio::test]
+async fn monitor_counts_running_imports() {
+    let env = Env::new(false, false, slow_ingest());
+    let monitor = ServerMonitor(Arc::downgrade(&env.state));
+    assert_eq!(monitor.running_imports(), 0);
+    let run = env.captures().join("monitor");
+    write_chunks(&run, "cap", 20);
+    let id = env.import(&run).await;
+    assert_eq!(monitor.running_imports(), 1);
+    env.call(
+        "POST",
+        &format!("/api/v1/sessions/{id}/cancel"),
+        &Value::Null,
+    )
+    .await;
+    env.events(&id).await;
+    assert!(env.state.wait_imports(IMPORT_GRACE).await);
+    assert_eq!(monitor.running_imports(), 0);
+
+    let Env { tmp, app, state } = env;
+    drop((app, state));
+    assert_eq!(monitor.running_imports(), 0);
+    drop(tmp);
+}
+
+#[test]
+fn recover_interrupted_marks_importing_sessions_incomplete() {
+    let env = Env::writable();
+    let importing = catalog_session(&env, netsift_store::SessionState::Importing, None);
+    let ready = catalog_session(&env, netsift_store::SessionState::Ready, None);
+    let data = env.tmp.path().join("data");
+    assert_eq!(recover_interrupted(&data).unwrap(), vec![importing.clone()]);
+    let catalog = Catalog::open(&data).unwrap();
+    let state = |id: &str| {
+        catalog
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id.to_string() == id)
+            .unwrap()
+            .state
+    };
+    assert_eq!(state(&importing), netsift_store::SessionState::Incomplete);
+    assert_eq!(state(&ready), netsift_store::SessionState::Ready);
+    assert_eq!(recover_interrupted(&data).unwrap(), Vec::<String>::new());
+
+    // A data directory that is a file: a clear error, no panic.
+    let file = env.tmp.path().join("file");
+    std::fs::write(&file, b"x").unwrap();
+    let err = recover_interrupted(&file).unwrap_err();
+    assert!(err.to_string().contains("cannot open the catalog"), "{err}");
 }

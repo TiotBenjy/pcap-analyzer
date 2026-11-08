@@ -360,6 +360,10 @@ export const fr: Dictionary = {
       readWrite: 'Lecture et écriture',
       geoip: {
         label: 'GeoIP',
+        available: 'Base installée, générée le {{date}}',
+        availableUndated: 'Base installée',
+        missing: 'Aucune base, pays inconnus',
+        invalid: 'Base illisible, pays inconnus',
         attribution: 'Géolocalisation IP par DB-IP',
         source: 'https://db-ip.com',
         license: 'Sous licence CC BY 4.0',

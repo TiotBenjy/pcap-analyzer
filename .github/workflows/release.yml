@@ -154,8 +154,10 @@ jobs:
           # Pas de cache npm non plus (même règle que pour Rust) ; `npm ci` vérifie les empreintes.
           package-manager-cache: false
 
-      # GeoIP : la base DB-IP n'est pas encore embarquée. P2.5 doit la déclarer dans
-      # `bundle.resources` et la lire dans l'app ; ajouter alors ici `bash scripts/ci/geoip.sh`.
+      # Base DB-IP embarquée (`bundle.resources`) ; l'étape échoue sans base valide (ADR-012).
+      # Shell bash par défaut (Git Bash sous Windows), pas de cache.
+      - name: Base GeoIP
+        run: bash scripts/ci/geoip.sh
 
       - name: Build et bundle Tauri
         working-directory: apps/desktop

@@ -48,7 +48,7 @@ apps/desktop/              crate Tauri (tauri.conf.json, icônes, capabilities)
 ui/                        frontend React/Vite
 fuzz/                      cibles cargo-fuzz (nightly, hors workspace)
 docker/                    image de dev/build
-scripts/                   wt.sh (worktrees), scripts exécutés dans le conteneur
+scripts/                   wt.sh (worktrees), release.sh, scripts exécutés dans le conteneur
 docs/                      cette documentation
 ```
 
@@ -145,13 +145,19 @@ toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paqu
 - CSP stricte : `default-src 'self'; connect-src http://127.0.0.1:*; img-src 'self' http://127.0.0.1:* data:`,
   plus `style-src 'self' 'unsafe-inline'` pour le SVG d'ECharts et des directives fermées (détail : ADR-006).
 - Aucune autre fenêtre, aucun accès réseau sortant.
-- Bundles : Linux AppImage + .deb (build local dans le conteneur Ubuntu 22.04 pour compatibilité glibc),
-  Windows NSIS + MSI (build CI sur `windows-latest`).
+- Bundles publiés par `release.yml` sur tag `vX.Y.Z` (ADR-011, procédure dans `docs/GIT_WORKFLOW.md`) :
+  Linux `.AppImage`, `.deb`, `.rpm` (Ubuntu 22.04 pour la compatibilité glibc), Windows NSIS + MSI
+  (`windows-latest`), macOS `.dmg` universel Apple Silicon + Intel (`macos-15`, macOS 11 minimum),
+  plus `SHA256SUMS.txt`. Non signés (signature ad hoc sur macOS, sans notarisation). En local,
+  `./x.sh desktop` construit AppImage + .deb dans le conteneur.
+- Version : celle de `[workspace.package]` dans `Cargo.toml`, lue par Tauri (pas de `version` dans
+  `tauri.conf.json`) ; `scripts/check-version.sh` la compare à l'UI, à `Cargo.lock` et au tag.
 
 ## GeoIP et classification
 
 - Base pays **DB-IP IP to Country Lite** (format mmdb, licence CC BY 4.0, attribution dans « À propos »).
-  Téléchargée par `./x.sh geoip` en dev et par la CI pour les bundles. L'application fonctionne sans (pays inconnu).
+  Téléchargée par `./x.sh geoip` en dev et, une fois P2.5 faite (`bundle.resources`), par `release.yml`
+  pour les bundles (`scripts/ci/geoip.sh`). L'application fonctionne sans (pays inconnu).
 - Classification d'adresses : privée (RFC 1918 / ULA), publique, broadcast, multicast, link-local, loopback,
   CGNAT. Utilisée pour les filtres et légendes (LAN / Public / Broadcast / Multicast / Link-local / Loopback).
 

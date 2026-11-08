@@ -1,6 +1,6 @@
 # NetSift
 
-Analyse forensique de captures réseau (pcap / pcapng), application de bureau pour **Linux et Windows**.
+Analyse forensique de captures réseau (pcap / pcapng), application de bureau pour **Linux, Windows et macOS**.
 Importe un fichier unique ou **un dossier de captures découpées en chunks** (dumpcap/Wireshark
 `-b filesize`/`-b duration`, tcpdump `-C`/`-G`) et les recolle en une seule session continue.
 
@@ -9,7 +9,16 @@ et professionnelle. Stockage SQLite par session (sessions de plusieurs gigaoctet
 
 > État : amorçage. Le code est produit tâche par tâche selon `docs/ROADMAP.md`.
 
-## Prérequis
+## Téléchargement
+
+Les installateurs sont attachés à chaque version sur la page
+[Releases](https://github.com/TiotBenjy/pcap-analyzer/releases) : `.deb`, `.rpm` et `.AppImage`
+(Linux x86_64), `-setup.exe` et `.msi` (Windows x86_64), `.dmg` universel (macOS 11+, Apple Silicon
+et Intel), avec `SHA256SUMS.txt`. Ils ne sont pas signés : Windows SmartScreen et macOS Gatekeeper
+affichent un avertissement au premier lancement (marche à suivre dans les notes de chaque version).
+Historique : `CHANGELOG.md`.
+
+## Développement : prérequis
 
 **Docker** ou **Podman** uniquement. Aucune installation de Rust ou de Node sur votre machine :
 toute la toolchain vit dans un conteneur, piloté par `./x.sh` (Linux/macOS) ou `./x.ps1` (Windows).
@@ -23,8 +32,9 @@ toute la toolchain vit dans un conteneur, piloté par `./x.sh` (Linux/macOS) ou 
 ./x.sh desktop   # construit l'application desktop Linux (AppImage + .deb) dans dist/
 ```
 
-Windows : remplacez `./x.sh` par `./x.ps1` (mêmes sous-commandes). Les installateurs Windows
-signés sont produits par la CI (voir ci-dessous).
+Windows : remplacez `./x.sh` par `./x.ps1` (sous-commandes principales ; `cliff` y fonctionne
+depuis le checkout racine seulement). Les installateurs Windows et
+macOS sont produits par la CI (voir ci-dessous).
 
 ## Voir l'interface pendant le développement
 
@@ -51,9 +61,11 @@ Le travail se fait par branches dans des **worktrees** (`scripts/wt.sh`), fusion
 ## Compilation continue (CI/CD GitHub)
 
 - Push d'une branche -> `.github/workflows/ci.yml` (fmt, clippy, tests Rust, lint/tests/visuels UI, licences).
-- Tag `v*` sur `main` -> `.github/workflows/release.yml` : bundles **Linux** (AppImage, .deb) et
-  **Windows** (NSIS, MSI) construits sur les runners GitHub, release en brouillon avec les artefacts.
-  C'est ainsi qu'on produit le binaire Windows sans toolchain Windows sur votre machine.
+- `scripts/release.sh X.Y.Z` -> fusion de la version sur `main` et tag `vX.Y.Z` ->
+  `.github/workflows/release.yml` : bundles **Linux** (AppImage, .deb, .rpm), **Windows** (NSIS, MSI)
+  et **macOS** (.dmg universel) construits sur les runners GitHub, publiés dans une release dont les
+  notes sont générées depuis les commits (git-cliff). C'est ainsi qu'on produit les binaires Windows
+  et macOS sans toolchain sur votre machine. Procédure : `docs/GIT_WORKFLOW.md`, « Publier une version ».
 
 ## Structure
 

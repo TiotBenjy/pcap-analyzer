@@ -9,6 +9,9 @@ publish.workspace = true
 repository.workspace = true
 
 [dependencies]
+brotli-decompressor = "6.3.0"
+flate2 = "1.1.11"
+httparse = "1.10.1"
 md-5 = "0.11.0"
 netsift-dissect.workspace = true
 netsift-flow.workspace = true
@@ -22,6 +25,7 @@ x509-parser = "0.18.1"
 workspace = true
 
 [dev-dependencies]
+brotli = "9.1.1"
 insta = "1.49.0"
 netsift-fixtures.workspace = true
 netsift-geo = { workspace = true, features = ["test-util"] }

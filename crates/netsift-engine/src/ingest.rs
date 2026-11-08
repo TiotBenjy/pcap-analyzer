@@ -347,6 +347,14 @@ impl RunCtx<'_> {
         let _ = sender.send_batch(tail);
         drop(sender);
         let writer_stats = writer.finish().map_err(|e| e.to_string())?;
+        // A failed end-of-import step leaves the session usable; it runs again at the next
+        // opening (ADR-014).
+        for (step, error) in &writer_stats.finalize.failed {
+            tracing::warn!(
+                step,
+                "end-of-import step failed, retried at the next opening: {error}"
+            );
+        }
         if let Some(reason) = failure {
             return Err(reason);
         }
@@ -628,6 +636,11 @@ impl RunCtx<'_> {
             ("import.recursive", o.recursive.to_string()),
             ("import.shards", shards.to_string()),
             ("import.analyzers", analyzers.join(",")),
+            // Read by the end-of-import pairing of the store (ADR-014).
+            (
+                netsift_store::dns::PAIR_WINDOW_META_KEY,
+                o.analyzers.config().dns.pair_window_ns.to_string(),
+            ),
             ("import.state", state.as_str().to_owned()),
             ("stats.packets", reader.packets.to_string()),
             ("stats.bytes_read", reader.source.bytes_read().to_string()),

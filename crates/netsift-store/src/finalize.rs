@@ -62,7 +62,8 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     Finalizer {
         id: "servers",
         version: 1,
-        after: &[],
+        // After `dns`: when a host reaches MAX_HOST_NAMES, DNS names are kept first, always.
+        after: &["dns"],
         fills: &[],
         reads: &["dhcp_messages"],
         run: crate::servers::finalize,
@@ -357,7 +358,13 @@ mod tests {
             .conn()
             .execute_batch("ALTER TABLE dns_pairs_away RENAME TO dns_pairs")
             .unwrap();
-        assert_eq!(run_finalizers(other.conn()).unwrap().ran, vec!["dns"]);
+        // The steps that come after `dns` were postponed with it.
+        let after_dns: Vec<&str> = SESSION_FINALIZERS
+            .iter()
+            .filter(|f| f.id == "dns" || f.after.contains(&"dns"))
+            .map(|f| f.id)
+            .collect();
+        assert_eq!(run_finalizers(other.conn()).unwrap().ran, after_dns);
         assert!(finalizers_complete(other.conn()).unwrap());
     }
 

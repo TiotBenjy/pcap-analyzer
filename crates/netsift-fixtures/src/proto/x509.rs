@@ -41,6 +41,11 @@ pub struct CertSpec {
     pub not_before: i64,
     /// Validity end, seconds since the Unix epoch.
     pub not_after: i64,
+    /// Common name of the issuer (same country and organization); `None` for a self-signed
+    /// certificate.
+    pub issuer: Option<String>,
+    /// Basic constraints `cA = TRUE` (certificate authority).
+    pub ca: bool,
 }
 
 impl CertSpec {
@@ -55,14 +60,26 @@ impl CertSpec {
             serial: 0x1001,
             not_before: 1_672_531_200,
             not_after: 1_988_150_400,
+            issuer: None,
+            ca: false,
         }
     }
 }
 
-/// DER encoding of a self-signed certificate (issuer = subject).
+/// DER encoding of a self-signed certificate (issuer = subject), or of a certificate issued by
+/// `spec.issuer` when set (its signature does not verify either way).
 pub fn self_signed_certificate(spec: &CertSpec) -> Vec<u8> {
+    certificate(spec)
+}
+
+/// DER encoding of the certificate described by `spec`.
+pub fn certificate(spec: &CertSpec) -> Vec<u8> {
     let algorithm = der::sequence(&[&der::oid(OID_ECDSA_SHA256)]);
-    let name = distinguished_name(spec);
+    let name = distinguished_name(spec, &spec.common_name);
+    let issuer = spec
+        .issuer
+        .as_deref()
+        .map_or_else(|| name.clone(), |cn| distinguished_name(spec, cn));
     let validity = der::sequence(&[&time(spec.not_before), &time(spec.not_after)]);
     let spki = der::sequence(&[
         &der::sequence(&[&der::oid(OID_EC_PUBLIC_KEY), &der::oid(OID_PRIME256V1)]),
@@ -72,7 +89,11 @@ pub fn self_signed_certificate(spec: &CertSpec) -> Vec<u8> {
     let mut extensions = vec![der::sequence(&[
         &der::oid(OID_BASIC_CONSTRAINTS),
         &der::boolean(true),
-        &der::octet_string(&der::sequence(&[])),
+        &der::octet_string(&if spec.ca {
+            der::sequence(&[&der::boolean(true)])
+        } else {
+            der::sequence(&[])
+        }),
     ])];
     if !spec.dns_names.is_empty() {
         let names: Vec<u8> = spec
@@ -91,7 +112,7 @@ pub fn self_signed_certificate(spec: &CertSpec) -> Vec<u8> {
         &der::explicit(0, &der::integer_i64(2)),
         &der::integer_unsigned(&spec.serial.to_be_bytes()),
         &algorithm,
-        &name,
+        &issuer,
         &validity,
         &name,
         &spki,
@@ -106,7 +127,7 @@ pub fn self_signed_certificate(spec: &CertSpec) -> Vec<u8> {
     der::sequence(&[&tbs, &algorithm, &der::bit_string(&signature)])
 }
 
-fn distinguished_name(spec: &CertSpec) -> Vec<u8> {
+fn distinguished_name(spec: &CertSpec, common_name: &str) -> Vec<u8> {
     let mut rdns = Vec::new();
     if let Some(c) = &spec.country {
         rdns.push(attribute(OID_COUNTRY, tag::PRINTABLE_STRING, c));
@@ -114,11 +135,7 @@ fn distinguished_name(spec: &CertSpec) -> Vec<u8> {
     if let Some(o) = &spec.organization {
         rdns.push(attribute(OID_ORGANIZATION, tag::UTF8_STRING, o));
     }
-    rdns.push(attribute(
-        OID_COMMON_NAME,
-        tag::UTF8_STRING,
-        &spec.common_name,
-    ));
+    rdns.push(attribute(OID_COMMON_NAME, tag::UTF8_STRING, common_name));
     let refs: Vec<&[u8]> = rdns.iter().map(Vec::as_slice).collect();
     der::sequence(&refs)
 }

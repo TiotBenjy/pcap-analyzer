@@ -1,4 +1,5 @@
 import type { Dictionary } from './en';
+import { tlsFr } from './tls';
 
 // French dictionary. Typed against the English shape: a missing or extra key fails typecheck.
 export const fr: Dictionary = {
@@ -476,6 +477,8 @@ export const fr: Dictionary = {
       text: 'Cette adresse ne correspond à aucune vue.',
       back: 'Aller à Captures',
     },
+    // --- analysis views kept in their own module: one line each, sorted ---
+    tls: tlsFr,
   },
   common: {
     all: 'Tout',

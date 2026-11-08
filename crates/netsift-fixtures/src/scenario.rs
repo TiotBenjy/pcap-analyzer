@@ -241,29 +241,110 @@ impl Scenario {
         }
     }
 
-    /// TLS 1.2 handshake start: `ClientHello`, then `ServerHello`, `Certificate` and
-    /// `ServerHelloDone` in one server flight, then connection close.
+    /// TLS handshake: `ClientHello`, then (unless `respond` is off) one server flight, then the
+    /// optional alert or end of handshake and application data, then connection close.
+    ///
+    /// TLS 1.2 flight: `ServerHello`, `Certificate` (when the chain is not empty), optional
+    /// `ServerKeyExchange`, `ServerHelloDone`. TLS 1.3 flight (`selected_version`): `ServerHello`,
+    /// `ChangeCipherSpec`, then the encrypted rest of the handshake as one application data
+    /// record. With the default parameters only the hellos, certificate and close are sent.
     pub fn tls_handshake(&mut self, client: Host, server: Host, hs: &TlsHandshake) -> TcpExchange {
+        let random: [u8; 32] = self.rng.bytes();
+        // GREASE value derived from the random: no extra generator draw, so that scenarios
+        // without GREASE keep their bytes.
+        let grease = hs.grease.then(|| {
+            let nibble = u16::from(random.first().copied().unwrap_or_default() >> 4);
+            0x0a0a | (nibble * 0x1010)
+        });
         let client_hello = ClientHello {
-            random: self.rng.bytes(),
+            version: hs.client_version,
+            random,
             session_id: self.rng.bytes::<32>().to_vec(),
             cipher_suites: hs.cipher_suites.clone(),
             sni: hs.sni.clone(),
             alpn: hs.alpn.clone(),
+            supported_versions: hs.supported_versions.clone(),
+            key_share_groups: hs.key_share_groups.clone(),
+            grease,
         };
         let server_hello = ServerHello {
+            version: hs.server_version,
             random: self.rng.bytes(),
             session_id: self.rng.bytes::<32>().to_vec(),
             cipher_suite: hs.selected_suite,
             alpn: hs.selected_alpn.clone(),
+            selected_version: hs.selected_version,
         };
+        let tls13 = hs.selected_version.is_some();
+        let retry = tls13 && hs.hello_retry;
         let mut flight = tls::server_hello_record(&server_hello);
-        flight.extend_from_slice(&tls::certificate_record(&hs.certificate_chain));
-        flight.extend_from_slice(&tls::server_hello_done_record());
+        if tls13 {
+            // One compatibility ChangeCipherSpec per side: after a HelloRetryRequest, it was
+            // already sent with it.
+            if !retry {
+                flight.extend_from_slice(&tls::change_cipher_spec_record());
+            }
+            let encrypted: usize = hs.certificate_chain.iter().map(Vec::len).sum::<usize>() + 300;
+            flight.extend_from_slice(&tls::application_data_record(encrypted, 0x13));
+        } else {
+            if !hs.certificate_chain.is_empty() {
+                flight.extend_from_slice(&tls::certificate_record(&hs.certificate_chain));
+            }
+            if hs.server_key_exchange {
+                flight.extend_from_slice(&tls::server_key_exchange_record());
+            }
+            flight.extend_from_slice(&tls::server_hello_done_record());
+        }
 
         let mut s = self.tcp_open(client, server, &hs.tcp);
         let request = s.client_send(&tls::client_hello_record(&client_hello));
-        let response = s.server_send(&flight);
+        if retry && hs.respond {
+            // HelloRetryRequest with its dummy ChangeCipherSpec (RFC 8446 4.1.4, D.4), then the
+            // client's dummy ChangeCipherSpec and second ClientHello.
+            let hrr = ServerHello {
+                random: tls::HELLO_RETRY_REQUEST_RANDOM,
+                ..server_hello.clone()
+            };
+            let mut first = tls::server_hello_record(&hrr);
+            first.extend_from_slice(&tls::change_cipher_spec_record());
+            s.server_send(&first);
+            let mut second = tls::change_cipher_spec_record();
+            second.extend_from_slice(&tls::client_hello_record(&client_hello));
+            s.client_send(&second);
+        }
+        let response = if hs.respond {
+            s.server_send(&flight)
+        } else {
+            request.end..request.end
+        };
+        if let Some(alert) = hs.alert {
+            let record = tls::alert_record(alert.level, alert.description);
+            if alert.from_server {
+                s.server_send(&record);
+            } else {
+                s.client_send(&record);
+            }
+        } else if hs.complete && hs.respond {
+            let mut client_end = if retry {
+                Vec::new()
+            } else {
+                tls::change_cipher_spec_record()
+            };
+            if tls13 {
+                client_end.extend_from_slice(&tls::application_data_record(53, 0x14));
+            } else {
+                client_end.extend_from_slice(&tls::encrypted_handshake_record(40));
+            }
+            client_end.extend_from_slice(&tls::application_data_record(180, 0x15));
+            s.client_send(&client_end);
+            let mut server_end = Vec::new();
+            if !tls13 {
+                server_end.extend_from_slice(&tls::change_cipher_spec_record());
+                server_end.extend_from_slice(&tls::encrypted_handshake_record(40));
+            }
+            server_end.extend_from_slice(&tls::application_data_record(900, 0x16));
+            s.server_send(&server_end);
+        }
         let client_port = s.client_port();
         let packets = s.close();
         TcpExchange {
@@ -792,17 +873,52 @@ impl HttpGet {
     }
 }
 
-/// TLS 1.2 handshake parameters.
+/// A plaintext TLS alert sent after the server flight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TlsAlert {
+    /// 1 warning, 2 fatal.
+    pub level: u8,
+    /// RFC 8446 6.2 (40 `handshake_failure`, 42 `bad_certificate`, 48 `unknown_ca`...).
+    pub description: u8,
+    pub from_server: bool,
+}
+
+/// TLS handshake parameters (TLS 1.2 by default, see [`TlsHandshake::tls13`]).
+#[allow(clippy::struct_excessive_bools)] // independent switches of the scenario
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TlsHandshake {
     pub sni: Option<String>,
     pub alpn: Vec<String>,
     pub cipher_suites: Vec<u16>,
     pub selected_suite: u16,
+    /// ALPN in the `ServerHello` (TLS 1.2 only: TLS 1.3 sends it encrypted).
     pub selected_alpn: Option<String>,
     /// DER certificates, leaf first.
     pub certificate_chain: Vec<Vec<u8>>,
     pub tcp: TcpOptions,
+    /// `ClientHello.legacy_version`.
+    pub client_version: u16,
+    /// `ServerHello.legacy_version`.
+    pub server_version: u16,
+    /// `supported_versions` offered by the client (omitted when empty).
+    pub supported_versions: Vec<u16>,
+    /// `key_share` groups offered by the client (omitted when empty).
+    pub key_share_groups: Vec<u16>,
+    /// Version selected by the server (`supported_versions`): TLS 1.3 handshake when set.
+    pub selected_version: Option<u16>,
+    /// GREASE values in the `ClientHello`.
+    pub grease: bool,
+    /// `ServerKeyExchange` in the TLS 1.2 flight.
+    pub server_key_exchange: bool,
+    /// The server answers the `ClientHello`.
+    pub respond: bool,
+    /// Alert sent after the server flight (instead of completing the handshake).
+    pub alert: Option<TlsAlert>,
+    /// Ends the handshake (`ChangeCipherSpec`, `Finished`) and exchanges application data.
+    pub complete: bool,
+    /// TLS 1.3 only: the server first answers with a `HelloRetryRequest` (middlebox
+    /// compatibility mode: dummy `ChangeCipherSpec` on both sides) before the real handshake.
+    pub hello_retry: bool,
 }
 
 impl TlsHandshake {
@@ -816,6 +932,35 @@ impl TlsHandshake {
             selected_alpn: Some("h2".to_owned()),
             certificate_chain: vec![self_signed_certificate(&CertSpec::new(server_name))],
             tcp: TcpOptions::new(443),
+            client_version: 0x0303,
+            server_version: 0x0303,
+            supported_versions: Vec::new(),
+            key_share_groups: Vec::new(),
+            selected_version: None,
+            grease: false,
+            server_key_exchange: false,
+            respond: true,
+            alert: None,
+            complete: false,
+            hello_retry: false,
+        }
+    }
+
+    /// Complete TLS 1.3 handshake with SNI `server_name`, ALPN `h2` and `http/1.1` offered,
+    /// GREASE, `TLS_AES_128_GCM_SHA256` selected; certificates travel encrypted.
+    pub fn tls13(server_name: &str) -> Self {
+        Self {
+            cipher_suites: vec![
+                0x1301, 0x1302, 0x1303, 0xc02b, 0xc02f, 0xc02c, 0xc030, 0xcca9,
+            ],
+            selected_suite: 0x1301,
+            selected_alpn: None,
+            supported_versions: vec![0x0304, 0x0303],
+            key_share_groups: vec![tls::GROUP_X25519],
+            selected_version: Some(0x0304),
+            grease: true,
+            complete: true,
+            ..Self::new(server_name)
         }
     }
 }

@@ -9,6 +9,7 @@ use crate::connections::{ConnectionsAnalyzer, ConnectionsConfig};
 use crate::core::CoreAnalyzer;
 use crate::geo::GeoDb;
 use crate::ports::{PortsAnalyzer, PortsConfig};
+use crate::tls::TlsAnalyzer;
 
 /// Settings of the `core` analyzer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +39,7 @@ pub struct AnalyzerConfig {
     pub connections: ConnectionsConfig,
     pub core: CoreConfig,
     pub ports: PortsConfig,
+    pub tls: crate::tls::TlsConfig,
     // --- shared resources (read-only, shared by every shard), sorted ---
     /// `blobs/` directory of the session being imported (set by the engine).
     pub blobs_dir: Option<Arc<PathBuf>>,
@@ -62,6 +64,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         // --- analyzers: one line each, sorted alphabetically by id ---
         (ConnectionsAnalyzer::ID, factory(ConnectionsAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
+        (TlsAnalyzer::ID, factory(TlsAnalyzer::boxed)),
     ]
 }
 

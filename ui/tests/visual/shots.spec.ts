@@ -21,6 +21,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   settings: '/settings',
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
+  tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
 };
 
 /** Placeholder id when no session exists: the session views then render their error or not-found state. */
@@ -183,6 +184,11 @@ for (const [view, target] of views) {
           await expect(
             page.getByRole('table', { name: 'Hosts with open ports' }).or(page.getByRole('list', { name: 'Hosts with open ports' })),
           ).toBeVisible();
+        }
+        if (view === 'tls' && !path.includes(NO_SESSION)) {
+          await expect(page.getByTestId('tls-summary')).toBeVisible();
+          await expect(page.getByRole('img', { name: /^Negotiated TLS versions/ })).toBeVisible();
+          await expect(page.getByRole('table', { name: 'TLS sessions' })).toBeVisible();
         }
 
         if (view === 'settings') {

@@ -9,6 +9,9 @@
 //! - [`classify`]: application protocol labels ([`AppProto`]) from flows and well-known ports;
 //! - [`core`]: the built-in `core` analyzer (traffic time series, hosts, flows).
 //!
+//! [`geo`] (address categories, countries) is re-exported for the engine, which loads the
+//! country database shared by every shard ([`AnalyzerConfig::geo`]).
+//!
 //! The flow layer and the decoder are re-exported ([`flow`], [`dissect`]) so that the engine
 //! and analyzers use exactly the types of the trait signatures.
 
@@ -30,6 +33,7 @@ pub use analyzer::{Analyzer, AnalyzerId, BlobRef, RecordSink};
 pub use classify::AppProto;
 pub use netsift_dissect as dissect;
 pub use netsift_flow as flow;
+pub use netsift_geo as geo;
 pub use record::{FlowSummary, HostSeen, Record, TrafficSample};
 pub use registry::{AnalyzerConfig, CoreConfig, Factory, Registry, factory};
 

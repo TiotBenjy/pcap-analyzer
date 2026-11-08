@@ -7,8 +7,9 @@
 //!   not counted. The engine's global counters (packets and bytes read, report, `meta`) are
 //!   computed on raw frames instead, so their totals may differ slightly;
 //! - `hosts`: IP addresses with their unicast MAC addresses and first/last packet times,
-//!   aggregated in memory and flushed periodically (packet time) or when the map is full; the
-//!   address category is left empty (filled from `netsift-geo` later);
+//!   aggregated in memory and flushed periodically (packet time) or when the map is full,
+//!   with the address category and, when a country database is loaded
+//!   ([`AnalyzerConfig::geo`]), the country (looked up at flush time, cached by `GeoDb`);
 //! - `flows`: one summary per finished flow, with its application protocol.
 //!
 //! Every record is mergeable in any order, so the result does not depend on the number of
@@ -17,12 +18,14 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use netsift_dissect::{Decoded, MacAddr, Network};
 use netsift_flow::{FlowCtx, PacketCtx};
 
 use crate::analyzer::{Analyzer, AnalyzerId, RecordSink};
 use crate::classify::{AppProto, classify_packet, flow_app_proto};
+use crate::geo::{AddressCategory, GeoDb};
 use crate::record::{FlowSummary, HostSeen, Record, TrafficSample};
 use crate::registry::AnalyzerConfig;
 
@@ -55,6 +58,7 @@ pub struct CoreAnalyzer {
     hosts: HashMap<IpAddr, PendingHost>,
     /// Packet time of the last host flush (or of the first packet).
     hosts_since: Option<i64>,
+    geo: Option<Arc<GeoDb>>,
 }
 
 impl CoreAnalyzer {
@@ -68,6 +72,7 @@ impl CoreAnalyzer {
             counters: BTreeMap::new(),
             hosts: HashMap::new(),
             hosts_since: None,
+            geo: config.geo.clone(),
         }
     }
 
@@ -133,6 +138,8 @@ impl CoreAnalyzer {
                 ip,
                 macs: h.macs.into_iter().collect(),
                 names: Vec::new(),
+                category: AddressCategory::of(ip),
+                country: self.geo.as_ref().and_then(|g| g.country(ip)),
                 first_ts: h.first_ts,
                 last_ts: h.last_ts,
             }));
@@ -204,6 +211,12 @@ pub fn merge_core(records: &[Record]) -> (Vec<TrafficSample>, Vec<HostSeen>, Vec
                     m.names.extend(h.names.iter().cloned());
                     m.names.sort_unstable();
                     m.names.dedup();
+                    m.category = m.category.min(h.category);
+                    // Non-empty wins, then the smallest (the store rule).
+                    m.country = match (m.country, h.country) {
+                        (Some(known), Some(other)) => Some(known.min(other)),
+                        (known, other) => known.or(other),
+                    };
                 }
             },
             Record::Flow(f) => flows.push(*f),
@@ -277,10 +290,11 @@ mod tests {
                         .join(":")
                 })
                 .collect();
+            let country = h.country.map_or_else(|| "-".to_owned(), |c| c.to_string());
             writeln!(
                 s,
-                "host {} macs={macs:?} {}..{}",
-                h.ip, h.first_ts, h.last_ts
+                "host {} {} country={country} macs={macs:?} {}..{}",
+                h.ip, h.category, h.first_ts, h.last_ts
             )
             .unwrap();
         }
@@ -411,6 +425,102 @@ mod tests {
                 app_proto: Some(AppProto::Http)
             })]
         );
+    }
+
+    fn geo_config() -> AnalyzerConfig {
+        let bytes = netsift_geo::test_util::MmdbBuilder::new()
+            .network(IpAddr::V4(Ipv4Addr::new(81, 0, 0, 0)), 8, "FR")
+            // Documentation range: reserved, never looked up.
+            .network(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 0)), 24, "DE")
+            .build();
+        AnalyzerConfig {
+            geo: Some(Arc::new(GeoDb::from_bytes(bytes).unwrap())),
+            ..AnalyzerConfig::default()
+        }
+    }
+
+    #[test]
+    fn hosts_carry_category_and_country() {
+        let mut sc = netsift_fixtures::Scenario::new();
+        let public = netsift_fixtures::Host::v4(
+            netsift_fixtures::scenarios::hosts::router().mac,
+            [81, 2, 3, 4],
+        );
+        sc.http_get(
+            netsift_fixtures::scenarios::hosts::workstation(),
+            public,
+            &netsift_fixtures::scenario::HttpGet::default(),
+        );
+        sc.http_get(
+            netsift_fixtures::scenarios::hosts::workstation(),
+            netsift_fixtures::scenarios::hosts::web_server(),
+            &netsift_fixtures::scenario::HttpGet::default(),
+        );
+        let packets = sc.into_packets();
+
+        let mut with_geo = CoreAnalyzer::new(&geo_config());
+        let (_, hosts, _) = merge_core(&run(&mut with_geo, &packets));
+        let summary: Vec<_> = hosts
+            .iter()
+            .map(|h| {
+                (
+                    h.ip.to_string(),
+                    h.category,
+                    h.country.map(|c| c.to_string()),
+                )
+            })
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                (
+                    "81.2.3.4".to_owned(),
+                    AddressCategory::Public,
+                    Some("FR".to_owned())
+                ),
+                ("192.168.1.10".to_owned(), AddressCategory::Private, None),
+                ("203.0.113.80".to_owned(), AddressCategory::Reserved, None),
+            ]
+        );
+
+        // Without a database: same categories, no country.
+        let mut without = CoreAnalyzer::new(&AnalyzerConfig::default());
+        let (_, hosts, _) = merge_core(&run(&mut without, &packets));
+        assert_eq!(hosts.len(), 3);
+        assert!(hosts.iter().all(|h| h.country.is_none()));
+        assert_eq!(
+            hosts.iter().map(|h| h.category).collect::<Vec<_>>(),
+            summary.iter().map(|s| s.1).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn country_merge_prefers_known_then_smallest() {
+        let host = |country: Option<&str>| {
+            Record::Host(HostSeen {
+                ip: IpAddr::V4(Ipv4Addr::new(81, 0, 0, 1)),
+                macs: Vec::new(),
+                names: Vec::new(),
+                category: AddressCategory::Public,
+                country: country.and_then(crate::geo::CountryCode::new),
+                first_ts: 0,
+                last_ts: 0,
+            })
+        };
+        let merged = |records: &[Record]| merge_core(records).1[0].country.map(|c| c.to_string());
+        assert_eq!(
+            merged(&[host(None), host(Some("FR"))]).as_deref(),
+            Some("FR")
+        );
+        assert_eq!(
+            merged(&[host(Some("FR")), host(None)]).as_deref(),
+            Some("FR")
+        );
+        assert_eq!(
+            merged(&[host(Some("FR")), host(Some("DE"))]).as_deref(),
+            Some("DE")
+        );
+        assert_eq!(merged(&[host(None), host(None)]), None);
     }
 
     #[test]

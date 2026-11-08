@@ -13,6 +13,7 @@ use std::net::IpAddr;
 use netsift_flow::{FlowCtx, FlowId};
 
 use crate::classify::AppProto;
+use crate::geo::{AddressCategory, CountryCode};
 
 /// One record for the store. Not `Eq`: variants may carry floating-point values.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +46,10 @@ pub struct HostSeen {
     pub macs: Vec<[u8; 6]>,
     /// Names learned for this IP (DNS, NBNS, DHCP...): empty for the `core` analyzer.
     pub names: Vec<String>,
+    /// Category of `ip` (deterministic: the same for every observation).
+    pub category: AddressCategory,
+    /// Country of `ip` when it is public and a country database is loaded.
+    pub country: Option<CountryCode>,
     pub first_ts: i64,
     pub last_ts: i64,
 }

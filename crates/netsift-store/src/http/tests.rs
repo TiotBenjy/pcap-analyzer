@@ -370,3 +370,31 @@ fn classes_and_groups() {
     assert_eq!(status_class(Some(999)), "other");
     assert_eq!(status_class(None), "none");
 }
+
+#[test]
+fn sort_queries_use_indexes() {
+    let conn = db();
+    fill(&conn);
+    let plan = |sql: &str| -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        let nulls = vec![rusqlite::types::Null; stmt.parameter_count()];
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(nulls), |r| r.get::<_, String>(3))
+            .unwrap();
+        rows.map(Result::unwrap).collect::<Vec<_>>().join("\n")
+    };
+    for (sort, index) in [
+        ("t.ts", "http_transactions_ts"),
+        ("t.resp_body_len", "http_transactions_size"),
+        ("t.status_key", "http_transactions_status"),
+    ] {
+        for cursor in ["", &format!(" AND ({sort}, t.id) < (?, ?)")] {
+            let p = plan(&format!(
+                "SELECT t.id FROM http_transactions t WHERE ({FILTER}){cursor} \
+                 ORDER BY {sort} DESC, t.id DESC LIMIT 10"
+            ));
+            assert!(p.contains(index), "{sort}: {p}");
+            assert!(!p.contains("TEMP B-TREE"), "{sort}: {p}");
+        }
+    }
+}

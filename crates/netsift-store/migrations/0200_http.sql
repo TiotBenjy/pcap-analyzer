@@ -22,6 +22,7 @@ CREATE TABLE http_transactions (
     query           TEXT,
     version         TEXT,                               -- 'HTTP/1.1', request else response
     status          INTEGER,
+    status_key      INTEGER NOT NULL,                   -- status, -1 without response (sort key)
     status_class    TEXT NOT NULL,                      -- '1xx'..'5xx', 'other', 'none'
     reason          TEXT,
     content_type    TEXT,                               -- response media type
@@ -55,7 +56,7 @@ CREATE TABLE http_transactions (
 -- Keyset sort keys of the transaction list (rowid is the tie-breaker of every index).
 CREATE INDEX http_transactions_ts ON http_transactions (ts);
 CREATE INDEX http_transactions_size ON http_transactions (resp_body_len);
-CREATE INDEX http_transactions_status ON http_transactions (coalesce(status, -1));
+CREATE INDEX http_transactions_status ON http_transactions (status_key);
 -- Filters and the aggregates of /http/stats.
 CREATE INDEX http_transactions_method_group ON http_transactions (method_group);
 CREATE INDEX http_transactions_status_class ON http_transactions (status_class);

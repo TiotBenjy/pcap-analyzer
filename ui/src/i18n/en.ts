@@ -359,6 +359,10 @@ export const en = {
       readWrite: 'Read and write',
       geoip: {
         label: 'GeoIP',
+        available: 'Database installed, built {{date}}',
+        availableUndated: 'Database installed',
+        missing: 'No database, countries unknown',
+        invalid: 'Unreadable database, countries unknown',
         attribution: 'IP geolocation by DB-IP',
         source: 'https://db-ip.com',
         license: 'Licensed under CC BY 4.0',

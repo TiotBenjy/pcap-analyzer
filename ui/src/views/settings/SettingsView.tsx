@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHealth, useServerInfo } from '../../api/queries';
+import type { GeoipInfo } from '../../api/types/GeoipInfo';
 import { Badge } from '../../components/Badge';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
+import { cn } from '../../lib/cn';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { type LanguagePref, readLanguagePref, setLanguagePref } from '../../i18n';
 import { type ThemePref, useTheme } from '../../theme/theme';
@@ -73,10 +75,11 @@ function AboutCard() {
             </dd>
           </>
         )}
-        {/* CC BY 4.0 attribution of the country database. Plain text: the application never
-            opens external URLs. Whether the database is installed is not exposed by the API yet. */}
+        {/* State of the country database, then its CC BY 4.0 attribution. Plain text: the
+            application never opens external URLs. */}
         <dt className="self-start text-muted">{t('views.settings.geoip.label')}</dt>
         <dd className="flex min-w-0 flex-col gap-0.5" data-testid="geoip-attribution">
+          {info.data !== undefined && <GeoipStatus geoip={info.data.geoip} />}
           <span className="break-words">{t('views.settings.geoip.attribution')}</span>
           <span className="break-all text-muted">{t('views.settings.geoip.source')}</span>
           <span className="break-words text-muted">{t('views.settings.geoip.license')}</span>
@@ -84,5 +87,35 @@ function AboutCard() {
         </dd>
       </dl>
     </Card>
+  );
+}
+
+function GeoipStatus({ geoip }: { geoip: GeoipInfo }) {
+  const { t, i18n } = useTranslation();
+  let text: string;
+  let tone: string;
+  if (geoip.status === 'available') {
+    tone = 'text-success';
+    text =
+      geoip.built_at_us === null
+        ? t('views.settings.geoip.availableUndated')
+        : t('views.settings.geoip.available', {
+            // Build date of the database in UTC: the publisher's calendar, not local time.
+            date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' }).format(
+              new Date(geoip.built_at_us / 1000),
+            ),
+          });
+  } else if (geoip.status === 'invalid') {
+    tone = 'text-danger';
+    text = t('views.settings.geoip.invalid');
+  } else {
+    tone = 'text-warning';
+    text = t('views.settings.geoip.missing');
+  }
+  // Wrapping text rather than a badge: the sentence must fit the narrowest card.
+  return (
+    <span className={cn('mb-1 break-words font-medium', tone)} data-testid="geoip-status" data-status={geoip.status}>
+      {text}
+    </span>
   );
 }

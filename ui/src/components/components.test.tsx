@@ -1,9 +1,8 @@
 import '../i18n';
 import type { ColumnDef } from '@tanstack/react-table';
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Badge } from './Badge';
 import { Chart } from './Chart';
 import { DataTable } from './DataTable';
@@ -11,7 +10,13 @@ import { EmptyState } from './EmptyState';
 import { type FilterOption, FilterBar } from './FilterBar';
 import { MultiSelect } from './MultiSelect';
 import { StatCard } from './StatCard';
+import { setupUser } from '../test/user';
 import { Toggle } from './Toggle';
+
+let user: ReturnType<typeof setupUser>;
+beforeEach(() => {
+  user = setupUser();
+});
 
 describe('Toggle', () => {
   it('is an accessible switch that reports the new state', async () => {
@@ -19,7 +24,7 @@ describe('Toggle', () => {
     render(<Toggle label="DNS" checked={false} onChange={onChange} count={1234} />);
     const sw = screen.getByRole('switch', { name: /DNS/ });
     expect(sw).toHaveAttribute('aria-checked', 'false');
-    await userEvent.click(sw);
+    await user.click(sw);
     expect(onChange).toHaveBeenCalledWith(true);
   });
 });
@@ -46,9 +51,9 @@ describe('FilterBar', () => {
   it('toggles one filter and all filters', async () => {
     render(<Harness />);
     const inline = within(screen.getByTestId('filterbar-inline'));
-    await userEvent.click(inline.getByRole('switch', { name: /Beta/ }));
+    await user.click(inline.getByRole('switch', { name: /Beta/ }));
     expect(inline.getByRole('switch', { name: /Beta/ })).toHaveAttribute('aria-checked', 'true');
-    await userEvent.click(inline.getByRole('button', { name: 'Disable all' }));
+    await user.click(inline.getByRole('button', { name: 'Disable all' }));
     for (const sw of inline.getAllByRole('switch')) expect(sw).toHaveAttribute('aria-checked', 'false');
   });
 });
@@ -73,10 +78,10 @@ describe('DataTable', () => {
     expect(within(table).getAllByRole('row')).toHaveLength(3);
     const firstIp = () => within(table).getAllByRole('row')[1]?.querySelector('td');
     const sortBytes = within(table).getByRole('button', { name: 'Bytes' });
-    await userEvent.click(sortBytes);
+    await user.click(sortBytes);
     expect(sortBytes.closest('th')).toHaveAttribute('aria-sort', 'descending');
     expect(firstIp()).toHaveTextContent('10.0.0.2');
-    await userEvent.click(sortBytes);
+    await user.click(sortBytes);
     expect(sortBytes.closest('th')).toHaveAttribute('aria-sort', 'ascending');
     expect(firstIp()).toHaveTextContent('10.0.0.1');
   });
@@ -96,7 +101,7 @@ describe('Chart', () => {
     const onRetry = vi.fn();
     render(<Chart option={{}} height={240} ariaLabel="x" error="Failed" onRetry={onRetry} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Failed');
-    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalled();
   });
 });
@@ -138,12 +143,12 @@ describe('MultiSelect', () => {
     render(<MultiSelect label="Protocols" options={options} selected={new Set(['dns'])} onChange={onChange} />);
     const button = screen.getByRole('button', { name: /Protocols/ });
     expect(button).toHaveTextContent('1/2');
-    await userEvent.click(button);
-    await userEvent.click(screen.getByRole('checkbox', { name: /TLS/ }));
+    await user.click(button);
+    await user.click(screen.getByRole('checkbox', { name: /TLS/ }));
     expect(onChange).toHaveBeenLastCalledWith(new Set(['dns', 'tls']));
-    await userEvent.click(screen.getByRole('button', { name: 'None' }));
+    await user.click(screen.getByRole('button', { name: 'None' }));
     expect(onChange).toHaveBeenLastCalledWith(new Set());
-    await userEvent.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
     expect(screen.queryByRole('group', { name: 'Protocols' })).toBeNull();
     expect(button).toHaveFocus();
   });

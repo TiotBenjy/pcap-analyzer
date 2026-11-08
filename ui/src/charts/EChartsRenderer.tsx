@@ -10,9 +10,9 @@ import {
 import type { EChartsCoreOption, EChartsType } from 'echarts/core';
 import * as echarts from 'echarts/core';
 import { SVGRenderer } from 'echarts/renderers';
-import { useEffect, useRef, useState } from 'react';
+import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useTheme } from '../theme/theme';
-import { LEGEND_SIDE_MIN_WIDTH, normalizeOption } from './normalize';
+import { type ChartTheme, keepZoomWindows, LEGEND_SIDE_MIN_WIDTH, normalizeOption, zoomWindows } from './normalize';
 import { CATEGORICAL } from './palette';
 
 // Explicit registration keeps the chunk small (no full `echarts` import).
@@ -53,13 +53,54 @@ function baseOption(): EChartsCoreOption {
   };
 }
 
+/** Theme colors of axes, legends and zoom sliders (`normalizeOption`). */
+function chartTheme(): ChartTheme {
+  const muted = cssVar('--ns-muted');
+  const faint = cssVar('--ns-faint');
+  const line = cssVar('--ns-line');
+  const surface = cssVar('--ns-surface');
+  const subtle = cssVar('--ns-subtle');
+  const accent = cssVar('--ns-accent');
+  const tint = (pct: number) => `color-mix(in oklab, ${accent} ${pct}%, transparent)`;
+  return {
+    legend: { textStyle: { color: muted }, pageTextStyle: { color: muted } },
+    axis: {
+      axisLabel: { color: muted },
+      axisLine: { lineStyle: { color: line } },
+      axisTick: { lineStyle: { color: line } },
+      splitLine: { lineStyle: { color: line } },
+    },
+    slider: {
+      borderColor: line,
+      backgroundColor: 'transparent',
+      fillerColor: tint(15),
+      handleStyle: { color: surface, borderColor: muted },
+      moveHandleStyle: { color: subtle, borderColor: line },
+      emphasis: { handleStyle: { borderColor: accent }, moveHandleStyle: { color: faint } },
+      dataBackground: { lineStyle: { color: faint }, areaStyle: { color: subtle } },
+      selectedDataBackground: { lineStyle: { color: accent }, areaStyle: { color: tint(25) } },
+      textStyle: { color: muted },
+    },
+  };
+}
+
+/** ECharts event handlers by event name (`datazoom`, `click`...). */
+export type ChartEvents = Readonly<Record<string, (params: unknown) => void>>;
+
+/** Imperative access to a drawn chart (for instance `{ type: 'dataZoom', start: 0, end: 100 }`). */
+export interface ChartHandle {
+  dispatchAction: (action: { type: string } & Record<string, unknown>) => void;
+}
+
 interface Props {
   option: EChartsCoreOption;
   height: number;
   ariaLabel: string;
+  onEvents?: ChartEvents | undefined;
+  handleRef?: Ref<ChartHandle> | undefined;
 }
 
-export default function EChartsRenderer({ option, height, ariaLabel }: Props) {
+export default function EChartsRenderer({ option, height, ariaLabel, onEvents, handleRef }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<EChartsType | null>(null);
   const { theme } = useTheme();
@@ -85,15 +126,37 @@ export default function EChartsRenderer({ option, height, ariaLabel }: Props) {
     };
   }, []);
 
-  // Re-apply on option or theme change (CSS variables differ per theme).
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      dispatchAction: (action) => {
+        chartRef.current?.dispatchAction(action);
+      },
+    }),
+    [],
+  );
+
+  // Re-apply on option or theme change (CSS variables differ per theme). The zoom window the
+  // user left is kept: zooming itself never goes through here.
   useEffect(() => {
     const chart = chartRef.current;
     if (chart === null) return;
+    const windows = zoomWindows(chart.getOption());
     chart.setOption(baseOption(), { notMerge: true });
-    const muted = cssVar('--ns-muted');
-    const legendDefaults = { textStyle: { color: muted }, pageTextStyle: { color: muted } };
-    chart.setOption(normalizeOption(option, wide ? LEGEND_SIDE_MIN_WIDTH : 0, legendDefaults));
+    const next = normalizeOption(option, wide ? LEGEND_SIDE_MIN_WIDTH : 0, chartTheme());
+    chart.setOption(keepZoomWindows(next, windows));
   }, [option, theme, wide]);
+
+  // Handlers are (re)bound when they change; the chart instance outlives them.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (chart === null || onEvents === undefined) return;
+    const entries = Object.entries(onEvents);
+    for (const [name, handler] of entries) chart.on(name, handler);
+    return () => {
+      for (const [name, handler] of entries) chart.off(name, handler);
+    };
+  }, [onEvents]);
 
   return <div ref={ref} role="img" aria-label={ariaLabel} style={{ height }} className="w-full min-w-0" />;
 }

@@ -10,6 +10,13 @@ describe('palette', () => {
     expect(colorFor('HTTP')).toBe(colorFor('http'));
     expect(colorFor('other')).toBe(OTHER_COLOR);
   });
+  it('gives every traffic series of the Overview a fixed color, Other only to "other"', () => {
+    const series = ['dns', 'http', 'tls', 'smb', 'netbios', 'ssh', 'quic', 'dhcp', 'snmp', 'wifi_mgmt', 'other_tcp', 'other_udp'];
+    for (const s of series) expect(CATEGORICAL.slice(0, 7)).toContain(colorFor(s));
+    expect(colorFor('other_tcp')).toBe(colorFor('tcp'));
+    expect(colorFor('other_udp')).toBe(colorFor('udp'));
+    expect(new Set(['dns', 'http', 'tls', 'netbios'].map(colorFor)).size).toBe(4);
+  });
   it('is deterministic and never assigns Other to unknown categories', () => {
     for (const c of ['ldap', 'kerberos', 'ntp', 'ssdp', 'sip']) {
       expect(colorFor(c)).toBe(colorFor(c));

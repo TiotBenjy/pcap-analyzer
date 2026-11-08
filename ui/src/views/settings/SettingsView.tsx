@@ -80,6 +80,7 @@ function AboutCard() {
           <span className="break-words">{t('views.settings.geoip.attribution')}</span>
           <span className="break-all text-muted">{t('views.settings.geoip.source')}</span>
           <span className="break-words text-muted">{t('views.settings.geoip.license')}</span>
+          <span className="break-all text-muted">{t('views.settings.geoip.licenseUrl')}</span>
         </dd>
       </dl>
     </Card>

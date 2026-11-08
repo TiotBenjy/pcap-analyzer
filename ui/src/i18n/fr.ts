@@ -90,6 +90,7 @@ export const fr: Dictionary = {
         attribution: 'Géolocalisation IP par DB-IP',
         source: 'https://db-ip.com',
         license: 'Sous licence CC BY 4.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
       },
     },
     notFound: {

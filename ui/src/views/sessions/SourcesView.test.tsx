@@ -6,7 +6,7 @@ import i18n from '../../i18n';
 import { renderApp } from '../../test/renderApp';
 import { anomaly, chunks, page, session } from '../../test/sessionFixtures';
 import { anomalyDetail, anomalyLabel, anomalySummary } from './anomalies';
-import { buildCoverage, ticks } from './coverage';
+import { buildCoverage, MAX_LANES, ticks } from './coverage';
 
 vi.mock('../../api/sessions');
 vi.mock('../../api/client', async (importOriginal) => ({
@@ -49,6 +49,28 @@ describe('buildCoverage', () => {
     const c = buildCoverage([a, overlapping], []);
     expect(c?.lanes).toBe(2);
     expect(c?.overlaps).toEqual([{ start: overlapping.first_ts_us, end: a.last_ts_us }]);
+  });
+
+  it('caps the lanes: further overlapping chunks share the last one', () => {
+    const base = chunks(1)[0];
+    if (base === undefined) throw new Error('fixture');
+    const stacked = Array.from({ length: 12 }, (_, i) => ({ ...base, id: i }));
+    const c = buildCoverage(stacked, []);
+    expect(c?.lanes).toBe(MAX_LANES);
+    expect(c?.crowded).toBe(true);
+    expect(c?.segments.filter((s) => s.lane === MAX_LANES - 1)).toHaveLength(12 - MAX_LANES + 1);
+  });
+
+  it('keeps an aberrant timestamp from squashing the timeline', () => {
+    const regular = chunks(20);
+    const last = regular[19];
+    if (last === undefined) throw new Error('fixture');
+    const aberrant = { ...last, id: 99, first_ts_us: 0, last_ts_us: 1_000_000 }; // 1970
+    const c = buildCoverage([...regular, aberrant], []);
+    expect(c?.outliers).toBe(1);
+    expect(c?.start).toBe(regular[0]?.first_ts_us);
+    expect(c?.end).toBe(last.last_ts_us);
+    expect(buildCoverage(regular, [])?.outliers).toBe(0);
   });
 
   it('returns null without timestamps and spaces ticks evenly', () => {
@@ -98,11 +120,12 @@ describe('Sources view', () => {
   });
 
   it('shows the timeline with the gap and the missing file, the chunks and the anomalies', async () => {
-    renderApp('/sessions/01JTESTSESSION0000000000AA/sources');
+    renderApp('/sessions/01JC0FFEE0000000000000000A/sources');
     expect(await screen.findByRole('heading', { level: 1, name: 'Sources' })).toBeInTheDocument();
     expect(await screen.findByText('office-uplink')).toBeInTheDocument();
 
     const timeline = await screen.findByRole('img', { name: 'Coverage timeline of 49 chunks' });
+    expect(timeline).toHaveAccessibleDescription(/49 chunks from .* Time gaps: 1\. Overlaps: 0\. Missing files: 1\./);
     expect(within(timeline as unknown as HTMLElement).getAllByTestId('coverage-segment')).toHaveLength(49);
     const gap = within(timeline as unknown as HTMLElement).getByTestId('coverage-gap');
     expect(gap.querySelector('title')).toHaveTextContent('Time gap of 44 s');
@@ -114,6 +137,7 @@ describe('Sources view', () => {
     );
 
     const chunkTable = screen.getByRole('table', { name: 'Chunks of the session' });
+    expect(timeline).toHaveAttribute('aria-details', chunkTable.parentElement?.parentElement?.id ?? 'missing');
     expect(within(chunkTable).getAllByRole('row')).toHaveLength(50);
     const name = within(chunkTable).getByText('ring_00001_20261108.pcapng');
     expect(name).toHaveAttribute('title', '/captures/office/ring_00001_20261108.pcapng');
@@ -127,14 +151,14 @@ describe('Sources view', () => {
   it('shows the empty states of a session without chunks', async () => {
     m.listChunks.mockResolvedValue(page([]));
     m.listAnomalies.mockResolvedValue(page([]));
-    renderApp('/sessions/01JTESTSESSION0000000000AA/sources');
+    renderApp('/sessions/01JC0FFEE0000000000000000A/sources');
     expect(await screen.findAllByText('No chunk recorded')).toHaveLength(2);
     expect(screen.getByText('No anomaly: the chunks are continuous')).toBeInTheDocument();
   });
 
   it('shows error states with retry', async () => {
     m.listChunks.mockRejectedValue(new Error('boom'));
-    renderApp('/sessions/01JTESTSESSION0000000000AA/sources');
+    renderApp('/sessions/01JC0FFEE0000000000000000A/sources');
     expect(await screen.findAllByText('Data could not be loaded')).toHaveLength(2);
   });
 });

@@ -5,7 +5,7 @@ import { Card } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
 
-const route = getRouteApi('/sessions/$sessionId/overview');
+const route = getRouteApi('/sessions/$sessionId');
 
 // Placeholder until P2.4 (time series, module cards, session summary). Spec: docs/specs/overview.md.
 export default function OverviewView() {

@@ -18,28 +18,37 @@ export const sessionKeys = {
 export const FETCH_ALL_LIMIT = 20_000;
 const PAGE_SIZE = 1000;
 
-/** Follows keyset cursors until the last page or `max` rows. `truncated` tells if rows were left. */
+/**
+ * Follows keyset cursors until the last page, `max` rows or a bounded number of pages.
+ * `truncated` tells if rows may have been left (limit reached, or an empty page with a cursor,
+ * which would otherwise loop forever).
+ */
 export async function fetchAll<T>(
   fetchPage: (params: PageParams) => Promise<Page<T>>,
   max: number = FETCH_ALL_LIMIT,
 ): Promise<{ items: T[]; truncated: boolean }> {
   const items: T[] = [];
+  const maxPages = Math.ceil(max / PAGE_SIZE) + 1;
   let cursor: string | null = null;
-  for (;;) {
+  for (let pages = 1; ; pages++) {
     const page: Page<T> = await fetchPage({ limit: PAGE_SIZE, cursor });
     items.push(...page.items);
     cursor = page.next_cursor;
     if (cursor === null) return { items, truncated: false };
     if (items.length >= max) return { items: items.slice(0, max), truncated: true };
+    if (page.items.length === 0 || pages >= maxPages) return { items, truncated: true };
   }
 }
+
+/** Refresh period of the session data while an import is running. */
+const LIVE_REFRESH_MS = 3000;
 
 export function useSessions() {
   return useQuery({
     queryKey: sessionKeys.list(),
     queryFn: async ({ signal }) => (await fetchAll((p) => listSessions(p, signal), 5000)).items,
     // Keep the list fresh while an import runs (state, packets and sizes change).
-    refetchInterval: (q) => (q.state.data?.some((s) => s.state === 'importing') === true ? 3000 : false),
+    refetchInterval: (q) => (q.state.data?.some((s) => s.state === 'importing') === true ? LIVE_REFRESH_MS : false),
   });
 }
 
@@ -47,21 +56,24 @@ export function useSession(id: string) {
   return useQuery({
     queryKey: sessionKeys.detail(id),
     queryFn: ({ signal }) => getSession(id, signal),
-    refetchInterval: (q) => (q.state.data?.state === 'importing' ? 3000 : false),
+    refetchInterval: (q) => (q.state.data?.state === 'importing' ? LIVE_REFRESH_MS : false),
   });
 }
 
-export function useChunks(id: string) {
+/** `live`: the session is still importing, the list is refreshed periodically. */
+export function useChunks(id: string, live = false) {
   return useQuery({
     queryKey: sessionKeys.chunks(id),
     queryFn: ({ signal }) => fetchAll((p) => listChunks(id, p, signal)),
+    refetchInterval: live ? LIVE_REFRESH_MS : false,
   });
 }
 
-export function useAnomalies(id: string) {
+export function useAnomalies(id: string, live = false) {
   return useQuery({
     queryKey: sessionKeys.anomalies(id),
     queryFn: ({ signal }) => fetchAll((p) => listAnomalies(id, p, signal)),
+    refetchInterval: live ? LIVE_REFRESH_MS : false,
   });
 }
 

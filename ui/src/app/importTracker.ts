@@ -9,7 +9,11 @@ import type { ImportProgress } from '../api/types/ImportProgress';
 // views. The AppShell shows a discreet indicator that reopens the progress.
 
 export type PickKind = 'folder' | 'file';
-export type ImportStatus = 'running' | 'cancelling' | 'done' | 'failed';
+/**
+ * `lost`: the event stream ended (or the connection dropped) without a final event; the import
+ * may still be running on the backend, and `trackImport` reconnects to it.
+ */
+export type ImportStatus = 'running' | 'cancelling' | 'done' | 'failed' | 'lost';
 export type ImportResult = Extract<ImportEvent, { type: 'done' }>;
 
 /** Warnings kept for the log; further ones are only counted. */
@@ -23,11 +27,12 @@ export interface TrackedImport {
   warnings: AnomalyInfo[];
   warningCount: number;
   result: ImportResult | null;
-  /** Backend message for `failed`; `null` with `lost` when the stream ended without a result. */
+  /** Backend message of a `failed` event. */
   error: string | null;
-  lost: boolean;
+  /** HTTP error that ended the stream (`failed` without a backend message). */
+  streamError: Error | null;
   /** Last cancel request failed. */
-  cancelError: string | null;
+  cancelError: Error | null;
 }
 
 export interface ImportState {
@@ -53,7 +58,7 @@ function update(sessionId: string, patch: (cur: TrackedImport) => Partial<Tracke
   if (cur?.sessionId !== sessionId) return; // stale stream of a replaced import
   const next = { ...cur, ...patch(cur) };
   set({ current: next });
-  if ((next.status === 'done' || next.status === 'failed') && cur.status !== next.status) {
+  if (!isActive(next) && isActive(cur)) {
     settledListeners.forEach((l) => {
       l(next);
     });
@@ -73,7 +78,7 @@ export function useImportState(): ImportState {
   return useSyncExternalStore(subscribe, getImportState, getImportState);
 }
 
-/** Called once per import when it ends (done or failed). Returns an unsubscribe function. */
+/** Called when the tracked import stops being active (done, failed, lost). Returns an unsubscribe. */
 export function onImportSettled(listener: (imp: TrackedImport) => void): () => void {
   settledListeners.add(listener);
   return () => settledListeners.delete(listener);
@@ -141,13 +146,17 @@ export function trackImport(sessionId: string, name: string): void {
       warningCount: 0,
       result: null,
       error: null,
-      lost: false,
+      streamError: null,
       cancelError: null,
     },
   });
-  const finish = (error: string | null) => {
+  // End of the stream without a final event: lost, unless the backend answered with an HTTP error.
+  const finish = (error: unknown) => {
     if (ctrl.signal.aborted) return;
-    update(sessionId, (cur) => (isActive(cur) ? { status: 'failed', error, lost: error === null } : {}));
+    const httpError = error instanceof ApiError && error.status !== 0 ? error : null;
+    update(sessionId, (cur) =>
+      isActive(cur) ? (httpError === null ? { status: 'lost' } : { status: 'failed', streamError: httpError }) : {},
+    );
   };
   let started: Promise<void>;
   try {
@@ -163,7 +172,7 @@ export function trackImport(sessionId: string, name: string): void {
       finish(null);
     },
     (e: unknown) => {
-      finish(e instanceof ApiError || e instanceof Error ? e.message : null);
+      finish(e);
     },
   );
 }
@@ -178,7 +187,7 @@ export async function cancelTrackedImport(): Promise<void> {
     await cancelImport(sessionId);
   } catch (e) {
     update(sessionId, (c) =>
-      c.status === 'cancelling' ? { status: 'running', cancelError: e instanceof Error ? e.message : String(e) } : {},
+      c.status === 'cancelling' ? { status: 'running', cancelError: e instanceof Error ? e : new Error(String(e)) } : {},
     );
   }
 }

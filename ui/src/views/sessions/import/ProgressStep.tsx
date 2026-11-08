@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
-import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
+import { CircleAlert, CircleCheck, TriangleAlert, Unplug } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -8,8 +8,10 @@ import {
   importFraction,
   isActive,
   type TrackedImport,
+  trackImport,
 } from '../../../app/importTracker';
 import { Button } from '../../../components/Button';
+import { ErrorNote } from '../../../components/ErrorNote';
 import { formatBytes, formatCount, formatDuration } from '../../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
 import { SessionStateBadge } from '../SessionStateBadge';
@@ -50,6 +52,16 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
     footer = (
       <>
         <Button onClick={closeImportWizard}>{t('common.close')}</Button>
+        {imp.status === 'lost' && (
+          <Button
+            variant="primary"
+            onClick={() => {
+              trackImport(imp.sessionId, imp.name);
+            }}
+          >
+            {t('views.import.reconnect')}
+          </Button>
+        )}
         {imp.status === 'done' && (
           <Button variant="primary" data-autofocus onClick={openSession}>
             {t('views.import.open')}
@@ -137,9 +149,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
         </section>
 
         {imp.cancelError !== null && (
-          <p role="alert" className="text-meta text-danger">
-            {t('views.import.cancelError', { message: imp.cancelError })}
-          </p>
+          <ErrorNote error={imp.cancelError} format={(message) => t('views.import.cancelError', { message })} />
         )}
       </div>
     </WizardDialog>
@@ -157,13 +167,25 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
 
 function Outcome({ imp }: { imp: TrackedImport }) {
   const { t } = useTranslation();
+  if (imp.status === 'lost') {
+    return (
+      <div role="status" className="flex min-w-0 items-start gap-2">
+        <Unplug aria-hidden size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
+        <div className="min-w-0 [overflow-wrap:anywhere]">
+          <p className="font-medium">{t('views.import.lostTitle')}</p>
+          <p className="text-muted">{t('views.import.lost')}</p>
+        </div>
+      </div>
+    );
+  }
   if (imp.status === 'failed') {
     return (
       <div role="alert" className="flex min-w-0 items-start gap-2">
         <CircleAlert aria-hidden size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-danger" />
-        <div className="min-w-0 [overflow-wrap:anywhere]">
+        <div className="flex min-w-0 flex-col gap-0.5 [overflow-wrap:anywhere]">
           <p className="font-medium">{t('views.import.failed')}</p>
-          <p className="text-muted">{imp.lost ? t('views.import.lost') : imp.error}</p>
+          {imp.error !== null && <p className="text-muted">{imp.error}</p>}
+          {imp.streamError !== null && <ErrorNote error={imp.streamError} />}
         </div>
       </div>
     );

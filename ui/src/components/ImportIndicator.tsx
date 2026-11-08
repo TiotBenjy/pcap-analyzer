@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
+import { CircleAlert, CircleCheck, LoaderCircle, Unplug } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { importFraction, isActive, reopenImportProgress, useImportState } from '../app/importTracker';
 import { cn } from '../lib/cn';
@@ -14,14 +14,21 @@ export function ImportIndicator() {
 
   const active = isActive(current);
   const failed = current.status === 'failed';
+  const lost = current.status === 'lost';
   const fraction = importFraction(current.progress?.bytes_done ?? 0, current.progress?.bytes_total ?? 0);
   const percent = new Intl.NumberFormat(i18n.language, { style: 'percent', maximumFractionDigits: 0 }).format(fraction);
-  const text = active
-    ? t('views.import.indicator', { percent })
-    : failed
-      ? t('views.import.indicatorFailed')
-      : t('views.import.indicatorDone');
-  const Icon = active ? LoaderCircle : failed ? CircleAlert : CircleCheck;
+  let text: string = t('views.import.indicatorDone');
+  let Icon = CircleCheck;
+  if (active) {
+    text = t('views.import.indicator', { percent });
+    Icon = LoaderCircle;
+  } else if (lost) {
+    text = t('views.import.indicatorLost');
+    Icon = Unplug;
+  } else if (failed) {
+    text = t('views.import.indicatorFailed');
+    Icon = CircleAlert;
+  }
 
   return (
     <button
@@ -40,7 +47,8 @@ export function ImportIndicator() {
           'shrink-0',
           active && 'text-accent motion-safe:animate-spin',
           failed && 'text-danger',
-          !active && !failed && 'text-success',
+          lost && 'text-warning',
+          !active && !failed && !lost && 'text-success',
         )}
       />
       <span className="num truncate">{text}</span>

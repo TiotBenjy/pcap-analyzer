@@ -157,6 +157,9 @@ describe('Import wizard', () => {
     expect(indicator).toHaveTextContent('Import 50%');
     await user.click(indicator);
     const reopened = await screen.findByRole('dialog', { name: 'Import progress' });
+    // Reopening shows the same live import: no second subscription to the event stream.
+    expect(m.streamImportEvents).toHaveBeenCalledTimes(1);
+    expect(within(reopened).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
 
     stream.emit({ type: 'done', state: 'ready', packets: 9000, flows: 120, anomalies: 1, duration_s: 12 });
     stream.end();
@@ -182,6 +185,47 @@ describe('Import wizard', () => {
     stream.emit({ type: 'done', state: 'incomplete', packets: 4000, flows: 50, anomalies: 0, duration_s: 6 });
     expect(await within(dialog).findByText('Import stopped: the session is incomplete')).toBeInTheDocument();
     expect(within(dialog).getByText('Incomplete')).toBeInTheDocument();
+  });
+
+  it('shows a lost connection distinctly and reconnects', async () => {
+    const stream = mockStream();
+    const { user } = await startTwoGroupImport();
+    let dialog = await screen.findByRole('dialog', { name: 'Import progress' });
+    stream.emit(progress(50));
+    await user.click(within(dialog).getByRole('button', { name: 'Continue in background' }));
+
+    // The stream ends without a final event while the wizard is hidden.
+    await act(async () => {
+      stream.end();
+      await Promise.resolve();
+    });
+    const indicator = await screen.findByTestId('import-indicator');
+    expect(indicator).toHaveTextContent('Connection lost');
+    await user.click(indicator);
+    dialog = await screen.findByRole('dialog', { name: 'Import progress' });
+    expect(within(dialog).getByText('Connection lost')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Import failed')).not.toBeInTheDocument();
+
+    mockStream();
+    await user.click(within(dialog).getByRole('button', { name: 'Reconnect' }));
+    expect(m.streamImportEvents).toHaveBeenCalledTimes(2);
+    expect(m.streamImportEvents).toHaveBeenLastCalledWith('S1', expect.any(Function), expect.any(AbortSignal));
+    expect(await within(dialog).findByRole('button', { name: 'Cancel import' })).toBeEnabled();
+  });
+
+  it('still closes with Escape after navigating into a folder (focused entry removed)', async () => {
+    const user = userEvent.setup();
+    renderApp('/captures');
+    await user.click((await screen.findAllByRole('button', { name: 'Import folder' }))[0] as HTMLElement);
+    const dialog = await screen.findByRole('dialog', { name: 'Import a folder' });
+    await user.click(await within(dialog).findByRole('button', { name: /office/ }));
+    await within(dialog).findByText('ring_00001_20261108.pcapng');
+    // Focus fell back to <body>: Tab brings it back inside the dialog.
+    await user.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    (document.activeElement as HTMLElement).blur();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('reports a failed import', async () => {

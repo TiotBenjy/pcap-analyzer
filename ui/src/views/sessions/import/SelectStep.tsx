@@ -84,9 +84,10 @@ function BrowserSelect({ kind, onPick }: SelectStepProps) {
     footer = (
       <Button
         variant="primary"
-        disabled={data === undefined}
+        // While another folder loads, the previous listing is still shown: do not pick it.
+        disabled={data === undefined || listing.isPlaceholderData}
         onClick={() => {
-          if (data !== undefined) onPick(data.path);
+          if (data !== undefined && !listing.isPlaceholderData) onPick(data.path);
         }}
       >
         {t('views.import.selectFolder')}

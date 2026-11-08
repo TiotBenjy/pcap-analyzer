@@ -28,7 +28,8 @@ export function buildPortsOption(stats: OpenPortStats, format: PortsFormat): ECh
   const labels = stats.top.map(barLabel);
   return {
     grid: { left: 8, right: 40, top: 4, bottom: 4, containLabel: true },
-    xAxis: { type: 'value', minInterval: 1, splitNumber: 4 },
+    // Counts are printed at the end of each bar: no value axis labels.
+    xAxis: { type: 'value', minInterval: 1, splitNumber: 4, axisLabel: { show: false } },
     yAxis: {
       type: 'category',
       inverse: true,
@@ -51,7 +52,8 @@ export function buildPortsOption(stats: OpenPortStats, format: PortsFormat): ECh
         data: stats.top.map((p) => p.hosts),
         itemStyle: { color: CATEGORICAL[0], borderRadius: [0, 3, 3, 0] },
         barMaxWidth: 18,
-        label: { show: true, position: 'right', fontSize: 12 },
+        // Text color of the theme, without the outline ECharts adds to bar labels.
+        label: { show: true, position: 'right', fontSize: 12, textBorderWidth: 0 },
       },
     ],
   };

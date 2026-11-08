@@ -24,16 +24,17 @@ describe('chord layout', () => {
     expect(layoutChord(star(3), ['a', 'b', 'c', 'd'], 150)).toBeNull();
   });
 
-  it('places one arc per node and one ribbon per pair with traffic', () => {
+  it('places one arc per node and one ribbon per direction with traffic', () => {
     const geo = layoutChord(star(3), ['hub', 'a', 'b', 'c'], 600);
     expect(geo).not.toBeNull();
     if (geo === null) return;
     expect(geo.groups).toHaveLength(4);
-    expect(geo.ribbons).toHaveLength(3);
+    expect(geo.ribbons).toHaveLength(6);
     expect(geo.size).toBe(600);
     for (const g of geo.groups) expect(g.path).toMatch(/^M/);
-    const toHub = geo.ribbons.find((r) => r.source === 1 || r.target === 1);
-    expect(toHub?.forward ?? 0).toBeGreaterThan(0);
+    const toHub = geo.ribbons.find((r) => r.source === 1 && r.target === 0);
+    expect(toHub?.forward).toBe(10_000);
+    expect(toHub?.backward).toBe(2_000);
     expect(geo.labels.every((l) => l.visible)).toBe(true);
   });
 

@@ -88,7 +88,7 @@ export function ChordDiagram({ matrix, nodes, width, ariaLabel }: ChordDiagramPr
               <path
                 key={`${r.source}-${r.target}`}
                 d={r.path}
-                fill={color(r.forward >= r.backward ? r.source : r.target)}
+                fill={color(r.source)}
                 opacity={dim ? 0.12 : 1}
                 onPointerEnter={() => {
                   setHover({ kind: 'ribbon', index: i });

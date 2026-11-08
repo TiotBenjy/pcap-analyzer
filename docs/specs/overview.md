@@ -51,5 +51,5 @@ Vue d'ensemble d'une session : volume de trafic dans le temps par protocole, ré
   `ssdp`, `syslog`, `udp` -> Other UDP ; `kerberos`, `icmp`, `ip`, `non_ip` et libellés inconnus -> Other.
   QUIC et 802.11 mgmt n'apparaîtront que lorsque le core produira ces libellés.
 - Compteurs de modules : registre `MODULES` (une ligne triée par module, `(id de vue, table)`), présent
-  seulement si la table existe dans la session. Aujourd'hui : `connections` (flows) et `hosts`.
+  seulement si la table existe dans la session. Aujourd'hui : `connections` (`conversations`), `hosts` et `openPorts` (`open_ports`).
 - L'UI demande 500 points (200 sous 640 px) ; zoom côté client (dataZoom) sur la série chargée.

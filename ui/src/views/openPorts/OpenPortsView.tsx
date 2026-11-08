@@ -218,7 +218,7 @@ function HostList({ hosts, showNames, filtered }: { hosts: HostOpenPorts[]; show
               </span>
             </div>
             <Ports host={h} />
-            <Banners host={h} />
+            {h.ports.some((p) => p.banner !== null) && <Banners host={h} />}
           </li>
         ))}
       </ul>

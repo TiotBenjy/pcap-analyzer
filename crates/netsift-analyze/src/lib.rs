@@ -10,6 +10,7 @@
 //! - [`core`]: the built-in `core` analyzer (traffic time series, hosts, flows);
 //! - [`connections`]: conversations between hosts and traffic per host;
 //! - [`ports`]: open ports (SYN-ACK, UDP replies) with services detected by content;
+//! - [`servers`]: DHCP, NTP and Kerberos servers (the Servers view derives the other roles);
 //! - [`services`]: IANA service names of ports (embedded registry);
 //! - [`smb`]: NetBIOS browser announcements, SMB negotiation and NTLMSSP.
 //!
@@ -36,6 +37,7 @@ pub mod http;
 pub mod ports;
 pub mod record;
 pub mod registry;
+pub mod servers;
 pub mod services;
 pub mod smb;
 #[cfg(test)]

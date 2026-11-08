@@ -205,6 +205,7 @@ const MODULES: &[(&str, &str)] = &[
     ("http", "http_transactions"),
     ("httpHeaders", "http_headers"),
     ("openPorts", "open_ports"),
+    ("servers", "server_roles"),
     ("smb", "smb_items"),
     ("tls", "tls_sessions"),
 ];

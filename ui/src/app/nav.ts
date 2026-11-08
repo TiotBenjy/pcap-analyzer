@@ -60,7 +60,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'smb', scope: 'session', path: '/smb', icon: FolderTree, group: 'analysis', enabled: true },
   { id: 'pictures', scope: 'session', path: '/pictures', icon: Image, group: 'analysis', enabled: false },
   { id: 'credentials', scope: 'session', path: '/credentials', icon: KeyRound, group: 'analysis', enabled: false },
-  { id: 'servers', scope: 'session', path: '/servers', icon: Server, group: 'analysis', enabled: false },
+  { id: 'servers', scope: 'session', path: '/servers', icon: Server, group: 'analysis', enabled: true },
   { id: 'network', scope: 'session', path: '/network', icon: Share2, group: 'analysis', enabled: false },
   { id: 'hosts', scope: 'session', path: '/hosts', icon: Monitor, group: 'more', enabled: false },
   { id: 'documents', scope: 'session', path: '/documents', icon: FileText, group: 'more', enabled: false },

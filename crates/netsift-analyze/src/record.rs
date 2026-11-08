@@ -45,6 +45,8 @@ pub enum Record {
     Http(Box<HttpTransaction>),
     /// `ports`: a service seen answering (merged by host, transport and port).
     OpenPort(OpenPortSeen),
+    /// `servers`: one DHCP message, NTP response or KDC reply.
+    Server(crate::servers::ServerRecord),
     /// SMB / NetBIOS browser announcement or SMB session (negotiation + NTLM auth metadata).
     Smb(SmbRecord),
     /// One TLS session (`tls` analyzer).

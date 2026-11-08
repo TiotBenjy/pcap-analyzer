@@ -59,6 +59,15 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         reads: &["dns_messages"],
         run: crate::dns::finalize,
     },
+    Finalizer {
+        id: "servers",
+        version: 1,
+        // After `dns`: when a host reaches MAX_HOST_NAMES, DNS names are kept first, always.
+        after: &["dns"],
+        fills: &[],
+        reads: &["dhcp_messages"],
+        run: crate::servers::finalize,
+    },
 ];
 
 /// Outcome of [`run_finalizers`].
@@ -257,9 +266,11 @@ mod tests {
         let conn = session.conn();
         assert!(!finalizers_complete(conn).unwrap());
         let report = run_finalizers(conn).unwrap();
-        assert_eq!(report.ran, vec!["dns"]);
+        let ids: Vec<&str> = SESSION_FINALIZERS.iter().map(|f| f.id).collect();
+        assert_eq!(report.ran, ids);
         assert!(report.is_complete());
-        assert_eq!(meta(conn, MARKER_KEY).as_deref(), Some("dns:1"));
+        let markers: Vec<String> = SESSION_FINALIZERS.iter().map(Finalizer::marker).collect();
+        assert_eq!(meta(conn, MARKER_KEY), Some(markers.join(",")));
         assert!(finalizers_complete(conn).unwrap());
         // Idempotent: nothing left to run.
         assert_eq!(run_finalizers(conn).unwrap(), FinalizeReport::default());
@@ -337,7 +348,7 @@ mod tests {
             .execute_batch("ALTER TABLE dns_pairs RENAME TO dns_pairs_away")
             .unwrap();
         let stats = writer.finish().unwrap();
-        assert_eq!(stats.finalize.ran, Vec::<&str>::new());
+        assert!(!stats.finalize.ran.contains(&"dns"));
         assert_eq!(stats.finalize.failed.len(), 1);
         assert_eq!(stats.finalize.failed[0].0, "dns");
         assert!(!finalizers_complete(other.conn()).unwrap());
@@ -347,7 +358,13 @@ mod tests {
             .conn()
             .execute_batch("ALTER TABLE dns_pairs_away RENAME TO dns_pairs")
             .unwrap();
-        assert_eq!(run_finalizers(other.conn()).unwrap().ran, vec!["dns"]);
+        // The steps that come after `dns` were postponed with it.
+        let after_dns: Vec<&str> = SESSION_FINALIZERS
+            .iter()
+            .filter(|f| f.id == "dns" || f.after.contains(&"dns"))
+            .map(|f| f.id)
+            .collect();
+        assert_eq!(run_finalizers(other.conn()).unwrap().ran, after_dns);
         assert!(finalizers_complete(other.conn()).unwrap());
     }
 

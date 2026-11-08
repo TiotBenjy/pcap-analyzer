@@ -32,6 +32,8 @@ fn demo_packets(rounds: usize, seed: u64) -> Vec<Packet> {
         hosts::file_server(),
         &SmbNtlm::v2("jdoe", "CONTOSO"),
     );
+    // Servers view: DHCP lease, NTP, DNS SRV of a domain controller, LDAP and Kerberos.
+    netsift_fixtures::servers::servers_showcase(&mut sc);
     packets.extend(sc.into_packets());
     packets
 }
@@ -235,6 +237,18 @@ mod tests {
         assert_eq!(versions, 3);
         assert!(weak >= 24, "{weak}");
         assert!(certs >= 5, "{certs}");
+        // Infrastructure roles for the Servers view: DNS, DHCP, LDAP, NTP, Kerberos, SMB.
+        let roles: Vec<String> = session
+            .conn()
+            .prepare("SELECT DISTINCT role FROM server_roles ORDER BY role")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        for role in ["dhcp", "dns", "kerberos", "ldap", "ntp", "smb"] {
+            assert!(roles.iter().any(|r| r == role), "{role} missing: {roles:?}");
+        }
 
         // Populated: refused without --force, replaced with it.
         assert!(run(&args, &mut Vec::new()).is_err());

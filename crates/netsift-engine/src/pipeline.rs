@@ -23,7 +23,7 @@ use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
 use netsift_analyze::dissect::{Decoded, decode};
@@ -31,12 +31,12 @@ use netsift_analyze::flow::{
     Direction, FlowCtx, FlowSink, FlowTable, PacketCtx, StreamCtx, shard_hash,
 };
 use netsift_analyze::{Analyzer, AnalyzerId, Record, RecordSink};
-use netsift_capture::chunkset::ChunkSetSource;
+use netsift_capture::chunkset::{ChunkSetSource, ChunkStats};
 use netsift_capture::{PacketSource, RawPacket};
 use netsift_store::{AnomalyRow, StoreError, StoreRecord, StoreSender};
 
 use crate::options::CancelToken;
-use crate::translate::{approx_size, to_store};
+use crate::translate::{anomaly_row, approx_size, to_store};
 
 /// Sentinel of [`Shared::chunk`]: no chunk open.
 const NO_CHUNK: u32 = u32::MAX;
@@ -53,6 +53,15 @@ pub(crate) struct Shared {
     pub bytes_read: AtomicU64,
     pub packets: AtomicU64,
     pub chunk: AtomicU32,
+    anomalies: Mutex<AnomalyLog>,
+}
+
+/// Continuity anomalies of the source not yet handed to the progress callback.
+#[derive(Debug, Default)]
+struct AnomalyLog {
+    /// Anomalies of the source already converted.
+    seen: usize,
+    pending: Vec<AnomalyRow>,
 }
 
 impl Default for Shared {
@@ -61,6 +70,7 @@ impl Default for Shared {
             bytes_read: AtomicU64::new(0),
             packets: AtomicU64::new(0),
             chunk: AtomicU32::new(NO_CHUNK),
+            anomalies: Mutex::new(AnomalyLog::default()),
         }
     }
 }
@@ -70,12 +80,37 @@ impl Shared {
         Some(self.chunk.load(Ordering::Relaxed)).filter(|&c| c != NO_CHUNK)
     }
 
-    fn update(&self, source: &ChunkSetSource, packets: u64) {
+    pub fn update(&self, source: &ChunkSetSource, packets: u64) {
         self.bytes_read
             .store(source.bytes_read(), Ordering::Relaxed);
         self.packets.store(packets, Ordering::Relaxed);
         let chunk = source.open_chunks().last().copied().unwrap_or(NO_CHUNK);
         self.chunk.store(chunk, Ordering::Relaxed);
+        let found = source.anomalies();
+        let mut log = self
+            .anomalies
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if found.len() > log.seen {
+            // Rare (bounded by MAX_ANOMALIES): the stats copy only happens on new findings.
+            let stats: Vec<ChunkStats> = source.chunk_stats().cloned().collect();
+            let fresh: Vec<AnomalyRow> = found
+                .iter()
+                .skip(log.seen)
+                .map(|a| anomaly_row(a, &stats))
+                .collect();
+            log.pending.extend(fresh);
+            log.seen = found.len();
+        }
+    }
+
+    /// Anomalies found since the previous call.
+    pub fn take_anomalies(&self) -> Vec<AnomalyRow> {
+        let mut log = self
+            .anomalies
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        std::mem::take(&mut log.pending)
     }
 }
 

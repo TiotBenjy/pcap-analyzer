@@ -39,9 +39,10 @@ pub struct IngestOptions {
     /// `analyzers` already holds a database (`AnalyzerConfig::geo`).
     pub geoip_path: Option<PathBuf>,
     pub writer: WriterConfig,
-    /// Bytes of extracted objects (HTTP images, TLS certificates) one import may write under
-    /// `blobs/`, all shards together; a content already stored is not charged again. Past it,
-    /// objects are no longer stored (their records keep the metadata).
+    /// Bytes of extracted objects (`RecordSink::put_object`: HTTP images) one import may write
+    /// under `blobs/`, all shards together; a content already stored is not charged again.
+    /// Past it, objects are no longer stored (their records keep the metadata). Blobs bounded
+    /// by their analyzer (TLS certificates) are not charged.
     pub max_blob_bytes: u64,
     /// A packet batch (reader -> decoder -> shard) is sent at this many packets...
     pub batch_packets: usize,

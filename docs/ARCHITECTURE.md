@@ -143,7 +143,9 @@ jusqu'à un réimport (ADR-013).
 - Graphiques : endpoints dédiés qui renvoient des données **déjà agrégées et bornées**
   (top N + « autres », séries rééchantillonnées ≤ 2 000 points).
 - Import : `POST /sessions/import { path }` -> id ; progression via SSE `GET /sessions/{id}/events`.
-- Blobs : `GET /objects/{sha256}` avec `Content-Disposition` et `Content-Security-Policy: sandbox`.
+- Blobs : `GET /sessions/{id}/objects/{sha256}` en pièce jointe `application/octet-stream` avec
+  `Content-Security-Policy: sandbox` ; la webview n'affiche que les PNG ré-encodés par le backend
+  (`.../thumb`, `.../preview`), jamais l'original (ADR-016).
 - En mode dev web, la sélection de dossier passe par `GET /fs/browse?path=` limité aux racines
   autorisées (`/captures` monté en lecture seule). En desktop : dialogue natif Tauri.
 

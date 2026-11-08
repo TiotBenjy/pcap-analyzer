@@ -122,7 +122,7 @@ describe('Overview view', () => {
     );
     expect(screen.getByRole('heading', { name: 'Pictures' }).closest('[aria-disabled]')).toHaveAttribute(
       'title',
-      'Available in a later version',
+      'Not analyzed in this session',
     );
   });
 

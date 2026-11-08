@@ -121,6 +121,11 @@ const BEFORE_0400: &str = "DROP INDEX flows_service; DROP TABLE conversations; \
 /// build that predates SMB.
 const BEFORE_0500: &str = "DROP VIEW smb_items; DROP TABLE smb_announces; \
     DROP TABLE smb_sessions; DELETE FROM schema_migrations WHERE version = 500;";
+/// Undoes migration 0700 (objects) and its end-of-import step: the session looks imported by a
+/// build that predates the Pictures view.
+const BEFORE_0700: &str = "DROP VIEW pictures; DROP TABLE objects; \
+    DELETE FROM schema_migrations WHERE version = 700; \
+    UPDATE meta SET value = replace(value, ',objects:1', '') WHERE key = 'finalizers';";
 /// Undoes migration 0800 (servers), views included: the session looks imported by a build that
 /// predates the Servers view.
 const BEFORE_0800: &str = "DROP VIEW server_roles; DROP VIEW server_evidence; \
@@ -221,6 +226,22 @@ async fn servers_added_on_upgrade_are_not_analyzed() {
     let roles = json["roles"].as_array().unwrap();
     assert_eq!(roles.len(), 7);
     assert!(roles.iter().all(|r| r["total"] == 0), "{json}");
+}
+
+#[tokio::test]
+async fn pictures_added_on_upgrade_are_not_listed_as_run() {
+    // A session imported before P3.6 never stored bodies: its Pictures module is "not run".
+    let env = Env::new(false);
+    let id = env.import();
+    env.tamper(&id, BEFORE_0700);
+    assert!(env.outdated(&id));
+
+    let (status, _, summary) = env.get(&format!("/api/v1/sessions/{id}/summary")).await;
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert!(!env.outdated(&id), "migrated by the read");
+    assert!(!module_ids(&summary).contains(&"pictures"), "{summary}");
+    let (status, _, json) = env.get(&format!("/api/v1/sessions/{id}/objects")).await;
+    assert_eq!(status, StatusCode::OK, "{json}");
 }
 
 #[tokio::test]

@@ -392,6 +392,59 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - `deny.toml` admet `CDLA-Permissive-2.0` pour la seule crate `webpki-root-certs` (données, tirée
     par `rustls-platform-verifier` pour wasm32 uniquement, absente de nos binaires).
 
+## ADR-016 — Objets extraits : sélection, budget, miniatures et affichage
+
+- Contexte : P3.6 (Pictures). Les corps HTTP sont des entrées hostiles et peuvent contenir des secrets
+  (formulaires, jetons) ; P3.2 ne les écrivait jamais sur disque (`store_bodies = false`). La vue doit
+  montrer des images sans que la webview ne charge jamais un contenu extrait.
+- Décision :
+  - sélection (`netsift_analyze::http::objects::selected`, documentée dans `HttpConfig::store_bodies`,
+    activé par défaut) : seuls les corps de **réponse** lus et décodés en entier (pas de `206`), dont le
+    **contenu** est une image par signature (PNG, JPEG, GIF, WebP, BMP, ICO, SVG ; le `Content-Type` annoncé
+    est ignoré), entre `object_min_bytes` (32 o) et `object_max_bytes` (16 Mio), sont confiés à `put_blob`.
+    Pages, scripts, formulaires, téléversements et corps de requête n'arrivent jamais sur disque ;
+  - rétention en mémoire (`HttpConfig::max_retained_bytes`, par shard) : seule une réponse qui peut
+    devenir un objet est gardée au-delà de son aperçu (`Retain::Image`, au plus `object_max_bytes`).
+    Requêtes, réponses `206` et corps annoncés plus grands que `object_max_bytes` ne gardent que
+    l'aperçu (`preview_bytes`, au moins 512 o). Dès que 512 octets sont décodés, un corps sans signature
+    d'image retombe à l'aperçu et rend le reste au budget ; un corps qui ne peut plus être gardé en entier
+    (budget, taille, trou, décodage arrêté) rend aussitôt ce qui dépasse l'aperçu. Un gros téléchargement
+    ne prive donc plus les images servies en parallèle sur le même shard (test e2e sur 1 et 4 shards) ;
+  - budget de session : `IngestOptions::max_blob_bytes` (1 Gio) partagé par tous les shards
+    (`AtomicU64`), qui ne débite que les fichiers nouveaux (contenu déjà présent gratuit) et seulement
+    les objets (`RecordSink::put_object`, méthode par défaut ajoutée au trait, qui délègue à
+    `put_blob`) ; les certificats TLS, déjà bornés par leur analyseur, passent par `put_blob` et ne sont
+    pas débités. Au-delà, `put_object` renvoie `None` : la transaction garde ses métadonnées. Seule
+    exception à l'indépendance vis-à-vis du nombre de shards : quand le budget est atteint, les objets
+    retenus dépendent de l'ordre d'arrivée ;
+  - table `objects` (migration 0700) : une ligne par SHA-256, dérivée de `http_transactions` par l'étape
+    de fin d'import `objects` (ADR-014) ; première apparition = plus petit `(heure de réponse, flow_id,
+    seq)`, nombre d'occurrences et dernière heure agrégés ; `id` suit l'ordre d'apparition (clé de
+    pagination). Upsert qui conserve les colonnes de miniature. Vue SQL `pictures` (images) comptée par
+    l'Overview ; une session importée avant P3.6 la montre « non analysée » ;
+  - miniatures (`netsift_engine::thumbs`) : crate `image` avec les seuls codecs purs Rust nécessaires,
+    format pris de la signature, `Limits` (16 384 px par côté, 64 Mio d'allocation) vérifiées sur
+    l'en-tête avant toute allocation (bombe de dimensions ou de décompression), entrée ≤ 16 Mio, panique
+    d'un codec rattrapée (`catch_unwind`). Générées **après** le writer et ses étapes de fin d'import, hors
+    des shards (le décodage coûte bien plus que l'analyse), par lots de 256 (keyset sur `id`), sur
+    2 threads (certains décodeurs, comme le JPEG progressif, gardent des tampons non comptés), arrêtées
+    par l'annulation et après 60 s ; PNG ≤ 320 px dans `thumbs/<aa>/<sha256>.png`, état `ready`/`failed`
+    et dimensions dans `objects`. Ce qui reste `pending` (import annulé, délai) est rendu à la demande
+    par l'API (au plus 2 décodages simultanés), puis enregistré (fichier, état, dimensions) sauf sur un
+    serveur en lecture seule. Le SVG n'est jamais rastérisé (`none`) ;
+  - API : `GET /sessions/{id}/objects` (+ `/stats` ; extrémités client et serveur en DTO `Endpoint`), `.../objects/{sha256}/thumb` et `/preview`
+    (PNG ré-encodés par nous, 320 et 1 600 px, `image/png` + `nosniff`), `.../objects/{sha256}` en pièce
+    jointe toujours typée `application/octet-stream`, `CSP: sandbox`, `nosniff`, `no-store`, nom de
+    fichier assaini et extension du type détecté, taille du blob vérifiée (409 sinon) ;
+  - UI : les PNG sont lus par `fetch` (jeton en en-tête) puis affichés en URL `data:image/png`, autorisée
+    par `img-src` (ADR-006). Une balise `<img src="http://127.0.0.1:…">` exigerait le jeton dans l'URL,
+    ce qu'ADR-006 exclut ; `blob:` n'est pas dans la CSP. L'original n'est jamais affiché, seulement
+    téléchargé.
+- Conséquences : les images apparaissent à la fin de l'import (étape de fin d'import puis miniatures,
+  pendant la phase `finishing`) ; une session très riche en images allonge cette phase d'au plus 60 s.
+  La mémoire des corps reste bornée par `max_retained_bytes` par shard (un budget global est un suivi de
+  P4.2) ; hors images, un corps n'y occupe que son aperçu.
+
 ## ADR-017 — Rôles de serveurs dérivés à la lecture (vue SQL `server_evidence`)
 
 - Contexte : P3.8 (Servers). Un rôle d'infrastructure (DNS, DHCP, LDAP, NTP, Kerberos, SMB, HTTP) se

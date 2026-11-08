@@ -39,6 +39,11 @@ pub struct IngestOptions {
     /// `analyzers` already holds a database (`AnalyzerConfig::geo`).
     pub geoip_path: Option<PathBuf>,
     pub writer: WriterConfig,
+    /// Bytes of extracted objects (`RecordSink::put_object`: HTTP images) one import may write
+    /// under `blobs/`, all shards together; a content already stored is not charged again.
+    /// Past it, objects are no longer stored (their records keep the metadata). Blobs bounded
+    /// by their analyzer (TLS certificates) are not charged.
+    pub max_blob_bytes: u64,
     /// A packet batch (reader -> decoder -> shard) is sent at this many packets...
     pub batch_packets: usize,
     /// ... or at this many captured bytes, whichever comes first.
@@ -80,6 +85,7 @@ impl Default for IngestOptions {
                 channel_capacity: 32,
                 ..WriterConfig::default()
             },
+            max_blob_bytes: 1024 * MIB,
             batch_packets: 256,
             batch_bytes: MIB,
             channel_batches: 8,
@@ -105,6 +111,7 @@ impl fmt::Debug for IngestOptions {
             .field("analyzers", &self.analyzers)
             .field("geoip_path", &self.geoip_path)
             .field("writer", &self.writer)
+            .field("max_blob_bytes", &self.max_blob_bytes)
             .field("batch_packets", &self.batch_packets)
             .field("batch_bytes", &self.batch_bytes)
             .field("channel_batches", &self.channel_batches)

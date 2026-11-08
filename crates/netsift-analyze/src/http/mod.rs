@@ -23,13 +23,14 @@
 //! Every finished message goes through [`inspect::inspect_message`], which receives a
 //! [`MessageView`]: connection, start line, headers and the **decoded body** (with its state).
 //! It fills the body figures of the record (sniffed MIME type, preview) and calls
-//! [`RecordSink::put_blob`] for complete bodies, so objects appear in `http_transactions` as
-//! soon as the engine stores blobs (P3.6). Credentials (`Authorization: Basic`, login forms)
+//! [`RecordSink::put_blob`] for the bodies selected by [`objects::selected`] (images, by
+//! content, in responses), whose digest appears in `http_transactions` (P3.6). Credentials (`Authorization: Basic`, login forms)
 //! are to be emitted from the same function as `Record::Credential` (P3.7).
 
 mod body;
 pub mod inspect;
 mod message;
+pub mod objects;
 mod types;
 
 use std::collections::{HashMap, VecDeque};
@@ -513,9 +514,12 @@ impl FlowState {
         sh: &mut Shared,
         out: &mut dyn RecordSink,
     ) {
+        let framing_or_empty = framing.unwrap_or(body::Framing::Length(0));
+        let retain = retain_for(&sh.config, &msg.start, framing_or_empty);
         let reader = BodyReader::new(
-            framing.unwrap_or(body::Framing::Length(0)),
+            framing_or_empty,
             msg.content_encoding.as_deref(),
+            retain,
             sh,
         );
         *self.phase_mut(dir) = Phase::Body(reader, Box::new(msg));
@@ -703,6 +707,20 @@ impl FlowState {
             self.end_body(dir, clean, sh, out);
         }
         self.drain(true, out);
+    }
+}
+
+/// What may be kept of a body (see [`objects::selected`]): only a response that may become an
+/// object is kept beyond its preview, at most `object_max_bytes`.
+fn retain_for(config: &HttpConfig, start: &StartLine, framing: body::Framing) -> body::Retain {
+    let max = usize::try_from(config.object_max_bytes).unwrap_or(usize::MAX);
+    let candidate = config.store_bodies
+        && matches!(start, StartLine::Response { status, .. } if *status != 206)
+        && !matches!(framing, body::Framing::Length(n) if n > config.object_max_bytes);
+    if candidate {
+        body::Retain::Image { max }
+    } else {
+        body::Retain::Preview
     }
 }
 

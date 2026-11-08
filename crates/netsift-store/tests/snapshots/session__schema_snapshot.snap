@@ -1,6 +1,5 @@
 ---
 source: crates/netsift-store/tests/session.rs
-assertion_line: 140
 expression: schema
 ---
 -- table anomalies
@@ -488,6 +487,41 @@ CREATE TABLE ntp_responses (
 -- index ntp_responses_last_ts
 CREATE INDEX ntp_responses_last_ts ON ntp_responses (server_ip, last_ts);
 
+-- table objects
+CREATE TABLE objects (
+    id            INTEGER PRIMARY KEY,
+    sha256        TEXT NOT NULL UNIQUE,              -- lower-case hex, file name of the blob
+    size          INTEGER NOT NULL,
+    mime          TEXT NOT NULL,                     -- detected from the content (magic)
+    declared_type TEXT,                              -- Content-Type of the first response
+    width         INTEGER,                           -- once decoded (thumbnail step)
+    height        INTEGER,
+    thumb         TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (thumb IN ('pending', 'ready', 'none', 'failed')),
+    occurrences   INTEGER NOT NULL,                  -- transactions that carried it
+    first_ts      INTEGER NOT NULL,                  -- first response carrying it
+    last_ts       INTEGER NOT NULL,
+    flow_id       INTEGER NOT NULL,                  -- first transaction: http_transactions
+    seq           INTEGER NOT NULL,                  -- (flow_id, seq)
+    client_ip     TEXT NOT NULL,
+    server_ip     TEXT NOT NULL,
+    server_port   INTEGER NOT NULL,
+    host          TEXT,
+    uri           TEXT                               -- request target as sent
+);
+
+-- index objects_host
+CREATE INDEX objects_host ON objects (host, id);
+
+-- index objects_mime
+CREATE INDEX objects_mime ON objects (mime, id);
+
+-- index objects_size
+CREATE INDEX objects_size ON objects (size, id);
+
+-- index objects_thumb
+CREATE INDEX objects_thumb ON objects (thumb, id);
+
 -- table open_ports
 CREATE TABLE open_ports (
     ip        TEXT NOT NULL,
@@ -504,6 +538,9 @@ CREATE TABLE open_ports (
 
 -- index open_ports_port
 CREATE INDEX open_ports_port ON open_ports (port, transport);
+
+-- view pictures
+CREATE VIEW pictures AS SELECT * FROM objects WHERE mime LIKE 'image/%';
 
 -- table schema_migrations
 CREATE TABLE schema_migrations (

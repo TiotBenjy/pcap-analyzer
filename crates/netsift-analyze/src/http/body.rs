@@ -13,8 +13,19 @@ const MAX_TRAILERS: usize = 16 * 1024;
 const MAX_CHUNK_DIGITS: usize = 16;
 /// Internal buffer of the brotli decoder.
 const BROTLI_BUFFER: usize = 4096;
-/// Decoded bytes kept for MIME sniffing when bodies are not stored.
-const SNIFF_BYTES: usize = 512;
+/// Decoded bytes kept for MIME sniffing when bodies are not stored, and decoded before deciding
+/// whether a body that may become an object is an image ([`Retain::Image`]).
+pub(crate) const SNIFF_BYTES: usize = 512;
+
+/// How much of a decoded body is kept in memory (within the shard budget).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Retain {
+    /// The start only (`preview_bytes`, at least [`SNIFF_BYTES`]): preview and MIME sniffing.
+    Preview,
+    /// Up to `max` bytes while the body may become an object: once [`SNIFF_BYTES`] are decoded,
+    /// a body without an image signature falls back to [`Retain::Preview`].
+    Image { max: usize },
+}
 
 /// Resources shared by every flow of one analyzer instance (one shard).
 #[derive(Debug)]
@@ -123,7 +134,12 @@ pub(crate) struct BodyReader {
 }
 
 impl BodyReader {
-    pub(crate) fn new(framing: Framing, encoding: Option<&str>, shared: &mut Shared) -> Self {
+    pub(crate) fn new(
+        framing: Framing,
+        encoding: Option<&str>,
+        retain: Retain,
+        shared: &mut Shared,
+    ) -> Self {
         let reading = match framing {
             Framing::Length(0) => Reading::Done,
             Framing::Length(n) => Reading::Length(n),
@@ -135,7 +151,7 @@ impl BodyReader {
             chunked: framing == Framing::Chunked,
             wire_len: 0,
             gap: false,
-            collector: Collector::new(encoding, shared),
+            collector: Collector::new(encoding, retain, shared),
         }
     }
 
@@ -373,15 +389,21 @@ struct Sink {
     added: usize,
     /// Most bytes kept for this body.
     keep_cap: usize,
+    /// What is kept once the body is known not to be an object (preview and sniffing).
+    preview_cap: usize,
+    /// The image signature is still to be checked ([`Retain::Image`]).
+    sniff: bool,
     truncated: bool,
 }
 
 impl Sink {
-    fn new(limit: u64, keep_cap: usize) -> Self {
+    fn new(limit: u64, keep_cap: usize, preview_cap: usize, sniff: bool) -> Self {
         Self {
             limit,
             keep: true,
             keep_cap,
+            preview_cap,
+            sniff,
             ..Self::default()
         }
     }
@@ -508,14 +530,18 @@ struct Decoded {
 }
 
 impl Collector {
-    fn new(encoding: Option<&str>, shared: &mut Shared) -> Self {
+    fn new(encoding: Option<&str>, retain: Retain, shared: &mut Shared) -> Self {
         let config = &shared.config;
-        let keep_cap = if config.store_bodies {
-            usize::MAX
-        } else {
-            config.preview_bytes.max(SNIFF_BYTES)
+        let preview_cap = config.preview_bytes.max(SNIFF_BYTES);
+        let sink = match retain {
+            Retain::Preview => Sink::new(config.max_body_bytes, preview_cap, preview_cap, false),
+            Retain::Image { max } => Sink::new(
+                config.max_body_bytes,
+                max.max(preview_cap),
+                preview_cap,
+                true,
+            ),
         };
-        let sink = Sink::new(config.max_body_bytes, keep_cap);
         let mut c = Self {
             decoder: Decoder::Identity,
             sink: None,
@@ -613,6 +639,33 @@ impl Collector {
         {
             self.stop(BodyState::Bomb, shared);
         }
+        self.settle(shared);
+    }
+
+    /// Gives back to the shard budget what this body no longer needs: once [`SNIFF_BYTES`] are
+    /// decoded, a body without an image signature keeps only its preview; so does a body that
+    /// stopped being kept whole (budget, size, gap) or being decoded (it cannot be an object).
+    fn settle(&mut self, shared: &mut Shared) {
+        let stopped = self.stopped.is_some();
+        let Some(sink) = self.sink_mut() else {
+            return;
+        };
+        if sink.sniff && sink.data.len() >= SNIFF_BYTES {
+            sink.sniff = false;
+            if !super::objects::is_image_content(&sink.data) {
+                sink.keep_cap = sink.preview_cap;
+                if sink.data.len() > sink.preview_cap {
+                    sink.keep = false;
+                }
+            }
+        }
+        if (!sink.keep || stopped) && sink.data.len() > sink.preview_cap {
+            let released = sink.data.len() - sink.preview_cap;
+            sink.data.truncate(sink.preview_cap);
+            sink.data.shrink_to_fit();
+            sink.keep = false;
+            shared.retained = shared.retained.saturating_sub(released);
+        }
     }
 
     fn start_deflate(&mut self, first: &[u8]) {
@@ -681,6 +734,7 @@ impl Collector {
                 self.stopped = Some(state);
             }
         }
+        self.settle(shared);
     }
 
     /// Flushes the decoder. `complete_input`: every encoded byte was received.
@@ -729,12 +783,23 @@ impl Collector {
 mod tests {
     use super::*;
 
-    /// Bodies stored (fully retained), as P3.6 will configure it.
+    /// Bodies offered as objects (`store_bodies`, the default since P3.6).
     fn storing() -> HttpConfig {
         HttpConfig {
             store_bodies: true,
             ..HttpConfig::default()
         }
+    }
+
+    /// A reader retaining as the analyzer does for a response (whole image bodies when
+    /// `store_bodies`, the preview otherwise).
+    fn open(framing: Framing, encoding: Option<&str>, sh: &mut Shared) -> BodyReader {
+        let retain = if sh.config.store_bodies {
+            Retain::Image { max: usize::MAX }
+        } else {
+            Retain::Preview
+        };
+        BodyReader::new(framing, encoding, retain, sh)
     }
 
     fn shared() -> Shared {
@@ -748,7 +813,7 @@ mod tests {
         step: usize,
     ) -> (Finished, usize) {
         let mut sh = shared();
-        let mut r = BodyReader::new(framing, encoding, &mut sh);
+        let mut r = open(framing, encoding, &mut sh);
         let mut used = 0;
         for piece in input.chunks(step.max(1)) {
             if r.is_done() {
@@ -800,14 +865,14 @@ mod tests {
             b"\r\n",
         ] {
             let mut sh = shared();
-            let mut r = BodyReader::new(Framing::Chunked, None, &mut sh);
+            let mut r = open(Framing::Chunked, None, &mut sh);
             let fed = r.feed(wire, &mut sh);
             assert!(fed.done, "{wire:?}");
             assert_eq!(r.finish(true, &mut sh).state, BodyState::Malformed);
         }
         // An endless chunk-size line is bounded.
         let mut sh = shared();
-        let mut r = BodyReader::new(Framing::Chunked, None, &mut sh);
+        let mut r = open(Framing::Chunked, None, &mut sh);
         let long = [b' '; MAX_CHUNK_LINE + 10];
         let mut line = b"1".to_vec();
         line.extend_from_slice(&long);
@@ -817,7 +882,7 @@ mod tests {
     #[test]
     fn huge_chunk_size_does_not_allocate() {
         let mut sh = shared();
-        let mut r = BodyReader::new(Framing::Chunked, None, &mut sh);
+        let mut r = open(Framing::Chunked, None, &mut sh);
         let fed = r.feed(b"FFFFFFFFFFFFFFFF\r\nabc", &mut sh);
         assert!(!fed.done);
         let f = r.finish(true, &mut sh);
@@ -883,7 +948,7 @@ mod tests {
         let wire = gzip(&[7u8; 10_000]);
         let half = &wire[..wire.len() / 2];
         let mut sh = shared();
-        let mut r = BodyReader::new(Framing::Length(wire.len() as u64), Some("gzip"), &mut sh);
+        let mut r = open(Framing::Length(wire.len() as u64), Some("gzip"), &mut sh);
         r.feed(half, &mut sh);
         let f = r.finish(false, &mut sh);
         assert_eq!(f.state, BodyState::Incomplete);
@@ -905,7 +970,7 @@ mod tests {
         assert!(wire.len() < 100 * 1024);
         // Ratio check disabled: the size bound stops decoding.
         let mut sh = bomb_config(8 * 1024 * 1024, u64::MAX);
-        let mut r = BodyReader::new(Framing::Length(wire.len() as u64), Some("gzip"), &mut sh);
+        let mut r = open(Framing::Length(wire.len() as u64), Some("gzip"), &mut sh);
         r.feed(&wire, &mut sh);
         let f = r.finish(true, &mut sh);
         assert_eq!(f.state, BodyState::Truncated);
@@ -914,7 +979,7 @@ mod tests {
         assert!(!f.fully_retained);
         // Default ratio: stopped early as a bomb.
         let mut sh = shared();
-        let mut r = BodyReader::new(Framing::Length(wire.len() as u64), Some("gzip"), &mut sh);
+        let mut r = open(Framing::Length(wire.len() as u64), Some("gzip"), &mut sh);
         r.feed(&wire, &mut sh);
         let f = r.finish(true, &mut sh);
         assert_eq!(f.state, BodyState::Bomb);
@@ -926,13 +991,13 @@ mod tests {
         let wire = brotli(&vec![b'a'; 32 * 1024 * 1024]);
         assert!(wire.len() < 64 * 1024, "{}", wire.len());
         let mut sh = bomb_config(4 * 1024 * 1024, u64::MAX);
-        let mut r = BodyReader::new(Framing::Length(wire.len() as u64), Some("br"), &mut sh);
+        let mut r = open(Framing::Length(wire.len() as u64), Some("br"), &mut sh);
         r.feed(&wire, &mut sh);
         let f = r.finish(true, &mut sh);
         assert_eq!(f.state, BodyState::Truncated);
         assert_eq!(f.decoded_len, 4 * 1024 * 1024);
         let mut sh = shared();
-        let mut r = BodyReader::new(Framing::Length(wire.len() as u64), Some("br"), &mut sh);
+        let mut r = open(Framing::Length(wire.len() as u64), Some("br"), &mut sh);
         r.feed(&wire, &mut sh);
         assert_eq!(r.finish(true, &mut sh).state, BodyState::Bomb);
     }
@@ -943,8 +1008,8 @@ mod tests {
             max_retained_bytes: 10,
             ..storing()
         });
-        let mut a = BodyReader::new(Framing::Length(8), None, &mut sh);
-        let mut b = BodyReader::new(Framing::Length(8), None, &mut sh);
+        let mut a = open(Framing::Length(8), None, &mut sh);
+        let mut b = open(Framing::Length(8), None, &mut sh);
         a.feed(b"aaaaaaaa", &mut sh);
         assert_eq!(sh.retained, 8);
         b.feed(b"bbbbbbbb", &mut sh);
@@ -964,8 +1029,8 @@ mod tests {
             max_decoders: 1,
             ..HttpConfig::default()
         });
-        let a = BodyReader::new(Framing::Length(8), Some("gzip"), &mut sh);
-        let b = BodyReader::new(Framing::Length(8), Some("gzip"), &mut sh);
+        let a = open(Framing::Length(8), Some("gzip"), &mut sh);
+        let b = open(Framing::Length(8), Some("gzip"), &mut sh);
         assert_eq!(sh.decoders, 1);
         assert_eq!(b.finish(true, &mut sh).state, BodyState::Incomplete);
         a.discard(&mut sh);
@@ -975,7 +1040,7 @@ mod tests {
     #[test]
     fn gaps_inside_a_known_length_keep_the_framing() {
         let mut sh = shared();
-        let mut r = BodyReader::new(Framing::Length(10), None, &mut sh);
+        let mut r = open(Framing::Length(10), None, &mut sh);
         r.feed(b"abc", &mut sh);
         assert!(r.gap(4, &mut sh));
         let fed = r.feed(b"xyzNEXT", &mut sh);
@@ -986,7 +1051,7 @@ mod tests {
         assert_eq!(f.wire_len, 10);
         assert_eq!(f.data, b"abc");
         // A gap past the end of the body loses the framing.
-        let mut r = BodyReader::new(Framing::Length(10), None, &mut sh);
+        let mut r = open(Framing::Length(10), None, &mut sh);
         assert!(!r.gap(11, &mut sh));
         r.discard(&mut sh);
     }
@@ -1017,40 +1082,121 @@ mod tests {
             w.write_all(&noise).unwrap();
         }
         let header = stream[..2].to_vec();
-        let mut open: Vec<BodyReader> = (0..5)
+        let mut readers: Vec<BodyReader> = (0..5)
             .map(|_| {
-                let mut r = BodyReader::new(Framing::Length(1 << 20), Some("br"), &mut sh);
+                let mut r = open(Framing::Length(1 << 20), Some("br"), &mut sh);
                 r.feed(&header, &mut sh);
                 r
             })
             .collect();
         assert_eq!((sh.brotli, sh.decoders), (2, 2));
         // gzip still gets decoders.
-        let gz = BodyReader::new(Framing::Length(10), Some("gzip"), &mut sh);
+        let gz = open(Framing::Length(10), Some("gzip"), &mut sh);
         assert_eq!(sh.decoders, 3);
         gz.discard(&mut sh);
-        let last = open.pop().unwrap();
+        let last = readers.pop().unwrap();
         assert_eq!(last.finish(true, &mut sh).state, BodyState::Incomplete);
-        let first = open.remove(0);
+        let first = readers.remove(0);
         first.discard(&mut sh);
         assert_eq!(sh.brotli, 1);
         // A slot freed: the next brotli body is decoded again.
         let text = b"brotli again ".repeat(20);
         let wire = brotli(&text);
-        let mut r = BodyReader::new(Framing::Length(wire.len() as u64), Some("br"), &mut sh);
+        let mut r = open(Framing::Length(wire.len() as u64), Some("br"), &mut sh);
         r.feed(&wire, &mut sh);
         assert_eq!(r.finish(true, &mut sh).state, BodyState::Complete);
-        for r in open {
+        for r in readers {
             r.discard(&mut sh);
         }
         assert_eq!((sh.brotli, sh.decoders), (0, 0));
     }
 
+    fn png_body(len: usize) -> Vec<u8> {
+        let mut body = b"\x89PNG\r\n\x1a\n".to_vec();
+        body.resize(len, 7);
+        body
+    }
+
+    #[test]
+    fn only_image_bodies_are_kept_whole() {
+        let mut sh = shared();
+        // Not an image: back to the preview once the signature is checked, mid-body.
+        let page = vec![b'a'; 100_000];
+        let mut r = open(Framing::Length(page.len() as u64), None, &mut sh);
+        r.feed(&page[..50_000], &mut sh);
+        assert_eq!(sh.retained, 4096, "budget given back before the end");
+        r.feed(&page[50_000..], &mut sh);
+        let f = r.finish(true, &mut sh);
+        assert_eq!((f.data.len(), f.fully_retained), (4096, false));
+        assert_eq!(sh.retained, 0);
+        // An image: kept whole.
+        let png = png_body(100_000);
+        let mut r = open(Framing::Length(png.len() as u64), None, &mut sh);
+        r.feed(&png, &mut sh);
+        assert_eq!(sh.retained, 100_000);
+        let f = r.finish(true, &mut sh);
+        assert!(f.fully_retained);
+        assert_eq!(f.data, png);
+        // Preview only (request, partial response...): never more than the preview.
+        let mut r = BodyReader::new(
+            Framing::Length(png.len() as u64),
+            None,
+            Retain::Preview,
+            &mut sh,
+        );
+        r.feed(&png, &mut sh);
+        assert_eq!(sh.retained, 4096);
+        r.discard(&mut sh);
+        assert_eq!(sh.retained, 0);
+    }
+
+    #[test]
+    fn an_abandoned_body_gives_its_bytes_back_at_once() {
+        let mut sh = Shared::new(HttpConfig {
+            max_retained_bytes: 30_000,
+            ..storing()
+        });
+        // Beyond the shard budget: the image cannot be kept whole, only its preview stays.
+        let big = png_body(50_000);
+        let mut a = open(Framing::Length(big.len() as u64), None, &mut sh);
+        a.feed(&big[..40_000], &mut sh);
+        assert_eq!(sh.retained, 4096);
+        // Another image of the same shard still fits.
+        let small = png_body(20_000);
+        let mut b = open(Framing::Length(small.len() as u64), None, &mut sh);
+        b.feed(&small, &mut sh);
+        assert!(b.finish(true, &mut sh).fully_retained);
+        a.feed(&big[40_000..], &mut sh);
+        assert!(!a.finish(true, &mut sh).fully_retained);
+        assert_eq!(sh.retained, 0);
+        // Above its cap (`object_max_bytes`): abandoned as well.
+        let mut c = BodyReader::new(
+            Framing::Length(big.len() as u64),
+            None,
+            Retain::Image { max: 10_000 },
+            &mut sh,
+        );
+        c.feed(&big, &mut sh);
+        assert_eq!(sh.retained, 4096);
+        assert!(!c.finish(true, &mut sh).fully_retained);
+        // A gap: the body cannot be complete, its bytes go back.
+        let mut d = open(Framing::Length(big.len() as u64), None, &mut sh);
+        d.feed(&big[..20_000], &mut sh);
+        assert_eq!(sh.retained, 20_000);
+        assert!(d.gap(1000, &mut sh));
+        assert_eq!(sh.retained, 4096);
+        d.discard(&mut sh);
+        assert_eq!(sh.retained, 0);
+    }
+
     #[test]
     fn without_storage_only_the_start_of_a_body_is_kept() {
-        let mut sh = Shared::new(HttpConfig::default());
+        let mut sh = Shared::new(HttpConfig {
+            store_bodies: false,
+            ..HttpConfig::default()
+        });
         let body = vec![b'a'; 100_000];
-        let mut r = BodyReader::new(Framing::Length(body.len() as u64), None, &mut sh);
+        let mut r = open(Framing::Length(body.len() as u64), None, &mut sh);
         r.feed(&body, &mut sh);
         assert_eq!(sh.retained, 4096);
         let f = r.finish(true, &mut sh);
@@ -1064,7 +1210,7 @@ mod tests {
     #[test]
     fn a_gap_covering_the_rest_of_a_chunk_keeps_the_framing() {
         let mut sh = shared();
-        let mut r = BodyReader::new(Framing::Chunked, None, &mut sh);
+        let mut r = open(Framing::Chunked, None, &mut sh);
         r.feed(b"5\r\nab", &mut sh);
         assert!(r.gap(3, &mut sh));
         let fed = r.feed(b"\r\n2\r\nok\r\n0\r\n\r\nNEXT", &mut sh);
@@ -1079,7 +1225,7 @@ mod tests {
         let wire = gzip(&vec![0u8; 4 * 1024 * 1024]);
         let mut sh = bomb_config(1024 * 1024, u64::MAX);
         let total = wire.len() as u64 + 1000;
-        let mut r = BodyReader::new(Framing::Length(total), Some("gzip"), &mut sh);
+        let mut r = open(Framing::Length(total), Some("gzip"), &mut sh);
         r.feed(&wire, &mut sh);
         assert!(r.gap(500, &mut sh));
         let f = r.finish(true, &mut sh);

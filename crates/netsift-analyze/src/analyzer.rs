@@ -59,6 +59,14 @@ pub trait RecordSink {
     fn put_blob(&mut self, _data: &[u8]) -> Option<BlobRef> {
         None
     }
+
+    /// Same as [`RecordSink::put_blob`] for extracted files that are not bounded by their
+    /// analyzer (HTTP objects): the engine charges them to the blob budget of the session
+    /// (`IngestOptions::max_blob_bytes`) and returns `None` once it is spent. Bounded
+    /// metadata blobs (certificates) use `put_blob` and are never refused for budget.
+    fn put_object(&mut self, data: &[u8]) -> Option<BlobRef> {
+        self.put_blob(data)
+    }
 }
 
 /// Collects records in memory (tests, small buffers).

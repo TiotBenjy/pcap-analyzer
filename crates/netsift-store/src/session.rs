@@ -196,6 +196,12 @@ impl Session {
         self.dir.join(THUMBS_DIR)
     }
 
+    /// Path of the thumbnail of the object whose SHA-256 is `sha256_hex` (see
+    /// [`thumb_relpath`]), `None` when the digest is malformed. The file may not exist.
+    pub fn thumb_path(&self, sha256_hex: &str) -> Option<PathBuf> {
+        thumb_relpath(sha256_hex).map(|rel| self.thumbs_dir().join(rel))
+    }
+
     /// Mode the session was opened with.
     pub fn mode(&self) -> OpenMode {
         self.mode
@@ -226,6 +232,12 @@ pub fn blob_relpath(sha256_hex: &str) -> Option<PathBuf> {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
     let prefix = sha256_hex.get(..2).filter(|_| valid)?;
     Some(Path::new(prefix).join(sha256_hex))
+}
+
+/// Location of a thumbnail inside `thumbs/`: `<first two hex digits>/<64 hex digits>.png`, under
+/// the same rule as [`blob_relpath`] (never a path traversal).
+pub fn thumb_relpath(sha256_hex: &str) -> Option<PathBuf> {
+    blob_relpath(sha256_hex).map(|p| p.with_extension("png"))
 }
 
 /// Tables created after the import ([`TABLES_ADDED_AFTER_IMPORT`]): empty because their

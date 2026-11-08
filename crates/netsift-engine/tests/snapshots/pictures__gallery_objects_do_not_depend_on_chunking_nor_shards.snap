@@ -1,0 +1,17 @@
+---
+source: crates/netsift-engine/tests/pictures.rs
+expression: "expected.join(\"\\n\")"
+---
+1 cf5098e0f229 image/jpeg 16131 640x420 ready x1 images.example.test/gallery/harbour.jpg image/jpeg
+2 fda0e9e4104c image/jpeg 17132 480x640 ready x1 images.example.test/gallery/dusk.jpg image/jpeg
+3 159b6149c9ee image/png 8549 400x300 ready x2 images.example.test/gallery/night.png image/png
+4 873d4a8e00d1 image/webp 7380 360x240 ready x1 images.example.test/gallery/dunes.webp image/webp
+5 6a7fc6ebfd0a image/gif 5969 240x180 ready x1 images.example.test/gallery/lagoon.gif image/gif
+6 5a08b1600cc4 image/bmp 84054 200x140 ready x1 images.example.test/gallery/canyon.bmp image/bmp
+7 d3e532521b23 image/png 16553 900x240 ready x1 images.example.test/gallery/panorama.png image/png
+8 0a587c3dffe4 image/png 9070 256x256 ready x1 images.example.test/download?id=42 application/octet-stream
+9 4981d6ccdcb3 image/x-icon 450 32x32 ready x1 cdn.example.test/favicon.ico image/x-icon
+10 c6cc20b2aa0e image/svg+xml 291 -x- none x1 cdn.example.test/brand/logo.svg image/svg+xml
+11 10f8ee602fa8 image/gif 49 1x1 ready x1 cdn.example.test/t.gif?u=1 image/gif
+12 6d067d3f1e19 image/png 3932 96x96 ready x1 cdn.example.test/thumbs/tile.png image/png
+13 084548f28ade image/jpeg 300 -x- failed x1 cdn.example.test/broken/cut.jpg image/jpeg

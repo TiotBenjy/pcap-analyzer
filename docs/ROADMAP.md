@@ -117,10 +117,24 @@ Suivis de la phase 1 :
 
 - [~] **P2.1** `feat/api-sessions` — Routes sessions (liste, import, SSE progression, suppression), `fs/browse`,
       génération des types ts-rs, client API typé côté UI.
-- [~] **P2.2** `feat/geoip` — `netsift-geo` : lecture mmdb, cache LRU, classification d'adresses ;
+- [x] **P2.2** `feat/geoip` — `netsift-geo` : lecture mmdb, cache LRU, classification d'adresses ;
       `./x.sh geoip` ; attribution DB-IP dans « À propos ».
 - [~] **P2.3** `feat/ui-captures` — Vue Captures : liste des sessions, import (dialogue natif desktop /
       navigateur de dossiers en dev), progression, frise des chunks et anomalies. Spec : `specs/captures.md`.
+
+Suivis de la vague 2.A :
+
+- P2.5 : passer `geoip_path` vers la base du bundle (`apps/desktop/resources/geoip/`) ; exposer l'état
+  de la base GeoIP (présente / absente) par l'API pour l'afficher dans « À propos ».
+- Avant le premier onglet qui affiche des catégories d'adresses (Hosts, Network) : exporter
+  `AddressCategory` via ts-rs et indexer `ADDRESS_CATEGORIES` de `ui/src/charts/palette.ts` par les
+  libellés backend (`private`, `link_local`, `cgnat`, `unspecified`, `reserved`…), libellés affichés via
+  l'i18n ; séparer le rôle « serveur » des catégories d'adresses.
+- Fixtures : ajouter des hôtes à adresses publiques (aujourd'hui plages de documentation uniquement),
+  pour que la démo montre pays et carte ; `crates/netsift-store/tests/writer.rs` utilise encore
+  `"link-local"` comme exemple.
+- Relecture visuelle des captures (`ui-reviewer`) en attente d'une décision sur l'accès à
+  `.artifacts/screens/` (règle `Read(./.artifacts/**)`).
 
 ### Vague 2.B
 

@@ -42,12 +42,13 @@ release : un binaire publié ne dépend jamais d'un cache. Les bundles sont cons
 ```
 react            19.2.0
 react-dom        19.2.0
-vite              7.1.12
+vite              7.3.7         # 2026-11-08 : avis GHSA (serveur de dev, launch-editor) ; reste en 7.x
 @vitejs/plugin-react 5.1.0
 typescript        5.9.3
 tailwindcss       4.1.16        # Tailwind 4 : config via @tailwindcss/vite + @theme dans le CSS
 @tailwindcss/vite 4.1.16
-echarts           6.0.0         # import modulaire + SVGRenderer
+echarts           6.1.0         # import modulaire + SVGRenderer ; 6.1.0 : XSS GHSA-fgmj-fm8m-jvvx
+                                # (zrender 6.1.0) ; patch Vite frozenPrototype toujours requis
 sigma             3.0.2
 graphology        0.26.0
 @tanstack/react-query   5.90.5
@@ -81,6 +82,17 @@ eslint-plugin-react-refresh  0.5.7
 globals                      17.14.0
 @types/node                  22.20.5    # aligné sur Node 22
 ```
+
+`overrides` de `ui/package.json` (dépendances transitives, 2026-11-08) :
+
+```
+minimatch                    11.0.5     # GHSA-g3hv-75wg-m249 (7.0.0 à 11.0.0), aucun correctif en 10.x ;
+                                        # eslint 10.14.0, @eslint/config-array 0.23.5 et typescript-eslint
+                                        # 8.72.1 demandent ^10.2 ; API utilisée (Minimatch, match, minimatch,
+                                        # flipNegate) inchangée. Retirer quand ils exigeront ^11.0.1.
+```
+
+`npm audit` doit rester à 0 vulnérabilité (`./x.sh npm audit`).
 
 Restant à ajouter en phase 2/3 selon les specs (prendre une version compatible) :
 `@tauri-apps/api` (2.x), `d3-chord` + `@types/d3-chord`, `flag-icons`, `world-atlas` (cartes).

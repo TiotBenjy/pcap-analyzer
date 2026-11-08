@@ -18,13 +18,16 @@ interface MultiSelectProps<T extends string> {
   options: readonly MultiSelectOption<T>[];
   selected: ReadonlySet<T>;
   onChange: (selected: Set<T>) => void;
+  /** Edge of the button the panel is aligned on: `end` for a control at the right of a header. */
+  align?: 'start' | 'end';
 }
 
 /**
  * Drop-down list of checkboxes with "All" / "None". The panel opens under the button, aligned on
- * its left edge (place the control first in its toolbar), and closes on Escape or outside click.
+ * its left edge (place the control first in its toolbar) or, with `align="end"`, on its right edge
+ * (a control at the right of a card header), and closes on Escape or outside click.
  */
-export function MultiSelect<T extends string>({ label, options, selected, onChange }: MultiSelectProps<T>) {
+export function MultiSelect<T extends string>({ label, options, selected, onChange, align = 'start' }: MultiSelectProps<T>) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -81,7 +84,10 @@ export function MultiSelect<T extends string>({ label, options, selected, onChan
           id={panelId}
           role="group"
           aria-label={label}
-          className="absolute top-full left-0 z-20 mt-1 flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-xs"
+          className={cn(
+            'absolute top-full z-20 mt-1 flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-xs',
+            align === 'end' ? 'right-0' : 'left-0',
+          )}
         >
           <div className="flex gap-1 border-b border-line pb-1">
             <Button

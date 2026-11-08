@@ -7,17 +7,21 @@
 //!   side that looks like the server ([`midstream_server`]) sends data
 //!   ([`PortEvidence::ServerData`]);
 //! - **UDP reply**: the server of a UDP flow (the side that did not send the first datagram)
-//!   answers from its port ([`PortEvidence::UdpReply`]).
+//!   answers from its port ([`PortEvidence::UdpReply`]), unless its port looks less like a
+//!   service port than the client's ([`service_score`]): a flow picked up midstream starts with
+//!   a datagram of the real server (QUIC from 443 to an ephemeral port), whose client would
+//!   otherwise be taken for a listening service. Such a flow records nothing.
 //!
 //! The first server data of a TCP connection identifies its service by content
-//! ([`detect_service`]: http, tls, ssh, smb...) and, for greeting protocols (SSH, FTP, SMTP,
-//! POP3, IMAP, VNC), keeps the first line as a banner (at most [`MAX_BANNER`] bytes).
+//! ([`detect_service`]: http, tls, ssh, smb...). Greeting protocols (FTP, SMTP, POP3, IMAP,
+//! VNC) are only recognized, and their first line kept as a banner (at most [`MAX_BANNER`]
+//! bytes), when the server speaks first: `+OK` after a client command is Redis, not POP3.
 //!
 //! Observations are pre-aggregated per shard in a bounded map (key: host, transport, port) and
 //! flushed like the `core` hosts; the store merges them commutatively (first/last time min/max,
-//! evidence, service and banner: non-NULL wins, then the smallest), so the result depends
-//! neither on the number of shards nor on flush moments. Client counts come from `flows` at
-//! read time.
+//! evidence: the strongest by [`PortEvidence::rank`]; service and banner: non-NULL wins, then
+//! the smallest), so the result depends neither on the number of shards nor on flush moments.
+//! Client counts come from `flows` at read time.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -57,19 +61,28 @@ impl Default for PortsConfig {
     }
 }
 
-/// Why a port is considered open. Declared in the order of its labels, so that the in-memory
-/// merge (smallest wins) agrees with the store's text comparison.
+/// Why a port is considered open, weakest first (merges keep the strongest, see
+/// [`PortEvidence::rank`]; the store applies the same ranking).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PortEvidence {
     /// Data sent by the server side of a connection whose handshake was not captured.
     ServerData,
-    /// SYN-ACK sent from the port.
-    SynAck,
     /// UDP datagram sent back to the client of a flow.
     UdpReply,
+    /// SYN-ACK sent from the port.
+    SynAck,
 }
 
 impl PortEvidence {
+    /// Strength of the evidence: `syn_ack` (2) > `udp_reply` (1) > `server_data` (0).
+    pub const fn rank(self) -> u8 {
+        match self {
+            Self::ServerData => 0,
+            Self::UdpReply => 1,
+            Self::SynAck => 2,
+        }
+    }
+
     /// Stable label stored in the database.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -106,7 +119,9 @@ impl OpenPortSeen {
     fn merge(&mut self, other: Self) {
         self.first_ts = self.first_ts.min(other.first_ts);
         self.last_ts = self.last_ts.max(other.last_ts);
-        self.evidence = self.evidence.min(other.evidence);
+        if other.evidence.rank() > self.evidence.rank() {
+            self.evidence = other.evidence;
+        }
         self.detected = min_some(self.detected, other.detected);
         self.banner = min_some(self.banner.take(), other.banner);
     }
@@ -121,12 +136,15 @@ fn min_some<T: Ord>(a: Option<T>, b: Option<T>) -> Option<T> {
 }
 
 /// State of a tracked TCP connection.
+#[allow(clippy::struct_excessive_bools)] // Independent facts about one connection.
 #[derive(Debug, Clone, Copy)]
 struct TcpTrack {
     /// The first packet seen was neither a SYN nor a SYN-ACK.
     midstream: bool,
     /// A SYN-ACK was seen.
     syn_ack: bool,
+    /// The client sent data before the first server data (the server did not speak first).
+    client_spoke: bool,
     /// The first server data was inspected (or the server side cannot be told).
     inspected: bool,
 }
@@ -223,6 +241,7 @@ impl PortsAnalyzer {
                 TcpTrack {
                     midstream: !syn,
                     syn_ack,
+                    client_spoke: false,
                     inspected: false,
                 },
             );
@@ -240,7 +259,7 @@ fn answers(ip: IpAddr) -> bool {
 
 /// How much a port looks like a service port: 2 below 1024, 1 for other ports registered at
 /// IANA below the dynamic range, 0 otherwise.
-fn service_score(port: u16) -> u8 {
+pub fn service_score(port: u16) -> u8 {
     match port {
         0 => 0,
         1..1024 => 2,
@@ -264,8 +283,10 @@ pub fn midstream_server(key: &FlowKey) -> Option<Endpoint> {
 }
 
 /// Service identified from the first bytes sent by a TCP server, `port` breaking ties between
-/// protocols with the same greeting (FTP and SMTP both start with `220`).
-pub fn detect_service(data: &[u8], port: u16) -> Option<&'static str> {
+/// protocols with the same greeting (FTP and SMTP both start with `220`). Greeting protocols
+/// (FTP, SMTP, POP3, IMAP, VNC) are only recognized when `server_first`: the server sent this
+/// before any client data.
+pub fn detect_service(data: &[u8], port: u16, server_first: bool) -> Option<&'static str> {
     let starts = |p: &[u8]| data.starts_with(p);
     if starts(b"HTTP/1.") || starts(b"HTTP/2") {
         return Some("http");
@@ -275,15 +296,6 @@ pub fn detect_service(data: &[u8], port: u16) -> Option<&'static str> {
     }
     if starts(b"RTSP/1.") {
         return Some("rtsp");
-    }
-    if starts(b"RFB ") {
-        return Some("vnc");
-    }
-    if starts(b"+OK") {
-        return Some("pop3");
-    }
-    if starts(b"* OK") || starts(b"* PREAUTH") {
-        return Some("imap");
     }
     // TLS record: content type 20..=23, version 3.x (SSL 3.0 to TLS 1.3 on the wire).
     if let Some(&[kind, 3, minor]) = data.get(..3)
@@ -297,6 +309,18 @@ pub fn detect_service(data: &[u8], port: u16) -> Option<&'static str> {
         && matches!(marker, 0xfd..=0xff)
     {
         return Some("smb");
+    }
+    if !server_first {
+        return None;
+    }
+    if starts(b"RFB ") {
+        return Some("vnc");
+    }
+    if starts(b"+OK") {
+        return Some("pop3");
+    }
+    if starts(b"* OK") || starts(b"* PREAUTH") {
+        return Some("imap");
     }
     if let Some(&[b'2', b'2', b'0', sep]) = data.get(..4)
         && (sep == b' ' || sep == b'-')
@@ -367,6 +391,7 @@ impl Analyzer for PortsAnalyzer {
                     && ip.src == server.ip
                     && udp.src_port == server.port
                     && server.port != 0
+                    && service_score(server.port) >= service_score(flow.key.client.port)
                     && answers(server.ip)
                 {
                     self.record(
@@ -423,14 +448,16 @@ impl Analyzer for PortsAnalyzer {
             Direction::ToServer => server == ctx.key.client,
         };
         if !from_server {
+            track.client_spoke = true;
             return;
         }
         track.inspected = true;
+        let server_first = !track.client_spoke;
         if !answers(server.ip) {
             return;
         }
         let detected = if ctx.gap_before == 0 {
-            detect_service(data, server.port)
+            detect_service(data, server.port, server_first)
         } else {
             None
         };

@@ -12,6 +12,17 @@ describe('normalizeOption', () => {
     expect(out.series).toEqual([{ type: 'bar', labelLayout: { hideOverlap: true } }]);
   });
 
+  it('gives series labels the theme text color without outline, the view still winning', () => {
+    const theme = { seriesLabel: { color: '#eee', textBorderColor: 'transparent' } };
+    const out = normalizeOption(
+      { series: [{ type: 'bar', label: { show: true, position: 'right' } }, { type: 'bar', label: { color: 'red' } }] },
+      800,
+      theme,
+    ) as { series: { label: Record<string, unknown> }[] };
+    expect(out.series[0]?.label).toEqual({ color: '#eee', textBorderColor: 'transparent', show: true, position: 'right' });
+    expect(out.series[1]?.label.color).toBe('red');
+  });
+
   it('puts the legend below on narrow containers and on the right on wide ones', () => {
     const narrow = normalizeOption({ legend: {} }, 600) as { legend: Record<string, unknown>[] };
     expect(narrow.legend[0]).toMatchObject({ type: 'scroll', orient: 'horizontal', bottom: 0 });

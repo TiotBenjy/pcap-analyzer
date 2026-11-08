@@ -7,9 +7,11 @@
 //! (`guard`). The sessions and import routes follow the frozen [`contract`].
 
 mod auth;
+mod connections;
 pub mod contract;
 mod convert;
 mod dto;
+mod endpoint;
 mod error;
 mod extract;
 mod fs;
@@ -17,6 +19,7 @@ mod geoip;
 mod guard;
 mod imports;
 mod overview;
+mod ports;
 mod sessions;
 
 use std::future::{Future, IntoFuture};
@@ -203,9 +206,11 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
 
     let protected = Router::new()
         // Registration point: one `.merge(<module>::routes())` line per feature, sorted.
+        .merge(connections::routes())
         .merge(fs::routes())
         .merge(imports::routes())
         .merge(overview::routes())
+        .merge(ports::routes())
         .merge(sessions::routes())
         .route("/server-info", get(dto::server_info))
         .route_layer(axum::middleware::from_fn_with_state(

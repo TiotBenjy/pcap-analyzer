@@ -55,6 +55,7 @@ function baseOption(): EChartsCoreOption {
 
 /** Theme colors of axes, legends and zoom sliders (`normalizeOption`). */
 function chartTheme(): ChartTheme {
+  const fg = cssVar('--ns-fg');
   const muted = cssVar('--ns-muted');
   const faint = cssVar('--ns-faint');
   const line = cssVar('--ns-line');
@@ -64,6 +65,7 @@ function chartTheme(): ChartTheme {
   const tint = (pct: number) => `color-mix(in oklab, ${accent} ${pct}%, transparent)`;
   return {
     legend: { textStyle: { color: muted }, pageTextStyle: { color: muted } },
+    seriesLabel: { color: fg, textBorderColor: 'transparent' },
     axis: {
       axisLabel: { color: muted },
       axisLine: { lineStyle: { color: line } },

@@ -198,10 +198,17 @@ struct TrafficQuery {
 
 /// Registration point: one line per analysis module, sorted by id. A module is listed in the
 /// summary with the row count of its table when the table exists in the session.
-const MODULES: &[(&str, &str)] = &[("connections", "flows"), ("hosts", "hosts")];
+const MODULES: &[(&str, &str)] = &[
+    ("connections", "conversations"),
+    ("hosts", "hosts"),
+    ("openPorts", "open_ports"),
+];
 
 /// Opens a session whose data can be shown: 404 when unknown, 409 while importing or failed.
-fn open_ready(state: &AppState, id: &SessionId) -> Result<(SessionInfo, Session), ApiError> {
+pub(crate) fn open_ready(
+    state: &AppState,
+    id: &SessionId,
+) -> Result<(SessionInfo, Session), ApiError> {
     let info = info(state, id)?;
     match info.state {
         StoreState::Importing => {

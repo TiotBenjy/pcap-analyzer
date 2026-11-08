@@ -1,6 +1,10 @@
 // Single source of truth for chart colors (docs/UI_GUIDELINES.md, "Palette des graphiques").
 // A category keeps the same color everywhere in the application.
 
+import type { AddressCategory } from '../api/types/AddressCategory';
+
+export type NodeShape = 'circle' | 'square' | 'triangle' | 'diamond';
+
 /** Categorical palette, fixed order, colorblind-friendly. The last entry is reserved for "Other". */
 export const CATEGORICAL = [
   '#2563eb',
@@ -59,13 +63,39 @@ export function colorFor(category: string): string {
 /** Sequential single-hue blue scale (5 steps), light to dark, for choropleths and heatmaps. */
 export const SEQUENTIAL = ['#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'] as const;
 
-/** Address categories for network legends: color and node shape are defined once. */
-export const ADDRESS_CATEGORIES = {
-  lan: { color: CATEGORICAL[0], shape: 'circle' },
-  server: { color: CATEGORICAL[3], shape: 'square' },
+/**
+ * Address categories (`AddressCategory`, backend labels) for network legends: color and node shape
+ * are defined once. Labels come from the dictionaries (`addressCategories.<label>`; `private` is
+ * shown as "LAN"). CGNAT shares a hue with nothing else; unspecified and reserved addresses
+ * (documentation ranges...) use the "Other" grey.
+ */
+export const ADDRESS_CATEGORIES: Readonly<Record<AddressCategory, { color: string; shape: NodeShape }>> = {
+  private: { color: CATEGORICAL[0], shape: 'circle' },
   public: { color: CATEGORICAL[2], shape: 'circle' },
   broadcast: { color: CATEGORICAL[4], shape: 'triangle' },
   multicast: { color: CATEGORICAL[1], shape: 'triangle' },
-  linkLocal: { color: CATEGORICAL[6], shape: 'diamond' },
-  loopback: { color: OTHER_COLOR, shape: 'diamond' },
-} as const;
+  link_local: { color: CATEGORICAL[6], shape: 'diamond' },
+  loopback: { color: CATEGORICAL[5], shape: 'diamond' },
+  cgnat: { color: CATEGORICAL[3], shape: 'circle' },
+  unspecified: { color: OTHER_COLOR, shape: 'diamond' },
+  reserved: { color: OTHER_COLOR, shape: 'circle' },
+};
+
+/** Legend order of the address categories. */
+export const ADDRESS_CATEGORY_ORDER: readonly AddressCategory[] = [
+  'private',
+  'public',
+  'broadcast',
+  'multicast',
+  'link_local',
+  'loopback',
+  'cgnat',
+  'unspecified',
+  'reserved',
+];
+
+/**
+ * The server role is not an address category: it is drawn with its own shape, keeping the color
+ * of the address category (a public server stays amber).
+ */
+export const SERVER_ROLE = { shape: 'square' } as const satisfies { shape: NodeShape };

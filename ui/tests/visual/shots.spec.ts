@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
  */
 const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
+  connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
+  'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   settings: '/settings',
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
@@ -164,6 +166,23 @@ for (const [view, target] of views) {
           const body = (await res.json()) as { series: { protocol: string }[] };
           const protocols = body.series.map((s) => s.protocol);
           for (const p of ['dns', 'http', 'tls']) expect(protocols).toContain(p);
+        }
+
+        if (view === 'connections' && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('table', { name: 'Conversations between hosts' })).toBeVisible();
+          await expect(page.getByRole('list', { name: 'Countries of Download sources' }).or(page.getByText('No geolocated host').first())).toBeVisible();
+          // Chord diagram from 768 px, ranked pairs below.
+          await expect(
+            width >= 768
+              ? page.getByRole('img', { name: /^Traffic between the \d+ main endpoints/ })
+              : page.getByRole('list', { name: 'Pairs of endpoints ranked by bytes' }),
+          ).toBeVisible();
+        }
+        if (view === 'open-ports' && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('img', { name: /^Ports open on the most hosts/ })).toBeVisible();
+          await expect(
+            page.getByRole('table', { name: 'Hosts with open ports' }).or(page.getByRole('list', { name: 'Hosts with open ports' })),
+          ).toBeVisible();
         }
 
         if (view === 'settings') {

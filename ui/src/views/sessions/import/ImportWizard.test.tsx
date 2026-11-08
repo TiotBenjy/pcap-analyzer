@@ -1,6 +1,5 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../../api/client';
 import { ApiError } from '../../../api/client';
 import * as api from '../../../api/sessions';
@@ -9,6 +8,7 @@ import type { ImportEvent } from '../../../api/types/ImportEvent';
 import { resetImportTracker } from '../../../app/importTracker';
 import { renderApp } from '../../../test/renderApp';
 import { page, session, twoGroupScan } from '../../../test/sessionFixtures';
+import { setupUser } from '../../../test/user';
 import { setNativePicker } from './pickers';
 
 vi.mock('../../../api/sessions');
@@ -66,7 +66,7 @@ const progress = (done: number): ImportEvent => ({
 });
 
 async function startTwoGroupImport() {
-  const user = userEvent.setup();
+  const user = setupUser();
   const app = renderApp('/captures');
   await user.click((await screen.findAllByRole('button', { name: 'Import folder' }))[0] as HTMLElement);
 
@@ -112,11 +112,6 @@ async function startTwoGroupImport() {
   });
   return { user, ...app };
 }
-
-beforeAll(async () => {
-  // Warm the code-split wizard module so that the first test does not time out on its import.
-  await import('./ImportWizard');
-});
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -215,7 +210,7 @@ describe('Import wizard', () => {
   });
 
   it('still closes with Escape after navigating into a folder (focused entry removed)', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderApp('/captures');
     await user.click((await screen.findAllByRole('button', { name: 'Import folder' }))[0] as HTMLElement);
     const dialog = await screen.findByRole('dialog', { name: 'Import a folder' });
@@ -244,7 +239,7 @@ describe('Import wizard', () => {
     m.startImport.mockRejectedValue(
       new ApiError(409, 'urn:netsift:problem:too-many-imports', 'Too many imports running; wait for one to end'),
     );
-    const user = userEvent.setup();
+    const user = setupUser();
     renderApp('/captures');
     await user.click((await screen.findAllByRole('button', { name: 'Import folder' }))[0] as HTMLElement);
     const dialog = await screen.findByRole('dialog', { name: 'Import a folder' });
@@ -268,7 +263,7 @@ describe('Import wizard', () => {
     m.scanImport.mockRejectedValue(
       new ApiError(403, 'urn:netsift:problem:forbidden', 'path outside the allowed roots'),
     );
-    const user = userEvent.setup();
+    const user = setupUser();
     renderApp('/captures');
     await user.click((await screen.findAllByRole('button', { name: 'Import folder' }))[0] as HTMLElement);
     const dialog = await screen.findByRole('dialog', { name: 'Import a folder' });
@@ -280,7 +275,7 @@ describe('Import wizard', () => {
   });
 
   it('closes with Escape and returns to the sessions list', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderApp('/captures');
     await user.click((await screen.findAllByRole('button', { name: 'Import file' }))[0] as HTMLElement);
     const dialog = await screen.findByRole('dialog', { name: 'Import a file' });
@@ -296,7 +291,7 @@ describe('Import wizard', () => {
   it('uses the native picker when the platform provides one (desktop extension point)', async () => {
     const picker = vi.fn(() => Promise.resolve('/home/user/caps'));
     setNativePicker(picker);
-    const user = userEvent.setup();
+    const user = setupUser();
     renderApp('/captures');
     await user.click((await screen.findAllByRole('button', { name: 'Import folder' }))[0] as HTMLElement);
     await user.click(await screen.findByRole('button', { name: 'Choose a folder' }));

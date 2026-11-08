@@ -342,13 +342,13 @@ describe('TLS charts and formats', () => {
   });
 
   it('marks weak suites in the bar labels and keeps the most frequent on top', () => {
-    const option = buildSuitesOption(stats(), FORMAT, '#71717a') as {
+    const option = buildSuitesOption(stats(), FORMAT) as {
       xAxis: { show: boolean };
       yAxis: { data: string[]; axisLabel: { formatter: (v: string, i: number) => string } };
-      series: { label: { show: boolean; color: string; textBorderColor: string } }[];
+      series: { label: { show: boolean; position: string } }[];
     };
     expect(option.xAxis.show).toBe(false);
-    expect(option.series[0]?.label).toMatchObject({ show: true, color: '#71717a', textBorderColor: 'transparent' });
+    expect(option.series[0]?.label).toMatchObject({ show: true, position: 'right' });
     expect(option.yAxis.data).toEqual(['RSA_WITH_RC4_128_SHA', 'AES_128_GCM_SHA256', 'ECDHE_RSA_WITH_AES_128_GCM_SHA256']);
     expect(option.yAxis.axisLabel.formatter('RSA_WITH_RC4_128_SHA', 0)).toBe('{w|}{n|RSA_WITH_RC4_128_SHA}');
     expect(option.yAxis.axisLabel.formatter('ECDHE_RSA_WITH_AES_128_GCM_SHA256', 2)).toBe(

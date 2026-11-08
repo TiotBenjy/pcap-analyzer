@@ -133,8 +133,12 @@ Suivis de la vague 2.A :
 - Fixtures : ajouter des hôtes à adresses publiques (aujourd'hui plages de documentation uniquement),
   pour que la démo montre pays et carte ; `crates/netsift-store/tests/writer.rs` utilise encore
   `"link-local"` comme exemple.
-- P2.1 : publier les anomalies pendant l'import (aujourd'hui écrites en fin d'import ; nécessite que
-  `netsift-engine` les expose dans `Progress`) ; hook moteur `on_session_created` pour l'id de session.
+- [x] P2.1 : anomalies publiées pendant l'import et id de session fourni par `Progress`
+  (`feat/engine-live-progress`, fusionnée le 2026-11-08 ; trous et chevauchements restent publiés en fin
+  de lecture, `analyzer_panicked` seulement en base).
+- Tests UI de P2.3 (CapturesView, SourcesView, ImportWizard, routes) : dépassent le délai de 1 s quand
+  plusieurs gates tournent en parallèle, ce qui fait échouer `wt.sh merge` au hasard ; fiabiliser (délais,
+  `findBy*` plutôt qu'attentes fixes, ou `testTimeout` UI relevé).
 - P2.1 : `fs/browse` et inventaire : traiter explicitement les liens symboliques qui sortent de la racine
   autorisée ; mesurer le coût de `GET /sessions?limit=1000` sur un gros catalogue.
 - P2.5 : `ApiConfig::max_imports` et `allow_any_path: true` à renseigner dans `apps/desktop`.

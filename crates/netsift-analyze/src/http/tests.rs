@@ -544,3 +544,21 @@ fn hostile_streams_never_panic() {
         let _ = run(sc.packets());
     }
 }
+
+#[test]
+fn http_mix_round_gives_every_method_and_status_class() {
+    let mut sc = Scenario::new();
+    netsift_fixtures::http_mix::round(&mut sc);
+    let txs = run(sc.packets());
+    assert_eq!(txs.len(), 16, "{}", render(&txs));
+    let methods: std::collections::BTreeSet<&str> = txs
+        .iter()
+        .filter_map(|t| t.request.as_ref().map(|r| r.method.as_str()))
+        .collect();
+    assert_eq!(methods.len(), 7);
+    let page = txs[0].response.as_ref().unwrap();
+    assert_eq!(page.message.body.state, BodyState::Complete);
+    assert!(page.message.body.chunked);
+    assert_eq!(page.message.body.mime_magic, Some("text/html"));
+    assert!(txs.iter().any(|t| t.response.is_none()));
+}

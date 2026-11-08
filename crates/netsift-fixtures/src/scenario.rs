@@ -15,6 +15,7 @@ use crate::proto::der::parse_oid;
 use crate::proto::dns::{self, DnsAnswer, DnsData, DnsType};
 use crate::proto::netbios::{self, HostAnnouncement, NetbiosName};
 use crate::proto::png::png_image;
+use crate::proto::smb;
 use crate::proto::snmp::{PduType, SnmpMessage, SnmpValue, SnmpVersion};
 use crate::proto::tls::{self, ClientHello, ServerHello};
 use crate::proto::x509::{CertSpec, self_signed_certificate};
@@ -399,6 +400,44 @@ impl Scenario {
         self.udp(host, to, 138, 138, &payload)
     }
 
+    /// SMB2 session over TCP (`NEGOTIATE` then a three-leg NTLM `SESSION_SETUP`). Returns the TCP
+    /// exchange (client port and packet range).
+    pub fn smb_ntlm(&mut self, client: Host, server: Host, auth: &SmbNtlm) -> TcpExchange {
+        const MORE_PROCESSING: u32 = 0xC000_0016;
+        let mut s = self.tcp_open(client, server, &TcpOptions::new(auth.server_port));
+        let request = s.client_send(&smb::nbss(&smb::smb2_negotiate_request()));
+        s.server_send(&smb::nbss(&smb::smb2_negotiate_response(
+            auth.dialect,
+            auth.security_mode,
+            auth.server_guid,
+        )));
+        s.client_send(&smb::nbss(&smb::smb2_session_setup_request(
+            &smb::ntlmssp_negotiate(),
+        )));
+        s.server_send(&smb::nbss(&smb::smb2_session_setup_response(
+            MORE_PROCESSING,
+            &smb::ntlmssp_challenge(auth.server_challenge, &auth.domain),
+        )));
+        let response = s.client_send(&smb::nbss(&smb::smb2_session_setup_request(
+            &smb::ntlmssp_authenticate(
+                &auth.domain,
+                &auth.user,
+                &auth.workstation,
+                &auth.lm_response,
+                &auth.nt_response,
+            ),
+        )));
+        s.server_send(&smb::nbss(&smb::smb2_session_setup_response(0, &[])));
+        let client_port = s.client_port();
+        let packets = s.close();
+        TcpExchange {
+            client_port,
+            packets,
+            request,
+            response,
+        }
+    }
+
     /// SNMP request (UDP -> 161) with community string, and optional agent response.
     pub fn snmp_get(&mut self, manager: Host, agent: Host, get: &SnmpGet) -> SnmpIndices {
         let cport = get.client_port.unwrap_or_else(|| self.ephemeral_port());
@@ -454,6 +493,52 @@ impl Scenario {
             packets,
             user,
             pass,
+        }
+    }
+}
+
+/// Parameters of an SMB2 NTLM session (see [`Scenario::smb_ntlm`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmbNtlm {
+    pub server_port: u16,
+    /// SMB2 dialect revision in the `NEGOTIATE` response (`0x0311` = SMB 3.1.1).
+    pub dialect: u16,
+    /// SMB2 `SecurityMode` bits (`0x0002` = signing required).
+    pub security_mode: u16,
+    pub server_guid: [u8; 16],
+    pub server_challenge: [u8; 8],
+    pub domain: String,
+    pub user: String,
+    pub workstation: String,
+    pub lm_response: Vec<u8>,
+    pub nt_response: Vec<u8>,
+}
+
+impl SmbNtlm {
+    /// A `NetNTLMv2` exchange (NT response = 16-byte proof + blob, hashcat mode 5600).
+    pub fn v2(user: &str, domain: &str) -> Self {
+        let mut nt = vec![0xab; 16];
+        nt.extend_from_slice(&[0xcd; 44]);
+        Self {
+            server_port: 445,
+            dialect: 0x0311,
+            security_mode: 0x0002,
+            server_guid: [0x5a; 16],
+            server_challenge: [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
+            domain: domain.to_owned(),
+            user: user.to_owned(),
+            workstation: "WS01".to_owned(),
+            lm_response: vec![0; 24],
+            nt_response: nt,
+        }
+    }
+
+    /// A `NetNTLMv1` exchange (24-byte LM and NT responses, hashcat mode 5500).
+    pub fn v1(user: &str, domain: &str) -> Self {
+        Self {
+            lm_response: vec![0xaa; 24],
+            nt_response: vec![0xbb; 24],
+            ..Self::v2(user, domain)
         }
     }
 }

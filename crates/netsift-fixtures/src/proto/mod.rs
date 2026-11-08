@@ -5,6 +5,7 @@ pub mod der;
 pub mod dns;
 pub mod netbios;
 pub mod png;
+pub mod smb;
 pub mod snmp;
 pub mod tls;
 pub mod x509;

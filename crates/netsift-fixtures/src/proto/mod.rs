@@ -2,8 +2,11 @@
 //! wraps them in Ethernet/IP/UDP/TCP frames.
 
 pub mod der;
+pub mod dhcp;
 pub mod dns;
+pub mod kerberos;
 pub mod netbios;
+pub mod ntp;
 pub mod png;
 pub mod smb;
 pub mod snmp;

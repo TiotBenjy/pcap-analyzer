@@ -47,6 +47,10 @@ export function GeoipSection({ info }: { info: ServerInfo | undefined }) {
 
   const update = useMutation({
     mutationFn: (req: UpdateRequest) => (req.kind === 'download' ? downloadGeoip() : importGeoip(req.path)),
+    // The progress of a previous download must not show at the start of the next one.
+    onMutate: () => {
+      queryClient.removeQueries({ queryKey: ['geoip-update'] });
+    },
     onSuccess: (geoip) => {
       queryClient.setQueryData<ServerInfo>(['server-info'], (old) => (old === undefined ? old : { ...old, geoip }));
     },

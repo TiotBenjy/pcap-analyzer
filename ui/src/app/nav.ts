@@ -51,7 +51,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'captures', scope: 'global', path: '/captures', icon: FolderOpen, group: 'session', enabled: true },
   { id: 'overview', scope: 'session', path: '/overview', icon: LayoutDashboard, group: 'session', enabled: true },
   { id: 'sources', scope: 'session', path: '/sources', icon: FileStack, group: 'session', enabled: true },
-  { id: 'dns', scope: 'session', path: '/dns', icon: Globe, group: 'analysis', enabled: false },
+  { id: 'dns', scope: 'session', path: '/dns', icon: Globe, group: 'analysis', enabled: true },
   { id: 'http', scope: 'session', path: '/http', icon: ArrowLeftRight, group: 'analysis', enabled: true },
   { id: 'httpHeaders', scope: 'session', path: '/http-headers', icon: ListTree, group: 'analysis', enabled: true },
   { id: 'tls', scope: 'session', path: '/tls', icon: Lock, group: 'analysis', enabled: true },

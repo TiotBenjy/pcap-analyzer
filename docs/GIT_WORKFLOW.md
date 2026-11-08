@@ -60,6 +60,9 @@ de ce nettoyage n'est qu'un avertissement : il ne fait jamais échouer la comman
   pour que les conflits soient triviaux. Les migrations sont nommées `NNNN_<analyseur>.sql` avec un
   numéro réservé par analyseur (dns 0100, http 0200, tls 0300, flows 0400, smb 0500, creds 0600,
   objects 0700, servers 0800, network 0900, ...).
+- Étapes de fin d'import (`netsift-store/src/finalize.rs`, `SESSION_FINALIZERS`, ADR-014) : une ligne par
+  analyseur, **dans l'ordre d'exécution** (après les étapes citées dans `after`, sinon à la fin), jamais
+  triée alphabétiquement.
 - Personne ne modifie `docs/ROADMAP.md` hors orchestrateur.
 - Les types ts-rs générés sont regénérés après rebase (`./x.sh cargo test -p netsift-api export_bindings`).
 

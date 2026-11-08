@@ -19,6 +19,9 @@ export const CATEGORICAL = [
 
 export const OTHER_COLOR = CATEGORICAL[7];
 
+/** Neutral fill of single-series rankings (bars that are not a category of the palette). */
+export const NEUTRAL = '#71717a';
+
 /**
  * Fixed assignments for well-known protocol categories, including every series of the Overview
  * traffic chart (`TrafficProtocol`). Eight hues for thirteen series: related protocols share a
@@ -30,6 +33,10 @@ const FIXED: Readonly<Record<string, string>> = {
   quic: CATEGORICAL[1],
   dns: CATEGORICAL[2],
   dhcp: CATEGORICAL[2],
+  // Name services of the DNS view (DNS keeps its hue).
+  llmnr: CATEGORICAL[0],
+  mdns: CATEGORICAL[1],
+  nbns: CATEGORICAL[3],
   smb: CATEGORICAL[3],
   netbios: CATEGORICAL[3],
   udp: CATEGORICAL[4],

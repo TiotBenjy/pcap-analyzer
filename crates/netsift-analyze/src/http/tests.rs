@@ -40,7 +40,13 @@ impl RecordSink for Sink<'_> {
 }
 
 impl FlowSink for Harness {
-    fn on_packet(&mut self, _ctx: &PacketCtx, _pkt: &Decoded<'_>) {}
+    fn on_packet(&mut self, ctx: &PacketCtx, pkt: &Decoded<'_>) {
+        let mut sink = Sink {
+            records: &mut self.records,
+            blobs: self.blobs,
+        };
+        self.http.on_packet(ctx, pkt, &mut sink);
+    }
 
     fn on_stream(&mut self, ctx: &StreamCtx, dir: Direction, data: &[u8]) {
         let mut sink = Sink {
@@ -90,6 +96,14 @@ fn run_with(packets: &[Packet], config: HttpConfig, blobs: bool) -> Vec<HttpTran
         .collect();
     txs.sort_by_key(|t| (t.ts_ns(), t.flow, t.seq));
     txs
+}
+
+/// Bodies offered as objects, as task P3.6 will configure it.
+fn storing() -> HttpConfig {
+    HttpConfig {
+        store_bodies: true,
+        ..HttpConfig::default()
+    }
 }
 
 fn run(packets: &[Packet]) -> Vec<HttpTransaction> {
@@ -276,7 +290,7 @@ fn chunked_gzip_response_is_decoded() {
         &body,
     ));
     s.close();
-    let txs = run_with(sc.packets(), HttpConfig::default(), true);
+    let txs = run_with(sc.packets(), storing(), true);
     insta::assert_snapshot!(render(&txs));
     let b = &txs[0].response.as_ref().unwrap().message.body;
     assert_eq!(b.state, BodyState::Complete);
@@ -311,18 +325,132 @@ fn request_without_response_and_truncated_response() {
     );
 }
 
-#[test]
-fn response_until_close_and_head_only_body() {
+/// HTTP/1.0 response read until the close; `drop` removes one of the closing segments.
+fn until_close(drop: Option<usize>) -> BodyState {
     let mut sc = Scenario::new();
     let mut s = sc.tcp_open(hosts::workstation(), hosts::web_server(), &opts(80));
     s.client_send(b"GET /old HTTP/1.0\r\n\r\n");
     s.server_send(b"HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\nuntil the end");
-    s.close();
-    let txs = run(sc.packets());
+    let conn = s.close();
+    let mut packets = sc.into_packets();
+    // `close()` ends with: client FIN, server FIN, client ACK.
+    if let Some(back) = drop {
+        packets.remove(conn.end - back);
+    }
+    let txs = run(&packets);
     let b = &txs[0].response.as_ref().unwrap().message.body;
-    assert_eq!(b.state, BodyState::Complete);
     assert_eq!(b.decoded_len, 13);
     assert_eq!(b.preview.as_deref(), Some("until the end"));
+    b.state
+}
+
+#[test]
+fn response_until_close_needs_the_server_fin() {
+    assert_eq!(until_close(None), BodyState::Complete);
+    // Server FIN alone: the server closed after its body.
+    assert_eq!(until_close(Some(3)), BodyState::Complete);
+    // Client FIN alone (half close): the body may go on.
+    assert_eq!(until_close(Some(2)), BodyState::Incomplete);
+}
+
+#[test]
+fn head_304_and_101_have_no_body() {
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(hosts::workstation(), hosts::web_server(), &opts(80));
+    // HEAD: the Content-Length announces the body of a GET, none follows.
+    s.client_send(&request("HEAD", "/file.iso", "", b""));
+    s.server_send(&response("200 OK", "Content-Length: 5000\r\n", b""));
+    // 304 without length: no body either.
+    s.client_send(&request(
+        "GET",
+        "/logo.png",
+        "If-None-Match: \"x\"\r\n",
+        b"",
+    ));
+    s.server_send(b"HTTP/1.1 304 Not Modified\r\nETag: \"x\"\r\n\r\n");
+    // The next transaction is still parsed.
+    s.client_send(&request("GET", "/after", "", b""));
+    s.server_send(&response("200 OK", "Content-Length: 2\r\n", b"ok"));
+    // 101: the connection becomes a WebSocket, its frames are not HTTP.
+    s.client_send(&request(
+        "GET",
+        "/ws",
+        "Upgrade: websocket\r\nConnection: Upgrade\r\n",
+        b"",
+    ));
+    s.server_send(
+        b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n",
+    );
+    s.client_send(b"\x81\x85\x37\xfa\x21\x3d\x7f\x9f\x4d\x51\x58");
+    s.server_send(b"\x81\x05Hello");
+    s.client_send(b"GET /not-http HTTP/1.1\r\n\r\n");
+    s.close();
+    let txs = run(sc.packets());
+    let summary: Vec<(String, u16, BodyState)> = txs
+        .iter()
+        .map(|t| {
+            let r = t.response.as_ref().unwrap();
+            (t.path().unwrap(), r.status, r.message.body.state)
+        })
+        .collect();
+    assert_eq!(
+        summary,
+        vec![
+            ("/file.iso".into(), 200, BodyState::None),
+            ("/logo.png".into(), 304, BodyState::None),
+            ("/after".into(), 200, BodyState::Complete),
+            ("/ws".into(), 101, BodyState::None),
+        ]
+    );
+}
+
+#[test]
+fn an_exchange_pushed_out_while_open_keeps_numbers_unique() {
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(hosts::workstation(), hosts::web_server(), &opts(80));
+    s.client_send(&request("GET", "/a", "", b""));
+    // Response A starts, then two more requests push A out of a queue of two.
+    s.server_send(&response("200 OK", "Content-Length: 10\r\n", b"01234"));
+    let mut more = request("GET", "/b", "", b"");
+    more.extend(request("GET", "/c", "", b""));
+    s.client_send(&more);
+    let mut rest = b"56789".to_vec();
+    rest.extend(response("200 OK", "Content-Length: 1\r\n", b"B"));
+    rest.extend(response("200 OK", "Content-Length: 1\r\n", b"C"));
+    s.server_send(&rest);
+    s.close();
+    let txs = run_with(
+        sc.packets(),
+        HttpConfig {
+            max_pending: 2,
+            ..HttpConfig::default()
+        },
+        false,
+    );
+    let mut seqs: Vec<u32> = txs.iter().map(|t| t.seq).collect();
+    seqs.sort_unstable();
+    let before = seqs.len();
+    seqs.dedup();
+    assert_eq!(seqs.len(), before, "{}", render(&txs));
+    // Request A, response A (alone), B and C paired.
+    assert_eq!(txs.len(), 4, "{}", render(&txs));
+    let paired: Vec<String> = txs
+        .iter()
+        .filter(|t| t.request.is_some() && t.response.is_some())
+        .map(|t| t.path().unwrap())
+        .collect();
+    assert_eq!(paired, vec!["/b", "/c"]);
+}
+
+#[test]
+fn bodies_are_not_offered_as_objects_by_default() {
+    // The sink stores blobs (as the engine does once TLS or P3.6 implement it), but the
+    // analyzer only offers bodies when `store_bodies` is on.
+    let txs = run_with(&generate(Kind::Demo, 1, 7), HttpConfig::default(), true);
+    let b = &txs[0].response.as_ref().unwrap().message.body;
+    assert_eq!(b.state, BodyState::Complete);
+    assert_eq!(b.mime_magic, Some("image/png"));
+    assert!(b.blob.is_none());
 }
 
 #[test]
@@ -473,7 +601,7 @@ fn non_http_connections_are_ignored() {
 
 #[test]
 fn demo_scenario_has_one_image_per_round() {
-    let txs = run_with(&generate(Kind::Demo, 3, 7), HttpConfig::default(), true);
+    let txs = run_with(&generate(Kind::Demo, 3, 7), storing(), true);
     assert_eq!(txs.len(), 3);
     for t in &txs {
         let b = &t.response.as_ref().unwrap().message.body;

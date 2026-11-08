@@ -13,6 +13,8 @@ const MAX_TRAILERS: usize = 16 * 1024;
 const MAX_CHUNK_DIGITS: usize = 16;
 /// Internal buffer of the brotli decoder.
 const BROTLI_BUFFER: usize = 4096;
+/// Decoded bytes kept for MIME sniffing when bodies are not stored.
+const SNIFF_BYTES: usize = 512;
 
 /// Resources shared by every flow of one analyzer instance (one shard).
 #[derive(Debug)]
@@ -22,6 +24,8 @@ pub(crate) struct Shared {
     pub(crate) retained: usize,
     /// Content decoders alive.
     pub(crate) decoders: usize,
+    /// Brotli decoders alive (also counted in `decoders`).
+    pub(crate) brotli: usize,
 }
 
 impl Shared {
@@ -30,6 +34,7 @@ impl Shared {
             config,
             retained: 0,
             decoders: 0,
+            brotli: 0,
         }
     }
 
@@ -216,6 +221,10 @@ impl BodyReader {
                 self.reading = Reading::Chunked(Chunk::Data(remaining - len));
                 true
             }
+            Reading::Chunked(Chunk::Data(remaining)) if len == remaining => {
+                self.reading = Reading::Chunked(Chunk::DataEnd { cr: false });
+                true
+            }
             Reading::UntilClose => true,
             _ => false,
         }
@@ -233,7 +242,11 @@ impl BodyReader {
         let complete_input = framing_state.is_none() && !self.gap;
         let decode = self.collector.finish(complete_input, shared);
         let state = if self.gap {
-            BodyState::Incomplete
+            // A size or ratio stop happened before the loss: it says more than the gap.
+            match decode.state {
+                Some(stop @ (BodyState::Truncated | BodyState::Bomb)) => stop,
+                _ => BodyState::Incomplete,
+            }
         } else {
             framing_state
                 .or(decode.state)
@@ -358,14 +371,17 @@ struct Sink {
     allowance: usize,
     /// Bytes retained during the current write.
     added: usize,
+    /// Most bytes kept for this body.
+    keep_cap: usize,
     truncated: bool,
 }
 
 impl Sink {
-    fn new(limit: u64) -> Self {
+    fn new(limit: u64, keep_cap: usize) -> Self {
         Self {
             limit,
             keep: true,
+            keep_cap,
             ..Self::default()
         }
     }
@@ -384,7 +400,9 @@ impl Write for Sink {
         let n = take(room, buf.len());
         let accepted = buf.get(..n).unwrap_or_default();
         if self.keep {
-            let k = n.min(self.allowance);
+            let k = n
+                .min(self.allowance)
+                .min(self.keep_cap.saturating_sub(self.data.len()));
             self.data
                 .extend_from_slice(accepted.get(..k).unwrap_or_default());
             self.allowance -= k;
@@ -478,6 +496,8 @@ struct Collector {
     stopped: Option<BodyState>,
     /// A decoder slot of [`Shared::decoders`] is held.
     slot: bool,
+    /// A slot of [`Shared::brotli`] is held.
+    brotli_slot: bool,
 }
 
 struct Decoded {
@@ -489,20 +509,28 @@ struct Decoded {
 
 impl Collector {
     fn new(encoding: Option<&str>, shared: &mut Shared) -> Self {
-        let sink = Sink::new(shared.config.max_body_bytes);
+        let config = &shared.config;
+        let keep_cap = if config.store_bodies {
+            usize::MAX
+        } else {
+            config.preview_bytes.max(SNIFF_BYTES)
+        };
+        let sink = Sink::new(config.max_body_bytes, keep_cap);
         let mut c = Self {
             decoder: Decoder::Identity,
             sink: None,
             encoded: 0,
             stopped: None,
             slot: false,
+            brotli_slot: false,
         };
         let kind = coding(encoding);
         if kind == Coding::Identity {
             c.sink = Some(sink);
             return c;
         }
-        if kind == Coding::Unsupported || shared.decoders >= shared.config.max_decoders {
+        let no_brotli = kind == Coding::Brotli && shared.brotli >= config.max_brotli_decoders;
+        if kind == Coding::Unsupported || no_brotli || shared.decoders >= config.max_decoders {
             // Kept as received.
             c.sink = Some(sink);
             c.stopped = Some(BodyState::NotDecoded);
@@ -510,6 +538,10 @@ impl Collector {
         }
         shared.decoders = shared.decoders.saturating_add(1);
         c.slot = true;
+        if kind == Coding::Brotli {
+            shared.brotli = shared.brotli.saturating_add(1);
+            c.brotli_slot = true;
+        }
         c.decoder = match kind {
             Coding::Gzip => Decoder::Gzip(Box::new(flate2::write::MultiGzDecoder::new(sink))),
             Coding::Brotli => Decoder::Brotli(Box::new(
@@ -628,6 +660,10 @@ impl Collector {
             self.slot = false;
             shared.decoders = shared.decoders.saturating_sub(1);
         }
+        if self.brotli_slot {
+            self.brotli_slot = false;
+            shared.brotli = shared.brotli.saturating_sub(1);
+        }
     }
 
     /// Bytes are missing: a compressed stream cannot go on, raw bytes stop being kept.
@@ -693,8 +729,16 @@ impl Collector {
 mod tests {
     use super::*;
 
+    /// Bodies stored (fully retained), as P3.6 will configure it.
+    fn storing() -> HttpConfig {
+        HttpConfig {
+            store_bodies: true,
+            ..HttpConfig::default()
+        }
+    }
+
     fn shared() -> Shared {
-        Shared::new(HttpConfig::default())
+        Shared::new(storing())
     }
 
     fn read_all(
@@ -715,6 +759,7 @@ mod tests {
         let f = r.finish(true, &mut sh);
         assert_eq!(sh.retained, 0, "budget released");
         assert_eq!(sh.decoders, 0, "decoder slot released");
+        assert_eq!(sh.brotli, 0, "brotli slot released");
         (f, used)
     }
 
@@ -849,7 +894,7 @@ mod tests {
         Shared::new(HttpConfig {
             max_body_bytes: max_body,
             max_decompression_ratio: ratio,
-            ..HttpConfig::default()
+            ..storing()
         })
     }
 
@@ -896,7 +941,7 @@ mod tests {
     fn retention_budget_is_shared_and_released() {
         let mut sh = Shared::new(HttpConfig {
             max_retained_bytes: 10,
-            ..HttpConfig::default()
+            ..storing()
         });
         let mut a = BodyReader::new(Framing::Length(8), None, &mut sh);
         let mut b = BodyReader::new(Framing::Length(8), None, &mut sh);
@@ -953,5 +998,91 @@ mod tests {
         assert_eq!(coding(Some("identity, br")), Coding::Brotli);
         assert_eq!(coding(Some("identity,")), Coding::Identity);
         assert_eq!(coding(Some("compress")), Coding::Unsupported);
+    }
+
+    #[test]
+    fn brotli_decoders_have_their_own_bound() {
+        // Idle brotli streams announcing a 16 MiB window: only `max_brotli_decoders` of them
+        // get a decoder, the others are kept encoded.
+        let mut sh = Shared::new(HttpConfig {
+            max_brotli_decoders: 2,
+            ..HttpConfig::default()
+        });
+        let mut stream = Vec::new();
+        {
+            let mut w = brotli::CompressorWriter::new(&mut stream, 4096, 9, 24);
+            let noise: Vec<u8> = (0..(1u32 << 20))
+                .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)
+                .collect();
+            w.write_all(&noise).unwrap();
+        }
+        let header = stream[..2].to_vec();
+        let mut open: Vec<BodyReader> = (0..5)
+            .map(|_| {
+                let mut r = BodyReader::new(Framing::Length(1 << 20), Some("br"), &mut sh);
+                r.feed(&header, &mut sh);
+                r
+            })
+            .collect();
+        assert_eq!((sh.brotli, sh.decoders), (2, 2));
+        // gzip still gets decoders.
+        let gz = BodyReader::new(Framing::Length(10), Some("gzip"), &mut sh);
+        assert_eq!(sh.decoders, 3);
+        gz.discard(&mut sh);
+        let last = open.pop().unwrap();
+        assert_eq!(last.finish(true, &mut sh).state, BodyState::Incomplete);
+        let first = open.remove(0);
+        first.discard(&mut sh);
+        assert_eq!(sh.brotli, 1);
+        // A slot freed: the next brotli body is decoded again.
+        let text = b"brotli again ".repeat(20);
+        let wire = brotli(&text);
+        let mut r = BodyReader::new(Framing::Length(wire.len() as u64), Some("br"), &mut sh);
+        r.feed(&wire, &mut sh);
+        assert_eq!(r.finish(true, &mut sh).state, BodyState::Complete);
+        for r in open {
+            r.discard(&mut sh);
+        }
+        assert_eq!((sh.brotli, sh.decoders), (0, 0));
+    }
+
+    #[test]
+    fn without_storage_only_the_start_of_a_body_is_kept() {
+        let mut sh = Shared::new(HttpConfig::default());
+        let body = vec![b'a'; 100_000];
+        let mut r = BodyReader::new(Framing::Length(body.len() as u64), None, &mut sh);
+        r.feed(&body, &mut sh);
+        assert_eq!(sh.retained, 4096);
+        let f = r.finish(true, &mut sh);
+        assert_eq!(f.state, BodyState::Complete);
+        assert_eq!(f.decoded_len, 100_000);
+        assert_eq!(f.data.len(), 4096);
+        assert!(!f.fully_retained);
+        assert_eq!(sh.retained, 0);
+    }
+
+    #[test]
+    fn a_gap_covering_the_rest_of_a_chunk_keeps_the_framing() {
+        let mut sh = shared();
+        let mut r = BodyReader::new(Framing::Chunked, None, &mut sh);
+        r.feed(b"5\r\nab", &mut sh);
+        assert!(r.gap(3, &mut sh));
+        let fed = r.feed(b"\r\n2\r\nok\r\n0\r\n\r\nNEXT", &mut sh);
+        assert!(fed.done);
+        let f = r.finish(true, &mut sh);
+        assert_eq!(f.state, BodyState::Incomplete);
+        assert_eq!(f.decoded_len, 4);
+    }
+
+    #[test]
+    fn a_gap_does_not_hide_a_size_stop() {
+        let wire = gzip(&vec![0u8; 4 * 1024 * 1024]);
+        let mut sh = bomb_config(1024 * 1024, u64::MAX);
+        let total = wire.len() as u64 + 1000;
+        let mut r = BodyReader::new(Framing::Length(total), Some("gzip"), &mut sh);
+        r.feed(&wire, &mut sh);
+        assert!(r.gap(500, &mut sh));
+        let f = r.finish(true, &mut sh);
+        assert_eq!(f.state, BodyState::Truncated);
     }
 }

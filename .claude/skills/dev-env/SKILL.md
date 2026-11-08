@@ -24,6 +24,7 @@ directement sur l'hôte : si tu vois « Commande bloquée », reformule avec `./
 | Captures visuelles | `./x.sh shots [vue]` |
 | Build desktop Linux | `./x.sh desktop` |
 | GeoIP | `./x.sh geoip` |
+| Changelog / notes | `./x.sh cliff [args]` |
 | Shell dans le conteneur | `./x.sh shell` |
 | Dans un worktree | `./x.sh -C .worktrees/<branche> <cmd>` |
 

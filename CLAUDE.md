@@ -1,6 +1,6 @@
 # NetSift — mémoire projet pour Claude Code
 
-Application de bureau (Linux + Windows) d'analyse forensique de captures réseau
+Application de bureau (Linux, Windows ; bundles publiés aussi pour macOS) d'analyse forensique de captures réseau
 (pcap / pcapng), y compris des **captures découpées en chunks** (dumpcap/Wireshark
 `-b filesize:` / `-b duration:`, tcpdump `-C` / `-G`) importées en dossier et
 recollées en une seule session. Usage solo, local, hors ligne.
@@ -32,6 +32,9 @@ L'utilisateur n'a **ni Rust ni Node** sur sa machine. Tout passe par le conteneu
 ./x.sh shots [vue]           # captures Playwright 375/768/1280/1920 -> .artifacts/screens/
 ./x.sh desktop               # build Tauri Linux (AppImage + .deb) -> dist/
 ./x.sh -C .worktrees/<branche> <cmd>   # exécuter dans un worktree
+./x.sh cliff [args]          # git-cliff épinglé (CHANGELOG, notes de release)
+scripts/release.sh X.Y.Z [--dry-run]       # publier une version (accord utilisateur requis)
+scripts/release-status.sh vX.Y.Z [--wait]  # suivre release.yml et les fichiers publiés
 ```
 
 N'appelle **jamais** `cargo`, `rustc`, `rustup`, `npm`, `npx`, `node` directement :
@@ -48,6 +51,9 @@ Le premier `./x.sh` construit l'image (~10 min) : lance-le en arrière-plan.
 - Fusion locale uniquement via `scripts/wt.sh merge <branche>` (rebase + gate + `--no-ff`).
   Pousser des branches est autorisé ; `main` n'est poussé que par `wt.sh merge --push`.
 - Jamais de `push --force` sur `main`. `--force-with-lease` toléré sur sa propre branche.
+- Une version se publie uniquement via `scripts/release.sh X.Y.Z`, après accord explicite de
+  l'utilisateur pour ce numéro de version. Jamais de tag poussé à la main.
+  Suivi : `scripts/release-status.sh vX.Y.Z --wait`. Procédure : `docs/GIT_WORKFLOW.md`.
 - Travail parallèle : skill `parallel` (orchestrateur + agents `implementer` en arrière-plan,
   un worktree chacun, puis `reviewer` / `ui-reviewer`, puis fusions séquentielles).
 

@@ -14,6 +14,9 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 netsift-engine.workspace = true
 netsift-geo.workspace = true
 netsift-store.workspace = true
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.7.1"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -23,6 +26,7 @@ tracing.workspace = true
 ts-rs.workspace = true
 
 [dev-dependencies]
+flate2 = "1.1.11"
 netsift-capture.workspace = true
 netsift-fixtures.workspace = true
 netsift-geo = { workspace = true, features = ["test-util"] }

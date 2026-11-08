@@ -107,6 +107,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         cors_origins: Vec::new(),
         // Dev web mode: scan and import stay inside the captures roots.
         allow_any_path: false,
+        max_imports: netsift_api::DEFAULT_MAX_IMPORTS,
     };
     netsift_api::serve(listener, config, shutdown_signal()).await?;
     info!("API stopped");

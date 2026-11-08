@@ -25,6 +25,7 @@ fn config() -> ApiConfig {
         read_only: true,
         cors_origins: vec![HeaderValue::from_static("tauri://localhost")],
         allow_any_path: false,
+        max_imports: DEFAULT_MAX_IMPORTS,
     }
 }
 
@@ -80,6 +81,15 @@ struct Env {
 
 impl Env {
     fn new(read_only: bool, allow_any_path: bool, ingest: IngestOptions) -> Self {
+        Self::with_limit(read_only, allow_any_path, ingest, DEFAULT_MAX_IMPORTS)
+    }
+
+    fn with_limit(
+        read_only: bool,
+        allow_any_path: bool,
+        ingest: IngestOptions,
+        max_imports: usize,
+    ) -> Self {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("captures")).unwrap();
         let config = ApiConfig {
@@ -87,6 +97,7 @@ impl Env {
             captures_roots: vec![tmp.path().join("captures")],
             read_only,
             allow_any_path,
+            max_imports,
             ..config()
         };
         let (app, state) = build(config, ingest);
@@ -689,6 +700,105 @@ async fn running_import_cannot_be_deleted() {
         .call("DELETE", &format!("/api/v1/sessions/{id}"), &Value::Null)
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// Registers a session directly in the catalog (as another process would).
+fn catalog_session(env: &Env, state: netsift_store::SessionState, detail: Option<&str>) -> String {
+    let catalog = Catalog::open(env.tmp.path().join("data")).unwrap();
+    let info = catalog.create("external", &[env.captures()], 0).unwrap();
+    catalog.set_state(&info.id, state, detail).unwrap();
+    info.id.to_string()
+}
+
+#[tokio::test]
+async fn importing_sessions_outside_the_registry_cannot_be_deleted() {
+    let env = Env::writable();
+    let id = catalog_session(&env, netsift_store::SessionState::Importing, None);
+    let (status, json) = env
+        .call("DELETE", &format!("/api/v1/sessions/{id}"), &Value::Null)
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{json}");
+    assert_eq!(json["type"], "urn:netsift:problem:conflict");
+    // Renaming does not disturb the import.
+    let (status, json) = env
+        .call(
+            "PATCH",
+            &format!("/api/v1/sessions/{id}"),
+            &json!({ "name": "r" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(json["state"], "importing");
+}
+
+#[tokio::test]
+async fn failure_details_never_reach_clients() {
+    let env = Env::writable();
+    let secret = "SQLite error: disk I/O error on /home/user/secret/session.db";
+    let id = catalog_session(&env, netsift_store::SessionState::Failed, Some(secret));
+    let (_, summary) = env
+        .call("GET", &format!("/api/v1/sessions/{id}"), &Value::Null)
+        .await;
+    assert_eq!(summary["state"], "failed");
+    assert_eq!(summary["state_detail"], sessions::FAILED_MESSAGE);
+    let events = env.events(&id).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].0, "failed");
+    assert_eq!(events[0].1["message"], sessions::FAILED_MESSAGE);
+    assert!(!format!("{summary}{events:?}").contains("secret"));
+
+    // Known fixed texts pass, anything else attached to another state is dropped.
+    let recovered = catalog_session(
+        &env,
+        netsift_store::SessionState::Incomplete,
+        Some(netsift_engine::INTERRUPTED_DETAIL),
+    );
+    let (_, summary) = env
+        .call(
+            "GET",
+            &format!("/api/v1/sessions/{recovered}"),
+            &Value::Null,
+        )
+        .await;
+    assert_eq!(summary["state_detail"], netsift_engine::INTERRUPTED_DETAIL);
+    let other = catalog_session(&env, netsift_store::SessionState::Ready, Some(secret));
+    let (_, summary) = env
+        .call("GET", &format!("/api/v1/sessions/{other}"), &Value::Null)
+        .await;
+    assert_eq!(summary["state_detail"], Value::Null);
+}
+
+#[tokio::test]
+async fn concurrent_imports_are_limited() {
+    let env = Env::with_limit(false, false, slow_ingest(), 1);
+    let run = env.captures().join("limit");
+    write_chunks(&run, "cap", 20);
+    let first = env.import(&run).await;
+    let (status, json) = env
+        .call(
+            "POST",
+            "/api/v1/sessions/import",
+            &json!({ "path": run.to_str().unwrap() }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{json}");
+    assert_eq!(json["type"], "urn:netsift:problem:too-many-imports");
+    env.call(
+        "POST",
+        &format!("/api/v1/sessions/{first}/cancel"),
+        &Value::Null,
+    )
+    .await;
+    env.events(&first).await;
+    assert!(env.state.wait_imports(IMPORT_GRACE).await);
+    let second = env.import(&run).await;
+    env.call(
+        "POST",
+        &format!("/api/v1/sessions/{second}/cancel"),
+        &Value::Null,
+    )
+    .await;
+    env.events(&second).await;
 }
 
 #[cfg(unix)]

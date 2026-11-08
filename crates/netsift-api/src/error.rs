@@ -22,6 +22,8 @@ pub enum ApiError {
     BadRequest(String),
     #[error("conflict: {0}")]
     Conflict(String),
+    #[error("too many imports running")]
+    TooManyImports,
     #[error("internal error")]
     Internal,
 }
@@ -54,6 +56,11 @@ impl ApiError {
             Self::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden", "Forbidden"),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad-request", "Invalid request"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict", "Conflict"),
+            Self::TooManyImports => (
+                StatusCode::CONFLICT,
+                "too-many-imports",
+                "Too many imports running; wait for one to end",
+            ),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",

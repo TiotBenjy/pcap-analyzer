@@ -2,7 +2,7 @@ import { useRouterState } from '@tanstack/react-router';
 import { useSyncExternalStore } from 'react';
 import { readPref, writePref } from '../lib/storage';
 
-// Session-scoped routes (ADR "routes liées à une session"): analysis views live under
+// Session-scoped routes (ADR-010): analysis views live under
 // `/sessions/$sessionId/<view>`. The last opened session is remembered (an opaque ULID, no capture
 // data) so that the sidebar and legacy links such as `/overview` can point to it.
 

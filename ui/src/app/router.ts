@@ -14,7 +14,7 @@ import { getLastSessionId } from './session';
 
 // Every view is code-split: its module (and any chart library it uses) loads on navigation.
 //
-// Route layout (ADR "routes liées à une session"):
+// Route layout (ADR-010):
 //   /captures                         sessions list and import (no session)
 //   /settings                         preferences (no session)
 //   /sessions/$sessionId/<view>       analysis views of one session (overview, sources, dns...)

@@ -204,7 +204,7 @@ const MODULES: &[(&str, &str)] = &[
     ("hosts", "hosts"),
     ("http", "http_transactions"),
     ("httpHeaders", "http_headers"),
-    ("network", "hosts"),
+    ("network", "network_hosts"),
     ("openPorts", "open_ports"),
     ("pictures", "pictures"),
     ("servers", "server_roles"),

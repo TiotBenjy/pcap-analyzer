@@ -5,9 +5,10 @@
 //! | GET | `/sessions/{id}/network/graph?mode&protocols&category&ipv6&include_orphans&limit&expand` | [`NetworkGraph`] |
 //! | GET | `/sessions/{id}/network/node/{ip}` | [`NetworkNodeDetail`] |
 //!
-//! The graph is folded on the server from the conversations (`netsift_store::network`): at most
-//! 150 host nodes plus 15 country clusters and one "other" node, at most 400 edges. Like the
-//! other analysis routes: 404 for an unknown session, 409 while importing or failed.
+//! The graph is read from the tables that the end-of-import step `network` folds from the
+//! conversations (`netsift_store::network`, ADR-018): at most 150 host nodes plus 15 country
+//! clusters and one "other" node, at most 400 edges. Like the other analysis routes: 404 for an
+//! unknown session, 409 while importing or failed.
 
 use std::net::IpAddr;
 use std::sync::Arc;

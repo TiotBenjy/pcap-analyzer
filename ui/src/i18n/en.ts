@@ -513,6 +513,9 @@ export const en = {
     notFound: 'Not found: it may have been deleted',
     conflict: 'Conflict with an operation in progress',
     tooManyImports: 'Too many imports running; wait for one of them to finish.',
+    sessionTooNew: 'This session was created by a newer version of NetSift. Update the application to open it.',
+    sessionUpgradeFailed:
+      'This session could not be upgraded to this version. Check that the data folder is writable, or import the capture again.',
     route: {
       title: 'This view could not be displayed',
       text: 'An unexpected error stopped the view. Reload the application; if it happens again, copy the details to report it.',

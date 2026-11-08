@@ -13,7 +13,20 @@ export const PROBLEM = {
   readOnly: 'urn:netsift:problem:read-only',
   forbidden: 'urn:netsift:problem:forbidden',
   tooManyImports: 'urn:netsift:problem:too-many-imports',
+  sessionTooNew: 'urn:netsift:problem:session-too-new',
+  sessionUpgradeFailed: 'urn:netsift:problem:session-upgrade-failed',
 } as const;
+
+/**
+ * Message of a session that this version cannot open (created by a newer version, or upgrade
+ * failed), `null` for any other error. Views with their own error text use it to tell these apart.
+ */
+export function sessionVersionMessage(t: TFunction, error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  if (error.kind === PROBLEM.sessionTooNew) return t('errors.sessionTooNew');
+  if (error.kind === PROBLEM.sessionUpgradeFailed) return t('errors.sessionUpgradeFailed');
+  return null;
+}
 
 /**
  * Translates the common client errors by HTTP status and problem type; the raw message becomes
@@ -23,6 +36,8 @@ export function describeError(t: TFunction, error: unknown): DescribedError {
   const raw = error instanceof Error ? error.message : typeof error === 'string' ? error : null;
   const detail = raw === null || raw.trim() === '' ? null : raw;
   if (!(error instanceof ApiError)) return { message: t('errors.generic'), detail };
+  const version = sessionVersionMessage(t, error);
+  if (version !== null) return { message: version, detail: null };
   switch (error.status) {
     case 0:
       return { message: t('errors.network'), detail: null };

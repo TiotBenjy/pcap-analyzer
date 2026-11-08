@@ -42,4 +42,17 @@ describe('describeError', () => {
       'Too many imports running; wait for one of them to finish.',
     );
   });
+
+  it('explains sessions created by another version', () => {
+    expect(describeError(t, new ApiError(409, urn('session-too-new'), 'newer'))).toEqual({
+      message: 'This session was created by a newer version of NetSift. Update the application to open it.',
+      detail: null,
+    });
+    expect(describeError(t, new ApiError(500, urn('session-upgrade-failed'), 'failed'))).toEqual({
+      message:
+        'This session could not be upgraded to this version. Check that the data folder is writable, or import the capture again.',
+      detail: null,
+    });
+    expect(describeError(t, new ApiError(500, urn('internal'), 'Internal error')).message).toBe('Something went wrong');
+  });
 });

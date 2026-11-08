@@ -4,7 +4,8 @@
 //! - [`Session`]: one `sessions/<id>/` directory (`session.db` in WAL mode, `blobs/`, `thumbs/`);
 //! - [`schema`]: migration registries (registration point for analyzers, `NNNN_<name>.sql`);
 //! - [`StoreWriter`]: single writer thread committing [`StoreRecord`]s in batches;
-//! - [`query`]: base read queries and keyset pagination.
+//! - [`query`]: base read queries and keyset pagination;
+//! - [`traffic`]: overview queries (resampled time series, totals, row counts).
 
 pub mod catalog;
 mod error;
@@ -15,6 +16,7 @@ pub mod records;
 pub mod schema;
 pub mod session;
 mod time;
+pub mod traffic;
 pub mod writer;
 
 pub use catalog::{Catalog, SessionInfo, SessionState};

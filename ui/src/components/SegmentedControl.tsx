@@ -6,14 +6,22 @@ interface SegmentedControlProps<T extends string> {
   value: T;
   options: readonly { value: T; label: string }[];
   onChange: (value: T) => void;
+  /** Keeps the label for assistive technologies only (compact toolbars). */
+  hideLabel?: boolean;
 }
 
 /** Mutually exclusive choice rendered as a radio group (keyboard: Tab + arrows via native radios). */
-export function SegmentedControl<T extends string>({ label, value, options, onChange }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  hideLabel = false,
+}: SegmentedControlProps<T>) {
   const name = useId();
   return (
     <fieldset className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-      <legend className="float-left mr-4 w-28 shrink-0 text-muted">{label}</legend>
+      <legend className={hideLabel ? 'sr-only' : 'float-left mr-4 w-28 shrink-0 text-muted'}>{label}</legend>
       <div className="inline-flex max-w-full flex-wrap rounded-md border border-line p-0.5">
         {options.map((o) => (
           <label

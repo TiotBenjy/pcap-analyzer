@@ -115,7 +115,7 @@ Suivis de la phase 1 :
 
 ### Vague 2.A (parallèle)
 
-- [~] **P2.1** `feat/api-sessions` — Routes sessions (liste, import, SSE progression, suppression), `fs/browse`,
+- [x] **P2.1** `feat/api-sessions` — Routes sessions (liste, import, SSE progression, suppression), `fs/browse`,
       génération des types ts-rs, client API typé côté UI.
 - [x] **P2.2** `feat/geoip` — `netsift-geo` : lecture mmdb, cache LRU, classification d'adresses ;
       `./x.sh geoip` ; attribution DB-IP dans « À propos ».
@@ -133,6 +133,11 @@ Suivis de la vague 2.A :
 - Fixtures : ajouter des hôtes à adresses publiques (aujourd'hui plages de documentation uniquement),
   pour que la démo montre pays et carte ; `crates/netsift-store/tests/writer.rs` utilise encore
   `"link-local"` comme exemple.
+- P2.1 : publier les anomalies pendant l'import (aujourd'hui écrites en fin d'import ; nécessite que
+  `netsift-engine` les expose dans `Progress`) ; hook moteur `on_session_created` pour l'id de session.
+- P2.1 : `fs/browse` et inventaire : traiter explicitement les liens symboliques qui sortent de la racine
+  autorisée ; mesurer le coût de `GET /sessions?limit=1000` sur un gros catalogue.
+- P2.5 : `ApiConfig::max_imports` et `allow_any_path: true` à renseigner dans `apps/desktop`.
 - Relecture visuelle des captures (`ui-reviewer`) en attente d'une décision sur l'accès à
   `.artifacts/screens/` (règle `Read(./.artifacts/**)`).
 

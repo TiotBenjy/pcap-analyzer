@@ -254,6 +254,12 @@ Suivis de la vague 3.A :
   et options longues non décodées, NTP broadcast ignoré ; P4.2 : mesurer `server_evidence` et `server_roles`
   sur 10 M paquets, coût des index de 0800 sur `dns_messages` et `http_transactions` ; P4.1 : cibles de fuzz
   DHCP, NTP, Kerberos. Network (P3.9) : renseigner le champ `role` des nœuds.
+- P3.6 (fusionnée le 2026-11-09, ADR-016 : seules les réponses images complètes vont sur disque, rétention
+  HTTP limitée à l'aperçu pour le reste) : visionneuse non capturée par les shots ; pas de phase
+  « miniatures » dans `Progress` (jusqu'à 60 s dans `finishing`) ; téléchargement desktop (`<a download>`)
+  non vérifié ; l'API lit l'original avant de prendre le jeton du sémaphore de décodage ; la copie d'URL
+  copie la valeur nettoyée, pas la brute ; P4.2 : budget de rétention par shard (32 Mio) à rendre global,
+  filtres SQL `?n IS NULL OR`, `LIKE`, `count(*)` ; P4.1 : cible de fuzz `thumbs::render`.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -267,7 +273,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
 
 ### Vague 3.B (dépend de 3.A)
 
-- [~] **P3.6** `feat/pictures` — Extraction d'objets HTTP (images), dédup SHA-256, miniatures Rust. Dép. P3.2.
+- [x] **P3.6** `feat/pictures` — Extraction d'objets HTTP (images), dédup SHA-256, miniatures Rust. Dép. P3.2.
       `specs/pictures.md`.
 - [~] **P3.7** `feat/credentials` — Agrégation + émetteurs : HTTP Basic/formulaires, FTP, POP3, IMAP,
       SMTP AUTH, SNMP v1/v2c, LDAP simple bind, NTLM (depuis P3.5). Export hashcat. `specs/credentials.md`.

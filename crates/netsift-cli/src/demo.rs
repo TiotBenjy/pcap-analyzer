@@ -18,7 +18,7 @@ use netsift_fixtures::scenario::Scenario;
 use netsift_fixtures::scenarios::{Kind, generate, tls_showcase_from_port};
 use netsift_fixtures::time::NS_PER_SEC;
 use netsift_fixtures::writer::{Encoding, encode};
-use netsift_fixtures::{Naming, SplitBy, SplitOptions, split_to_dir};
+use netsift_fixtures::{Naming, Packet, SplitBy, SplitOptions, http_mix, split_to_dir};
 use netsift_store::Catalog;
 
 /// Folder of the generated captures, inside the data directory.
@@ -32,6 +32,8 @@ const MISSING_CHUNK: usize = 20;
 /// The capture pauses after this many seconds, for `PAUSE_SECONDS`.
 const PAUSE_AFTER_SECONDS: i64 = 121;
 const PAUSE_SECONDS: i64 = 600;
+/// Gap between two rounds of varied HTTP traffic.
+const HTTP_MIX_EVERY_SECONDS: i64 = 6;
 
 #[derive(Debug, Args)]
 pub struct DemoArgs {
@@ -58,9 +60,24 @@ fn add_tls_showcase(packets: &mut Vec<netsift_fixtures::Packet>, start: i64) {
     packets.sort_by_key(|p| p.ts_ns);
 }
 
+/// Varied HTTP traffic (`netsift_fixtures::http_mix`), one round every few seconds over the
+/// `seconds` following `start`, merged into `packets` (sorted by time).
+fn add_http_mix(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
+    let mut sc = Scenario::starting_at(start + NS_PER_SEC).with_seed(0x4854_5450);
+    while sc.now() < start + seconds * NS_PER_SEC {
+        http_mix::round(&mut sc);
+        sc.advance(HTTP_MIX_EVERY_SECONDS * NS_PER_SEC);
+    }
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+}
+
 fn write_chunked(dir: &Path) -> Result<usize> {
     let mut packets = generate(Kind::Demo, ROUNDS, 7);
     let start = packets.first().map_or(0, |p| p.ts_ns);
+    let end = packets.last().map_or(0, |p| p.ts_ns);
+    // Stops a few seconds before the end: the chunk count stays the same.
+    add_http_mix(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_tls_showcase(&mut packets, start);
     let pause_at = start + PAUSE_AFTER_SECONDS * NS_PER_SEC;
     for p in &mut packets {
@@ -86,7 +103,10 @@ fn write_chunked(dir: &Path) -> Result<usize> {
 
 fn write_single(dir: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
-    let bytes = encode(&generate(Kind::Demo, 30, 11), &Encoding::pcap())?;
+    let mut packets = generate(Kind::Demo, 30, 11);
+    let start = packets.first().map_or(0, |p| p.ts_ns);
+    add_http_mix(&mut packets, start, 20);
+    let bytes = encode(&packets, &Encoding::pcap())?;
     let path = dir.join("demo-single.pcap");
     std::fs::write(&path, bytes).with_context(|| format!("cannot write {}", path.display()))?;
     Ok(path)

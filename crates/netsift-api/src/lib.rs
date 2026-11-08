@@ -62,7 +62,13 @@ pub struct ApiConfig {
     /// Accept any absolute path for scan and import (desktop: the path comes from the native
     /// folder dialog). False in dev web mode: only paths inside `captures_roots`.
     pub allow_any_path: bool,
+    /// Imports allowed to run at the same time (at least 1; [`DEFAULT_MAX_IMPORTS`]). Beyond,
+    /// `POST /sessions/import` answers 409 `urn:netsift:problem:too-many-imports`.
+    pub max_imports: usize,
 }
+
+/// Default of [`ApiConfig::max_imports`]: each import already uses every core.
+pub const DEFAULT_MAX_IMPORTS: usize = 2;
 
 impl std::fmt::Debug for ApiConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -73,6 +79,7 @@ impl std::fmt::Debug for ApiConfig {
             .field("read_only", &self.read_only)
             .field("cors_origins", &self.cors_origins)
             .field("allow_any_path", &self.allow_any_path)
+            .field("max_imports", &self.max_imports)
             .finish()
     }
 }

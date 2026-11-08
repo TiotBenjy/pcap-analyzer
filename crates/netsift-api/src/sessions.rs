@@ -9,7 +9,9 @@ use axum::routing::get;
 use axum::{Json, Router};
 use netsift_store::catalog::SESSIONS_DIR;
 use netsift_store::query::{anomalies_page, chunks_page, get_meta};
-use netsift_store::{OpenMode, PageRequest, Session, SessionId, SessionInfo};
+use netsift_store::{
+    OpenMode, PageRequest, Session, SessionId, SessionInfo, SessionState as StoreState,
+};
 use serde::Deserialize;
 
 use crate::contract::{AnomalyInfo, ChunkInfo, Page, RenameRequest, SessionSummary};
@@ -143,13 +145,28 @@ pub(crate) fn summary(state: &AppState, info: &SessionInfo) -> SessionSummary {
             .collect(),
         created_us: convert::us(info.created_ns),
         state: convert::state(info.state),
-        state_detail: info.state_detail.clone(),
+        state_detail: public_detail(info.state, info.state_detail.as_deref()),
         first_ts_us: stats.first_ts.map(convert::us),
         last_ts_us: stats.last_ts.map(convert::us),
         source_bytes: info.source_bytes,
         packets: live.map_or(stats.packets, |p| p.packets),
         chunk_count: stats.chunks,
         anomaly_count: stats.anomalies,
+    }
+}
+
+/// Message of a failed import as shown to clients: the engine's reason may carry paths or SQL
+/// details, so it only goes to the log.
+pub(crate) const FAILED_MESSAGE: &str = "import failed (details in the application log)";
+
+/// State detail safe to expose: known fixed texts pass, a failure becomes [`FAILED_MESSAGE`],
+/// anything else is dropped.
+pub(crate) fn public_detail(state: StoreState, detail: Option<&str>) -> Option<String> {
+    match state {
+        StoreState::Failed => Some(FAILED_MESSAGE.to_owned()),
+        _ => detail
+            .filter(|d| *d == netsift_engine::INTERRUPTED_DETAIL)
+            .map(str::to_owned),
     }
 }
 
@@ -230,7 +247,10 @@ async fn delete(
 ) -> Result<StatusCode, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
-        if s.imports.is_running(&id) {
+        // `importing` in the catalog means a live import: interrupted ones are recovered as
+        // `incomplete` at startup. It may run in another process (CLI), outside the registry.
+        let running = s.imports.is_running(&id) || info(s, &id)?.state == StoreState::Importing;
+        if running {
             return Err(ApiError::Conflict(
                 "the import is running; cancel it first".to_owned(),
             ));

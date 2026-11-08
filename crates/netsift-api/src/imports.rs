@@ -33,7 +33,7 @@ use crate::contract::{
     ScanGroup, ScanRequest, ScanResponse, ScanSkippedFile,
 };
 use crate::extract::ApiJson;
-use crate::sessions::{Stats, first_anomalies, info, parse_id, session_dir};
+use crate::sessions::{FAILED_MESSAGE, Stats, first_anomalies, info, parse_id, session_dir};
 use crate::{ApiError, AppState, blocking, convert, fs};
 
 /// Engine progress interval and minimum time between two `progress` events of a stream.
@@ -189,11 +189,15 @@ struct Running {
 }
 
 impl Running {
-    fn new(state: &Arc<AppState>, cancel: &CancelToken) -> Self {
+    /// Counts a new import, or refuses it when `max_imports` are already running.
+    fn new(state: &Arc<AppState>, cancel: &CancelToken) -> Result<Self, ApiError> {
         let registry = &state.imports;
         let key = registry.next_order.fetch_add(1, Ordering::Relaxed);
         {
             let mut running = lock(&registry.running);
+            if running.len() >= state.config.max_imports.max(1) {
+                return Err(ApiError::TooManyImports);
+            }
             running.insert(key, cancel.clone());
             registry.active.send_replace(running.len());
         }
@@ -201,10 +205,10 @@ impl Running {
         if state.is_shutting_down() {
             cancel.cancel();
         }
-        Self {
+        Ok(Self {
             state: Arc::clone(state),
             key,
-        }
+        })
     }
 }
 
@@ -397,6 +401,10 @@ async fn start(
     if state.is_shutting_down() {
         return Err(ApiError::Conflict("the server is shutting down".to_owned()));
     }
+    if lock(&state.imports.running).len() >= state.config.max_imports.max(1) {
+        // Answered before the inventory; checked again atomically when the thread starts.
+        return Err(ApiError::TooManyImports);
+    }
     let name = session_name(req.name)?;
     // Input errors (path, groups) are answered before any session exists.
     let job = blocking(&state, move |s| {
@@ -422,7 +430,7 @@ async fn start(
 async fn spawn_import(state: &Arc<AppState>, job: Job) -> Result<String, ApiError> {
     let (tx, rx) = oneshot::channel();
     let cancel = CancelToken::new();
-    let running = Running::new(state, &cancel);
+    let running = Running::new(state, &cancel)?;
     let thread_state = Arc::clone(state);
     std::thread::Builder::new()
         .name("netsift-import".to_owned())
@@ -543,15 +551,23 @@ fn run_import(state: &AppState, job: &Job, cancel: &CancelToken, reply: Reply) {
         Err(EngineError::ImportFailed { session, reason }) => {
             tracing::warn!(session = %session, "import failed: {reason}");
             let h = handle.unwrap_or_else(|| attach(state, &session, cancel, &mut reply));
-            h.finish(Vec::new(), ImportEvent::Failed { message: reason });
-        }
-        Err(e) => match handle {
-            Some(h) => h.finish(
+            h.finish(
                 Vec::new(),
                 ImportEvent::Failed {
-                    message: e.to_string(),
+                    message: FAILED_MESSAGE.to_owned(),
                 },
-            ),
+            );
+        }
+        Err(e) => match handle {
+            Some(h) => {
+                tracing::warn!("import failed: {e}");
+                h.finish(
+                    Vec::new(),
+                    ImportEvent::Failed {
+                        message: FAILED_MESSAGE.to_owned(),
+                    },
+                );
+            }
             None => {
                 if let Some(reply) = reply.take() {
                     let _ = reply.send(Err(input_error(&e)));
@@ -587,9 +603,7 @@ fn stored_final(state: &AppState, id: &SessionId) -> Result<Option<ImportEvent>,
     let event = match info.state {
         StoreState::Importing => return Ok(None),
         StoreState::Failed => ImportEvent::Failed {
-            message: info
-                .state_detail
-                .unwrap_or_else(|| "import failed".to_owned()),
+            message: FAILED_MESSAGE.to_owned(),
         },
         StoreState::Ready | StoreState::Incomplete => {
             let stats = Stats::read(&session_dir(state, id));

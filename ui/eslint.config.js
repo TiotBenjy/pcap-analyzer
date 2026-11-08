@@ -29,7 +29,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['vite.config.ts', 'playwright.config.ts', 'tests/**/*.ts', 'eslint.config.js'],
+    files: ['vite.config.ts', 'vite-plugins/**/*.ts', 'playwright.config.ts', 'tests/**/*.ts', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node } },
   },
 ]);

@@ -406,6 +406,15 @@ export const en = {
     notFound: 'Not found: it may have been deleted',
     conflict: 'Conflict with an operation in progress',
     tooManyImports: 'Too many imports running; wait for one of them to finish.',
+    route: {
+      title: 'This view could not be displayed',
+      text: 'An unexpected error stopped the view. Reload the application; if it happens again, copy the details to report it.',
+      reload: 'Reload',
+      copy: 'Copy details',
+      copied: 'Details copied',
+      copyFailed: 'Copy failed: select the details below',
+      details: 'Error details',
+    },
   },
   anomalies: {
     codes: {

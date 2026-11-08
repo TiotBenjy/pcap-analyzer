@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-router';
 import type { ComponentType } from 'react';
 import { AppShell } from '../components/AppShell';
+import { RootRouteError, RouteError } from '../components/RouteError';
 import { NotFoundView } from '../views/NotFoundView';
 import { NAV_ITEMS } from './nav';
 import { getLastSessionId } from './session';
@@ -20,7 +21,15 @@ import { getLastSessionId } from './session';
 //   /settings                         preferences (no session)
 //   /sessions/$sessionId/<view>       analysis views of one session (overview, sources, dns...)
 //   /overview, /dns, ...              legacy entry points: redirect to the last opened session
-const rootRoute = createRootRoute({ component: AppShell, notFoundComponent: NotFoundView });
+//
+// Errors: every route renders `RouteError` (inside the shell, so the navigation stays usable);
+// an error in the shell itself falls back to `RootRouteError`, a full page. Never the TanStack
+// default screen, which a release build cannot diagnose (no devtools).
+const rootRoute = createRootRoute({
+  component: AppShell,
+  notFoundComponent: NotFoundView,
+  errorComponent: RootRouteError,
+});
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -102,7 +111,7 @@ const routeTree = rootRoute.addChildren([
 
 /** Application router; tests pass a memory history. */
 export function createAppRouter(history: RouterHistory = createHashHistory()) {
-  return createRouter({ routeTree, history, defaultPreload: 'intent' });
+  return createRouter({ routeTree, history, defaultPreload: 'intent', defaultErrorComponent: RouteError });
 }
 
 // Hash history: works identically under Vite, a static build, and the Tauri custom protocol.

@@ -494,38 +494,68 @@ acceptée : la remplacer par une nouvelle qui la référence.
     lors d'un `ALTER TABLE ... RENAME`) ; une migration qui supprime une de ces tables doit aussi supprimer
     ou recréer la vue.
 
-## ADR-018 — Graphe Network : agrégation bornée à la lecture, disposition en Web Worker
+## ADR-018 — Graphe Network : graphe borné, replié en fin d'import, disposition en Web Worker
 
 - Contexte : P3.9. Une session peut compter des milliers d'hôtes ; sigma.js (WebGL) reste fluide jusqu'à
   quelques milliers de nœuds, mais le graphe devient illisible bien avant (défaut principal de la
   référence) ; la disposition ForceAtlas2 bloque le fil principal si elle y tourne ; la CSP desktop
-  (`script-src 'self'`, ADR-006) et le prototype gelé de Tauri contraignent les dépendances.
+  (`script-src 'self'`, ADR-006) et le prototype gelé de Tauri contraignent les dépendances. Une
+  première version repliait le graphe à la lecture depuis `conversations` (trois à quatre parcours par
+  requête) : environ 1 s par requête à 50 000 conversations et 17 s à 500 000, mesurés en revue
+  (SQLite 3.50, cache chaud), loin de la cible de 300 ms. Même le seul cumul des octets par adresse
+  coûte environ 1 s à 500 000 conversations.
 - Décision :
-  - **aucune table** : le graphe est replié à la lecture depuis `conversations` (une ligne par paire
-    client/serveur, bien plus petite que `flows`), `hosts`, `host_traffic` et `open_ports`
-    (`netsift_store::network`) ; chaque requête est un parcours de `conversations` avec les hôtes lus par
-    clé primaire. La plage `0900_network.sql` reste libre ;
-  - **bornes serveur** : en mode hôtes, les `limit` hôtes les plus volumineux (40 par défaut, 10 à 150)
-    ont leur nœud, les autres hôtes publics géolocalisés forment un nœud par pays (15 au plus, les plus
-    gros), tout le reste un nœud « autres » ; un pays déplié (`expand`) ajoute au plus 30 de ses hôtes.
+  - **matérialisation en fin d'import** : l'étape `network` (`SESSION_FINALIZERS`, ADR-014) replie
+    `conversations`, `hosts` et `host_traffic` dans les tables de `0900_network.sql`, en deux passes
+    sur `conversations` et une agrégation en mémoire bornée par le nombre d'hôtes et de clés repliées.
+    Les arêtes y sont repliées par (nœud client, nœud serveur, groupes de protocoles en masque de bits,
+    catégories des deux extrémités, IPv6) : une requête lit quelques milliers de lignes (table
+    `network_edges`, index pour le reste) et finit le repli en mémoire. Résultat déterministe (égalités
+    départagées par l'adresse), idempotent, indépendant de l'ordre d'arrivée ; une session mise à niveau
+    rejoue l'étape à l'ouverture (ADR-013) ;
+  - **hôtes à clé** : un hôte garde son adresse comme clé s'il est parmi les 150 plus volumineux, ou
+    parmi les 150 plus volumineux ayant l'un des groupes de protocoles. Les N premiers hôtes ayant du
+    trafic qui passe un filtre protocole sont donc toujours à clé (un hôte dans les N premiers d'un
+    filtre l'est aussi dans chacun de ses groupes). Les autres hôtes publics géolocalisés sont repliés
+    par pays, le reste dans « autres » ;
+  - **bornes** : en mode hôtes, les `limit` premiers hôtes (40 par défaut, 10 à 150) qui passent les
+    filtres, classés par octets toutes conversations confondues, ont leur nœud, les autres hôtes publics
+    forment un nœud par pays (15 au plus, les plus gros), le reste un nœud « autres ». Un pays déplié
+    (`expand`) ajoute ses 30 plus gros hôtes (table `network_expand`, leur trafic retiré du nœud pays).
     En mode pays : un nœud par pays, plus « LAN et local » et « pays inconnu ». Au plus 400 arêtes non
-    orientées, les plus volumineuses ; les orphelins (hôtes sans trafic retenu par les filtres) sont
-    comptés, et 30 au plus sont listés sur demande ;
+    orientées, les plus volumineuses ; les orphelins (hôtes sans trafic retenu par le filtre protocole)
+    sont comptés, et 30 au plus sont listés sur demande ;
   - **filtre protocole** : une conversation est retenue si elle porte une étiquette d'un des groupes
     choisis (DNS, HTTP, HTTPS = `tls`, SSH, FTP, Telnet, RDP, SMB = `smb` + `netbios`, TCP, UDP,
-    Autres) ; ses octets comptent en entier, `conversations` ne les ventilant pas par protocole ;
+    Autres) ; ses octets comptent en entier, `conversations` ne les ventilant pas par protocole (l'UI
+    le signale). Le filtre de catégorie garde les arêtes dont les deux extrémités passent ;
   - **disposition** : ForceAtlas2 de `graphology-layout-forceatlas2`, itérations fixes (150 à 600 selon
     la taille), départ déterministe (cercle par rang), puis figée. Elle tourne dans un worker module
     servi par l'origine de l'application (`new Worker(new URL('./layout.worker.ts', import.meta.url))`),
     pas dans le worker `blob:` fourni par la bibliothèque, que `script-src 'self'` refuse ; repli sur le
-    fil principal si le worker manque ou échoue (graphe borné, coût de quelques dizaines de ms) ;
+    fil principal si le worker manque, échoue ou ne répond pas en 5 s (graphe borné, quelques dizaines
+    de ms) ;
   - **repli sans WebGL** : la vue teste un contexte WebGL ; sans lui (webview sans accélération), et
     sous 768 px, elle liste les liens classés par octets au lieu d'un canevas vide ;
   - sigma reste en 3.0.2 (`docs/STACK_VERSIONS.md`) ; la 4.0, publiée fin octobre 2026, change d'API et
     fera l'objet d'une montée de version dédiée. Les nœuds sont des disques colorés par catégorie
     d'adresse : la forme par catégorie (`NodeShape` de la palette) demande des programmes WebGL
-    sigma dédiés, reportés.
-- Conséquences : temps de réponse proportionnel au nombre de conversations (trois à quatre parcours par
-  requête : nœuds, arêtes, orphelins, compteurs de protocoles), à mesurer en P4.2 ; une
-  matérialisation (`0900_network.sql`) ne se justifierait qu'au-delà de la cible de 300 ms. Le rôle
-  « serveur » d'un nœud (`role`, P3.8) est prévu dans le contrat et reste `null` d'ici là.
+    sigma dédiés, reportés. L'export PNG/SVG de la spec est reporté.
+- Mesures (test `network::tests::timings`, build release, session synthétique : 500 hôtes LAN, 20 pays,
+  7 combinaisons de protocoles) :
+
+  | Conversations | Étape de fin d'import | Graphe par défaut | HTTPS | Dépliage + orphelins | Pays | Détail d'hôte |
+  |---|---|---|---|---|---|---|
+  | 50 000 | 0,27 s | 19 ms | 6 ms | 25 ms | 2 ms | 1 ms |
+  | 500 000 | 3,8 s | 108 ms | 11 ms | 94 ms | 3 ms | 8 ms |
+
+  Avant : environ 1 s (50 000) et 17 s (500 000) par requête par défaut.
+- Conséquences : les requêtes du graphe ne dépendent plus du nombre de conversations mais du nombre de
+  clés repliées (`network_edges` : environ 21 000 lignes à 500 000 conversations) ; l'import paie
+  l'étape une fois (environ 8 µs par conversation, dans sa phase `finishing`). Les nombres d'hôtes par
+  nœud ne tiennent pas compte du filtre de catégorie au-delà des deux extrémités d'une arête (un hôte
+  dont toutes les conversations sont écartées par ce filtre n'est ni dessiné ni orphelin) ; les
+  étiquettes de protocole d'un nœud pays dont on a déplié des hôtes peuvent garder celles de ces hôtes.
+  Une requête abandonnée par l'UI n'interrompt pas son calcul côté serveur (borné à quelques dizaines
+  de ms). Le rôle « serveur » d'un nœud (`role`, P3.8) est prévu dans le contrat et reste `null` d'ici
+  là.

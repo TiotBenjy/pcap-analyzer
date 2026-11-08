@@ -30,7 +30,7 @@ unused-allowed-license = "allow"
 # La base GeoIP DB-IP Lite est CC BY 4.0 (donnée, pas du code) : attribution gérée dans l'app, hors scope deny.
 
 [bans]
-multiple-versions = "warn"
+multiple-versions = "deny"
 # Duplicates pulled by Tauri (GTK/WebKit, wry, codegen, plugins) or by test-only crates are outside
 # our control: ignore their subtrees so that the remaining warnings are the ones we can act on.
 # A duplicate between our own crates and these trees (e.g. sha2 0.11 here, 0.10 in wry) is also

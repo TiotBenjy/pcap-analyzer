@@ -267,27 +267,38 @@ acceptée : la remplacer par une nouvelle qui la référence.
   migration renvoyait `SchemaOutdated`, traduit en erreur 500 opaque sur toutes les vues (Overview et
   `GET /sessions/{id}` compris), et la liste affichait 0 paquet.
 - Décision :
-  - l'API ouvre les sessions `ready` et `incomplete` par `Session::open_upgrading` : vérification en
-    lecture seule, puis, si des migrations manquent, connexion en écriture (sans création de fichier) qui
-    les applique, puis réouverture en lecture seule. Chaque migration reste une transaction
+  - l'API ouvre les sessions `ready` et `incomplete` par `Session::open_finished` : vérification en
+    lecture seule (`write_needed`, aujourd'hui « schéma en retard »), puis, si une écriture est
+    nécessaire, connexion en écriture (sans création de fichier) qui applique les migrations, puis
+    réouverture en lecture seule. Les futurs finaliseurs post-import (feat/dns) s'accrochent aux deux
+    endroits marqués `finalizers hook` : le prédicat `write_needed` et `upgrade()`, après les migrations,
+    sur la même connexion. Chaque migration reste une transaction
     `BEGIN IMMEDIATE` qui vérifie d'abord qu'elle n'est pas déjà appliquée : deux ouvertures simultanées
     sont sérialisées et la migration n'est jamais appliquée deux fois ;
   - une session `importing` ou `failed` n'est jamais écrite par une lecture (ouverture en lecture seule
     stricte ; un schéma en retard y donne un 409 `conflict`) ;
   - les tables créées par une migration appliquée à une base qui avait déjà un schéma sont notées dans la
     méta `schema.tables_added_after_import`, dans la transaction de la migration
-    (`migrate::migrate_with`). `traffic::count_rows` renvoie `None` pour ces tables comme pour une table
+    (`migrate::migrate_with`). Les tables fantômes des tables virtuelles (FTS5 `*_data`, `*_idx`,
+    `*_content`, `*_docsize`, `*_config`) ne sont pas notées. `traffic::count_rows` renvoie `None` pour ces tables comme pour une table
     absente : l'Overview omet le module, que l'UI affiche « non analysé » (`notRun`) et non « vide ».
     La règle porte sur les tables et non sur la méta `import.analyzers`, car un module ne correspond pas
     toujours à un seul analyseur (`openPorts` -> `ports`, `httpHeaders` -> `http`). Un import (mode
-    `Import`, session vide) efface cette méta ;
+    `Import`, session vide) efface cette méta. Une future migration qui remplit elle-même une table
+    (`INSERT ... SELECT` depuis des tables existantes) doit la retirer de cette méta dans son SQL, sinon
+    le module apparaîtrait à tort « non analysé » ;
   - une session plus récente que l'application (`SchemaTooNew`) est refusée par un 409
     `urn:netsift:problem:session-too-new` ; l'échec de la mise à niveau (disque en lecture seule, fichier
     corrompu, migration en erreur) donne une 500 `urn:netsift:problem:session-upgrade-failed`, sans
-    détail (chemins et SQL vont au journal). L'UI traduit ces deux types (`errors.sessionTooNew`,
-    `errors.sessionUpgradeFailed`) ;
-  - la mise à niveau est permise même quand le serveur est en lecture seule (`read_only`) : c'est de la
-    maintenance du schéma, pas une modification demandée par l'utilisateur.
+    détail (chemins et SQL vont au journal). Le verrou d'écriture est attendu 30 s
+    (`UPGRADE_BUSY_TIMEOUT`) ; au-delà, 503 `urn:netsift:problem:session-busy` avec `Retry-After` ;
+  - un serveur en lecture seule (`--read-only`, « Disable every mutating route ») ne met **pas** à niveau :
+    sans retour en arrière possible, une simple lecture rendrait la session illisible par la version
+    précédente. Il renvoie un 409 `urn:netsift:problem:session-upgrade-needed`. Seules les captures
+    (`./x.sh shots`, session de démo créée par la version courante) utilisent ce mode ; le desktop et
+    `./x.sh dev` ne l'utilisent pas ;
+  - l'UI traduit ces types (`errors.sessionTooNew`, `errors.sessionUpgradeFailed`,
+    `errors.sessionUpgradeNeeded`, `errors.sessionBusy`).
 - Conséquences : une session ancienne s'ouvre avec les nouveaux onglets présentés comme non exécutés ;
   il faut la réimporter pour les remplir. Une migration qui ajoute une colonne à une table existante
   laisse cette colonne vide (valeur par défaut) pour les lignes déjà importées : les vues doivent le

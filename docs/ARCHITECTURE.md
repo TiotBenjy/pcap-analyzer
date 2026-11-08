@@ -126,7 +126,7 @@ texte (noms DNS, URL, en-têtes) ; pagination par **keyset** (pas d'OFFSET sur g
 toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paquets.
 
 Une session terminée créée par une version antérieure reçoit les migrations manquantes à sa première
-ouverture par l'API ; les tables ainsi créées sont vides et leurs modules apparaissent « non analysés »
+ouverture par l'API (sauf serveur `--read-only`, qui répond 409) ; les tables ainsi créées sont vides et leurs modules apparaissent « non analysés »
 jusqu'à un réimport (ADR-013).
 
 ## API HTTP (axum)

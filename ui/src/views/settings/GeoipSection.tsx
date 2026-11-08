@@ -130,9 +130,8 @@ export function GeoipSection({ info }: { info: ServerInfo | undefined }) {
             error={update.isError ? updateErrorMessage(t, update.error) : pickError}
             success={update.isSuccess}
           />
-          <p className="break-words text-meta text-muted">
-            {readOnly ? t('views.settings.geoip.readOnly') : t('views.settings.geoip.downloadNote')}
-          </p>
+          {readOnly && <p className="break-words text-meta text-muted">{t('views.settings.geoip.readOnly')}</p>}
+          <p className="break-words text-meta text-muted">{t('views.settings.geoip.downloadNote')}</p>
           <p className="break-words text-meta text-muted">{t('views.settings.geoip.reimportNote')}</p>
         </div>
       )}

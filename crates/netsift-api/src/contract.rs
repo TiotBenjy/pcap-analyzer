@@ -108,7 +108,7 @@ pub enum GroupPattern {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AnomalyInfo {
-    /// Stored row id as a string, `null` in scan previews.
+    /// Stored row id as a string, `null` when not stored yet (scan previews, `warning` events).
     pub id: Option<String>,
     /// Stable machine code (`missing_sequence`, `time_gap`, `overlap`, `duplicate`, ...).
     pub code: String,

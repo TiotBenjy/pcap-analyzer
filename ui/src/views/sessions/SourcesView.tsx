@@ -11,9 +11,10 @@ import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
+import { MiddleTruncate } from '../../components/MiddleTruncate';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
-import { baseName, formatBytes, formatCount, formatSpan, formatTimestamp, timeZoneLabel } from '../../lib/format';
+import { baseName, formatBytes, formatCount, formatSpan, formatTimestamp, sameLocalDay, timeZoneLabel } from '../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalySummary, anomalyWhere } from './anomalies';
 import { buildCoverage } from './coverage';
 import { CoverageTimeline } from './CoverageTimeline';
@@ -45,6 +46,7 @@ export default function SourcesView() {
     [chunks.data, anomalies.data],
   );
   const summary = anomalies.data === undefined ? [] : anomalySummary(t, anomalies.data.items);
+  const oneDay = coverage !== null && sameLocalDay(coverage.start, coverage.end);
 
   let timeline: ReactNode;
   if (chunks.isPending) timeline = <Skeleton height={72} />;
@@ -87,14 +89,14 @@ export default function SourcesView() {
         {timeline}
       </Card>
 
-      <Card title={t('views.sources.chunks')} flush>
-        <div id={chunkTableId}>
-          <ChunkTable query={chunks} />
-        </div>
+      <Card title={t('views.sources.anomalies')} flush>
+        <AnomalyTable query={anomalies} oneDay={oneDay} chunks={chunks.data?.items ?? []} />
       </Card>
 
-      <Card title={t('views.sources.anomalies')} flush>
-        <AnomalyTable query={anomalies} chunks={chunks.data?.items ?? []} />
+      <Card title={t('views.sources.chunks')} flush>
+        <div id={chunkTableId}>
+          <ChunkTable query={chunks} oneDay={oneDay} />
+        </div>
       </Card>
     </div>
   );
@@ -138,87 +140,39 @@ function QueryBlock<T>({ query, children }: { query: ListQuery<T>; children: (it
   );
 }
 
-function ChunkTable({ query }: { query: ListQuery<ChunkInfo> }) {
+interface TableProps<T> {
+  query: ListQuery<T>;
+  /** The whole session fits in one local day: timestamps show the time only. */
+  oneDay: boolean;
+}
+
+function ChunkTable({ query, oneDay }: TableProps<ChunkInfo>) {
   const { t } = useTranslation();
+  const tsWidth = oneDay ? 96 : 168;
   const columns = useMemo<ColumnDef<ChunkInfo, unknown>[]>(
     () => [
-      {
-        id: 'index',
-        accessorFn: (c) => c.id,
-        header: t('views.sources.col.index'),
-        size: 64,
-        cell: ({ row }) => <span className="num font-mono text-meta">{row.original.id}</span>,
-      },
       {
         id: 'seq',
         accessorFn: (c) => c.seq ?? -1,
         header: t('views.sources.col.seq'),
-        size: 72,
+        meta: { align: 'right' },
+        size: 64,
         cell: ({ row }) => <span className="num font-mono text-meta">{row.original.seq ?? ''}</span>,
       },
       {
         id: 'name',
         accessorFn: (c) => baseName(c.path),
         header: t('views.sources.col.name'),
-        size: 240,
+        size: 264,
         cell: ({ row }) => (
-          <span data-testid="truncatable" title={row.original.path} className="block truncate font-mono text-meta">
-            {baseName(row.original.path)}
-          </span>
-        ),
-      },
-      {
-        id: 'size',
-        accessorFn: (c) => c.bytes,
-        header: t('views.sources.col.size'),
-        size: 96,
-        cell: ({ row }) => <span className="num">{formatBytes(row.original.bytes)}</span>,
-      },
-      {
-        id: 'start',
-        accessorFn: (c) => c.first_ts_us ?? Number.MAX_SAFE_INTEGER,
-        header: t('views.sources.col.start'),
-        size: 168,
-        cell: ({ row }) => <Ts us={row.original.first_ts_us} />,
-      },
-      {
-        id: 'end',
-        accessorFn: (c) => c.last_ts_us ?? Number.MAX_SAFE_INTEGER,
-        header: t('views.sources.col.end'),
-        size: 168,
-        cell: ({ row }) => <Ts us={row.original.last_ts_us} />,
-      },
-      {
-        id: 'duration',
-        accessorFn: (c) => (c.first_ts_us === null || c.last_ts_us === null ? -1 : c.last_ts_us - c.first_ts_us),
-        header: t('views.sources.col.duration'),
-        size: 104,
-        cell: ({ row }) => <span className="num">{formatSpan(row.original.first_ts_us, row.original.last_ts_us)}</span>,
-      },
-      {
-        id: 'packets',
-        accessorFn: (c) => c.packets,
-        header: t('views.sources.col.packets'),
-        size: 96,
-        cell: ({ row }) => <span className="num">{formatCount(row.original.packets)}</span>,
-      },
-      {
-        id: 'format',
-        accessorFn: (c) => c.format,
-        header: t('views.sources.col.format'),
-        size: 96,
-        cell: ({ row }) => (
-          <span className="font-mono text-meta">
-            {row.original.format}
-            {row.original.compressed ? '.gz' : ''}
-          </span>
+          <MiddleTruncate text={baseName(row.original.path)} title={row.original.path} className="font-mono text-meta" />
         ),
       },
       {
         id: 'state',
         accessorFn: (c) => c.state,
         header: t('views.sources.col.state'),
-        size: 112,
+        size: 104,
         cell: ({ row }) => {
           const s = row.original.state;
           return (
@@ -226,8 +180,58 @@ function ChunkTable({ query }: { query: ListQuery<ChunkInfo> }) {
           );
         },
       },
+      {
+        id: 'start',
+        accessorFn: (c) => c.first_ts_us ?? Number.MAX_SAFE_INTEGER,
+        header: t('views.sources.col.start'),
+        size: tsWidth,
+        cell: ({ row }) => <Ts us={row.original.first_ts_us} withDate={!oneDay} />,
+      },
+      {
+        id: 'end',
+        accessorFn: (c) => c.last_ts_us ?? Number.MAX_SAFE_INTEGER,
+        header: t('views.sources.col.end'),
+        size: tsWidth,
+        cell: ({ row }) => <Ts us={row.original.last_ts_us} withDate={!oneDay} />,
+      },
+      {
+        id: 'duration',
+        accessorFn: (c) => (c.first_ts_us === null || c.last_ts_us === null ? -1 : c.last_ts_us - c.first_ts_us),
+        header: t('views.sources.col.duration'),
+        meta: { align: 'right' },
+        size: 96,
+        cell: ({ row }) => <span className="num">{formatSpan(row.original.first_ts_us, row.original.last_ts_us)}</span>,
+      },
+      {
+        id: 'packets',
+        accessorFn: (c) => c.packets,
+        header: t('views.sources.col.packets'),
+        meta: { align: 'right' },
+        size: 88,
+        cell: ({ row }) => <span className="num">{formatCount(row.original.packets)}</span>,
+      },
+      {
+        id: 'size',
+        accessorFn: (c) => c.bytes,
+        header: t('views.sources.col.size'),
+        meta: { align: 'right' },
+        size: 88,
+        cell: ({ row }) => <span className="num">{formatBytes(row.original.bytes)}</span>,
+      },
+      {
+        id: 'format',
+        accessorFn: (c) => c.format,
+        header: t('views.sources.col.format'),
+        size: 80,
+        cell: ({ row }) => (
+          <span className="font-mono text-meta">
+            {row.original.format}
+            {row.original.compressed ? '.gz' : ''}
+          </span>
+        ),
+      },
     ],
-    [t],
+    [t, oneDay, tsWidth],
   );
   return (
     <QueryBlock query={query}>
@@ -245,11 +249,11 @@ function ChunkTable({ query }: { query: ListQuery<ChunkInfo> }) {
   );
 }
 
-function Ts({ us }: { us: number | null }) {
-  return <span className="num">{us === null ? '' : formatTimestamp(us)}</span>;
+function Ts({ us, withDate = true }: { us: number | null; withDate?: boolean }) {
+  return <span className="num">{us === null ? '' : formatTimestamp(us, withDate)}</span>;
 }
 
-function AnomalyTable({ query, chunks }: { query: ListQuery<AnomalyInfo>; chunks: readonly ChunkInfo[] }) {
+function AnomalyTable({ query, oneDay, chunks }: TableProps<AnomalyInfo> & { chunks: readonly ChunkInfo[] }) {
   const { t } = useTranslation();
   const names = useMemo(() => new Map(chunks.map((c) => [c.id, c.path])), [chunks]);
   const columns = useMemo<ColumnDef<AnomalyInfo, unknown>[]>(
@@ -288,8 +292,8 @@ function AnomalyTable({ query, chunks }: { query: ListQuery<AnomalyInfo>; chunks
         id: 'time',
         accessorFn: (a) => a.ts_us ?? Number.MAX_SAFE_INTEGER,
         header: t('views.sources.anomalyCol.time'),
-        size: 168,
-        cell: ({ row }) => <Ts us={row.original.ts_us} />,
+        size: oneDay ? 96 : 168,
+        cell: ({ row }) => <Ts us={row.original.ts_us} withDate={!oneDay} />,
       },
       {
         id: 'detail',
@@ -307,7 +311,7 @@ function AnomalyTable({ query, chunks }: { query: ListQuery<AnomalyInfo>; chunks
         },
       },
     ],
-    [t, names],
+    [t, names, oneDay],
   );
   return (
     <QueryBlock query={query}>

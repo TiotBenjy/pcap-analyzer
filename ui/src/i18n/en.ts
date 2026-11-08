@@ -66,7 +66,7 @@ export const en = {
       emptyText: 'Import a pcap or pcapng file, or a folder of chunks, to start an analysis.',
       importFolder: 'Import folder',
       importFile: 'Import file',
-      readOnly: 'Read-only server: import is disabled',
+      readOnly: 'Read-only server: import, rename and delete are disabled',
       tableLabel: 'Sessions',
       timeZone: 'Times in {{tz}}',
       loadError: 'Sessions could not be loaded',
@@ -134,7 +134,6 @@ export const en = {
       missingTitle: 'Missing file: {{range}}',
       overlapTitle: 'Overlap of {{duration}}',
       col: {
-        index: 'No.',
         seq: 'Seq.',
         name: 'File',
         size: 'Size',
@@ -243,6 +242,7 @@ export const en = {
       done: 'Import finished',
       doneIncomplete: 'Import stopped: the session is incomplete',
       failed: 'Import failed',
+      failedDetail: 'Details in the application log.',
       lost: 'The progress stream was interrupted. The import may still be running on the server.',
       lostTitle: 'Connection lost',
       reconnect: 'Reconnect',
@@ -315,9 +315,12 @@ export const en = {
     network: 'The backend cannot be reached',
     badRequest: 'The request was refused as invalid',
     unauthorized: 'Access refused: the API token is missing or invalid',
-    forbidden: 'Not allowed: the server is read-only',
+    forbidden: 'Request refused by the server',
+    readOnly: 'Not allowed: the server is read-only',
+    outsideRoots: 'This path is outside the folders the server is allowed to read',
     notFound: 'Not found: it may have been deleted',
     conflict: 'Conflict with an operation in progress',
+    tooManyImports: 'Too many imports running; wait for one of them to finish.',
   },
   anomalies: {
     codes: {

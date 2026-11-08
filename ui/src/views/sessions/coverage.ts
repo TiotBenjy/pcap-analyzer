@@ -164,8 +164,33 @@ export function buildCoverage(chunks: readonly ChunkInfo[], anomalies: readonly 
   };
 }
 
-/** `count` evenly spaced tick times over `[start, end]` (both ends included). */
-export function ticks(start: number, end: number, count: number): number[] {
-  if (count < 2 || end <= start) return [start];
-  return Array.from({ length: count }, (_, i) => start + ((end - start) * i) / (count - 1));
+const SECOND = 1_000_000;
+/** Round tick steps: 1, 2, 5, 10, 15, 30 s; 1, 2, 5, 10, 15, 30 min; 1, 2, 3, 6, 12 h; 1, 2, 7 days. */
+export const TICK_STEPS_US = [
+  1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10_800, 21_600, 43_200, 86_400, 172_800, 604_800,
+].map((s) => s * SECOND);
+
+/**
+ * Ticks on round local times (e.g. every 15 min at :00, :15, :30, :45) inside `[start, end]`,
+ * using the smallest round step at least `minSpacing` px apart on a `width` px axis.
+ * `tzOffsetMin` is `Date#getTimezoneOffset()` (local alignment of day and hour steps).
+ */
+export function ticks(
+  start: number,
+  end: number,
+  width: number,
+  minSpacing: number,
+  tzOffsetMin: number = new Date(start / 1000).getTimezoneOffset(),
+): { values: number[]; step: number } {
+  const span = Math.max(1, end - start);
+  const usPerPx = span / Math.max(1, width);
+  const week = TICK_STEPS_US.at(-1) ?? 604_800 * SECOND;
+  const step =
+    TICK_STEPS_US.find((s) => s / usPerPx >= minSpacing) ?? Math.ceil((minSpacing * usPerPx) / week) * week;
+  const offset = tzOffsetMin * 60 * SECOND;
+  const values: number[] = [];
+  for (let v = Math.ceil((start - offset) / step) * step + offset; v <= end && values.length < 100; v += step) {
+    values.push(v);
+  }
+  return { values: values.length === 0 ? [start] : values, step };
 }

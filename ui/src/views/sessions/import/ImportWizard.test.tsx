@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../../api/client';
+import { ApiError } from '../../../api/client';
 import * as api from '../../../api/sessions';
 import type { BrowseResponse } from '../../../api/types/BrowseResponse';
 import type { ImportEvent } from '../../../api/types/ImportEvent';
@@ -234,7 +235,48 @@ describe('Import wizard', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Import progress' });
     stream.emit({ type: 'failed', message: 'disk full' });
     expect(await within(dialog).findByText('Import failed')).toBeInTheDocument();
-    expect(within(dialog).getByText('disk full')).toBeInTheDocument();
+    // The raw backend message is not shown (technical, English only).
+    expect(within(dialog).queryByText('disk full')).not.toBeInTheDocument();
+    expect(within(dialog).getByText('Details in the application log.')).toBeInTheDocument();
+  });
+
+  it('explains a refused start when too many imports run', async () => {
+    m.startImport.mockRejectedValue(
+      new ApiError(409, 'urn:netsift:problem:too-many-imports', 'Too many imports running; wait for one to end'),
+    );
+    const user = userEvent.setup();
+    renderApp('/captures');
+    await user.click((await screen.findAllByRole('button', { name: 'Import folder' }))[0] as HTMLElement);
+    const dialog = await screen.findByRole('dialog', { name: 'Import a folder' });
+    await within(dialog).findByText('office');
+    await user.click(within(dialog).getByRole('button', { name: 'Select this folder' }));
+    await screen.findByText('Step 2 of 3: Review');
+    const review = screen.getByRole('dialog', { name: 'Import a folder' });
+    const startButton = await within(review).findByRole('button', { name: 'Start import' });
+    await waitFor(() => {
+      expect(startButton).toBeEnabled();
+    });
+    await user.click(startButton);
+    const alert = await within(review).findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'Import could not start: Too many imports running; wait for one of them to finish.',
+    );
+    expect(screen.getByRole('dialog', { name: 'Import a folder' })).toBeInTheDocument();
+  });
+
+  it('explains a path outside the allowed roots', async () => {
+    m.scanImport.mockRejectedValue(
+      new ApiError(403, 'urn:netsift:problem:forbidden', 'path outside the allowed roots'),
+    );
+    const user = userEvent.setup();
+    renderApp('/captures');
+    await user.click((await screen.findAllByRole('button', { name: 'Import folder' }))[0] as HTMLElement);
+    const dialog = await screen.findByRole('dialog', { name: 'Import a folder' });
+    await within(dialog).findByText('office');
+    await user.click(within(dialog).getByRole('button', { name: 'Select this folder' }));
+    expect(
+      await screen.findByText('Scan failed: This path is outside the folders the server is allowed to read'),
+    ).toBeInTheDocument();
   });
 
   it('closes with Escape and returns to the sessions list', async () => {

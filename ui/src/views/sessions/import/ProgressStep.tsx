@@ -184,7 +184,8 @@ function Outcome({ imp }: { imp: TrackedImport }) {
         <CircleAlert aria-hidden size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-danger" />
         <div className="flex min-w-0 flex-col gap-0.5 [overflow-wrap:anywhere]">
           <p className="font-medium">{t('views.import.failed')}</p>
-          {imp.error !== null && <p className="text-muted">{imp.error}</p>}
+          {/* The backend message is technical and in English: the log has the details. */}
+          {imp.error !== null && <p className="text-muted">{t('views.import.failedDetail')}</p>}
           {imp.streamError !== null && <ErrorNote error={imp.streamError} />}
         </div>
       </div>

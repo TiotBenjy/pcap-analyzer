@@ -67,7 +67,7 @@ export const fr: Dictionary = {
       emptyText: 'Importez un fichier pcap ou pcapng, ou un dossier de chunks, pour lancer une analyse.',
       importFolder: 'Importer un dossier',
       importFile: 'Importer un fichier',
-      readOnly: "Serveur en lecture seule : l'import est désactivé",
+      readOnly: "Serveur en lecture seule : l'import, le renommage et la suppression sont désactivés",
       tableLabel: 'Sessions',
       timeZone: 'Heures en {{tz}}',
       loadError: "Les sessions n'ont pas pu être chargées",
@@ -135,7 +135,6 @@ export const fr: Dictionary = {
       missingTitle: 'Fichier manquant : {{range}}',
       overlapTitle: 'Chevauchement de {{duration}}',
       col: {
-        index: 'N°',
         seq: 'Séq.',
         name: 'Fichier',
         size: 'Taille',
@@ -244,6 +243,7 @@ export const fr: Dictionary = {
       done: 'Import terminé',
       doneIncomplete: 'Import interrompu : la session est incomplète',
       failed: "Échec de l'import",
+      failedDetail: "Détails dans le journal de l'application.",
       lost: "Le flux de progression a été interrompu. L'import continue peut-être sur le serveur.",
       lostTitle: 'Connexion perdue',
       reconnect: 'Reconnecter',
@@ -316,9 +316,12 @@ export const fr: Dictionary = {
     network: 'Le serveur est injoignable',
     badRequest: 'La requête a été refusée comme invalide',
     unauthorized: "Accès refusé : jeton d'API absent ou invalide",
-    forbidden: 'Non autorisé : le serveur est en lecture seule',
+    forbidden: 'Requête refusée par le serveur',
+    readOnly: 'Non autorisé : le serveur est en lecture seule',
+    outsideRoots: 'Ce chemin est hors des dossiers que le serveur peut lire',
     notFound: 'Introuvable : peut-être supprimé',
     conflict: 'Conflit avec une opération en cours',
+    tooManyImports: "Trop d'imports en cours ; attendez la fin de l'un d'eux.",
   },
   anomalies: {
     codes: {

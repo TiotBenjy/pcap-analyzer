@@ -35,17 +35,24 @@ describe('import tracker', () => {
     off();
   });
 
-  it('reports HTTP errors of the stream as failures, network errors as a lost connection', async () => {
-    const http = new ApiError(404, 'not_found', 'no such session');
+  it('fails on a 404 stream, treats other stream errors as a lost connection', async () => {
+    const http = new ApiError(404, 'urn:netsift:problem:not-found', 'no such session');
     m.streamImportEvents.mockRejectedValue(http);
     trackImport('S1', 'office');
     await flush();
     expect(getImportState().current).toMatchObject({ status: 'failed', streamError: http });
 
-    m.streamImportEvents.mockRejectedValue(new ApiError(0, 'network', 'Backend unreachable'));
-    trackImport('S1', 'office');
-    await flush();
-    expect(getImportState().current?.status).toBe('lost');
+    for (const err of [
+      new ApiError(0, 'network', 'Backend unreachable'),
+      new ApiError(401, 'urn:netsift:problem:unauthorized', 'Authentication required'),
+      new ApiError(500, 'urn:netsift:problem:internal', 'Internal error'),
+      new ApiError(502, 'http', 'Bad Gateway'),
+    ]) {
+      m.streamImportEvents.mockRejectedValue(err);
+      trackImport('S1', 'office');
+      await flush();
+      expect(getImportState().current?.status, String(err.status)).toBe('lost');
+    }
   });
 
   it('reconnects a lost import with a fresh stream', async () => {

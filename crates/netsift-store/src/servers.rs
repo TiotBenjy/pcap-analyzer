@@ -18,8 +18,6 @@ use crate::session::tables_added_after_import;
 
 /// View of the derived roles.
 pub const EVIDENCE_VIEW: &str = "server_evidence";
-/// Largest number of evidence rows read by [`evidence`] (bounds hostile captures).
-pub const MAX_EVIDENCE_ROWS: u32 = 20_000;
 
 /// A row of the `servers` analyzer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -299,22 +297,62 @@ fn unsigned(v: Option<i64>) -> Option<u64> {
     v.map(|n| u64::try_from(n).unwrap_or(0))
 }
 
-/// Evidence rows of every role (or of `role` only), strongest first, at most
-/// [`MAX_EVIDENCE_ROWS`]; the flag tells that the limit cut the list. Rows whose address does
-/// not parse (never written by NetSift) are skipped.
-pub fn evidence(conn: &Connection, role: Option<&str>) -> Result<(Vec<EvidenceEntry>, bool)> {
+/// What [`evidence`] reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EvidenceQuery<'a> {
+    /// Only this role (`server_evidence.role`).
+    pub role: Option<&'a str>,
+    /// Stored address categories (`hosts.category`); `None`: every category. A server absent from
+    /// `hosts` (no stored category) always passes: the caller decides from its address.
+    pub categories: Option<&'a [String]>,
+    /// Servers kept per role, strongest first (clamped to `1..=MAX_SERVERS_PER_ROLE`).
+    pub limit: u32,
+}
+
+/// Largest number of servers read per role.
+pub const MAX_SERVERS_PER_ROLE: u32 = 1000;
+
+/// Evidence of the strongest servers of each role, and the number of servers of each role.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RoleEvidence {
+    /// Every piece of evidence of the kept servers, by role, then server rank (decreasing sum of
+    /// counts, then address text), then decreasing count.
+    pub entries: Vec<EvidenceEntry>,
+    /// Servers per role after the category filter (kept or not), for the roles with servers.
+    pub totals: Vec<(String, u64)>,
+}
+
+/// Evidence of the `limit` strongest servers of each role (or of `role` only), after the
+/// category filter: the bound applies per role in SQL, so a role with many servers (an HTTP scan)
+/// never hides another one. Rows whose address does not parse (never written by NetSift) are
+/// skipped.
+pub fn evidence(conn: &Connection, q: &EvidenceQuery<'_>) -> Result<RoleEvidence> {
+    let categories = q.categories.map(serde_json::to_string).transpose()?;
+    let limit = q.limit.clamp(1, MAX_SERVERS_PER_ROLE);
     let mut stmt = conn.prepare(
-        "SELECT e.role, e.ip, e.kind, e.count, e.clients, e.first_ts, e.last_ts, e.example, \
-                h.names, h.category, h.country \
-         FROM server_evidence e LEFT JOIN hosts h ON h.ip = e.ip \
-         WHERE e.ip IS NOT NULL AND (?1 IS NULL OR e.role = ?1) \
-         ORDER BY e.count DESC, e.role, e.ip, e.kind LIMIT ?2",
+        "WITH e AS MATERIALIZED (
+             SELECT e.role, e.ip, e.kind, e.count, e.clients, e.first_ts, e.last_ts, e.example,
+                    h.names, h.category, h.country
+             FROM server_evidence e LEFT JOIN hosts h ON h.ip = e.ip
+             WHERE e.ip IS NOT NULL AND (?1 IS NULL OR e.role = ?1)
+               AND (?2 IS NULL OR h.category IS NULL
+                    OR h.category IN (SELECT value FROM json_each(?2)))),
+         r AS (
+             SELECT role, ip,
+                    row_number() OVER (PARTITION BY role ORDER BY sum(count) DESC, ip) AS rank,
+                    count(*) OVER (PARTITION BY role) AS servers
+             FROM e GROUP BY role, ip)
+         SELECT e.role, e.ip, e.kind, e.count, e.clients, e.first_ts, e.last_ts, e.example,
+                e.names, e.category, e.country, r.servers
+         FROM e JOIN r ON r.role = e.role AND r.ip = e.ip
+         WHERE r.rank <= ?3
+         ORDER BY e.role, r.rank, e.count DESC, e.kind",
     )?;
-    let fetch = i64::from(MAX_EVIDENCE_ROWS) + 1;
-    let rows = stmt.query_map(params![role, fetch], |r| {
+    let rows = stmt.query_map(params![q.role, categories, limit], |r| {
         let ip: String = r.get(1)?;
         Ok((
             ip.parse::<IpAddr>().ok(),
+            unsigned(r.get(11)?).unwrap_or(0),
             EvidenceEntry {
                 role: r.get(0)?,
                 ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
@@ -332,17 +370,22 @@ pub fn evidence(conn: &Connection, role: Option<&str>) -> Result<(Vec<EvidenceEn
             },
         ))
     })?;
-    let mut out = Vec::new();
+    let mut out = RoleEvidence::default();
     for row in rows {
-        let (ip, mut entry) = row?;
+        let (ip, servers, mut entry) = row?;
+        if out
+            .totals
+            .last()
+            .is_none_or(|(role, _)| *role != entry.role)
+        {
+            out.totals.push((entry.role.clone(), servers));
+        }
         if let Some(ip) = ip {
             entry.ip = ip;
-            out.push(entry);
+            out.entries.push(entry);
         }
     }
-    let truncated = out.len() > MAX_EVIDENCE_ROWS as usize;
-    out.truncate(MAX_EVIDENCE_ROWS as usize);
-    Ok((out, truncated))
+    Ok(out)
 }
 
 #[cfg(test)]

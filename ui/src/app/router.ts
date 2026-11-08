@@ -71,6 +71,8 @@ const sessionIndexRoute = createRoute({
 // views developed in parallel merge without conflicts. A session nav item (src/app/nav.ts) without
 // an entry gets the shared placeholder module. Every module stays code-split.
 const SESSION_VIEWS: Partial<Record<string, () => Promise<{ default: ComponentType }>>> = {
+  '/connections': () => import('../views/connections/ConnectionsView'),
+  '/open-ports': () => import('../views/openPorts/OpenPortsView'),
   '/overview': () => import('../views/overview/OverviewView'),
   '/sources': () => import('../views/sessions/SourcesView'),
 };

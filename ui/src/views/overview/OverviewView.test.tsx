@@ -109,11 +109,18 @@ describe('Overview view', () => {
     expect(band.getByText('94.2 MiB')).toBeInTheDocument();
     expect(band.getByText('2 anomalies')).toBeInTheDocument();
     expect(band.getByText('Link: Ethernet')).toBeInTheDocument();
-    // Module cards: phase 3 views listed, none clickable until their view exists.
-    expect(screen.getByRole('heading', { name: 'Connections' })).toBeInTheDocument();
+    // Module cards: phase 3 views listed, clickable once their view exists and found something.
     expect(screen.queryByRole('heading', { name: 'Telnet' })).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Connections' }).closest('a')).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Connections' }).closest('[aria-disabled]')).toHaveAttribute(
+    expect(screen.getByRole('heading', { name: 'Connections' }).closest('a')).toHaveAttribute(
+      'href',
+      `/sessions/${ID}/connections`,
+    );
+    // Open Ports exists but the session has no count for it (not analyzed).
+    expect(screen.getByRole('heading', { name: 'Open Ports' }).closest('[aria-disabled]')).toHaveAttribute(
+      'title',
+      'Not analyzed in this session',
+    );
+    expect(screen.getByRole('heading', { name: 'Pictures' }).closest('[aria-disabled]')).toHaveAttribute(
       'title',
       'Available in a later version',
     );
@@ -331,7 +338,7 @@ describe('overview helpers', () => {
     const connections = MODULE_ITEMS.find((i) => i.id === 'connections');
     if (connections === undefined) throw new Error('connections module');
     const counts = new Map([['connections', 3]]);
-    expect(moduleState(connections, counts)).toEqual({ count: 3, active: false, reason: 'later' });
+    expect(moduleState({ ...connections, enabled: false }, counts)).toEqual({ count: 3, active: false, reason: 'later' });
     const enabled = { ...connections, enabled: true };
     expect(moduleState(enabled, counts)).toEqual({ count: 3, active: true, reason: null });
     expect(moduleState(enabled, new Map([['connections', 0]])).reason).toBe('empty');

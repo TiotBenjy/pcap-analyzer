@@ -656,6 +656,27 @@ async fn cancelled_import_is_incomplete() {
 }
 
 #[tokio::test]
+async fn warnings_are_streamed_while_the_import_runs() {
+    let env = Env::new(false, false, slow_ingest());
+    let run = env.captures().join("holed");
+    let paths = write_chunks(&run, "cap", 10);
+    std::fs::remove_file(&paths[2]).unwrap();
+    let id = env.import(&run).await;
+    let events = env.events(&id).await;
+    let names: Vec<&str> = events.iter().map(|(n, _)| n.as_str()).collect();
+    let warning = events
+        .iter()
+        .position(|(n, d)| n == "warning" && d["code"] == "missing_sequence")
+        .unwrap_or_else(|| panic!("{names:?}"));
+    // Published with the first progress, long before the end of reading.
+    let last_progress = names.iter().rposition(|n| *n == "progress").unwrap();
+    assert!(warning < last_progress, "{names:?}");
+    assert_eq!(events[warning].1["id"], Value::Null);
+    assert_eq!(events[warning].1["detail"]["first"], 3);
+    assert_eq!(names.last(), Some(&"done"));
+}
+
+#[tokio::test]
 async fn delete_removes_the_session_but_never_the_sources() {
     let env = Env::writable();
     let run = env.captures().join("keep");

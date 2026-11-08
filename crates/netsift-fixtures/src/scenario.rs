@@ -276,9 +276,14 @@ impl Scenario {
             selected_version: hs.selected_version,
         };
         let tls13 = hs.selected_version.is_some();
+        let retry = tls13 && hs.hello_retry;
         let mut flight = tls::server_hello_record(&server_hello);
         if tls13 {
-            flight.extend_from_slice(&tls::change_cipher_spec_record());
+            // One compatibility ChangeCipherSpec per side: after a HelloRetryRequest, it was
+            // already sent with it.
+            if !retry {
+                flight.extend_from_slice(&tls::change_cipher_spec_record());
+            }
             let encrypted: usize = hs.certificate_chain.iter().map(Vec::len).sum::<usize>() + 300;
             flight.extend_from_slice(&tls::application_data_record(encrypted, 0x13));
         } else {
@@ -293,6 +298,20 @@ impl Scenario {
 
         let mut s = self.tcp_open(client, server, &hs.tcp);
         let request = s.client_send(&tls::client_hello_record(&client_hello));
+        if retry && hs.respond {
+            // HelloRetryRequest with its dummy ChangeCipherSpec (RFC 8446 4.1.4, D.4), then the
+            // client's dummy ChangeCipherSpec and second ClientHello.
+            let hrr = ServerHello {
+                random: tls::HELLO_RETRY_REQUEST_RANDOM,
+                ..server_hello.clone()
+            };
+            let mut first = tls::server_hello_record(&hrr);
+            first.extend_from_slice(&tls::change_cipher_spec_record());
+            s.server_send(&first);
+            let mut second = tls::change_cipher_spec_record();
+            second.extend_from_slice(&tls::client_hello_record(&client_hello));
+            s.client_send(&second);
+        }
         let response = if hs.respond {
             s.server_send(&flight)
         } else {
@@ -306,7 +325,11 @@ impl Scenario {
                 s.client_send(&record);
             }
         } else if hs.complete && hs.respond {
-            let mut client_end = tls::change_cipher_spec_record();
+            let mut client_end = if retry {
+                Vec::new()
+            } else {
+                tls::change_cipher_spec_record()
+            };
             if tls13 {
                 client_end.extend_from_slice(&tls::application_data_record(53, 0x14));
             } else {
@@ -893,6 +916,9 @@ pub struct TlsHandshake {
     pub alert: Option<TlsAlert>,
     /// Ends the handshake (`ChangeCipherSpec`, `Finished`) and exchanges application data.
     pub complete: bool,
+    /// TLS 1.3 only: the server first answers with a `HelloRetryRequest` (middlebox
+    /// compatibility mode: dummy `ChangeCipherSpec` on both sides) before the real handshake.
+    pub hello_retry: bool,
 }
 
 impl TlsHandshake {
@@ -916,6 +942,7 @@ impl TlsHandshake {
             respond: true,
             alert: None,
             complete: false,
+            hello_retry: false,
         }
     }
 

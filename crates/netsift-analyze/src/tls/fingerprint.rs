@@ -84,13 +84,12 @@ fn version_label(v: u16) -> &'static str {
     }
 }
 
-/// First and last characters of the first ALPN value; their hex form when either is not
-/// ASCII alphanumeric; `00` without ALPN.
-fn alpn_label(alpn: Option<&str>) -> String {
-    let Some(value) = alpn.filter(|a| !a.is_empty()) else {
+/// First and last characters of the raw first ALPN value; the first and last digits of its hex
+/// form when either byte is not ASCII alphanumeric; `00` without ALPN.
+fn alpn_label(alpn: Option<&[u8]>) -> String {
+    let Some(bytes) = alpn.filter(|a| !a.is_empty()) else {
         return "00".to_owned();
     };
-    let bytes = value.as_bytes();
     match (bytes.first(), bytes.last()) {
         (Some(&f), Some(&l)) if f.is_ascii_alphanumeric() && l.is_ascii_alphanumeric() => {
             format!("{}{}", char::from(f), char::from(l))
@@ -136,7 +135,7 @@ pub fn ja4(ch: &ClientHello) -> String {
         version_label(ch.offered_version()),
         ciphers.len().min(99),
         exts.len().min(99),
-        alpn_label(ch.alpn.first().map(String::as_str)),
+        alpn_label(ch.alpn_first.as_deref()),
     );
 
     ciphers.sort_unstable();
@@ -212,6 +211,7 @@ mod tests {
             ],
             sni: Some("example.com".to_owned()),
             alpn: vec!["h2".to_owned(), "http/1.1".to_owned()],
+            alpn_first: Some(b"h2".to_vec()),
             groups: vec![0x2a2a, 0x001d, 0x0017, 0x0018],
             point_formats: vec![0],
             signature_algs: vec![
@@ -246,17 +246,21 @@ mod tests {
             ..ClientHello::default()
         };
         assert_eq!(ja4(&ch), "t10i000000_000000000000_000000000000");
-        ch.alpn = vec!["\u{1}x".to_owned()];
+        ch.alpn_first = Some(b"\x01x".to_vec());
         ch.extensions = vec![ext::ALPN];
         // Non alphanumeric first byte: first and last hex digits of "0178".
         assert!(ja4(&ch).starts_with("t10i000108_"), "{}", ja4(&ch));
+        // Raw bytes, not the sanitized text (an invalid UTF-8 byte would become U+FFFD).
+        ch.alpn_first = Some(vec![0xff, b'a']);
+        assert!(ja4(&ch).starts_with("t10i0001f1_"), "{}", ja4(&ch));
         ch.legacy_version = 0x0300;
-        ch.alpn = vec!["h".to_owned()];
+        ch.alpn_first = Some(b"h".to_vec());
         assert!(ja4(&ch).starts_with("ts3i0001hh_"), "{}", ja4(&ch));
         ch.cipher_suites = (0..150).collect();
         assert!(ja4(&ch).starts_with("ts3i9901hh_"), "{}", ja4(&ch));
-        assert_eq!(alpn_label(Some("http/1.1")), "h1");
-        assert_eq!(alpn_label(Some("")), "00");
+        assert_eq!(alpn_label(Some(b"http/1.1")), "h1");
+        assert_eq!(alpn_label(Some(b"")), "00");
+        assert_eq!(alpn_label(Some(b"\x01x")), "08");
         assert_eq!(version_label(0x9999), "00");
     }
 

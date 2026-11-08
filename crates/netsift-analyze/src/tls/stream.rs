@@ -27,6 +27,7 @@ pub enum Event {
 }
 
 /// Record parser of one direction.
+#[allow(clippy::struct_excessive_bools)] // independent states of the record layer
 #[derive(Debug, Default)]
 pub struct DirParser {
     /// Incomplete record: header, then body (plaintext records only).
@@ -35,8 +36,11 @@ pub struct DirParser {
     skip: usize,
     /// Pending handshake bytes (messages spanning records).
     hs: Vec<u8>,
-    /// `ChangeCipherSpec` seen: later handshake records are encrypted.
+    /// `ChangeCipherSpec` seen: later handshake records are encrypted (TLS 1.2 and earlier).
     pub encrypted: bool,
+    /// TLS 1.3 negotiated: `ChangeCipherSpec` is the middlebox compatibility dummy (RFC 8446
+    /// D.4) and never means encryption, which TLS 1.3 signals with application data records.
+    pub tls13: bool,
     /// The stream is not TLS anymore (bad header) or has a gap: nothing more is parsed.
     pub broken: bool,
     /// Handshake reassembly gave up (message above the bound).
@@ -44,6 +48,13 @@ pub struct DirParser {
 }
 
 impl DirParser {
+    /// Switches to TLS 1.3 record semantics (see [`DirParser::tls13`]); a dummy
+    /// `ChangeCipherSpec` seen before is forgotten.
+    pub fn set_tls13(&mut self) {
+        self.tls13 = true;
+        self.encrypted = false;
+    }
+
     /// Bytes held in memory.
     pub fn buffered(&self) -> usize {
         self.buf.capacity() + self.hs.capacity()
@@ -122,7 +133,9 @@ impl DirParser {
     fn record(&mut self, kind: u8, body: &[u8], max_message: usize, events: &mut Vec<Event>) {
         match kind {
             CHANGE_CIPHER_SPEC => {
-                self.encrypted = true;
+                if !self.tls13 {
+                    self.encrypted = true;
+                }
                 events.push(Event::ChangeCipherSpec);
             }
             ALERT => {
@@ -223,6 +236,21 @@ mod tests {
         .concat();
         let (_, events) = run(&[&stream]);
         assert_eq!(events, vec![Event::ChangeCipherSpec]);
+    }
+
+    #[test]
+    fn tls13_ignores_the_compatibility_change_cipher_spec() {
+        let mut p = DirParser::default();
+        p.set_tls13();
+        let hello = handshake(2, &[5; 20]);
+        let stream = [record(CHANGE_CIPHER_SPEC, &[1]), record(HANDSHAKE, &hello)].concat();
+        let mut events = Vec::new();
+        p.feed(&stream, 1024, &mut events);
+        assert_eq!(
+            events,
+            vec![Event::ChangeCipherSpec, Event::Handshake(hello)]
+        );
+        assert!(!p.encrypted);
     }
 
     #[test]

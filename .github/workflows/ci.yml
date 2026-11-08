@@ -117,9 +117,9 @@ jobs:
         run: npm run typecheck
       - working-directory: ui
         run: npm run test -- --run
-      - name: Navigateur Playwright (version de ui/package-lock.json)
+      - name: Navigateurs Playwright (version de ui/package-lock.json ; WebKit pour le test de fumée desktop)
         working-directory: ui
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
       - name: Captures et vérifications visuelles
         run: bash scripts/ci/shots.sh
       - name: Publier les captures

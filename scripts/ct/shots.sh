@@ -3,6 +3,8 @@
 # Démarre l'API en lecture seule, construit l'UI, la sert avec `vite preview` (dont le proxy
 # ajoute le jeton), puis Playwright capture chaque vue en 375/768/1280/1920, clair et sombre,
 # et applique les assertions anti-débordement et anti-chevauchement de docs/UI_GUIDELINES.md.
+# Termine par le test de fumée desktop (WebKit + Chromium, globals de Tauri). `desktop` comme
+# vue ne lance que ce test.
 set -euo pipefail
 VIEW="${1:-all}"
 API_PORT="${NETSIFT_API_PORT:-7988}"
@@ -11,7 +13,7 @@ OUT=".artifacts/screens"
 TOKEN_FILE="$(mktemp)"
 head -c 32 /dev/urandom | base64 | tr -d '/+=' > "$TOKEN_FILE"
 mkdir -p "$OUT" "$DATA_DIR"
-if [ "$VIEW" = "all" ]; then rm -f "$OUT"/*.png; else rm -f "$OUT/$VIEW"-*.png; fi
+if [ "$VIEW" = "all" ]; then rm -f "$OUT"/*.png; elif [ "$VIEW" != "desktop" ]; then rm -f "$OUT/$VIEW"-*.png; fi
 
 cleanup() { kill "${API_PID:-}" 2>/dev/null || true; rm -f "$TOKEN_FILE"; }
 trap cleanup EXIT INT TERM
@@ -41,10 +43,22 @@ cd ui
 if [ ! -d node_modules ]; then npm ci; fi
 npm run -s build
 
-echo ">> Captures et vérifications visuelles (vue : $VIEW)…"
-NETSIFT_API_URL="http://127.0.0.1:${API_PORT}" \
-NETSIFT_API_TOKEN="$(cat "$TOKEN_FILE")" \
-SHOT_VIEW="$VIEW" \
-  npx playwright test tests/visual/shots.spec.ts
+export NETSIFT_API_URL="http://127.0.0.1:${API_PORT}"
+NETSIFT_API_TOKEN="$(cat "$TOKEN_FILE")"
+export NETSIFT_API_TOKEN
+
+if [ "$VIEW" != "desktop" ]; then
+  echo ">> Captures et vérifications visuelles (vue : $VIEW)…"
+  SHOT_VIEW="$VIEW" npx playwright test --project=chromium tests/visual/shots.spec.ts
+fi
+
+# Test de fumée desktop (ui/tests/desktop) : WebKit et Chromium avec les globals de Tauri
+# (Object.prototype gelé, faux pont IPC). Lancé quelle que soit la vue demandée, car il couvre les
+# chemins propres au desktop (pont Tauri, dialogue natif, chunk des graphiques) ; seul avec
+# `./x.sh shots desktop`.
+# shellcheck source=scripts/ct/webkit.sh
+source ../scripts/ct/webkit.sh
+echo ">> Test de fumée desktop (WebKit, Chromium)…"
+npx playwright test --project=desktop-webkit --project=desktop-chromium
 
 echo ">> Captures dans $OUT"

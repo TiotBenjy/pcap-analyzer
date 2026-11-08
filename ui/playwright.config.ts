@@ -4,8 +4,13 @@ import { defineConfig, devices } from '@playwright/test';
 // forwards /api to the backend started by scripts/ct/shots.sh (NETSIFT_API_URL/NETSIFT_API_TOKEN).
 const PORT = Number(process.env.NETSIFT_PREVIEW_PORT ?? 4173);
 
+// Desktop smoke test (tests/desktop) in WebKit, the engine of the Linux webview (WebKitGTK).
+// The image only ships Chromium: scripts/ct/webkit.sh installs Playwright's WebKit and its few
+// missing system libraries in the cache volume, then exports its launcher path. In CI, WebKit is
+// installed at the default location by `playwright install --with-deps webkit`.
+const WEBKIT_EXECUTABLE = process.env.NETSIFT_WEBKIT_EXECUTABLE;
+
 export default defineConfig({
-  testDir: 'tests/visual',
   outputDir: 'test-results',
   fullyParallel: true,
   forbidOnly: process.env.CI !== undefined && process.env.CI !== '',
@@ -18,7 +23,19 @@ export default defineConfig({
     locale: 'en-US',
     timezoneId: 'UTC',
   },
-  projects: [{ name: 'chromium' }],
+  projects: [
+    { name: 'chromium', testDir: 'tests/visual' },
+    { name: 'desktop-chromium', testDir: 'tests/desktop' },
+    {
+      name: 'desktop-webkit',
+      testDir: 'tests/desktop',
+      use: {
+        ...devices['Desktop Safari'],
+        deviceScaleFactor: 1,
+        launchOptions: WEBKIT_EXECUTABLE === undefined ? {} : { executablePath: WEBKIT_EXECUTABLE },
+      },
+    },
+  ],
   webServer: {
     command: `npm run preview -- --host 127.0.0.1 --port ${PORT} --strictPort`,
     url: `http://127.0.0.1:${PORT}`,

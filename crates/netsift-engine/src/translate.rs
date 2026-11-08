@@ -27,10 +27,47 @@ pub fn to_store(record: Record) -> StoreRecord {
         Record::Flow(f) => StoreRecord::Flow(flow_row(&f)),
         // --- analyzers: one arm each, sorted alphabetically ---
         Record::Conversation(c) => StoreRecord::Conversation(conversation_row(&c)),
+        Record::Dns(t) => StoreRecord::Dns(Box::new(dns_row(*t))),
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
         Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
         Record::Tls(s) => StoreRecord::Tls(Box::new(tls::session_row(*s))),
+    }
+}
+
+fn dns_row(t: netsift_analyze::dns::DnsTransaction) -> netsift_store::dns::DnsRow {
+    netsift_store::dns::DnsRow {
+        ts: t.ts_ns,
+        // Flow ids are non-negative by construction (`FlowId::derive`).
+        flow_id: t.flow.map(|f| f.0),
+        transport: t.transport,
+        proto: t.proto.as_str().to_owned(),
+        client_ip: t.client.ip,
+        client_port: t.client.port,
+        server_ip: t.server.ip,
+        server_port: t.server.port,
+        responder_ip: t.responder,
+        txid: t.id,
+        opcode: t.opcode,
+        qname: t.qname,
+        qtype: t.qtype,
+        nb_suffix: t.nb_suffix,
+        flags: t.flags,
+        rcode: t.rcode,
+        latency_ns: t.latency_ns,
+        answers: t
+            .answers
+            .into_iter()
+            .map(|a| netsift_store::dns::DnsAnswerRow {
+                name: a.name,
+                rtype: a.rtype,
+                value: a.value,
+                ttl: a.ttl,
+            })
+            .collect(),
+        has_query: t.has_query,
+        has_response: t.has_response,
+        pending: t.pending,
     }
 }
 

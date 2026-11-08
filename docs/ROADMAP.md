@@ -243,13 +243,19 @@ Suivis de la vague 3.A :
   exige `glib` 0.20 (liaisons GTK4). À revoir quand Tauri change de pile GTK ; alerte à clore sur GitHub
   (« risque tolérable »). Les 12 alertes npm sont corrigées par `fix/npm-audit` (vite 7.3.7, echarts 6.1.0,
   override minimatch 11, à retirer quand eslint l'acceptera).
+- G1 (fusionnée le 2026-11-08, ADR-015) : test manuel du téléchargement réel à faire sur un bundle (une
+  redirection DB-IP vers un autre hôte ferait échouer proprement, règle « même origine ») ; navigateur de
+  fichiers web dupliqué depuis `BrowserSelect` (à factoriser) ; cible de fuzz mmdb (profondeur du décodeur
+  `maxminddb`) ; pas d'identifiant de fichier hors Unix pour détecter un remplacement externe ; tests de bout
+  en bout manquants (import avec la base échangée, coupure en cours de corps). `Button` : les boutons pleins
+  désactivés ont désormais un fond neutre dans toute l'app.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
 
 Hors vague (demande utilisateur du 2026-11-08) :
 
-- [~] **G1** `feat/geoip-update` — Mise à jour de la base GeoIP depuis l'application (Paramètres > À
+- [x] **G1** `feat/geoip-update` — Mise à jour de la base GeoIP depuis l'application (Paramètres > À
       propos) : téléchargement de la dernière DB-IP Country Lite côté Rust, sur clic uniquement, et import
       d'un fichier `.mmdb` ; validation avant remplacement atomique, rechargement à chaud. Seule exception
       à « aucun appel réseau sortant » (ADR-015).

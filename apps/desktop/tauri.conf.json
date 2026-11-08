@@ -56,10 +56,18 @@
       "icons/icon.ico"
     ],
     "resources": {},
+    "homepage": "https://github.com/TiotBenjy/pcap-analyzer",
     "linux": {
       "deb": {
         "section": "net"
+      },
+      "rpm": {
+        "release": "1"
       }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-"
     }
   }
 }

@@ -1,4 +1,5 @@
 import type { Dictionary } from './en';
+import { picturesFr } from './pictures';
 import { tlsFr } from './tls';
 
 // French dictionary. Typed against the English shape: a missing or extra key fails typecheck.
@@ -834,6 +835,7 @@ export const fr: Dictionary = {
       back: 'Aller à Captures',
     },
     // --- analysis views kept in their own module: one line each, sorted ---
+    pictures: picturesFr,
     tls: tlsFr,
   },
   common: {

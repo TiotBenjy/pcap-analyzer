@@ -35,7 +35,7 @@ use netsift_capture::chunkset::{AnomalyKind, ChunkSetSource};
 use netsift_capture::{PacketSource, RawPacket};
 use netsift_store::{AnomalyRow, StoreError, StoreRecord, StoreSender};
 
-use crate::blobs::BlobWriter;
+use crate::blobs::{BlobBudget, BlobWriter};
 use crate::options::CancelToken;
 use crate::translate::{anomaly_row_with, approx_size, to_store};
 
@@ -451,7 +451,11 @@ impl RecordSink for WriterSink {
     }
 
     fn put_blob(&mut self, data: &[u8]) -> Option<BlobRef> {
-        self.blobs.as_mut()?.put(data)
+        self.blobs.as_mut()?.put(data, false)
+    }
+
+    fn put_object(&mut self, data: &[u8]) -> Option<BlobRef> {
+        self.blobs.as_mut()?.put(data, true)
     }
 }
 
@@ -566,6 +570,8 @@ pub(crate) struct ShardSetup {
     pub end_ts: Arc<OnceLock<i64>>,
     /// `blobs/` directory of the session (`RecordSink::put_blob`).
     pub blobs_dir: Option<Arc<std::path::PathBuf>>,
+    /// Bytes of new blobs all shards may still write.
+    pub blob_budget: Arc<BlobBudget>,
 }
 
 pub(crate) fn run_shard(
@@ -582,6 +588,7 @@ pub(crate) fn run_shard(
         fault,
         end_ts,
         blobs_dir,
+        blob_budget,
     } = setup;
     let mut slots: Vec<Slot> = analyzers
         .into_iter()
@@ -599,7 +606,7 @@ pub(crate) fn run_shard(
         max_bytes: max_record_bytes.max(1),
         error: None,
         fault,
-        blobs: blobs_dir.map(|dir| BlobWriter::new(dir, index)),
+        blobs: blobs_dir.map(|dir| BlobWriter::new(dir, blob_budget, index)),
     };
     let mut packets = 0u64;
     let mut panicked = 0u64;

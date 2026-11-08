@@ -320,6 +320,25 @@ fn detail_has_both_messages_and_headers_in_order() {
     assert_eq!(resp.body_len, 500);
     assert_eq!(resp.content_type.as_deref(), Some("text/html"));
     assert_eq!(d.flow_first_ts, None);
+    assert_eq!(d.entry.server, EndpointInfo::default());
+    conn.execute_batch(
+        "INSERT INTO hosts (ip, names, country, category, first_ts, last_ts) \
+         VALUES ('203.0.113.80', '[\"web.example.test\"]', 'FR', 'public', 0, 1)",
+    )
+    .unwrap();
+    let d = transaction(&conn, id).unwrap().unwrap();
+    assert_eq!(d.entry.server.names, vec!["web.example.test".to_owned()]);
+    assert_eq!(d.entry.server.country.as_deref(), Some("FR"));
+    assert_eq!(d.entry.client.category, None);
+    let page = transactions_page(
+        &conn,
+        &HttpFilter::default(),
+        HttpSort::Time,
+        false,
+        &PageRequest::first(1),
+    )
+    .unwrap();
+    assert_eq!(page.items[0].server.category.as_deref(), Some("public"));
     assert!(transaction(&conn, 999).unwrap().is_none());
 }
 
@@ -390,7 +409,7 @@ fn sort_queries_use_indexes() {
     ] {
         for cursor in ["", &format!(" AND ({sort}, t.id) < (?, ?)")] {
             let p = plan(&format!(
-                "SELECT t.id FROM http_transactions t WHERE ({FILTER}){cursor} \
+                "SELECT t.id FROM {ENTRY_FROM} WHERE ({FILTER}){cursor} \
                  ORDER BY {sort} DESC, t.id DESC LIMIT 10"
             ));
             assert!(p.contains(index), "{sort}: {p}");

@@ -1,16 +1,18 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUp, File, Folder } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { ApiError } from '../../api/client';
 import { downloadGeoip, getGeoipUpdate, importGeoip } from '../../api/geoip';
 import { browse } from '../../api/sessions';
+import type { BrowseResponse } from '../../api/types/BrowseResponse';
 import type { GeoipInfo } from '../../api/types/GeoipInfo';
 import type { GeoipUpdate } from '../../api/types/GeoipUpdate';
 import type { ServerInfo } from '../../api/types/ServerInfo';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { ErrorState } from '../../components/ErrorState';
 import { cn } from '../../lib/cn';
 import { describeError } from '../../lib/errors';
 import { formatBytes } from '../../lib/format';
@@ -39,7 +41,13 @@ function updateErrorMessage(t: TFunction, error: unknown): string {
 const dateFormat = (lang: string, utc: boolean) =>
   new Intl.DateTimeFormat(lang, utc ? { dateStyle: 'medium', timeZone: 'UTC' } : { dateStyle: 'medium' });
 
-export function GeoipSection({ info }: { info: ServerInfo | undefined }) {
+interface GeoipSectionProps {
+  info: ServerInfo | undefined;
+  /** `server-info` failed to load (and has no previous data). */
+  infoError: boolean;
+}
+
+export function GeoipSection({ info, infoError }: GeoipSectionProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [browsing, setBrowsing] = useState(false);
@@ -95,6 +103,16 @@ export function GeoipSection({ info }: { info: ServerInfo | undefined }) {
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      {info === undefined &&
+        (infoError ? (
+          <p role="alert" className="break-words text-danger" data-testid="geoip-status" data-status="error">
+            {t('views.settings.geoip.infoError')}
+          </p>
+        ) : (
+          <p className="text-muted" data-testid="geoip-status" data-status="checking">
+            {t('views.settings.checking')}
+          </p>
+        ))}
       {info !== undefined && (
         <div className="flex min-w-0 flex-col gap-0.5">
           <GeoipStatus geoip={info.geoip} />
@@ -131,6 +149,9 @@ export function GeoipSection({ info }: { info: ServerInfo | undefined }) {
             success={update.isSuccess}
           />
           {readOnly && <p className="break-words text-meta text-muted">{t('views.settings.geoip.readOnly')}</p>}
+          {!readOnly && !canImport && (
+            <p className="break-words text-meta text-muted">{t('views.settings.geoip.noBrowse')}</p>
+          )}
           <p className="break-words text-meta text-muted">{t('views.settings.geoip.downloadNote')}</p>
           <p className="break-words text-meta text-muted">{t('views.settings.geoip.reimportNote')}</p>
         </div>
@@ -217,26 +238,35 @@ interface UpdateFeedbackProps {
 function UpdateFeedback({ pending, downloading, progress, error, success }: UpdateFeedbackProps) {
   const { t, i18n } = useTranslation();
   if (pending) {
-    let text: string = t('views.settings.geoip.installing');
+    // Only the phase is announced (role="status"); the byte counter changes twice a second and
+    // stays out of the live region.
+    const fetching = downloading && progress?.phase !== 'installing';
+    const phase = fetching ? t('views.settings.geoip.downloading') : t('views.settings.geoip.installing');
+    let counter: string | null = null;
     let ratio: number | null = null;
-    if (downloading && progress?.phase !== 'installing') {
+    if (fetching) {
       const received = progress?.received_bytes ?? 0;
       const total = progress?.total_bytes ?? null;
       if (total !== null && total > 0) {
         ratio = Math.min(1, received / total);
-        text = t('views.settings.geoip.downloadingOf', {
+        counter = t('views.settings.geoip.progressOf', {
           received: formatBytes(received, i18n.language),
           total: formatBytes(total, i18n.language),
         });
       } else if (received > 0) {
-        text = t('views.settings.geoip.downloadingBytes', { received: formatBytes(received, i18n.language) });
-      } else {
-        text = t('views.settings.geoip.downloading');
+        counter = t('views.settings.geoip.progressBytes', { received: formatBytes(received, i18n.language) });
       }
     }
     return (
-      <div role="status" className="flex min-w-0 flex-col gap-1" data-testid="geoip-progress">
-        <span className="break-words text-meta">{text}</span>
+      <div className="flex min-w-0 flex-col gap-1" data-testid="geoip-progress">
+        <span role="status" className="break-words text-meta">
+          {phase}
+        </span>
+        {counter !== null && (
+          <span className="num break-words text-meta text-muted" data-testid="geoip-progress-bytes">
+            {counter}
+          </span>
+        )}
         {ratio !== null && (
           <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-subtle" aria-hidden>
             <div className="h-full bg-accent" style={{ width: `${Math.round(ratio * 100)}%` }} />
@@ -267,8 +297,12 @@ const joinPath = (dir: string, name: string) => `${dir.replace(/[/\\]+$/, '')}/$
 /** Dev web mode: file chosen in the allowed roots of the backend (`GET /fs/browse`). */
 function GeoipFileDialog({ onClose, onPick }: { onClose: () => void; onPick: (path: string) => void }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [dir, setDir] = useState<string | undefined>(undefined);
+  // Folder shown before the current one: its listing stays visible if the next one fails.
+  const [prevDir, setPrevDir] = useState<string | undefined>(undefined);
   const [file, setFile] = useState<string | null>(null);
+  const rootsId = useId();
   const listing = useQuery({
     queryKey: ['fs', 'browse', dir ?? null],
     queryFn: ({ signal }) => browse(dir, signal),
@@ -276,11 +310,64 @@ function GeoipFileDialog({ onClose, onPick }: { onClose: () => void; onPick: (pa
     retry: false,
     staleTime: 0,
   });
-  const data = listing.data;
+  const failed = listing.isError;
+  const data =
+    listing.data ?? (failed ? queryClient.getQueryData<BrowseResponse>(['fs', 'browse', prevDir ?? null]) : undefined);
   const go = (path: string) => {
     setFile(null);
+    // Query key of the listing on screen (`undefined`: the first root), unchanged while a failed
+    // folder is shown over it.
+    if (listing.data !== undefined) setPrevDir(dir);
     setDir(path);
   };
+  const retry = () => {
+    void listing.refetch();
+  };
+
+  let body;
+  if (failed && data === undefined) {
+    // First listing failed: nothing to show yet, offer a retry.
+    body = <ErrorState message={t('views.import.browseError')} onRetry={retry} />;
+  } else if (data === undefined) {
+    body = <p className="p-3 text-muted">{t('common.loading')}</p>;
+  } else if (data.entries.length === 0) {
+    body = <p className="p-3 text-muted">{t('views.import.browseEmpty')}</p>;
+  } else {
+    body = (
+      <ul aria-label={t('views.import.browseLabel')} className="flex flex-col py-1">
+        {data.entries.map((e) => {
+          const path = joinPath(data.path, e.name);
+          const Icon = e.is_dir ? Folder : File;
+          const selected = !e.is_dir && file === path;
+          return (
+            <li key={e.name} className="px-1">
+              <button
+                type="button"
+                aria-pressed={e.is_dir ? undefined : selected}
+                onClick={() => {
+                  if (e.is_dir) go(path);
+                  else setFile(path);
+                }}
+                onDoubleClick={() => {
+                  if (!e.is_dir) onPick(path);
+                }}
+                className={cn(
+                  'flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-subtle',
+                  selected && 'bg-accent-soft text-accent',
+                )}
+              >
+                <Icon aria-hidden size={16} strokeWidth={1.75} className="shrink-0 text-faint" />
+                <span data-testid="truncatable" title={e.name} className="min-w-0 flex-1 truncate font-mono text-meta">
+                  {e.name}
+                </span>
+                {!e.is_dir && <span className="num shrink-0 text-meta text-muted">{formatBytes(e.size)}</span>}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
   return (
     <Dialog
@@ -305,7 +392,7 @@ function GeoipFileDialog({ onClose, onPick }: { onClose: () => void; onPick: (pa
       }
     >
       <div className="flex min-w-0 flex-col gap-3">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Button
             icon
             aria-label={t('views.import.browseUp')}
@@ -317,6 +404,27 @@ function GeoipFileDialog({ onClose, onPick }: { onClose: () => void; onPick: (pa
           >
             <ArrowUp aria-hidden size={16} strokeWidth={1.75} />
           </Button>
+          {data !== undefined && data.roots.length > 1 && (
+            <>
+              <label htmlFor={rootsId} className="sr-only">
+                {t('views.import.browseRoots')}
+              </label>
+              <select
+                id={rootsId}
+                value={data.roots.find((r) => data.path === r || data.path.startsWith(`${r}/`)) ?? ''}
+                onChange={(e) => {
+                  go(e.target.value);
+                }}
+                className="h-8 max-w-full min-w-0 rounded-md border border-line bg-surface px-2 font-mono text-meta"
+              >
+                {data.roots.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <span
             data-testid="truncatable"
             title={data?.path ?? ''}
@@ -326,49 +434,14 @@ function GeoipFileDialog({ onClose, onPick }: { onClose: () => void; onPick: (pa
           </span>
         </div>
         <div className="h-72 min-w-0 overflow-y-auto rounded-md border border-line" aria-busy={listing.isFetching}>
-          {listing.isError && data === undefined ? (
-            <p role="alert" className="p-3 text-danger">
-              {t('views.import.browseError')}
-            </p>
-          ) : data === undefined ? (
-            <p className="p-3 text-muted">{t('common.loading')}</p>
-          ) : data.entries.length === 0 ? (
-            <p className="p-3 text-muted">{t('views.import.browseEmpty')}</p>
-          ) : (
-            <ul aria-label={t('views.import.browseLabel')} className="flex flex-col py-1">
-              {data.entries.map((e) => {
-                const path = joinPath(data.path, e.name);
-                const Icon = e.is_dir ? Folder : File;
-                const selected = !e.is_dir && file === path;
-                return (
-                  <li key={e.name} className="px-1">
-                    <button
-                      type="button"
-                      aria-pressed={e.is_dir ? undefined : selected}
-                      onClick={() => {
-                        if (e.is_dir) go(path);
-                        else setFile(path);
-                      }}
-                      onDoubleClick={() => {
-                        if (!e.is_dir) onPick(path);
-                      }}
-                      className={cn(
-                        'flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left hover:bg-subtle',
-                        selected && 'bg-accent-soft text-accent',
-                      )}
-                    >
-                      <Icon aria-hidden size={16} strokeWidth={1.75} className="shrink-0 text-faint" />
-                      <span data-testid="truncatable" title={e.name} className="min-w-0 flex-1 truncate font-mono text-meta">
-                        {e.name}
-                      </span>
-                      {!e.is_dir && <span className="num shrink-0 text-meta text-muted">{formatBytes(e.size)}</span>}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          {body}
         </div>
+        {failed && data !== undefined && (
+          // A later folder failed to load: the previous listing stays, the error is said.
+          <p role="alert" className="text-meta text-danger">
+            {t('views.import.browseError')}
+          </p>
+        )}
       </div>
     </Dialog>
   );

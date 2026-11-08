@@ -28,6 +28,7 @@
 pub mod anomaly;
 pub mod craft;
 pub mod http_mix;
+pub mod images;
 pub mod packet;
 pub mod proto;
 pub mod rng;

@@ -1048,7 +1048,10 @@ mod tests {
 
     #[test]
     fn without_storage_only_the_start_of_a_body_is_kept() {
-        let mut sh = Shared::new(HttpConfig::default());
+        let mut sh = Shared::new(HttpConfig {
+            store_bodies: false,
+            ..HttpConfig::default()
+        });
         let body = vec![b'a'; 100_000];
         let mut r = BodyReader::new(Framing::Length(body.len() as u64), None, &mut sh);
         r.feed(&body, &mut sh);

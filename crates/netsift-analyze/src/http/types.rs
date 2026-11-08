@@ -16,11 +16,21 @@ pub struct HttpConfig {
     /// one instance per shard, so the total is this value times the number of shards (a
     /// budget shared by every shard is a follow-up of task P4.2).
     pub max_retained_bytes: usize,
-    /// Offer complete bodies to the sink as objects ([`crate::RecordSink::put_blob`]). Off by
-    /// default: task P3.6 turns it on together with its selection rules (which bodies become
-    /// objects). While off, only the start of each body is kept in memory (preview and MIME
-    /// sniffing), and nothing is written to disk.
+    /// Store selected bodies as objects ([`crate::RecordSink::put_blob`], task P3.6, ADR-016).
+    /// On by default. Selection ([`super::objects::selected`]): **response** bodies only,
+    /// read and decoded completely (not a `206` partial response), whose **content** is an image
+    /// by magic number ([`super::objects::IMAGE_TYPES`]: PNG, JPEG, GIF, WebP, BMP, ICO, SVG;
+    /// the declared `Content-Type` is ignored), between [`Self::object_min_bytes`] and
+    /// [`Self::object_max_bytes`]. Pages, scripts, forms, uploads and every request body never
+    /// reach the disk. The engine adds a budget for the whole session (all blobs, TLS
+    /// certificates included: `IngestOptions::max_blob_bytes`); past it, bodies are no longer
+    /// stored (the transaction keeps its metadata). While off, only the start of each body is
+    /// kept in memory (preview and MIME sniffing), and nothing is written to disk.
     pub store_bodies: bool,
+    /// Smallest body stored as an object, in bytes (smaller ones cannot be a useful picture).
+    pub object_min_bytes: u64,
+    /// Largest body stored as an object, in bytes (also bounds the thumbnail decoding).
+    pub object_max_bytes: u64,
     /// Content decoding stops (`bomb`) when the decoded size exceeds this many times the
     /// encoded size, once at least [`RATIO_CHECK_MIN`] bytes were decoded.
     pub max_decompression_ratio: u64,
@@ -46,7 +56,9 @@ impl Default for HttpConfig {
         Self {
             max_body_bytes: 64 * 1024 * 1024,
             max_retained_bytes: 32 * 1024 * 1024,
-            store_bodies: false,
+            store_bodies: true,
+            object_min_bytes: 32,
+            object_max_bytes: 16 * 1024 * 1024,
             max_decompression_ratio: 250,
             max_pending: 64,
             max_decoders: 64,

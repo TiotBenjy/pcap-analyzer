@@ -18,6 +18,7 @@ use netsift_store::{
     StoreWriter, WriterStats,
 };
 
+use crate::blobs::BlobBudget;
 use crate::error::EngineError;
 use crate::options::{CancelToken, IngestOptions, Phase, Progress};
 use crate::pipeline::{
@@ -252,6 +253,8 @@ struct Parts {
     capacity: usize,
     limits: BatchLimits,
     budget: Arc<Budget>,
+    /// Bytes of extracted objects the import may still write (all shards).
+    blob_budget: Arc<BlobBudget>,
     fault: Option<Arc<WriterFault>>,
     registry: netsift_analyze::Registry,
     flow: netsift_analyze::flow::FlowConfig,
@@ -357,6 +360,19 @@ impl RunCtx<'_> {
         }
         if let Some(reason) = failure {
             return Err(reason);
+        }
+        // Thumbnails once `objects` is built (end-of-import steps), outside the shards. A
+        // cancelled import skips them: the API renders what is missing on demand.
+        if !cancelled {
+            let dir = self.catalog.session_dir(self.session);
+            match crate::thumbs::generate_pending(&dir, self.cancel, crate::thumbs::PASS_TIME_LIMIT)
+            {
+                Ok(r) if r.left > 0 => {
+                    tracing::info!(left = r.left, "thumbnails left for on-demand rendering");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!("cannot generate thumbnails: {e}"),
+            }
         }
 
         let mut anomaly_kinds = BTreeMap::new();
@@ -468,6 +484,7 @@ impl RunCtx<'_> {
                 bytes: o.batch_bytes.max(1),
             },
             budget: Arc::new(Budget::new(o.max_in_flight_bytes)),
+            blob_budget: Arc::new(BlobBudget::new(o.max_blob_bytes)),
             fault: o.fail_writer_after_records.map(|n| {
                 Arc::new(WriterFault {
                     remaining: AtomicU64::new(n),
@@ -535,6 +552,7 @@ impl RunCtx<'_> {
                     fault: parts.fault.clone(),
                     end_ts: Arc::clone(&end_ts),
                     blobs_dir: parts.registry.config().blobs_dir.clone(),
+                    blob_budget: Arc::clone(&parts.blob_budget),
                 };
                 match thread::Builder::new()
                     .name(format!("netsift-shard-{index}"))

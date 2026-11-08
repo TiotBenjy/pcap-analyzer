@@ -1,10 +1,17 @@
 //! Extracted objects of a session, stored by their SHA-256 under `blobs/` (see
 //! `netsift_store::session::blob_relpath`). Each shard writes its own blobs: contents never
 //! travel through the writer channel, only their [`BlobRef`].
+//!
+//! Every shard draws from one budget of bytes per session ([`BlobBudget`],
+//! `IngestOptions::max_blob_bytes`): only new files are charged (a content already stored costs
+//! nothing). Once it is spent, `put` returns `None` and the analyzers keep the metadata without
+//! content. Which objects are stored then depends on the shard timing: the import is only
+//! independent of the number of shards while the budget lasts.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use netsift_analyze::BlobRef;
 use netsift_store::session::blob_relpath;
@@ -15,15 +22,42 @@ pub const MAX_BLOB_SIZE: usize = 64 * 1024 * 1024;
 /// Digests remembered per shard to skip the file system check of objects already written.
 const MAX_KNOWN: usize = 65_536;
 
+/// Bytes of new blobs that the shards of one import may still write.
+#[derive(Debug)]
+pub(crate) struct BlobBudget {
+    remaining: AtomicU64,
+}
+
+impl BlobBudget {
+    pub(crate) fn new(bytes: u64) -> Self {
+        Self {
+            remaining: AtomicU64::new(bytes),
+        }
+    }
+
+    /// Takes `n` bytes, false (nothing taken) when fewer remain.
+    fn take(&self, n: u64) -> bool {
+        self.remaining
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |r| r.checked_sub(n))
+            .is_ok()
+    }
+
+    fn give_back(&self, n: u64) {
+        self.remaining.fetch_add(n, Ordering::AcqRel);
+    }
+}
+
 /// Blob store of one shard.
 #[derive(Debug)]
 pub(crate) struct BlobWriter {
     dir: Arc<PathBuf>,
+    budget: Arc<BlobBudget>,
     shard: usize,
     /// Names the temporary files of this shard.
     seq: u64,
-    /// One warning per shard is enough.
+    /// One warning per shard is enough (write errors, budget spent).
     warned: bool,
+    warned_budget: bool,
     /// Digests of the blobs this shard wrote or found (bounded: cleared when full).
     known: HashSet<[u8; 32]>,
 }
@@ -39,12 +73,14 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 impl BlobWriter {
-    pub(crate) fn new(dir: Arc<PathBuf>, shard: usize) -> Self {
+    pub(crate) fn new(dir: Arc<PathBuf>, budget: Arc<BlobBudget>, shard: usize) -> Self {
         Self {
             dir,
+            budget,
             shard,
             seq: 0,
             warned: false,
+            warned_budget: false,
             known: HashSet::new(),
         }
     }
@@ -67,8 +103,21 @@ impl BlobWriter {
         let path = self.dir.join(blob_relpath(&name)?);
         let stored = if path.is_file() {
             Ok(())
+        } else if !self.budget.take(blob.size) {
+            if !self.warned_budget {
+                self.warned_budget = true;
+                tracing::warn!(
+                    shard = self.shard,
+                    "blob budget of the session spent: further objects are not stored"
+                );
+            }
+            return None;
         } else {
-            self.write(&path, &name, data)
+            let written = self.write(&path, &name, data);
+            if written.is_err() {
+                self.budget.give_back(blob.size);
+            }
+            written
         };
         match stored {
             Ok(()) => {
@@ -125,8 +174,9 @@ mod tests {
     fn stores_once_by_digest() {
         let tmp = tempfile::TempDir::new().unwrap();
         let dir = Arc::new(tmp.path().join("blobs"));
-        let mut a = BlobWriter::new(Arc::clone(&dir), 0);
-        let mut b = BlobWriter::new(Arc::clone(&dir), 1);
+        let budget = Arc::new(BlobBudget::new(u64::MAX));
+        let mut a = BlobWriter::new(Arc::clone(&dir), Arc::clone(&budget), 0);
+        let mut b = BlobWriter::new(Arc::clone(&dir), budget, 1);
         let r1 = a.put(b"certificate").unwrap();
         let r2 = b.put(b"certificate").unwrap();
         assert_eq!(r1, r2);
@@ -148,8 +198,27 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let file = tmp.path().join("not-a-dir");
         std::fs::write(&file, b"x").unwrap();
-        let mut w = BlobWriter::new(Arc::new(file), 0);
+        let budget = Arc::new(BlobBudget::new(100));
+        let mut w = BlobWriter::new(Arc::new(file), Arc::clone(&budget), 0);
         assert!(w.put(b"data").is_none());
         assert!(w.put(b"other").is_none());
+        // Failed writes give their bytes back.
+        assert_eq!(budget.remaining.load(Ordering::Acquire), 100);
+    }
+
+    #[test]
+    fn the_budget_is_shared_and_only_charges_new_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = Arc::new(tmp.path().join("blobs"));
+        let budget = Arc::new(BlobBudget::new(10));
+        let mut a = BlobWriter::new(Arc::clone(&dir), Arc::clone(&budget), 0);
+        let mut b = BlobWriter::new(Arc::clone(&dir), Arc::clone(&budget), 1);
+        assert!(a.put(b"123456").is_some());
+        // Same content from another shard: already on disk, free.
+        assert!(b.put(b"123456").is_some());
+        assert!(b.put(b"abcd").is_some());
+        assert_eq!(budget.remaining.load(Ordering::Acquire), 0);
+        assert!(a.put(b"x").is_none(), "budget spent");
+        assert!(b.put(b"abcd").is_some(), "known content is still referenced");
     }
 }

@@ -9,13 +9,16 @@ avec la preuve observée.
 
 ## Données
 
-Déduit des analyseurs et des flux :
-- DNS : IP ayant répondu à des requêtes DNS (depuis l'analyseur `dns`).
-- DHCP : IP émettant des OFFER/ACK (UDP 67) — analyseur DHCP léger à ajouter dans `feat/servers`.
-- LDAP : IP répondant sur 389/636 (depuis `ldap-parser`, déjà utilisé pour les binds).
-- Extensions : NTP (123), Kerberos (88), SMB (445), serveur HTTP (bannières/headers `Server`).
-`servers` : IP, rôle, preuve (type + nombre d'occurrences + premier/dernier ts), nom résolu, pays.
-API : `/servers` groupé par rôle.
+Déduit des analyseurs et des flux, à la lecture (vue SQL `server_evidence`, ADR-017) :
+- DNS : IP ayant répondu à des requêtes DNS unicast (analyseur `dns`), port 53 ouvert.
+- DHCP : IP émettant des OFFER/ACK/NAK (analyseur `servers`, option 54 sinon l'émetteur).
+- LDAP : port 389/636/3268/3269 ouvert (`open_ports`), cible d'un SRV `_ldap._tcp` / `_gc._tcp`.
+- NTP : réponses mode 4 (strate, référence) ; Kerberos : réponses KDC (AS-REP, TGS-REP, KRB-ERROR,
+  royaume), port 88 ouvert, SRV `_kerberos` ; SMB : sessions (`smb_sessions`) et annonces du service
+  serveur ou de contrôleur de domaine (`smb_announces`) ; HTTP : réponses émises.
+Preuve : type, nombre d'occurrences, clients distincts, premier/dernier ts, exemple.
+API : `GET /sessions/{id}/servers?role=&category=&limit=` groupé par rôle (tous les rôles, top `limit`
+par rôle et total), `analyzed: false` pour une session importée avant la vue.
 
 ## Mise en page
 

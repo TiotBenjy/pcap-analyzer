@@ -100,6 +100,8 @@ sessions/<session_id>/
   blobs/ab/abcdef...  objets extraits (images, documents, certificats DER), SHA-256, dédupliqués
   thumbs/ab/...       miniatures PNG générées côté Rust (crate `image`, décodeurs purs Rust)
 catalog.db            liste des sessions (nom, chemins sources, état, tailles)
+exports/              fichiers exportés (seul dossier que l'UI desktop peut ouvrir)
+geoip/                base GeoIP facultative, prioritaire sur celle du bundle
 ```
 
 Les captures sources ne sont **jamais copiées** : la session référence les chemins des chunks
@@ -140,8 +142,17 @@ toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paqu
 
 ## Desktop (Tauri 2)
 
-- `apps/desktop` démarre l'API dans un runtime tokio, puis ouvre la fenêtre sur `ui/dist`.
-- Plugins : `dialog` (choix de dossier), `opener` (ouvrir le dossier des exports).
+- `apps/desktop` démarre dans `setup` : répertoire de données (créé au premier lancement, avec `exports/`),
+  `recover_interrupted`, base GeoIP, API dans le runtime tokio de Tauri, **puis** la fenêtre
+  (`create: false`) sur `ui/dist`. Si une étape échoue, un dialogue natif l'explique, car une release
+  Windows n'a pas de console (ADR-012).
+- Fermeture : si un import tourne, un dialogue natif demande confirmation. À la sortie, l'API annule les
+  imports et attend leur writer pendant au plus `STOP_LIMIT` (environ 15 s) ; les sessions annulées
+  passent `incomplete`.
+- Plugins : `dialog` (choix de dossier ou de fichier, `nativePicker()` côté UI), `opener` (limité au
+  dossier `<données>/exports`). Capabilities minimales, sans `core:default`.
+- GeoIP : `<données>/geoip/dbip-country-lite.mmdb` si présent, sinon la base du bundle
+  (`resources/geoip/`). L'état est visible dans « Paramètres > À propos » (`GET /server-info`).
 - CSP stricte : `default-src 'self'; connect-src http://127.0.0.1:*; img-src 'self' http://127.0.0.1:* data:`,
   plus `style-src 'self' 'unsafe-inline'` pour le SVG d'ECharts et des directives fermées (détail : ADR-006).
 - Aucune autre fenêtre, aucun accès réseau sortant.
@@ -156,7 +167,7 @@ toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paqu
 ## GeoIP et classification
 
 - Base pays **DB-IP IP to Country Lite** (format mmdb, licence CC BY 4.0, attribution dans « À propos »).
-  Téléchargée par `./x.sh geoip` en dev et, une fois P2.5 faite (`bundle.resources`), par `release.yml`
+  Téléchargée par `./x.sh geoip` en dev (`./x.sh desktop` la copie dans le bundle) et par `release.yml`
   pour les bundles (`scripts/ci/geoip.sh`). L'application fonctionne sans (pays inconnu).
 - Classification d'adresses : privée (RFC 1918 / ULA), publique, broadcast, multicast, link-local, loopback,
   CGNAT. Utilisée pour les filtres et légendes (LAN / Public / Broadcast / Multicast / Link-local / Loopback).

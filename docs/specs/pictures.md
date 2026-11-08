@@ -13,15 +13,19 @@ Depuis `objects` (analyseur `http`, branche `feat/http`) filtrés sur les types 
 (crate `image`, décodeurs purs Rust ; dimensions bornées, délai borné, images malformées ignorées proprement) ;
 le SVG n'est **pas rendu** dans la webview (vignette « SVG » générique, téléchargement possible).
 `objects` : SHA-256, type MIME, taille, dimensions, transaction d'origine, URL, serveur, ts.
-API : `/pictures?q=&type=&host=` (paginé), miniatures `GET /thumbs/{sha256}`, original `GET /objects/{sha256}`.
+API (ADR-016) : `GET /sessions/{id}/objects?kind=image&q=&type=&host=&sort=` (paginé, keyset) et
+`/objects/stats` ; miniature `GET /sessions/{id}/objects/{sha256}/thumb` (PNG de 320 px au plus), aperçu
+`.../preview` (PNG de 1 600 px au plus, rendu à la demande) ; original `GET /sessions/{id}/objects/{sha256}`,
+toujours en pièce jointe `application/octet-stream`, jamais affiché. La webview affiche les PNG en URL
+`data:` (lus avec le jeton, autorisés par `img-src`).
 
 ## Mise en page
 
 - **Grille régulière** de vignettes de taille fixe (ratio conservé, recadrage centré, fond neutre),
   `grid` responsive (`repeat(auto-fill, minmax(140px, 1fr))`) — correction directe du défaut de la référence
   (images de tailles disparates posées sans alignement). Lazy-loading, virtualisation au-delà de ~300 items.
-- Survol : URL tronquée + taille. Clic : visionneuse (image à taille réelle sur fond neutre, métadonnées,
-  bouton Télécharger, navigation précédent/suivant). Barre de filtres : recherche URL, type, hôte.
+- Survol : URL tronquée + taille. Clic : visionneuse (aperçu PNG ré-encodé de 1 600 px au plus, sur fond neutre ;
+  métadonnées, bouton Télécharger, navigation précédent/suivant au clic et aux flèches). Barre de filtres : recherche URL, type, hôte.
 - Vignette = image statique servie par le backend (jamais le contenu distant ; aucune requête réseau sortante).
 
 ## Critères d'acceptation

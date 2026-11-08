@@ -15,18 +15,29 @@ export function typeLabel(mime: string): string {
   return TYPE_LABELS[mime] ?? mime.replace(/^image\//, '').toUpperCase();
 }
 
-/** Name shown under a tile: last segment of the URL path, else the host, else the digest. */
-export function displayName(item: Pick<ObjectItem, 'uri' | 'host' | 'sha256'>): string {
+/**
+ * Text from the capture, safe to display: control characters and bidirectional overrides or
+ * isolates (U+202A-U+202E, U+2066-U+2069, which can disguise an extension) removed.
+ */
+export function cleanText(text: string): string {
+  // eslint-disable-next-line no-control-regex -- removing control characters is the point
+  return text.replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '');
+}
+
+/** Name shown under a tile: last segment of the URL path, else the host, else the file name. */
+export function displayName(item: Pick<ObjectItem, 'uri' | 'host' | 'file_name'>): string {
   const path = (item.uri ?? '').split(/[?#]/)[0] ?? '';
   const segment = path.split('/').filter((s) => s !== '').at(-1);
+  let name = segment ?? item.host ?? '';
   if (segment !== undefined) {
     try {
-      return decodeURIComponent(segment);
+      name = decodeURIComponent(segment);
     } catch {
-      return segment;
+      name = segment;
     }
   }
-  return item.host ?? item.sha256.slice(0, 12);
+  const clean = cleanText(name).trim();
+  return clean === '' ? item.file_name : clean;
 }
 
 /** `640 x 480`, or `null` when unknown. */

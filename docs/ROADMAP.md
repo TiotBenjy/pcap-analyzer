@@ -175,7 +175,13 @@ Suivis de la vague 2.B :
   un second lancement pendant l'arrêt de l'API (~15 s) quitte sans fenêtre.
 - GeoIP : le cache de `/server-info` peut rester périmé si la base est remplacée dans la même seconde avec
   la même taille.
-- Vue Network (sigma) : vérifier avec `freezePrototype` (WebGL requis au chargement, non testable sous jsdom).
+- [x] Desktop : crash à l'ouverture d'une session (ECharts 6 `Scheduler.mockMethods` affecte `constructor`
+  sous `Object.prototype` gelé) corrigé par un plugin Vite (`fix/desktop-readonly`, 2026-11-08) ; écran
+  d'erreur de route maison avec « Copier les détails » ; test de fumée desktop WebKit + Chromium dans
+  `./x.sh shots`. La CI était rouge (shots Overview) de dd76c05 à cdfc665 : le gate local ne lance pas les
+  shots -> envisager `shots` (ou le test de fumée desktop) dans `wt.sh merge` pour les branches UI.
+- Vue Network (sigma) : l'ajouter au test de fumée desktop (`ui/tests/desktop/desktop.spec.ts`) sous gel.
+- Outillage : `scripts/ct/shots.sh` et `scripts/ct/webkit.sh` absents de la liste shellcheck de la CI.
 - Overview : performance au-delà de 24 h et zoom avec refetch, reportés dans P4.2.
 
 ---

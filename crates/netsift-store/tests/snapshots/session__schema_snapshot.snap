@@ -437,6 +437,66 @@ CREATE TABLE schema_migrations (
     applied_ns INTEGER NOT NULL
 );
 
+-- table smb_announces
+CREATE TABLE smb_announces (
+    src_ip         TEXT NOT NULL,                     -- address that announced
+    server_name    TEXT NOT NULL,                     -- announced computer name
+    dst_name       TEXT NOT NULL,                     -- NetBIOS destination (workgroup<suffix>)
+    kind           TEXT NOT NULL DEFAULT 'host',      -- host / local_master / domain
+    os_major       INTEGER NOT NULL DEFAULT 0,
+    os_minor       INTEGER NOT NULL DEFAULT 0,
+    os_label       TEXT NOT NULL DEFAULT '',          -- readable OS version
+    server_type    INTEGER NOT NULL DEFAULT 0,        -- SV_TYPE_* role bit field
+    comment        TEXT NOT NULL DEFAULT '',
+    announce_count INTEGER NOT NULL DEFAULT 1,
+    first_ts       INTEGER NOT NULL,
+    last_ts        INTEGER NOT NULL,
+    PRIMARY KEY (src_ip, server_name, dst_name)
+);
+
+-- index smb_announces_last_ts
+CREATE INDEX smb_announces_last_ts ON smb_announces (last_ts, src_ip);
+
+-- index smb_announces_os
+CREATE INDEX smb_announces_os ON smb_announces (kind, os_label, server_name);
+
+-- view smb_items
+CREATE VIEW smb_items (kind) AS
+    SELECT 'announce' FROM smb_announces
+    UNION ALL
+    SELECT 'session' FROM smb_sessions;
+
+-- table smb_sessions
+CREATE TABLE smb_sessions (
+    flow_id     INTEGER PRIMARY KEY,                 -- flows.id
+    client_ip   TEXT NOT NULL,
+    client_port INTEGER NOT NULL DEFAULT 0,
+    server_ip   TEXT NOT NULL,
+    server_port INTEGER NOT NULL DEFAULT 0,
+    first_ts    INTEGER NOT NULL,
+    last_ts     INTEGER NOT NULL,
+    protocol    TEXT NOT NULL DEFAULT 'smb2',        -- smb1 / smb2
+    dialect     TEXT,                                -- negotiated dialect label
+    signing     TEXT NOT NULL DEFAULT 'unknown',     -- disabled / enabled / required / unknown
+    server_guid TEXT,                                -- lower-case hex of the SMB2 server GUID
+    domain      TEXT,                                -- NTLM account domain
+    account     TEXT,                                -- NTLM account name
+    workstation TEXT,                                -- NTLM workstation name
+    ntlm_phase  TEXT                                 -- negotiate / challenge / authenticate
+);
+
+-- index smb_sessions_account
+CREATE INDEX smb_sessions_account ON smb_sessions (account);
+
+-- index smb_sessions_first_ts
+CREATE INDEX smb_sessions_first_ts ON smb_sessions (first_ts, flow_id);
+
+-- index smb_sessions_ntlm_phase
+CREATE INDEX smb_sessions_ntlm_phase ON smb_sessions (ntlm_phase);
+
+-- index smb_sessions_server_ip
+CREATE INDEX smb_sessions_server_ip ON smb_sessions (server_ip);
+
 -- table timeseries
 CREATE TABLE timeseries (
     bucket_s INTEGER NOT NULL,                      -- seconds since the Unix epoch

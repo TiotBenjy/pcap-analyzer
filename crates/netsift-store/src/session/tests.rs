@@ -330,3 +330,36 @@ fn a_lock_timeout_is_reported_as_busy() {
     assert!(!is_busy(&StoreError::UpgradeNeeded));
     holder.execute_batch("ROLLBACK").unwrap();
 }
+
+#[test]
+fn an_smb_view_added_on_upgrade_is_reported_as_not_run() {
+    // A session written by a build that predates SMB: every migration but 0500.
+    let old_migrations: Vec<Migration> = SESSION_MIGRATIONS
+        .iter()
+        .filter(|m| m.version != 500)
+        .copied()
+        .collect();
+    let old = MigrationSet {
+        migrations: Box::leak(old_migrations.into_boxed_slice()),
+        ..SESSION_SCHEMA
+    };
+    let new = set(&[]);
+    let tmp = tempfile::tempdir().unwrap();
+    create(tmp.path(), &old);
+
+    let session =
+        Session::open_finished_with(tmp.path().to_path_buf(), &new, Upgrade::Apply).unwrap();
+    let conn = session.conn();
+    // The 0500 tables and the `smb_items` view are recorded as added after the import.
+    let marker = added(conn);
+    for relation in ["smb_announces", "smb_sessions", "smb_items"] {
+        assert!(
+            marker.iter().any(|t| t == relation),
+            "{relation} in {marker:?}"
+        );
+    }
+    // So the module reports "not run" (None), not "0 rows" — the view must not escape the marker.
+    assert_eq!(count_rows(conn, "smb_items").unwrap(), None);
+    assert_eq!(count_rows(conn, "smb_announces").unwrap(), None);
+    assert_eq!(count_rows(conn, "smb_sessions").unwrap(), None);
+}

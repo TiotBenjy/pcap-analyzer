@@ -21,6 +21,7 @@ pub mod query;
 pub mod records;
 pub mod schema;
 pub mod session;
+pub mod smb;
 mod time;
 pub mod tls;
 pub mod traffic;
@@ -38,6 +39,7 @@ pub use records::{
     TimeseriesRow,
 };
 pub use session::{OpenMode, Session, Upgrade};
+pub use smb::{SmbAnnounceEntry, SmbAnnounceRow, SmbSessionEntry, SmbSessionRow};
 pub use writer::{StoreSender, StoreWriter, WriterConfig, WriterStats};
 
 /// Crate name, used by smoke tests and diagnostics.

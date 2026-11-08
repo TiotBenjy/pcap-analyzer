@@ -14,6 +14,7 @@
 #   ./x.sh desktop               build Tauri Linux (AppImage + .deb) -> dist/
 #   ./x.sh desktop-win           build Windows via cargo-xwin (expérimental) -> dist/
 #   ./x.sh geoip                 télécharge la base GeoIP (DB-IP Lite) dans .data/geoip/
+#   ./x.sh cliff [args]          git-cliff épinglé (CHANGELOG, notes de release ; cliff.toml)
 #   ./x.sh fuzz [cible] [durée]  cargo-fuzz (nightly dans le conteneur)
 #   ./x.sh shell                 shell interactif dans le conteneur
 #   ./x.sh run <cmd...>          commande brute dans le conteneur
@@ -116,6 +117,15 @@ run_in_q() { local a=(); while [[ "${1:-}" != "--" ]]; do a+=("$1"); shift; done
     -w /work "${a[@]}" "$IMAGE" bash -lc "$*"
 }
 
+# Worktree : son `.git` est un fichier qui pointe vers le dépôt principal, hors du montage /work.
+# On monte le répertoire git commun, en lecture seule, au même chemin absolu pour que git (et
+# git-cliff) puissent lire l'historique.
+git_mount_args() {
+  [[ -f "$WORKDIR/.git" ]] || return 0
+  local common; common="$(git -C "$WORKDIR" rev-parse --path-format=absolute --git-common-dir)"
+  printf '%s\n' -v "$common:$common:ro,z"
+}
+
 # Ports pour dev : dérivés du slug si non fixés, pour que deux worktrees ne se marchent pas dessus.
 ui_port()  { echo "${NETSIFT_UI_PORT:-$(( 5173 + (16#$(slug | cut -c1-2) % 40) ))}"; }
 api_port() { echo "${NETSIFT_API_PORT:-$(( 7878 + (16#$(slug | cut -c1-2) % 40) ))}"; }
@@ -139,6 +149,8 @@ case "$CMD" in
     # Gate identique à la CI. S'arrête à la première erreur.
     run_in_q -- '
       set -e
+      echo "== version =="      && bash scripts/check-version.sh >/dev/null && bash scripts/tests/check-version.sh \
+        && bash scripts/tests/release.sh
       echo "== rustfmt =="      && cargo fmt --all --check
       echo "== clippy =="       && cargo clippy --workspace --all-targets --all-features -- -D warnings
       echo "== cargo-deny =="   && (cargo deny check || true)   # avertit sans bloquer au début du projet
@@ -168,6 +180,8 @@ case "$CMD" in
   desktop)     run_in -- "bash scripts/ct/desktop.sh linux" ;;
   desktop-win) run_in -- "bash scripts/ct/desktop.sh windows" ;;
   geoip)       run_in -- "bash scripts/ct/geoip.sh" ;;
+  cliff)       mapfile -t gm < <(git_mount_args)
+               run_in "${gm[@]}" -- "bash scripts/ct/cliff.sh $*" ;;
   fuzz)        run_in -- "bash scripts/ct/fuzz.sh $*" ;;
 
   help|*)

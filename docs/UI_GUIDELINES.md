@@ -107,6 +107,12 @@ Une vue n'invente pas de composant visuel ad hoc s'il en existe un.
 Chaque bloc a trois états soignés : chargement (squelette de la taille finale), vide
 (icône lucide neutre + phrase courte, ex. « Aucun serveur LDAP détecté »), erreur (message + Réessayer).
 
+Une erreur non rattrapée dans une vue affiche `RouteError` (`defaultErrorComponent` du routeur), jamais
+l'écran par défaut de TanStack Router : message court, l'erreur elle-même, « Recharger » et « Copier les
+détails » (erreur, stack, motif de route sans identifiant de session, user agent ; aucune donnée de
+capture). La navigation reste utilisable autour. Une build release n'a pas de devtools : c'est le seul
+moyen de diagnostiquer un bug du desktop.
+
 ## Accessibilité
 
 Navigation clavier complète, focus visible (`ring-2` accent), rôles ARIA sur bascules et onglets,
@@ -124,6 +130,12 @@ cibles tactiles ≥ 32 px, pas d'information portée uniquement par la couleur.
 4. échoue si un élément marqué `data-testid="truncatable"` n'a pas d'attribut `title`.
 
 L'agent `ui-reviewer` relit ensuite les captures produites.
+
+`./x.sh shots` (quelle que soit la vue, ou seul avec `./x.sh shots desktop`) lance ensuite le test de
+fumée desktop `ui/tests/desktop` sous WebKit et Chromium : `Object.prototype` gelé comme le fait Tauri,
+faux `window.__TAURI_INTERNALS__`, puis dialogue d'import natif, Overview et Sources. Il échoue sur toute
+erreur de page ou de console et sur tout écran d'erreur de route. Le WebKit de Playwright et ses
+bibliothèques sont téléchargés une fois dans le volume de cache (`scripts/ct/webkit.sh`).
 
 ## Défauts observés dans les références, à ne pas reproduire
 

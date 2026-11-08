@@ -1,7 +1,7 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, configure, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../api/client';
 import { ApiError } from '../../api/client';
 import * as overviewApi from '../../api/overview';
@@ -89,7 +89,13 @@ interface SeriesProbe {
 const optionOf = () => (chart.props?.option ?? {}) as { series?: SeriesProbe[]; legend?: unknown };
 const seriesNames = () => (optionOf().series ?? []).map((s) => s.name);
 
-describe('Overview view', () => {
+// The first render loads the lazy route and the whole app shell: on a loaded machine it takes
+// seconds, so queries wait longer than the 1 s default.
+describe('Overview view', { timeout: 20_000 }, () => {
+  beforeAll(() => {
+    configure({ asyncUtilTimeout: 5_000 });
+  });
+
   beforeEach(() => {
     vi.resetAllMocks();
     chart.props = null;

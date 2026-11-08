@@ -285,9 +285,8 @@ pub struct PendingThumb {
 
 /// Objects whose thumbnail is still [`thumb::PENDING`], in order of appearance.
 pub fn pending_thumbs(conn: &Connection) -> Result<Vec<PendingThumb>> {
-    let mut stmt = conn.prepare(
-        "SELECT sha256, size, mime FROM objects WHERE thumb = 'pending' ORDER BY id",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT sha256, size, mime FROM objects WHERE thumb = 'pending' ORDER BY id")?;
     let rows = stmt
         .query_map([], |r| {
             Ok(PendingThumb {
@@ -315,9 +314,8 @@ pub struct ThumbUpdate {
 pub fn set_thumbs(conn: &mut Connection, updates: &[ThumbUpdate]) -> Result<()> {
     let tx = conn.transaction()?;
     {
-        let mut stmt = tx.prepare(
-            "UPDATE objects SET thumb = ?2, width = ?3, height = ?4 WHERE sha256 = ?1",
-        )?;
+        let mut stmt =
+            tx.prepare("UPDATE objects SET thumb = ?2, width = ?3, height = ?4 WHERE sha256 = ?1")?;
         for u in updates {
             stmt.execute(params![u.sha256, u.state, u.width, u.height])?;
         }

@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 use netsift_engine::{CancelToken, IngestOptions, IngestReport, ingest};
 use netsift_fixtures::images::{GALLERY_OBJECTS, gallery};
-use netsift_fixtures::{Encoding, Naming, Scenario, SplitBy, SplitOptions, split_to_dir, write_file};
+use netsift_fixtures::{
+    Encoding, Naming, Scenario, SplitBy, SplitOptions, split_to_dir, write_file,
+};
 use netsift_store::{Catalog, OpenMode, SessionState};
 use tempfile::TempDir;
 
@@ -121,13 +123,24 @@ fn only_images_reach_the_disk_and_thumbnails_are_generated() {
         assert!(!data.starts_with(b"<html") && !data.starts_with(b"<!doctype"));
         assert!(!data.windows(8).any(|w| w == b"password"));
     }
-    let session = catalog.open_session(&report.session, OpenMode::ReadOnly).unwrap();
+    let session = catalog
+        .open_session(&report.session, OpenMode::ReadOnly)
+        .unwrap();
     let conn = session.conn();
     let count = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
-    assert_eq!(count("SELECT count(*) FROM http_transactions WHERE req_sha256 IS NOT NULL"), 0);
+    assert_eq!(
+        count("SELECT count(*) FROM http_transactions WHERE req_sha256 IS NOT NULL"),
+        0
+    );
     // Thumbnails: every raster image but the truncated JPEG; the SVG is never rasterized.
-    assert_eq!(count("SELECT count(*) FROM objects WHERE thumb = 'none'"), 1);
-    assert_eq!(count("SELECT count(*) FROM objects WHERE thumb = 'failed'"), 1);
+    assert_eq!(
+        count("SELECT count(*) FROM objects WHERE thumb = 'none'"),
+        1
+    );
+    assert_eq!(
+        count("SELECT count(*) FROM objects WHERE thumb = 'failed'"),
+        1
+    );
     let ready = count("SELECT count(*) FROM objects WHERE thumb = 'ready'");
     assert_eq!(usize::try_from(ready).unwrap(), GALLERY_OBJECTS - 2);
     let thumbs = files(&dir.join("thumbs"));
@@ -138,7 +151,9 @@ fn only_images_reach_the_disk_and_thumbnails_are_generated() {
         assert!(img.width() <= 320 && img.height() <= 320);
     }
     let failed: String = conn
-        .query_row("SELECT uri FROM objects WHERE thumb = 'failed'", [], |r| r.get(0))
+        .query_row("SELECT uri FROM objects WHERE thumb = 'failed'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(failed, "/broken/cut.jpg");
 }

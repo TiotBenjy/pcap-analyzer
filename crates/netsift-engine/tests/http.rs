@@ -192,8 +192,14 @@ fn only_images_reach_the_disk() {
         .open_session(&report.session, OpenMode::ReadOnly)
         .unwrap();
     let count = |sql: &str| -> i64 { session.conn().query_row(sql, [], |r| r.get(0)).unwrap() };
-    assert_eq!(count("SELECT count(*) FROM http_transactions WHERE req_sha256 IS NOT NULL"), 0);
-    assert_eq!(count("SELECT count(*) FROM http_transactions WHERE resp_sha256 IS NOT NULL"), 1);
+    assert_eq!(
+        count("SELECT count(*) FROM http_transactions WHERE req_sha256 IS NOT NULL"),
+        0
+    );
+    assert_eq!(
+        count("SELECT count(*) FROM http_transactions WHERE resp_sha256 IS NOT NULL"),
+        1
+    );
     assert_eq!(count("SELECT count(*) FROM objects"), 1);
     let sha: String = session
         .conn()
@@ -208,5 +214,8 @@ fn only_images_reach_the_disk() {
     };
     options.analyzers.config_mut().http.store_bodies = false;
     let report = ingest(&catalog, &file, &options, &CancelToken::new(), &mut |_| {}).unwrap();
-    assert_eq!(blob_files(&catalog, &report), Vec::<std::path::PathBuf>::new());
+    assert_eq!(
+        blob_files(&catalog, &report),
+        Vec::<std::path::PathBuf>::new()
+    );
 }

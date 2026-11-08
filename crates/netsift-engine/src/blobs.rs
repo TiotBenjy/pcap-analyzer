@@ -219,6 +219,9 @@ mod tests {
         assert!(b.put(b"abcd").is_some());
         assert_eq!(budget.remaining.load(Ordering::Acquire), 0);
         assert!(a.put(b"x").is_none(), "budget spent");
-        assert!(b.put(b"abcd").is_some(), "known content is still referenced");
+        assert!(
+            b.put(b"abcd").is_some(),
+            "known content is still referenced"
+        );
     }
 }

@@ -361,18 +361,8 @@ impl RunCtx<'_> {
         if let Some(reason) = failure {
             return Err(reason);
         }
-        // Thumbnails once `objects` is built (end-of-import steps), outside the shards. A
-        // cancelled import skips them: the API renders what is missing on demand.
         if !cancelled {
-            let dir = self.catalog.session_dir(self.session);
-            match crate::thumbs::generate_pending(&dir, self.cancel, crate::thumbs::PASS_TIME_LIMIT)
-            {
-                Ok(r) if r.left > 0 => {
-                    tracing::info!(left = r.left, "thumbnails left for on-demand rendering");
-                }
-                Ok(_) => {}
-                Err(e) => tracing::warn!("cannot generate thumbnails: {e}"),
-            }
+            self.thumbnails();
         }
 
         let mut anomaly_kinds = BTreeMap::new();
@@ -403,6 +393,19 @@ impl RunCtx<'_> {
         };
         progress(&self.done_progress(&report, reader.source.total_bytes()));
         Ok(report)
+    }
+
+    /// Thumbnails, once `objects` is built (end-of-import steps), outside the shards. A
+    /// cancelled import skips them: the API renders what is missing on demand.
+    fn thumbnails(&self) {
+        let dir = self.catalog.session_dir(self.session);
+        match crate::thumbs::generate_pending(&dir, self.cancel, crate::thumbs::PASS_TIME_LIMIT) {
+            Ok(r) if r.left > 0 => {
+                tracing::info!(left = r.left, "thumbnails left for on-demand rendering");
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("cannot generate thumbnails: {e}"),
+        }
     }
 
     /// Last callback, once everything is written.

@@ -237,6 +237,13 @@ Suivis de la vague 3.A :
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
 
+Hors vague (demande utilisateur du 2026-11-08) :
+
+- [~] **G1** `feat/geoip-update` — Mise à jour de la base GeoIP depuis l'application (Paramètres > À
+      propos) : téléchargement de la dernière DB-IP Country Lite côté Rust, sur clic uniquement, et import
+      d'un fichier `.mmdb` ; validation avant remplacement atomique, rechargement à chaud. Seule exception
+      à « aucun appel réseau sortant » (ADR-015).
+
 ### Vague 3.B (dépend de 3.A)
 
 - [ ] **P3.6** `feat/pictures` — Extraction d'objets HTTP (images), dédup SHA-256, miniatures Rust. Dép. P3.2.

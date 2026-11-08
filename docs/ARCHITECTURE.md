@@ -125,6 +125,10 @@ Règles : index sur toutes les colonnes filtrables/triables par l'UI ; FTS5 pour
 texte (noms DNS, URL, en-têtes) ; pagination par **keyset** (pas d'OFFSET sur grosses tables) ;
 toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paquets.
 
+Une session terminée créée par une version antérieure reçoit les migrations manquantes à sa première
+ouverture par l'API (sauf serveur `--read-only`, qui répond 409) ; les tables ainsi créées sont vides et leurs modules apparaissent « non analysés »
+jusqu'à un réimport (ADR-013).
+
 ## API HTTP (axum)
 
 - Liaison `127.0.0.1:<port aléatoire>` + en-tête `Authorization: Bearer <jeton aléatoire>`

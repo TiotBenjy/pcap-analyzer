@@ -581,7 +581,7 @@ fn stored_final(state: &AppState, id: &SessionId) -> Result<Option<ImportEvent>,
             message: FAILED_MESSAGE.to_owned(),
         },
         StoreState::Ready | StoreState::Incomplete => {
-            let stats = Stats::read(&session_dir(state, id));
+            let stats = Stats::read(state, session_dir(state, id), info.state);
             #[allow(clippy::cast_precision_loss)]
             let duration_s = stats.duration_ms.map_or(0.0, |ms| ms as f64 / 1000.0);
             ImportEvent::Done {

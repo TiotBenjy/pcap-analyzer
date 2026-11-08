@@ -125,12 +125,16 @@ pub fn applied_versions(conn: &Connection) -> Result<Vec<u32>> {
     Ok(rows.collect::<rusqlite::Result<Vec<u32>>>()?)
 }
 
-/// Names of the tables of the database: ordinary and virtual tables, without the internal
-/// `sqlite_*` tables nor the shadow tables of virtual tables (FTS5 `*_data`, `*_idx`...).
+/// Names of the relations of the database: ordinary, virtual **and view** relations, without the
+/// internal `sqlite_*` tables nor the shadow tables of virtual tables (FTS5 `*_data`, `*_idx`...).
+///
+/// Views are included so that a view added by a later migration (e.g. `smb_items`) is recorded
+/// in [`crate::session::TABLES_ADDED_AFTER_IMPORT`] on upgrade, and thus reported as "not run"
+/// rather than "0 rows" by `count_rows` (ADR-013).
 fn table_names(conn: &Connection) -> Result<BTreeSet<String>> {
     let mut stmt = conn.prepare(
         "SELECT name FROM pragma_table_list WHERE schema = 'main' \
-         AND type IN ('table', 'virtual') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
+         AND type IN ('table', 'virtual', 'view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
     )?;
     let rows = stmt.query_map([], |r| r.get(0))?;
     Ok(rows.collect::<rusqlite::Result<BTreeSet<String>>>()?)

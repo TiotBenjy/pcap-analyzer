@@ -1,0 +1,54 @@
+---
+source: crates/netsift-dissect/tests/dns.rs
+expression: r
+---
+Message {
+    header: Header {
+        id: 7,
+        flags: 33152,
+        qdcount: 1,
+        ancount: 2,
+        nscount: 0,
+        arcount: 0,
+    },
+    questions: [
+        Question {
+            name: Name {
+                name: "secure.example.test",
+                suffix: None,
+            },
+            qtype: 1,
+            qclass: 1,
+            unicast_response: false,
+        },
+    ],
+    records: [
+        Record {
+            section: Answer,
+            name: Name {
+                name: "secure.example.test",
+                suffix: None,
+            },
+            rtype: 5,
+            class: 1,
+            ttl: 3600,
+            data: Name(
+                "edge.cdn.example.net",
+            ),
+        },
+        Record {
+            section: Answer,
+            name: Name {
+                name: "edge.cdn.example.net",
+                suffix: None,
+            },
+            rtype: 1,
+            class: 1,
+            ttl: 60,
+            data: A(
+                198.51.100.43,
+            ),
+        },
+    ],
+    malformed: false,
+}

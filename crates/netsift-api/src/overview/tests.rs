@@ -179,10 +179,12 @@ async fn mixed_capture_shows_dns_http_and_tls_with_exact_totals() {
             .map(|m| m["count"].clone())
     };
     // Conversations: workstation (v4 and v6) to the resolver, the web and the TLS servers;
-    // open ports: DNS (v4 and v6), HTTP and TLS.
+    // open ports: DNS (v4 and v6), HTTP and TLS. The SMB tables exist (its analyzer ran) but
+    // this capture has no SMB traffic, so its module reports 0.
     assert_eq!(module("connections"), Some(4.into()));
     assert_eq!(module("hosts"), Some(summary["host_count"].clone()));
     assert_eq!(module("openPorts"), Some(4.into()));
+    assert_eq!(module("smb"), Some(0.into()));
     // Five TLS handshakes (rounds of the TLS scenario).
     assert_eq!(module("tls"), Some(5.into()));
     // One HTTP transaction (7 header lines) per round of the HTTP scenario.

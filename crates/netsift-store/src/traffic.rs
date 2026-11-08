@@ -192,7 +192,7 @@ pub fn count_rows(conn: &Connection, table: &'static str) -> Result<Option<u64>>
     }
     let exists = conn
         .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?1",
             [table],
             |_| Ok(()),
         )

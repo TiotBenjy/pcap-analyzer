@@ -10,7 +10,8 @@
 //! - [`core`]: the built-in `core` analyzer (traffic time series, hosts, flows);
 //! - [`connections`]: conversations between hosts and traffic per host;
 //! - [`ports`]: open ports (SYN-ACK, UDP replies) with services detected by content;
-//! - [`services`]: IANA service names of ports (embedded registry).
+//! - [`services`]: IANA service names of ports (embedded registry);
+//! - [`smb`]: NetBIOS browser announcements, SMB negotiation and NTLMSSP.
 //!
 //! [`geo`] (address categories, countries) is re-exported for the engine, which loads the
 //! country database shared by every shard ([`AnalyzerConfig::geo`]).
@@ -36,6 +37,7 @@ pub mod ports;
 pub mod record;
 pub mod registry;
 pub mod services;
+pub mod smb;
 #[cfg(test)]
 mod testutil;
 pub mod tls;
@@ -45,8 +47,12 @@ pub use classify::AppProto;
 pub use netsift_dissect as dissect;
 pub use netsift_flow as flow;
 pub use netsift_geo as geo;
-pub use record::{FlowSummary, HostSeen, Record, TrafficSample};
+pub use record::{
+    AnnouncementKind, Credential, FlowSummary, HostSeen, NtlmPhase, Record, SecretState, Signing,
+    SmbAnnounce, SmbProtocol, SmbRecord, SmbSession, TrafficSample,
+};
 pub use registry::{AnalyzerConfig, CoreConfig, Factory, Registry, factory};
+pub use smb::{SmbAnalyzer, SmbConfig};
 
 /// Crate name, used by smoke tests and diagnostics.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");

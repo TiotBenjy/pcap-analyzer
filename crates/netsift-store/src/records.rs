@@ -66,6 +66,12 @@ pub enum StoreRecord {
     Http(Box<crate::http::HttpRow>),
     /// Commutative merging upsert of an open port (`ports`).
     OpenPort(OpenPortRow),
+    // The SMB rows below are boxed: they are wide (many optional text fields) and would otherwise
+    // dominate the size of every `StoreRecord` (and of the writer's `Msg`).
+    /// New NetBIOS browser announcement (`smb_announces`).
+    SmbAnnounce(Box<crate::smb::SmbAnnounceRow>),
+    /// Commutative merging upsert of an SMB session by flow id (`smb_sessions`).
+    SmbSession(Box<crate::smb::SmbSessionRow>),
     /// One TLS session with its hellos and certificates (`tls_*` tables).
     Tls(Box<crate::tls::TlsSessionRow>),
 }
@@ -85,6 +91,8 @@ impl StoreRecord {
             Self::HostTraffic(_) => "host_traffic",
             Self::Http(_) => "http_transactions",
             Self::OpenPort(_) => "open_ports",
+            Self::SmbAnnounce(_) => "smb_announces",
+            Self::SmbSession(_) => "smb_sessions",
             Self::Tls(_) => "tls_sessions",
         }
     }
@@ -103,6 +111,8 @@ impl StoreRecord {
             Self::HostTraffic(r) => r.insert(conn),
             Self::Http(r) => r.insert(conn),
             Self::OpenPort(r) => r.insert(conn),
+            Self::SmbAnnounce(r) => r.insert(conn),
+            Self::SmbSession(r) => r.insert(conn),
             Self::Tls(r) => r.insert(conn),
         }
     }

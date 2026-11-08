@@ -14,12 +14,27 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use netsift_engine::{CancelToken, IngestOptions, ingest};
-use netsift_fixtures::scenario::Scenario;
-use netsift_fixtures::scenarios::{Kind, generate, tls_showcase_from_port};
+use netsift_fixtures::scenario::{Scenario, SmbNtlm};
+use netsift_fixtures::scenarios::{Kind, generate, hosts, tls_showcase_from_port};
 use netsift_fixtures::time::NS_PER_SEC;
 use netsift_fixtures::writer::{Encoding, encode};
 use netsift_fixtures::{Naming, Packet, SplitBy, SplitOptions, http_mix, split_to_dir};
 use netsift_store::Catalog;
+
+/// Demo rounds plus one `NTLMv2` authentication over SMB, so the SMB view shows an announced-OS
+/// donut, host announcements and an authentication (added here, like HTTP/TLS, not in `Kind`).
+fn demo_packets(rounds: usize, seed: u64) -> Vec<Packet> {
+    let mut packets = generate(Kind::Demo, rounds, seed);
+    let start = packets.last().map_or(0, |p| p.ts_ns) + NS_PER_SEC;
+    let mut sc = Scenario::starting_at(start).with_seed(seed ^ 0x5342);
+    sc.smb_ntlm(
+        hosts::workstation(),
+        hosts::file_server(),
+        &SmbNtlm::v2("jdoe", "CONTOSO"),
+    );
+    packets.extend(sc.into_packets());
+    packets
+}
 
 /// Folder of the generated captures, inside the data directory.
 pub const SOURCES_DIR: &str = "demo-captures";
@@ -73,7 +88,7 @@ fn add_http_mix(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
 }
 
 fn write_chunked(dir: &Path) -> Result<usize> {
-    let mut packets = generate(Kind::Demo, ROUNDS, 7);
+    let mut packets = demo_packets(ROUNDS, 7);
     let start = packets.first().map_or(0, |p| p.ts_ns);
     let end = packets.last().map_or(0, |p| p.ts_ns);
     // Stops a few seconds before the end: the chunk count stays the same.
@@ -103,7 +118,7 @@ fn write_chunked(dir: &Path) -> Result<usize> {
 
 fn write_single(dir: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
-    let mut packets = generate(Kind::Demo, 30, 11);
+    let mut packets = demo_packets(30, 11);
     let start = packets.first().map_or(0, |p| p.ts_ns);
     add_http_mix(&mut packets, start, 20);
     let bytes = encode(&packets, &Encoding::pcap())?;

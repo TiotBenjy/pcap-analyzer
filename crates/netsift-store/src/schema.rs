@@ -32,6 +32,7 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
     // --- core (0001-0099) ---
     migration!(1, "core", "0001_core.sql"),
     // --- analyzers (0100+): one line per migration, in numeric order ---
+    migration!(400, "flows", "0400_flows.sql"),
 ];
 
 /// Migrations of `catalog.db`, sorted by version (owned by the core only).

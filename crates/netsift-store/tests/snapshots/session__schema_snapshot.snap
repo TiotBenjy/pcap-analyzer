@@ -49,6 +49,48 @@ CREATE INDEX chunks_seq ON chunks (seq);
 -- index chunks_status
 CREATE INDEX chunks_status ON chunks (status);
 
+-- table conversations
+CREATE TABLE conversations (
+    id            INTEGER PRIMARY KEY,
+    src_ip        TEXT NOT NULL,                    -- client (initiator)
+    dst_ip        TEXT NOT NULL,                    -- server
+    first_ts      INTEGER NOT NULL,
+    last_ts       INTEGER NOT NULL,
+    bytes_fwd     INTEGER NOT NULL DEFAULT 0,       -- src -> dst
+    bytes_rev     INTEGER NOT NULL DEFAULT 0,       -- dst -> src
+    packets_fwd   INTEGER NOT NULL DEFAULT 0,
+    packets_rev   INTEGER NOT NULL DEFAULT 0,
+    flows         INTEGER NOT NULL DEFAULT 0,
+    dns_bytes_fwd INTEGER NOT NULL DEFAULT 0,       -- part of bytes_fwd carried by DNS flows
+    dns_bytes_rev INTEGER NOT NULL DEFAULT 0,       -- part of bytes_rev carried by DNS flows
+    dns_flows     INTEGER NOT NULL DEFAULT 0,
+    protocols     TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(protocols)),  -- sorted labels
+    bytes_total   INTEGER GENERATED ALWAYS AS (bytes_fwd + bytes_rev) VIRTUAL,
+    packets_total INTEGER GENERATED ALWAYS AS (packets_fwd + packets_rev) VIRTUAL,
+    UNIQUE (src_ip, dst_ip)
+);
+
+-- index conversations_bytes
+CREATE INDEX conversations_bytes ON conversations (bytes_total);
+
+-- index conversations_bytes_no_dns
+CREATE INDEX conversations_bytes_no_dns ON conversations (bytes_fwd + bytes_rev - dns_bytes_fwd - dns_bytes_rev);
+
+-- index conversations_dst_ip
+CREATE INDEX conversations_dst_ip ON conversations (dst_ip);
+
+-- index conversations_first_ts
+CREATE INDEX conversations_first_ts ON conversations (first_ts);
+
+-- index conversations_flows
+CREATE INDEX conversations_flows ON conversations (flows);
+
+-- index conversations_last_ts
+CREATE INDEX conversations_last_ts ON conversations (last_ts);
+
+-- index conversations_packets
+CREATE INDEX conversations_packets ON conversations (packets_total);
+
 -- table flows
 CREATE TABLE flows (
     id            INTEGER PRIMARY KEY,
@@ -90,8 +132,20 @@ CREATE INDEX flows_last_ts ON flows (last_ts);
 -- index flows_packets_total
 CREATE INDEX flows_packets_total ON flows (packets_total);
 
+-- index flows_service
+CREATE INDEX flows_service ON flows (dst_ip, dst_port, transport, src_ip);
+
 -- index flows_src_ip
 CREATE INDEX flows_src_ip ON flows (src_ip);
+
+-- table host_traffic
+CREATE TABLE host_traffic (
+    ip               TEXT PRIMARY KEY NOT NULL,
+    bytes_sent       INTEGER NOT NULL DEFAULT 0,
+    bytes_received   INTEGER NOT NULL DEFAULT 0,
+    packets_sent     INTEGER NOT NULL DEFAULT 0,
+    packets_received INTEGER NOT NULL DEFAULT 0
+) WITHOUT ROWID;
 
 -- table hosts
 CREATE TABLE hosts (
@@ -121,6 +175,23 @@ CREATE TABLE meta (
     key   TEXT PRIMARY KEY NOT NULL,
     value TEXT NOT NULL
 ) WITHOUT ROWID;
+
+-- table open_ports
+CREATE TABLE open_ports (
+    ip        TEXT NOT NULL,
+    transport INTEGER NOT NULL,                     -- 6 TCP, 17 UDP
+    port      INTEGER NOT NULL,
+    evidence  TEXT NOT NULL CHECK (evidence IN ('server_data', 'syn_ack', 'udp_reply')),
+    service   TEXT,                                 -- IANA service name of the port
+    detected  TEXT,                                 -- service identified by content
+    banner    TEXT,                                 -- first line of a greeting, <= 256 bytes
+    first_ts  INTEGER NOT NULL,
+    last_ts   INTEGER NOT NULL,
+    PRIMARY KEY (ip, transport, port)
+) WITHOUT ROWID;
+
+-- index open_ports_port
+CREATE INDEX open_ports_port ON open_ports (port, transport);
 
 -- table schema_migrations
 CREATE TABLE schema_migrations (

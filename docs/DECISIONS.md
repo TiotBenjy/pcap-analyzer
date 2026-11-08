@@ -259,3 +259,37 @@ acceptée : la remplacer par une nouvelle qui la référence.
   9. macOS : Cmd+Q pendant un import affiche le même dialogue.
   10. Second lancement : la fenêtre existante revient au premier plan, aucune seconde fenêtre.
   11. Windows : aucune console ne s'ouvre.
+
+## ADR-013 — Mise à niveau des sessions anciennes à l'ouverture
+
+- Contexte : chaque analyseur de la phase 3 ajoute une migration de session (0100 DNS, 0200 HTTP, ...).
+  L'ouverture en lecture seule exigeait un schéma à jour : une session importée avant une nouvelle
+  migration renvoyait `SchemaOutdated`, traduit en erreur 500 opaque sur toutes les vues (Overview et
+  `GET /sessions/{id}` compris), et la liste affichait 0 paquet.
+- Décision :
+  - l'API ouvre les sessions `ready` et `incomplete` par `Session::open_upgrading` : vérification en
+    lecture seule, puis, si des migrations manquent, connexion en écriture (sans création de fichier) qui
+    les applique, puis réouverture en lecture seule. Chaque migration reste une transaction
+    `BEGIN IMMEDIATE` qui vérifie d'abord qu'elle n'est pas déjà appliquée : deux ouvertures simultanées
+    sont sérialisées et la migration n'est jamais appliquée deux fois ;
+  - une session `importing` ou `failed` n'est jamais écrite par une lecture (ouverture en lecture seule
+    stricte ; un schéma en retard y donne un 409 `conflict`) ;
+  - les tables créées par une migration appliquée à une base qui avait déjà un schéma sont notées dans la
+    méta `schema.tables_added_after_import`, dans la transaction de la migration
+    (`migrate::migrate_with`). `traffic::count_rows` renvoie `None` pour ces tables comme pour une table
+    absente : l'Overview omet le module, que l'UI affiche « non analysé » (`notRun`) et non « vide ».
+    La règle porte sur les tables et non sur la méta `import.analyzers`, car un module ne correspond pas
+    toujours à un seul analyseur (`openPorts` -> `ports`, `httpHeaders` -> `http`). Un import (mode
+    `Import`, session vide) efface cette méta ;
+  - une session plus récente que l'application (`SchemaTooNew`) est refusée par un 409
+    `urn:netsift:problem:session-too-new` ; l'échec de la mise à niveau (disque en lecture seule, fichier
+    corrompu, migration en erreur) donne une 500 `urn:netsift:problem:session-upgrade-failed`, sans
+    détail (chemins et SQL vont au journal). L'UI traduit ces deux types (`errors.sessionTooNew`,
+    `errors.sessionUpgradeFailed`) ;
+  - la mise à niveau est permise même quand le serveur est en lecture seule (`read_only`) : c'est de la
+    maintenance du schéma, pas une modification demandée par l'utilisateur.
+- Conséquences : une session ancienne s'ouvre avec les nouveaux onglets présentés comme non exécutés ;
+  il faut la réimporter pour les remplir. Une migration qui ajoute une colonne à une table existante
+  laisse cette colonne vide (valeur par défaut) pour les lignes déjà importées : les vues doivent le
+  tolérer. Une migration appliquée ne peut pas être annulée : une session mise à niveau ne s'ouvre plus
+  avec la version précédente de l'application (`session-too-new`).

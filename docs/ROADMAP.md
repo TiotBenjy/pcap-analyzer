@@ -136,6 +136,10 @@ Suivis de la vague 2.A :
 - [x] P2.1 : anomalies publiées pendant l'import et id de session fourni par `Progress`
   (`feat/engine-live-progress`, fusionnée le 2026-11-08 ; trous et chevauchements restent publiés en fin
   de lecture, `analyzer_panicked` seulement en base).
+- Outillage, hygiène du cache (après fusion de P4.6, qui touche `x.sh` et `wt.sh`) : chaque worktree a
+  son `/cache/target/<slug>` jamais supprimé (~100 Go d'orphelins purgés à la main le 2026-11-08).
+  `wt.sh merge --cleanup` / `wt.sh rm` suppriment le target du worktree ; `./x.sh clean` purge les targets
+  orphelins (marqueur du chemin d'origine dans chaque target) et les images dangling ; plafond sccache.
 - Tests UI de P2.3 (CapturesView, SourcesView, ImportWizard, routes) : dépassent le délai de 1 s quand
   plusieurs gates tournent en parallèle, ce qui fait échouer `wt.sh merge` au hasard ; fiabiliser (délais,
   `findBy*` plutôt qu'attentes fixes, ou `testTimeout` UI relevé).

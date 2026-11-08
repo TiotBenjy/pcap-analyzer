@@ -31,12 +31,12 @@ use netsift_analyze::flow::{
     Direction, FlowCtx, FlowSink, FlowTable, PacketCtx, StreamCtx, shard_hash,
 };
 use netsift_analyze::{Analyzer, AnalyzerId, Record, RecordSink};
-use netsift_capture::chunkset::{ChunkSetSource, ChunkStats};
+use netsift_capture::chunkset::{AnomalyKind, ChunkSetSource};
 use netsift_capture::{PacketSource, RawPacket};
 use netsift_store::{AnomalyRow, StoreError, StoreRecord, StoreSender};
 
 use crate::options::CancelToken;
-use crate::translate::{anomaly_row, approx_size, to_store};
+use crate::translate::{anomaly_row_with, approx_size, to_store};
 
 /// Sentinel of [`Shared::chunk`]: no chunk open.
 const NO_CHUNK: u32 = u32::MAX;
@@ -59,8 +59,10 @@ pub(crate) struct Shared {
 /// Continuity anomalies of the source not yet handed to the progress callback.
 #[derive(Debug, Default)]
 struct AnomalyLog {
-    /// Anomalies of the source already converted.
+    /// Anomalies of the source already examined.
     seen: usize,
+    /// Index of the `out_of_order` anomaly, published by [`Shared::finish`].
+    deferred: Option<usize>,
     pending: Vec<AnomalyRow>,
 }
 
@@ -86,22 +88,39 @@ impl Shared {
         self.packets.store(packets, Ordering::Relaxed);
         let chunk = source.open_chunks().last().copied().unwrap_or(NO_CHUNK);
         self.chunk.store(chunk, Ordering::Relaxed);
+        self.collect_anomalies(source, false);
+    }
+
+    /// Last update of a run, once the reader has stopped: anomalies that were still changing
+    /// (`out_of_order`) are final and published too.
+    pub fn finish(&self, source: &ChunkSetSource, packets: u64) {
+        self.update(source, packets);
+        self.collect_anomalies(source, true);
+    }
+
+    /// Converts the anomalies the source found since the previous call. `out_of_order` is
+    /// updated in place by the source as packets are read, so it is held back until `last`.
+    fn collect_anomalies(&self, source: &ChunkSetSource, last: bool) {
         let found = source.anomalies();
         let mut log = self
             .anomalies
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        if found.len() > log.seen {
-            // Rare (bounded by MAX_ANOMALIES): the stats copy only happens on new findings.
-            let stats: Vec<ChunkStats> = source.chunk_stats().cloned().collect();
-            let fresh: Vec<AnomalyRow> = found
-                .iter()
-                .skip(log.seen)
-                .map(|a| anomaly_row(a, &stats))
-                .collect();
-            log.pending.extend(fresh);
-            log.seen = found.len();
+        // Constant-time lookup: no copy of the per-chunk statistics.
+        let start = |c: u32| source.chunk_stat(c).and_then(|s| s.min_ts);
+        let mut fresh = Vec::new();
+        for (index, anomaly) in found.iter().enumerate().skip(log.seen) {
+            if matches!(anomaly.kind, AnomalyKind::OutOfOrder { .. }) {
+                log.deferred = Some(index);
+            } else {
+                fresh.push(anomaly_row_with(anomaly, start));
+            }
         }
+        log.seen = log.seen.max(found.len());
+        if last && let Some(anomaly) = log.deferred.take().and_then(|i| found.get(i)) {
+            fresh.push(anomaly_row_with(anomaly, start));
+        }
+        log.pending.extend(fresh);
     }
 
     /// Anomalies found since the previous call.
@@ -322,7 +341,7 @@ pub(crate) fn run_reader(mut source: ChunkSetSource, setup: ReaderSetup<'_>) -> 
         downstream_closed = true;
     }
     drop(tx);
-    shared.update(&source, packets);
+    shared.finish(&source, packets);
     ReaderOutcome {
         source,
         packets,

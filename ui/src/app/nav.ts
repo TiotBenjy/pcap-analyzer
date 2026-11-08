@@ -54,7 +54,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'dns', scope: 'session', path: '/dns', icon: Globe, group: 'analysis', enabled: false },
   { id: 'http', scope: 'session', path: '/http', icon: ArrowLeftRight, group: 'analysis', enabled: false },
   { id: 'httpHeaders', scope: 'session', path: '/http-headers', icon: ListTree, group: 'analysis', enabled: false },
-  { id: 'tls', scope: 'session', path: '/tls', icon: Lock, group: 'analysis', enabled: false },
+  { id: 'tls', scope: 'session', path: '/tls', icon: Lock, group: 'analysis', enabled: true },
   { id: 'connections', scope: 'session', path: '/connections', icon: Cable, group: 'analysis', enabled: true },
   { id: 'openPorts', scope: 'session', path: '/open-ports', icon: DoorOpen, group: 'analysis', enabled: true },
   { id: 'smb', scope: 'session', path: '/smb', icon: FolderTree, group: 'analysis', enabled: false },

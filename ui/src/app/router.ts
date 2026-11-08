@@ -75,6 +75,7 @@ const SESSION_VIEWS: Partial<Record<string, () => Promise<{ default: ComponentTy
   '/open-ports': () => import('../views/openPorts/OpenPortsView'),
   '/overview': () => import('../views/overview/OverviewView'),
   '/sources': () => import('../views/sessions/SourcesView'),
+  '/tls': () => import('../views/tls/TlsView'),
 };
 
 const loadPlaceholder = () => import('../views/PlaceholderView');

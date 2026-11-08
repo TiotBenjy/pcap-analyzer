@@ -200,19 +200,26 @@ acceptée : la remplacer par une nouvelle qui la référence.
   silencieusement un import à la fermeture, embarquer la base GeoIP et n'accorder à la webview que le
   strict nécessaire. Complète l'ADR-006 sans la remplacer.
 - Décision :
+  - instance unique (`tauri-plugin-single-instance`, premier plugin) : un second lancement met la fenêtre
+    existante au premier plan et quitte pendant `build`, avant `setup`. Il n'appelle donc jamais
+    `recover_interrupted` sur les imports de la première instance. Le verrou est tenu jusqu'à la fin du
+    handler `RunEvent::Exit`, donc pendant l'arrêt de l'API ;
   - démarrage dans `setup`, dans cet ordre : répertoire de données (`dirs::data_local_dir()/NetSift`,
     avec `exports/`), `recover_interrupted`, résolution de la base GeoIP, démarrage de l'API, puis création
     de la fenêtre (`create: false`). Toute erreur s'affiche dans un dialogue natif (texte en/fr selon la
     locale de l'environnement), puis l'application quitte avec le code 1 ;
-  - fermeture : si `ServerMonitor::running_imports() > 0`, la fermeture de la fenêtre est suspendue et un
-    dialogue natif demande confirmation. La langue des dialogues est celle de l'UI, transmise par la
+  - fermeture : si `ServerMonitor::running_imports() > 0`, la sortie est suspendue et un dialogue natif
+    demande confirmation. Deux chemins partagent le même `CloseGate` et le même dialogue : la fermeture de
+    la fenêtre (`CloseRequested`) et `RunEvent::ExitRequested` (Cmd+Q sous macOS, qui ne passe pas par la
+    fenêtre). « Quitter » appelle `exit(0)`, dont la demande de sortie trouve le gate confirmé. La langue des dialogues est celle de l'UI, transmise par la
     commande `set_ui_language`. Le dialogue est natif et non dans l'UI, pour qu'une webview figée
     n'empêche jamais de quitter ;
   - arrêt à `RunEvent::Exit` : signal d'arrêt de l'API, puis attente bornée par `STOP_LIMIT`
     (`SHUTDOWN_GRACE` + `IMPORT_GRACE` + 2 s). Les imports annulés passent `incomplete`. Au-delà du délai,
     le processus quitte et la session restée `importing` est récupérée au démarrage suivant ;
   - GeoIP : la copie de `<données>/geoip/` est prioritaire (mise à jour sans réinstaller), sinon la base du
-    bundle (`bundle.resources` -> `geoip/`). L'état est exposé par `GET /server-info` (`geoip.status`
+    bundle (`bundle.resources` -> `geoip/`). `release.yml` la télécharge (`scripts/ci/geoip.sh`, mois
+    courant ou précédent) et échoue sans base valide : une release ne part jamais sans base. L'état est exposé par `GET /server-info` (`geoip.status`
     `available|missing|invalid`, `built_at_us`), qui est authentifié et décrit déjà la configuration du
     serveur. `/health` reste une sonde de vivacité sans E/S et sans authentification. Le fichier n'est
     rouvert que si sa taille ou sa date change ;
@@ -224,5 +231,18 @@ acceptée : la remplacer par une nouvelle qui la référence.
     (test Vitest dédié). `./x.sh shots` gèle aussi le prototype et échoue sur toute erreur de page.
 - Conséquences : une fonctionnalité qui a besoin d'une nouvelle API Tauri côté JS ajoute la permission
   ciblée dans `capabilities/default.json`. Un export doit écrire sous `<données>/exports` pour pouvoir être
-  ouvert. La CI de release doit déposer la base dans `apps/desktop/resources/geoip/` avant le bundle.
-  sigma n'est pas encore vérifié avec le prototype gelé : à faire avec la vue du graphe réseau.
+  ouvert. sigma n'est pas encore vérifié avec le prototype gelé : à faire avec la vue du graphe réseau.
+- Vérifications manuelles (sur un bundle installé, à chaque release ou changement de `apps/desktop`) :
+  1. Premier lancement : la fenêtre s'ouvre et `<données>/exports` est créé.
+  2. Import d'un dossier puis d'un fichier unique par le dialogue système : progression, puis Overview.
+  3. Fermeture pendant un import : « Continuer l'import » garde la fenêtre, « Quitter » ferme. Au
+     lancement suivant, la session est `incomplete`.
+  4. Même essai avec l'UI en français : dialogue en français.
+  5. « Paramètres > À propos » : état GeoIP correct, avec et sans base.
+  6. Aucune erreur CSP ou de permission dans la console de la webview ; `get_api_endpoint` et
+     `set_ui_language` répondent sans `core:default`.
+  7. Répertoire de données non inscriptible : dialogue d'erreur explicite, puis sortie.
+  8. Double clic sur le bouton de fermeture pendant un import : un seul dialogue.
+  9. macOS : Cmd+Q pendant un import affiche le même dialogue.
+  10. Second lancement : la fenêtre existante revient au premier plan, aucune seconde fenêtre.
+  11. Windows : aucune console ne s'ouvre.

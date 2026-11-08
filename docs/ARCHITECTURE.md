@@ -146,9 +146,10 @@ toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paqu
   `recover_interrupted`, base GeoIP, API dans le runtime tokio de Tauri, **puis** la fenêtre
   (`create: false`) sur `ui/dist`. Si une étape échoue, un dialogue natif l'explique, car une release
   Windows n'a pas de console (ADR-012).
-- Fermeture : si un import tourne, un dialogue natif demande confirmation. À la sortie, l'API annule les
-  imports et attend leur writer pendant au plus `STOP_LIMIT` (environ 15 s) ; les sessions annulées
-  passent `incomplete`.
+- Instance unique : un second lancement ramène la fenêtre existante au premier plan et quitte.
+- Fermeture (fenêtre ou Cmd+Q sous macOS) : si un import tourne, un dialogue natif demande confirmation.
+  À la sortie, l'API annule les imports et attend leur writer pendant au plus `STOP_LIMIT` (environ 15 s) ;
+  les sessions annulées passent `incomplete`.
 - Plugins : `dialog` (choix de dossier ou de fichier, `nativePicker()` côté UI), `opener` (limité au
   dossier `<données>/exports`). Capabilities minimales, sans `core:default`.
 - GeoIP : `<données>/geoip/dbip-country-lite.mmdb` si présent, sinon la base du bundle

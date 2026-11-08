@@ -349,3 +349,45 @@ acceptée : la remplacer par une nouvelle qui la référence.
     le contrat des événements d'import : non fait) ;
   - tant que le marqueur est incomplet, les vues de l'analyseur peuvent montrer des requêtes de groupe
     non appariées ; les tests d'acceptation comparent 1, 3 et 7 shards, fichier unique et chunks.
+
+## ADR-015 — Mise à jour de la base GeoIP depuis l'application : seule sortie réseau
+
+- Contexte : G1. La base DB-IP Country Lite est publiée chaque mois ; celle du bundle vieillit avec la
+  version installée. L'utilisateur veut la remplacer depuis « Paramètres > À propos », par téléchargement
+  ou par un fichier, alors que l'application s'interdit tout appel réseau sortant.
+- Décision :
+  - **seule exception** à « aucun appel réseau sortant » : `POST /api/v1/geoip/download`, déclenché
+    uniquement par un clic de l'utilisateur, jamais au démarrage, jamais en tâche de fond, sans
+    réessai automatique. Aucun autre code de l'application ne contacte un hôte extérieur ;
+  - la requête part de l'API Rust (`reqwest` 0.13, déjà présent dans l'arbre via Tauri, TLS rustls
+    + `ring`, certificats vérifiés par `rustls-platform-verifier` avec le magasin du système, sans
+    OpenSSL). La webview n'accède jamais au réseau : CSP et capabilities Tauri inchangées ;
+  - cible fixe `https://download.db-ip.com/free/dbip-country-lite-AAAA-MM.mmdb.gz` (mois courant UTC,
+    puis le précédent sur 404, comme `scripts/ci/geoip.sh`) ; HTTPS seulement, au plus 3 redirections
+    et seulement vers la même origine, délais de connexion (15 s), de lecture (30 s) et total (300 s) ;
+    `User-Agent: NetSift/<version>`, ni cookie, ni identifiant, ni autre donnée ; proxy des variables
+    d'environnement respecté ;
+  - tailles bornées pendant la lecture : 32 Mio compressés (`MAX_COMPRESSED_BYTES`), 64 Mio décompressés
+    (`MAX_DB_BYTES`, la base fait environ 10 Mio) ;
+  - import d'un fichier `.mmdb` ou `.mmdb.gz` (`POST /api/v1/geoip/import { path }`) : dialogue natif en
+    desktop (chemin quelconque), racines autorisées en mode dev web, comme l'import de captures ;
+  - validation avant remplacement (`netsift_geo::install`) : la base s'ouvre, son `database_type`
+    désigne une base pays, des recherches de contrôle (8.8.8.8, 1.1.1.1, 9.9.9.9, 2001:4860:4860::8888)
+    répondent sans erreur et au moins une donne un pays ; puis écriture dans un fichier temporaire de
+    `<données>/geoip/`, `fsync`, renommage atomique vers `dbip-country-lite.mmdb`. Un échec laisse
+    l'ancienne base intacte ;
+  - la copie utilisateur `<données>/geoip/dbip-country-lite.mmdb` est lue en premier, la base du bundle
+    (`ApiConfig::geoip_path` en desktop) sert de repli et n'est jamais écrite ;
+  - rechargement à chaud : l'API garde la base chargée (`Arc<GeoDb>`) et la remplace après une
+    installation ; chaque import reçoit au démarrage la base du moment (`AnalyzerConfig::geo`) et la
+    garde jusqu'à sa fin. Un fichier remplacé hors de l'application est détecté par taille, date de
+    modification et inode (Unix) ;
+  - une seule mise à jour à la fois (409 `geoip-update-running`), routes refusées en `--read-only`,
+    erreurs `problem+json` sans chemin ni détail interne (`geoip-download-failed`, `geoip-invalid`,
+    `geoip-too-large`), progression par `GET /api/v1/geoip/update`.
+- Conséquences :
+  - les pays des sessions déjà importées ne changent pas (ADR-009) : l'UI invite à réimporter ;
+  - l'hôte contacté (download.db-ip.com) est affiché à côté du bouton ; le test du téléchargement réel
+    reste manuel, les tests automatiques utilisent un serveur HTTP local ;
+  - `deny.toml` admet `CDLA-Permissive-2.0` pour la seule crate `webpki-root-certs` (données, tirée
+    par `rustls-platform-verifier` pour wasm32 uniquement, absente de nos binaires).

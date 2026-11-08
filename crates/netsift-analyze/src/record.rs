@@ -13,7 +13,9 @@ use std::net::IpAddr;
 use netsift_flow::{FlowCtx, FlowId};
 
 use crate::classify::AppProto;
+use crate::connections::{ConversationDelta, HostTrafficDelta};
 use crate::geo::{AddressCategory, CountryCode};
+use crate::ports::OpenPortSeen;
 
 /// One record for the store. Not `Eq`: variants may carry floating-point values.
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +28,12 @@ pub enum Record {
     /// Summary of a finished flow (merged by flow id).
     Flow(FlowSummary),
     // --- analyzers: registration point, one variant per analyzer, sorted alphabetically ---
+    /// `connections`: flows from a client to a server, folded per IP pair (additive).
+    Conversation(ConversationDelta),
+    /// `connections`: traffic sent and received by one host (additive).
+    HostTraffic(HostTrafficDelta),
+    /// `ports`: a service seen answering (merged by host, transport and port).
+    OpenPort(OpenPortSeen),
 }
 
 /// Packets and wire bytes of one application protocol during one second.

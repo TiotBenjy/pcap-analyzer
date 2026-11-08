@@ -1,0 +1,9 @@
+---
+source: crates/netsift-analyze/src/ports/tests.rs
+assertion_line: 96
+expression: "render(&ports_of(&sc.into_packets(), &AnalyzerConfig::default()))"
+---
+192.168.1.50 tcp/21 iana=ftp evidence=syn_ack detected=ftp banner="220 (vsFTPd 3.0.5)" 1700000000022500000..1700000000023500000
+192.168.1.50 tcp/80 iana=http evidence=syn_ack detected=http banner="" 1700000000000500000..1700000000002500000
+192.168.1.50 tcp/443 iana=https evidence=syn_ack detected=tls banner="" 1700000000017500000..1700000000019500000
+192.168.1.50 tcp/2222 iana=ethernet-ip-1 evidence=syn_ack detected=ssh banner="SSH-2.0-OpenSSH_9.6" 1700000000032500000..1700000000033500000

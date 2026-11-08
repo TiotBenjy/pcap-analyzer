@@ -5,12 +5,15 @@
 //! - [`schema`]: migration registries (registration point for analyzers, `NNNN_<name>.sql`);
 //! - [`StoreWriter`]: single writer thread committing [`StoreRecord`]s in batches;
 //! - [`query`]: base read queries and keyset pagination;
-//! - [`traffic`]: overview queries (resampled time series, totals, row counts).
+//! - [`traffic`]: overview queries (resampled time series, totals, row counts);
+//! - [`connections`], [`ports`]: tables and queries of the Connections and Open Ports views.
 
 pub mod catalog;
+pub mod connections;
 mod error;
 mod id;
 pub mod migrate;
+pub mod ports;
 pub mod query;
 pub mod records;
 pub mod schema;
@@ -20,8 +23,10 @@ pub mod traffic;
 pub mod writer;
 
 pub use catalog::{Catalog, SessionInfo, SessionState};
+pub use connections::{ConversationRow, HostTrafficRow};
 pub use error::{Result, StoreError};
 pub use id::SessionId;
+pub use ports::OpenPortRow;
 pub use query::{Keyset, Page, PageRequest, keyset_page};
 pub use records::{
     AnomalyRow, ChunkFormat, ChunkRow, ChunkStatus, FlowRow, HostRow, MetaRow, StoreRecord,

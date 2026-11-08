@@ -1,11 +1,14 @@
 //! Translation of analyzer records and chunk-set metadata into store rows.
 
+use netsift_analyze::connections::{ConversationDelta, HostTrafficDelta};
 use netsift_analyze::flow::TcpState;
+use netsift_analyze::ports::OpenPortSeen;
 use netsift_analyze::{FlowSummary, HostSeen, Record, TrafficSample};
 use netsift_capture::chunkset::{Anomaly, AnomalyKind, ChunkGroup, ChunkStats, MemberStatus};
 use netsift_capture::{CaptureFormat, ReadWarning};
 use netsift_store::{
-    AnomalyRow, ChunkFormat, ChunkRow, ChunkStatus, FlowRow, HostRow, StoreRecord, TimeseriesRow,
+    AnomalyRow, ChunkFormat, ChunkRow, ChunkStatus, ConversationRow, FlowRow, HostRow,
+    HostTrafficRow, OpenPortRow, StoreRecord, TimeseriesRow,
 };
 use serde_json::{Value, json};
 
@@ -18,6 +21,9 @@ pub fn to_store(record: Record) -> StoreRecord {
         Record::Host(h) => StoreRecord::Host(host_row(h)),
         Record::Flow(f) => StoreRecord::Flow(flow_row(&f)),
         // --- analyzers: one arm each, sorted alphabetically ---
+        Record::Conversation(c) => StoreRecord::Conversation(conversation_row(&c)),
+        Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
+        Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
     }
 }
 
@@ -42,6 +48,14 @@ pub fn approx_size(record: &StoreRecord) -> usize {
             f.app_proto.as_ref().map_or(0, String::len)
                 + f.tcp_state.as_ref().map_or(0, String::len)
         }
+        StoreRecord::Conversation(c) => c.protocols.iter().map(|p| p.len() + 24).sum(),
+        StoreRecord::OpenPort(p) => {
+            p.evidence.len()
+                + p.service.as_ref().map_or(0, String::len)
+                + p.detected.as_ref().map_or(0, String::len)
+                + p.banner.as_ref().map_or(0, String::len)
+        }
+        StoreRecord::HostTraffic(_) => 0,
         // Rows of analyzers: a conservative estimate until they provide their own.
         _ => 1024,
     };
@@ -100,6 +114,48 @@ fn flow_row(f: &FlowSummary) -> FlowRow {
         packets_rev: c.to_client.packets,
         app_proto: f.app_proto.map(|p| p.as_str().to_owned()),
         tcp_state: c.tcp_state.map(|s| tcp_state_label(s).to_owned()),
+    }
+}
+
+fn conversation_row(c: &ConversationDelta) -> ConversationRow {
+    ConversationRow {
+        src_ip: c.client,
+        dst_ip: c.server,
+        first_ts: c.first_ts,
+        last_ts: c.last_ts,
+        bytes_fwd: c.bytes_fwd,
+        bytes_rev: c.bytes_rev,
+        packets_fwd: c.packets_fwd,
+        packets_rev: c.packets_rev,
+        flows: c.flows,
+        dns_bytes_fwd: c.dns_bytes_fwd,
+        dns_bytes_rev: c.dns_bytes_rev,
+        dns_flows: c.dns_flows,
+        protocols: c.protocols.iter().map(|p| p.as_str().to_owned()).collect(),
+    }
+}
+
+fn host_traffic_row(h: &HostTrafficDelta) -> HostTrafficRow {
+    HostTrafficRow {
+        ip: h.ip,
+        bytes_sent: h.bytes_sent,
+        bytes_received: h.bytes_received,
+        packets_sent: h.packets_sent,
+        packets_received: h.packets_received,
+    }
+}
+
+fn open_port_row(p: OpenPortSeen) -> OpenPortRow {
+    OpenPortRow {
+        ip: p.ip,
+        transport: p.transport,
+        port: p.port,
+        evidence: p.evidence.as_str().to_owned(),
+        service: p.iana().map(str::to_owned),
+        detected: p.detected.map(str::to_owned),
+        banner: p.banner,
+        first_ts: p.first_ts,
+        last_ts: p.last_ts,
     }
 }
 

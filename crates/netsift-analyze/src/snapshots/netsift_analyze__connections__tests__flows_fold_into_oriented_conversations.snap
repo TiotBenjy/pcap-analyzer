@@ -1,0 +1,11 @@
+---
+source: crates/netsift-analyze/src/connections.rs
+assertion_line: 401
+expression: "render(&run(&AnalyzerConfig::default(), &flows()))"
+---
+8.8.4.4 -> 10.0.0.1 400..410 bytes=100/50 packets=2/1 flows=1 dns=0/0/0 ["ssh"]
+10.0.0.1 -> 8.8.4.4 100..310 bytes=870/13120 packets=9/13 flows=3 dns=70/120/1 ["dns", "http", "tls"]
+10.0.0.2 -> 10.0.0.1 500..510 bytes=84/84 packets=1/1 flows=1 dns=0/0/0 ["icmp"]
+host 8.8.4.4 sent=13220/15 received=920/10
+host 10.0.0.1 sent=1004/11 received=13304/16
+host 10.0.0.2 sent=84/1 received=84/1

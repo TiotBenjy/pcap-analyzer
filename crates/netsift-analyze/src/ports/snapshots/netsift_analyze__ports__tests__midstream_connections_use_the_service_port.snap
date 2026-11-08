@@ -1,0 +1,7 @@
+---
+source: crates/netsift-analyze/src/ports/tests.rs
+assertion_line: 119
+expression: render(&ports)
+---
+192.168.1.50 tcp/25 iana=smtp evidence=server_data detected=smtp banner="220 mail.example.test ESMTP ready" 1700000000000000000..1700000000000000000
+192.168.1.50 tcp/8080 iana=http-alt evidence=server_data detected=http banner="" 1700000000001500000..1700000000001500000

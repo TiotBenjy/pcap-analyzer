@@ -7,7 +7,10 @@
 //! - [`Registry`]: the list of built-in analyzers, instantiated once per shard
 //!   (registration point: one line per analyzer);
 //! - [`classify`]: application protocol labels ([`AppProto`]) from flows and well-known ports;
-//! - [`core`]: the built-in `core` analyzer (traffic time series, hosts, flows).
+//! - [`core`]: the built-in `core` analyzer (traffic time series, hosts, flows);
+//! - [`connections`]: conversations between hosts and traffic per host;
+//! - [`ports`]: open ports (SYN-ACK, UDP replies) with services detected by content;
+//! - [`services`]: IANA service names of ports (embedded registry).
 //!
 //! [`geo`] (address categories, countries) is re-exported for the engine, which loads the
 //! country database shared by every shard ([`AnalyzerConfig::geo`]).
@@ -25,9 +28,14 @@
 
 pub mod analyzer;
 pub mod classify;
+pub mod connections;
 pub mod core;
+pub mod ports;
 pub mod record;
 pub mod registry;
+pub mod services;
+#[cfg(test)]
+mod testutil;
 
 pub use analyzer::{Analyzer, AnalyzerId, BlobRef, RecordSink};
 pub use classify::AppProto;

@@ -1,0 +1,11 @@
+---
+source: crates/netsift-analyze/src/ports/tests.rs
+assertion_line: 125
+expression: "render(&ports_of(&generate(Kind::Demo, 3, 7), &AnalyzerConfig::default()))"
+---
+192.168.1.1 udp/53 iana=domain evidence=udp_reply detected=- banner="" 1700000000052000000..1700000002733000000
+192.168.1.1 udp/161 iana=snmp evidence=udp_reply detected=- banner="" 1700000000278500000..1700000002956500000
+192.168.1.21 tcp/21 iana=ftp evidence=syn_ack detected=ftp banner="220 (vsFTPd 3.0.5)" 1700000000329500000..1700000003008500000
+198.51.100.43 tcp/443 iana=https evidence=syn_ack detected=tls banner="" 1700000000173000000..1700000002853000000
+203.0.113.80 tcp/80 iana=http evidence=syn_ack detected=http banner="" 1700000000106000000..1700000002786000000
+2001:db8:1::1 udp/53 iana=domain evidence=udp_reply detected=- banner="" 1700000000053000000..1700000002731000000

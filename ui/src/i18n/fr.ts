@@ -513,6 +513,9 @@ export const fr: Dictionary = {
     notFound: 'Introuvable : peut-être supprimé',
     conflict: 'Conflit avec une opération en cours',
     tooManyImports: "Trop d'imports en cours ; attendez la fin de l'un d'eux.",
+    sessionTooNew: "Cette session a été créée par une version plus récente de NetSift. Mettez l'application à jour pour l'ouvrir.",
+    sessionUpgradeFailed:
+      "Cette session n'a pas pu être mise à niveau pour cette version. Vérifiez que le dossier de données est accessible en écriture, ou importez à nouveau la capture.",
     route: {
       title: "Cette vue n'a pas pu s'afficher",
       text: "Une erreur inattendue a interrompu la vue. Rechargez l'application ; si elle se reproduit, copiez les détails pour la signaler.",

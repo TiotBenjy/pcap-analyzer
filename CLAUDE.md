@@ -33,6 +33,7 @@ L'utilisateur n'a **ni Rust ni Node** sur sa machine. Tout passe par le conteneu
 ./x.sh desktop               # build Tauri Linux (AppImage + .deb) -> dist/
 ./x.sh -C .worktrees/<branche> <cmd>   # exécuter dans un worktree
 ./x.sh cliff [args]          # git-cliff épinglé (CHANGELOG, notes de release)
+./x.sh clean [--dry-run]     # supprime les targets orphelins du cache (disque plein : skill dev-env)
 scripts/release.sh X.Y.Z [--dry-run]       # publier une version (accord utilisateur requis)
 scripts/release-status.sh vX.Y.Z [--wait]  # suivre release.yml et les fichiers publiés
 ```

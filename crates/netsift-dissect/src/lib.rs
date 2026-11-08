@@ -31,13 +31,16 @@
 
 mod bytes;
 mod decoded;
+pub mod dhcp;
 pub mod dns;
 mod error;
 pub mod ethertype;
 mod ipext;
+pub mod kerberos;
 mod link;
 pub mod linktype;
 mod net;
+pub mod ntp;
 mod transport;
 mod wifi;
 

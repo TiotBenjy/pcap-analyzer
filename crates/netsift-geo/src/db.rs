@@ -157,12 +157,6 @@ impl GeoDb {
         country
     }
 
-    /// Checks that this is a usable country database (type and control lookups), as done
-    /// before installing a replacement (`crate::install`).
-    pub fn check_country_database(&self) -> Result<(), GeoError> {
-        crate::install::check_country(&self.reader)
-    }
-
     fn lookup(&self, ip: IpAddr) -> Option<CountryCode> {
         let code = self
             .reader

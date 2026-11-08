@@ -16,11 +16,14 @@ if [ "$VIEW" = "all" ]; then rm -f "$OUT"/*.png; else rm -f "$OUT/$VIEW"-*.png; 
 cleanup() { kill "${API_PID:-}" 2>/dev/null || true; rm -f "$TOKEN_FILE"; }
 trap cleanup EXIT INT TERM
 
-# TODO(P2): générer une session de fixtures (`netsift demo-session`) une fois netsift-store prêt.
-
-echo ">> Compilation de l'API…"
-cargo build -q -p netsift-cli
+echo ">> Compilation de l'API (feature demo)…"
+cargo build -q -p netsift-cli --features demo
 NETSIFT_BIN="${CARGO_TARGET_DIR:-target}/debug/netsift"
+
+# Données de démonstration : ~50 chunks dumpcap synthétiques (un fichier manquant, un trou
+# temporel) et un fichier seul, importés en deux sessions `ready`, recréées à chaque run.
+echo ">> Sessions de démonstration…"
+"$NETSIFT_BIN" demo-session --data-dir "$DATA_DIR" --force
 
 echo ">> API de prévisualisation (port $API_PORT, lecture seule)…"
 "$NETSIFT_BIN" serve --bind "127.0.0.1:${API_PORT}" --token-file "$TOKEN_FILE" \

@@ -121,6 +121,36 @@ pub fn install(target: &Path, bytes: Vec<u8>) -> Result<GeoDb, GeoError> {
     GeoDb::from_bytes(bytes)
 }
 
+/// Removes the temporary files that [`install`] leaves next to `target` when the process stops
+/// between the write and the rename (crash, kill). Call it at startup, before any update can
+/// run. Only regular files named like those temporaries are touched; returns how many were
+/// removed.
+pub fn remove_orphan_temp_files(target: &Path) -> usize {
+    let (Some(dir), Some(prefix)) = (target.parent(), temp_prefix(target)) else {
+        return 0;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let orphan = name.starts_with(&prefix)
+            && name.ends_with(".tmp")
+            && entry.file_type().is_ok_and(|t| t.is_file());
+        if orphan && std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// `.<file name>.`: start of the temporary names of [`temp_path`].
+fn temp_prefix(target: &Path) -> Option<String> {
+    Some(format!(".{}.", target.file_name()?.to_string_lossy()))
+}
+
 fn write_synced(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
     file.write_all(bytes)?;
@@ -141,14 +171,12 @@ fn sync_dir(dir: &Path) {
 /// `create_new` so an existing file is never reused.
 fn temp_path(dir: &Path, target: &Path) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let name = target
-        .file_name()
-        .map_or_else(|| "geoip".into(), |n| n.to_string_lossy().into_owned());
+    let prefix = temp_prefix(target).unwrap_or_else(|| ".geoip.".to_owned());
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos());
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    dir.join(format!(".{name}.{}.{nanos}.{n}.tmp", std::process::id()))
+    dir.join(format!("{prefix}{}.{nanos}.{n}.tmp", std::process::id()))
 }
 
 fn len_u64(bytes: &[u8]) -> u64 {
@@ -314,6 +342,33 @@ mod tests {
         assert_eq!(
             files_in(tmp.path()),
             ["blocked".to_owned(), crate::DB_FILE_NAME.to_owned()]
+        );
+    }
+
+    #[test]
+    fn orphan_temporary_files_are_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join(crate::DB_FILE_NAME);
+        install(&target, country_db("FR")).unwrap();
+        let orphan = temp_path(tmp.path(), &target);
+        std::fs::write(&orphan, b"partial").unwrap();
+        // Not ours: kept.
+        std::fs::write(tmp.path().join("notes.tmp"), b"x").unwrap();
+        std::fs::create_dir(tmp.path().join(format!(".{}.dir.tmp", crate::DB_FILE_NAME))).unwrap();
+
+        assert_eq!(remove_orphan_temp_files(&target), 1);
+        assert!(!orphan.exists());
+        assert_eq!(
+            files_in(tmp.path()),
+            [
+                format!(".{}.dir.tmp", crate::DB_FILE_NAME),
+                crate::DB_FILE_NAME.to_owned(),
+                "notes.tmp".to_owned(),
+            ]
+        );
+        assert_eq!(
+            remove_orphan_temp_files(&tmp.path().join("missing").join("x")),
+            0
         );
     }
 }

@@ -80,7 +80,7 @@ pub struct ApiConfig {
     /// `<data_dir>/geoip/dbip-country-lite.mmdb` is missing or unusable (desktop: the copy shipped
     /// in the bundle). The user copy is always read first; it is the file written by the updates
     /// of Settings (`POST /geoip/download`, `POST /geoip/import`) and by `./x.sh geoip` in dev.
-    pub geoip_path: Option<PathBuf>,
+    pub geoip_fallback_path: Option<PathBuf>,
 }
 
 /// Default of [`ApiConfig::max_imports`]: each import already uses every core.
@@ -96,7 +96,7 @@ impl std::fmt::Debug for ApiConfig {
             .field("cors_origins", &self.cors_origins)
             .field("allow_any_path", &self.allow_any_path)
             .field("max_imports", &self.max_imports)
-            .field("geoip_path", &self.geoip_path)
+            .field("geoip_fallback_path", &self.geoip_fallback_path)
             .finish()
     }
 }
@@ -123,7 +123,13 @@ impl AppState {
         // Imports get the database loaded by `geoip` (`AnalyzerConfig::geo`); the engine reads
         // this path only when none is usable.
         ingest_template.geoip_path = Some(user_geoip.clone());
-        let geoip = geoip::Geoip::new(user_geoip, config.geoip_path.clone());
+        if !config.read_only {
+            let removed = netsift_geo::remove_orphan_temp_files(&user_geoip);
+            if removed > 0 {
+                tracing::info!(removed, "interrupted GeoIP update files removed");
+            }
+        }
+        let geoip = geoip::Geoip::new(user_geoip, config.geoip_fallback_path.clone());
         Self {
             config,
             roots,

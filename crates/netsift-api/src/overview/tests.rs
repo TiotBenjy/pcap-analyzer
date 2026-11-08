@@ -37,7 +37,7 @@ impl Env {
             cors_origins: vec![HeaderValue::from_static("tauri://localhost")],
             allow_any_path: false,
             max_imports: DEFAULT_MAX_IMPORTS,
-            geoip_path: None,
+            geoip_fallback_path: None,
         };
         let (app, _) = build(config, IngestOptions::default());
         Self {

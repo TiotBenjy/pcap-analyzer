@@ -137,7 +137,7 @@ impl Env {
             cors_origins: vec![HeaderValue::from_static("tauri://localhost")],
             allow_any_path: false,
             max_imports: DEFAULT_MAX_IMPORTS,
-            geoip_path: bundled_path,
+            geoip_fallback_path: bundled_path,
         };
         let (app, state) = build(config, IngestOptions::default());
         let up = Arc::new(Upstream::default());
@@ -643,4 +643,30 @@ async fn a_file_replaced_behind_the_server_with_the_same_size_and_time_is_notice
         db("FR").len() as u64
     );
     assert_eq!(env.next_import_country().as_deref(), Some("DE"));
+}
+
+#[tokio::test]
+async fn interrupted_update_files_are_removed_at_startup_unless_read_only() {
+    for read_only in [true, false] {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let data = tmp.path().join("data");
+        let user = netsift_geo::default_path(&data);
+        std::fs::create_dir_all(user.parent().unwrap()).unwrap();
+        std::fs::write(&user, db("FR")).unwrap();
+        let orphan = user.with_file_name(format!(".{}.1.2.0.tmp", netsift_geo::DB_FILE_NAME));
+        std::fs::write(&orphan, b"partial").unwrap();
+        let config = ApiConfig {
+            token: TOKEN.to_owned(),
+            data_dir: data,
+            captures_roots: vec![],
+            read_only,
+            cors_origins: vec![],
+            allow_any_path: false,
+            max_imports: DEFAULT_MAX_IMPORTS,
+            geoip_fallback_path: None,
+        };
+        let _ = build(config, IngestOptions::default());
+        assert_eq!(orphan.exists(), read_only, "read_only = {read_only}");
+        assert_eq!(std::fs::read(&user).unwrap(), db("FR"));
+    }
 }

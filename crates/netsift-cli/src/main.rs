@@ -108,8 +108,8 @@ async fn serve(args: ServeArgs) -> Result<()> {
         // Dev web mode: scan and import stay inside the captures roots.
         allow_any_path: false,
         max_imports: netsift_api::DEFAULT_MAX_IMPORTS,
-        // `<data_dir>/geoip/dbip-country-lite.mmdb`, where `./x.sh geoip` writes.
-        geoip_path: None,
+        // Only the user copy `<data_dir>/geoip/dbip-country-lite.mmdb` (`./x.sh geoip`, Settings).
+        geoip_fallback_path: None,
     };
     netsift_api::serve(listener, config, shutdown_signal()).await?;
     info!("API stopped");

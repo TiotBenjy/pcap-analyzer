@@ -60,6 +60,19 @@ describe('chord layout', () => {
     expect(geo.labels.find((l) => l.index === 0)?.visible).toBe(true);
   });
 
+  it('slides a label along its arc rather than hiding it', () => {
+    // Two large neighbours: without sliding, the second label would collide with the first.
+    const m = [
+      [0, 100, 100, 0],
+      [100, 0, 0, 0],
+      [100, 0, 0, 0],
+      [0, 0, 0, 0],
+    ];
+    const names = ['hub', '10.0.0.1', '10.0.0.2', 'none'];
+    const geo = layoutChord(m, names, 600);
+    expect(geo?.labels.filter((l) => l.index < 3).every((l) => l.visible)).toBe(true);
+  });
+
   it('orients labels outwards on both halves', () => {
     const geo = layoutChord(star(3), ['hub', 'a', 'b', 'c'], 600);
     const anchors = new Set(geo?.labels.map((l) => l.anchor));

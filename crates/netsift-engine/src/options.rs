@@ -188,9 +188,10 @@ pub struct Progress {
     pub elapsed: Duration,
     /// Continuity anomalies found since the previous callback, in discovery order: those
     /// known from the inventory (first callback), reader warnings and errors as chunks are
-    /// read, then time gaps and overlaps (`Finishing` callback). Same rows as the `anomalies`
-    /// table, which stays the authoritative list (timestamps may be refined there once every
-    /// chunk is read; analyzer failures are only stored). Bounded over an import by
+    /// read, then time gaps, overlaps and the `out_of_order` summary (`Finishing` callback:
+    /// the source updates `out_of_order` in place until reading stops). Same rows as the
+    /// `anomalies` table, which stays the authoritative list (timestamps may be refined there
+    /// once every chunk is read; analyzer failures are only stored). Bounded over an import by
     /// `netsift_capture::chunkset::MAX_ANOMALIES`.
     pub new_anomalies: Vec<AnomalyRow>,
 }

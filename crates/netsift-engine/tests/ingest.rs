@@ -543,6 +543,11 @@ fn progress_carries_the_session_and_anomalies_as_they_are_found() {
             p.ts_ns += 600_000_000_000;
         }
     }
+    // Several packets stamped before their predecessor: one `out_of_order` anomaly whose
+    // counters grow while reading.
+    for i in [5, 9, 13, 17] {
+        packets[i].ts_ns = packets[i - 1].ts_ns - 1_000;
+    }
     let opts = SplitOptions::new(SplitBy::Duration(1_000_000_000), Naming::Dumpcap);
     let files = split_to_dir(&dir, &packets, &opts).unwrap().1;
     remove_chunk(&files[1]).unwrap();
@@ -573,19 +578,37 @@ fn progress_carries_the_session_and_anomalies_as_they_are_found() {
         "{:?}",
         finishing.new_anomalies
     );
-    // Each anomaly is delivered once, and they are the stored ones.
+    // Each anomaly is delivered once, with the stored details (`out_of_order` counters
+    // included: published once final). Analyzer failures (`analyzer_panicked`) are written by
+    // the shards and never published live; none occurs here.
     let mut live: Vec<String> = seen
         .iter()
-        .flat_map(|p| p.new_anomalies.iter().map(|a| a.kind.clone()))
+        .flat_map(|p| {
+            p.new_anomalies
+                .iter()
+                .map(|a| format!("{} {}", a.kind, serde_json::to_string(&a.detail).unwrap()))
+        })
         .collect();
     live.sort();
     let session = catalog
         .open_session(&report.session, OpenMode::ReadOnly)
         .unwrap();
-    let mut stored = rows(&session, "SELECT kind FROM anomalies");
+    let mut stored = rows(&session, "SELECT kind || ' ' || detail FROM anomalies");
     stored.sort();
     assert_eq!(live, stored);
     assert_eq!(live.len(), report.anomalies);
+    let out_of_order = live
+        .iter()
+        .find(|a| a.starts_with("out_of_order "))
+        .unwrap_or_else(|| panic!("{live:?}"));
+    assert!(out_of_order.contains("\"packets\":4"), "{out_of_order}");
+    assert!(
+        finishing
+            .new_anomalies
+            .iter()
+            .any(|a| a.kind == "out_of_order"),
+        "published before the end of reading"
+    );
 }
 
 #[test]

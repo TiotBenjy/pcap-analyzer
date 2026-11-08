@@ -205,6 +205,13 @@ impl ChunkSetSource {
         self.slots.iter().map(|s| &s.stats)
     }
 
+    /// Statistics of one chunk (constant time, no copy).
+    pub fn chunk_stat(&self, chunk: u32) -> Option<&ChunkStats> {
+        self.slots
+            .get(usize::try_from(chunk).ok()?)
+            .map(|s| &s.stats)
+    }
+
     /// Chunk ids of the files currently open (the "current chunk" of the progress display).
     pub fn open_chunks(&self) -> &[u32] {
         &self.open

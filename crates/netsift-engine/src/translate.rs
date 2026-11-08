@@ -158,10 +158,15 @@ pub fn chunk_rows(
 
 /// `anomalies` row of a continuity finding. `stats` give the start time of the chunk concerned.
 pub fn anomaly_row(anomaly: &Anomaly, stats: &[ChunkStats]) -> AnomalyRow {
-    let chunk_start = anomaly
-        .chunk
-        .and_then(|c| stats.get(usize::try_from(c).ok()?))
-        .and_then(|s| s.min_ts);
+    anomaly_row_with(anomaly, |c| {
+        stats.get(usize::try_from(c).ok()?).and_then(|s| s.min_ts)
+    })
+}
+
+/// Same as [`anomaly_row`], `chunk_start` giving the start time of a chunk by id (lets the
+/// caller look it up without copying every chunk's statistics).
+pub fn anomaly_row_with(anomaly: &Anomaly, chunk_start: impl Fn(u32) -> Option<i64>) -> AnomalyRow {
+    let chunk_start = anomaly.chunk.and_then(chunk_start);
     let (ts, detail) = match &anomaly.kind {
         AnomalyKind::MissingSequence { first, last } => {
             (chunk_start, json!({ "first": first, "last": last }))

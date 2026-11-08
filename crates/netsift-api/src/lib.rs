@@ -5,6 +5,7 @@
 //! `Authorization: Bearer <token>`. Errors are `application/problem+json` (RFC 9457).
 
 mod auth;
+pub mod contract;
 mod dto;
 mod error;
 

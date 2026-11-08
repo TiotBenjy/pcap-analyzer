@@ -2,3 +2,5 @@
 # are written to the UI sources. Never edit them by hand.
 [env]
 TS_RS_EXPORT_DIR = { value = "ui/src/api/types", relative = true }
+# 64-bit integers are plain JSON numbers (ADR-008: timestamps in microseconds, ids > 2^53 as strings).
+TS_RS_LARGE_INT = "number"

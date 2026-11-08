@@ -34,9 +34,9 @@ function picture(overrides: Partial<ObjectItem> = {}): ObjectItem {
     first_ts_us: T0,
     last_ts_us: T0,
     flow_id: '42',
-    client_ip: '192.168.1.24',
-    server_ip: '198.51.100.31',
-    server_port: 80,
+    client: { ip: '192.168.1.24', names: [], category: 'private', country: null },
+    server: { ip: '2001:db8::31', names: ['images.example.test'], category: 'public', country: null },
+    server_port: 8080,
     host: 'images.example.test',
     uri: '/gallery/harbour.jpg',
     url: 'http://images.example.test/gallery/harbour.jpg',
@@ -66,6 +66,7 @@ const ITEMS: ObjectItem[] = [
     url: 'http://cdn.example.test/brand/logo.svg',
   }),
   picture({ sha256: '01'.repeat(32), thumb: 'failed', width: null, height: null, uri: '/broken/cut.jpg' }),
+  picture({ sha256: '02'.repeat(32), mime: 'image/gif', width: 1, height: 1, size: 43, uri: '/t.gif?u=1' }),
 ];
 
 function stats(overrides: Partial<ObjectStats> = {}): ObjectStats {
@@ -98,13 +99,15 @@ beforeEach(() => {
 it('shows a grid of backend thumbnails, never the original objects', async () => {
   renderApp(`/sessions/${ID}/pictures`);
   const grid = await screen.findByRole('list', { name: 'Extracted images' });
-  expect(within(grid).getAllByRole('listitem')).toHaveLength(4);
+  expect(within(grid).getAllByRole('listitem')).toHaveLength(5);
   await waitFor(() => expect(grid.querySelectorAll('img')).toHaveLength(2));
   for (const img of grid.querySelectorAll('img')) expect(img.getAttribute('src')).toBe(PNG_URL);
   // Only thumbnails are requested, and only for raster images with a rendition.
   const calls = vi.mocked(objectsApi.fetchRendition).mock.calls;
   expect(calls.map((c) => c[2])).toEqual(['thumb', 'thumb']);
   expect(calls.map((c) => c[1])).not.toContain('ef'.repeat(32));
+  // A tracking pixel is not drawn: an icon and its size.
+  expect(within(grid).getByText('1 \u00d7 1')).toBeInTheDocument();
   expect(within(grid).getByText('SVG not displayed')).toBeInTheDocument();
   expect(within(grid).getByText('No preview')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /^harbour\.jpg, / })).toHaveAttribute(
@@ -120,7 +123,9 @@ it('opens the viewer with metadata, navigation and download', async () => {
   renderApp(`/sessions/${ID}/pictures`);
   await user.click(await screen.findByRole('button', { name: /^harbour\.jpg, / }));
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByText('1 of 4')).toBeInTheDocument();
+  expect(within(dialog).getByText('1 of 5')).toBeInTheDocument();
+  // Endpoints: IPv6 in brackets with its port.
+  expect(within(dialog).getByTitle(/\[2001:db8::31\]:8080/)).toBeInTheDocument();
   expect(within(dialog).getByText('http://images.example.test/gallery/harbour.jpg')).toBeInTheDocument();
   expect(within(dialog).getByText('640 \u00d7 420')).toBeInTheDocument();
   await waitFor(() => expect(within(dialog).getByRole('img', { name: 'harbour.jpg' })).toHaveAttribute('src', PNG_URL));
@@ -130,16 +135,18 @@ it('opens the viewer with metadata, navigation and download', async () => {
   expect(objectsApi.downloadObject).toHaveBeenCalledWith(ID, expect.objectContaining({ sha256: 'ab'.repeat(32) }));
 
   await user.click(within(dialog).getByRole('button', { name: 'Next image' }));
-  expect(within(dialog).getByText('2 of 4')).toBeInTheDocument();
+  expect(within(dialog).getByText('2 of 5')).toBeInTheDocument();
   fireEvent.keyDown(document, { key: 'ArrowRight' });
-  expect(within(dialog).getByText('3 of 4')).toBeInTheDocument();
+  expect(within(dialog).getByText('3 of 5')).toBeInTheDocument();
   // The SVG is never rendered: a note instead of a preview.
   expect(within(dialog).getByText(/SVG files are never displayed/)).toBeInTheDocument();
   expect(within(dialog).queryByRole('img')).toBeNull();
   fireEvent.keyDown(document, { key: 'ArrowLeft' });
-  expect(within(dialog).getByText('2 of 4')).toBeInTheDocument();
+  expect(within(dialog).getByText('2 of 5')).toBeInTheDocument();
   await user.click(within(dialog).getByRole('button', { name: 'Previous image' }));
   expect(within(dialog).getByRole('button', { name: 'Previous image' })).toBeDisabled();
+  // At the start, the focus moved to the other navigation button.
+  expect(within(dialog).getByRole('button', { name: 'Next image' })).toHaveFocus();
 });
 
 it('filters by type, host and text on the server', async () => {
@@ -156,7 +163,7 @@ it('filters by type, host and text on the server', async () => {
     ),
   );
   await user.selectOptions(screen.getByRole('combobox', { name: 'Host' }), 'cdn.example.test');
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Order' }), 'size');
+  await user.click(screen.getByRole('radio', { name: 'Largest first' }));
   await user.type(screen.getByRole('searchbox'), 'night');
   await waitFor(() =>
     expect(objectsApi.listPictures).toHaveBeenLastCalledWith(

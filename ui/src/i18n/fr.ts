@@ -407,6 +407,15 @@ export const fr: Dictionary = {
     notFound: 'Introuvable : peut-être supprimé',
     conflict: 'Conflit avec une opération en cours',
     tooManyImports: "Trop d'imports en cours ; attendez la fin de l'un d'eux.",
+    route: {
+      title: "Cette vue n'a pas pu s'afficher",
+      text: "Une erreur inattendue a interrompu la vue. Rechargez l'application ; si elle se reproduit, copiez les détails pour la signaler.",
+      reload: 'Recharger',
+      copy: 'Copier les détails',
+      copied: 'Détails copiés',
+      copyFailed: 'Échec de la copie : sélectionnez les détails ci-dessous',
+      details: "Détails de l'erreur",
+    },
   },
   anomalies: {
     codes: {

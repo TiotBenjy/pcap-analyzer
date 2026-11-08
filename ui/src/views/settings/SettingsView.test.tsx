@@ -135,6 +135,8 @@ describe('SettingsView', () => {
     expect(screen.getByRole('button', { name: 'Download latest version' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Import a file' })).toBeDisabled();
     expect(screen.getByTestId('geoip-update')).toHaveTextContent('Updates are disabled on a read-only server.');
+    // The host contacted by a download is named even when the button is disabled.
+    expect(screen.getByTestId('geoip-update')).toHaveTextContent('Downloading contacts download.db-ip.com.');
   });
 
   it('downloads on click only, says which host it contacts, and reports success', async () => {

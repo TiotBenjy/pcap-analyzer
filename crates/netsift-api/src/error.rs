@@ -16,8 +16,14 @@ pub enum ApiError {
     MethodNotAllowed,
     #[error("server is read-only")]
     ReadOnly,
+    #[error("forbidden: {0}")]
+    Forbidden(&'static str),
     #[error("invalid request: {0}")]
     BadRequest(String),
+    #[error("conflict: {0}")]
+    Conflict(String),
+    #[error("too many imports running")]
+    TooManyImports,
     #[error("internal error")]
     Internal,
 }
@@ -47,7 +53,14 @@ impl ApiError {
                 "Method not allowed",
             ),
             Self::ReadOnly => (StatusCode::FORBIDDEN, "read-only", "Server is read-only"),
+            Self::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden", "Forbidden"),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad-request", "Invalid request"),
+            Self::Conflict(_) => (StatusCode::CONFLICT, "conflict", "Conflict"),
+            Self::TooManyImports => (
+                StatusCode::CONFLICT,
+                "too-many-imports",
+                "Too many imports running; wait for one to end",
+            ),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",
@@ -61,7 +74,8 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, kind, title) = self.parts();
         let detail = match &self {
-            Self::BadRequest(d) => Some(d.clone()),
+            Self::BadRequest(d) | Self::Conflict(d) => Some(d.clone()),
+            Self::Forbidden(d) => Some((*d).to_owned()),
             _ => None,
         };
         let body = Problem {
@@ -82,6 +96,24 @@ impl IntoResponse for ApiError {
             );
         }
         res
+    }
+}
+
+impl From<netsift_store::StoreError> for ApiError {
+    fn from(e: netsift_store::StoreError) -> Self {
+        use netsift_store::StoreError as E;
+        match e {
+            E::SessionNotFound(_) | E::InvalidSessionId | E::SessionFilesMissing { .. } => {
+                Self::NotFound
+            }
+            E::InvalidCursor => Self::BadRequest("invalid pagination cursor".to_owned()),
+            E::InvalidValue { field, reason } => Self::BadRequest(format!("{field}: {reason}")),
+            other => {
+                // Store errors carry paths and SQL details: logged, never returned.
+                tracing::error!("store error: {other}");
+                Self::Internal
+            }
+        }
     }
 }
 

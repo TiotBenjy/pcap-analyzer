@@ -35,8 +35,8 @@ export function useRendition(id: string, sha256: string, kind: 'thumb' | 'previe
     queryFn: ({ signal }) => fetchRendition(id, sha256, kind, signal),
     enabled,
     staleTime: Infinity,
-    // Previews are large: dropped soon after the viewer moves on.
-    gcTime: kind === 'preview' ? 30_000 : 10 * 60_000,
+    // Data URLs live in memory: dropped soon after their tile scrolls away or the viewer moves on.
+    gcTime: kind === 'preview' ? 30_000 : 60_000,
     retry: false,
   });
 }

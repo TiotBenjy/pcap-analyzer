@@ -188,7 +188,7 @@ Suivis de la vague 2.B :
 
 ## Phase 3 — Analyseurs et onglets (une branche = analyseur + API + vue + tests)
 
-### Vague 3.A (parallèle, indépendantes)
+### Vague 3.A (parallèle, indépendantes) — terminée le 2026-11-08
 
 - [x] **P3.1** `feat/dns` — DNS + mDNS + NBNS (+ LLMNR) : transactions, codes réponse, types. `specs/dns.md`.
 - [x] **P3.2** `feat/http` — HTTP/1.x : transactions, en-têtes, corps bornés, décompression gzip/deflate/br,
@@ -197,7 +197,7 @@ Suivis de la vague 2.B :
       certificats X.509 (export DER/PEM). `specs/tls.md`.
 - [x] **P3.4** `feat/connections-ports` — Agrégats de flux, ports ouverts (SYN-ACK / réponses UDP), table
       IANA des services embarquée. `specs/connections.md`, `specs/open-ports.md`.
-- [~] **P3.5** `feat/smb-netbios` — Annonces NetBIOS browser (OS, types), SMB1/2 négociation, NTLMSSP
+- [x] **P3.5** `feat/smb-netbios` — Annonces NetBIOS browser (OS, types), SMB1/2 négociation, NTLMSSP
       (v1/v2 -> lignes hashcat 5500/5600). `specs/smb.md`.
 
 Suivis de la vague 3.A :
@@ -233,6 +233,11 @@ Suivis de la vague 3.A :
   P4.2 : coût de la finalisation sur une session très chargée en DNS (UPDATE de `pair_id`, reconstruction
   trigram), percentiles de latence par OFFSET, `LIKE` des recherches courtes ; P4.1 : cible de fuzz DNS.
   Connections affiche désormais les noms résolus (`hosts.names` alimenté par le finaliseur DNS).
+- P3.5 (fusionnée le 2026-11-08) : `Record::Credential` est un contrat en mémoire, abandonné par le moteur
+  (`to_store` -> `None`) jusqu'à P3.7, qui conçoit la table `credentials` (plage 0600) et son ADR ; SMB1 sans
+  extended security (défi dans la réponse NEGOTIATE), dialecte et signature SMB1 non extraits ; pas de
+  filtre ni de recherche dans l'en-tête de carte ; P4.1 : cibles de fuzz NetBIOS, SMB et NTLMSSP.
+  `count_rows` accepte les vues SQL et le marqueur d'ADR-013 enregistre aussi les vues.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).

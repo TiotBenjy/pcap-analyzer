@@ -3,6 +3,7 @@
 //! - [`scenario`]: deterministic scenario builder (Ethernet, IPv4/IPv6, UDP, TCP with
 //!   coherent sequence numbers) with DNS, HTTP (PNG body), TLS (self-signed certificate),
 //!   NBNS, SMB browser, SNMP and FTP exchanges; [`scenarios`]: ready-made hosts and scenarios.
+//! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
 //! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip.
 //! - [`split`]: chunk splitter by size, duration, packet count or explicit boundaries, with
 //!   the dumpcap, dumpcap `nametimenum`, editcap and tcpdump `-C` naming conventions.
@@ -32,6 +33,7 @@ pub mod proto;
 pub mod rng;
 pub mod scenario;
 pub mod scenarios;
+pub mod servers;
 pub mod split;
 pub mod time;
 pub mod writer;

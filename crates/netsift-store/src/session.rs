@@ -142,7 +142,10 @@ impl Session {
             ));
         }
         let conn = open_read_only(&db_path)?;
-        if !write_needed(&conn, set)? {
+        let needed = write_needed(&conn, set)?;
+        // A read-only server never writes: pending end-of-import steps wait (the session is
+        // readable without them, ADR-014); only a pending migration makes it unreadable.
+        if !needed.any() || (policy == Upgrade::Refuse && !needed.migrations) {
             return Ok(Self {
                 dir,
                 conn,
@@ -248,17 +251,35 @@ fn migrate_session(conn: &mut Connection, set: &MigrationSet) -> Result<Vec<u32>
     }
 }
 
-/// Whether a finished session must be written before it can be read. Checked read-only on
-/// every opening (fast path); [`upgrade`] does the corresponding work.
-fn write_needed(conn: &Connection, set: &MigrationSet) -> Result<bool> {
-    let schema_outdated = match check_current(conn, set) {
+/// What a finished session needs written ([`write_needed`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WriteNeeded {
+    /// Migrations added since its import: unreadable until applied.
+    migrations: bool,
+    /// End-of-import steps not recorded as done (interrupted import, failed step, new step or
+    /// new version of a step, ADR-014): readable, but incomplete.
+    finalizers: bool,
+}
+
+impl WriteNeeded {
+    fn any(self) -> bool {
+        self.migrations || self.finalizers
+    }
+}
+
+/// Whether a finished session must be written. Checked read-only on every opening (fast
+/// path); [`upgrade`] does the corresponding work.
+fn write_needed(conn: &Connection, set: &MigrationSet) -> Result<WriteNeeded> {
+    let migrations = match check_current(conn, set) {
         Ok(()) => false,
         Err(StoreError::SchemaOutdated { .. }) => true,
         Err(e) => return Err(e),
     };
-    // finalizers hook: `|| finalizers_pending(conn)?` once analyzers register post-import
-    // finalizers (feat/dns).
-    Ok(schema_outdated)
+    let finalizers = !crate::finalize::finalizers_complete(conn)?;
+    Ok(WriteNeeded {
+        migrations,
+        finalizers,
+    })
 }
 
 /// Does what [`write_needed`] reports, through a read-write connection that cannot create the
@@ -272,8 +293,10 @@ fn upgrade(path: &Path, set: &MigrationSet) -> Result<()> {
     conn.busy_timeout(UPGRADE_BUSY_TIMEOUT)?;
     conn.pragma_update(None, "synchronous", "FULL")?;
     migrate_session(&mut conn, set)?;
-    // finalizers hook: `run_finalizers(&mut conn)?` here, on the same write connection, after
-    // the migrations (feat/dns).
+    // End-of-import steps missing from the marker, on the same write connection, after the
+    // migrations (ADR-014). A failed step is not an upgrade failure: the session stays
+    // readable, the step is retried at the next opening.
+    crate::finalize::run_finalizers(&conn)?;
     Ok(())
 }
 

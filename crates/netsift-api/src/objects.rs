@@ -14,9 +14,12 @@
 //! attachment typed `application/octet-stream`, with `Content-Security-Policy: sandbox` and
 //! `nosniff`, whatever its content (SVG, HTML disguised as an image...). Unknown or malformed
 //! digests give 404 (never a path: the file name derives from a validated digest); a blob that
-//! does not have its recorded size gives 409.
+//! does not have its recorded size gives 409. A thumbnail missing on disk (import cancelled
+//! before the thumbnail pass) is decoded on demand, two images at a time at most, then stored
+//! with its state unless the server is read-only.
 
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, LazyLock};
 
 use axum::extract::{Path as UrlPath, State};
 use axum::http::{HeaderValue, header};
@@ -24,13 +27,17 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use netsift_engine::thumbs::{self, PREVIEW_SIZE, THUMB_SIZE};
-use netsift_store::objects::{self as store, ObjectFilter, ObjectRow, ObjectSort, thumb};
-use netsift_store::{PageRequest, Session};
+use netsift_store::objects::{
+    self as store, ObjectFilter, ObjectRow, ObjectSort, ThumbUpdate, thumb,
+};
+use netsift_store::{OpenMode, PageRequest, Session};
 use serde::{Deserialize, Serialize};
+use tokio::sync::Semaphore;
 use ts_rs::TS;
 
 use crate::contract::Page;
 use crate::convert::us;
+use crate::endpoint::Endpoint;
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
 use crate::sessions::{DEFAULT_LIMIT, MAX_LIMIT, parse_id};
@@ -42,6 +49,9 @@ const TOP_HOSTS: u32 = 50;
 const MAX_QUERY_LEN: usize = 256;
 /// Largest stored thumbnail served (they are at most 320 px wide, a few dozen KiB).
 const MAX_THUMB_FILE: u64 = 4 * 1024 * 1024;
+/// Images decoded at a time for on-demand renditions (each decoder may take
+/// `thumbs::MAX_DECODE_ALLOC`), whatever the number of requests.
+static RENDERING: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(2));
 
 pub(crate) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -110,8 +120,8 @@ pub struct ObjectItem {
     pub last_ts_us: i64,
     /// Flow id of the first transaction (string: may exceed 2^53).
     pub flow_id: String,
-    pub client_ip: String,
-    pub server_ip: String,
+    pub client: Endpoint,
+    pub server: Endpoint,
     pub server_port: u16,
     pub host: Option<String>,
     /// Request target as sent.
@@ -196,8 +206,8 @@ fn item(row: ObjectRow) -> ObjectItem {
         first_ts_us: us(row.first_ts),
         last_ts_us: us(row.last_ts),
         flow_id: row.flow_id.to_string(),
-        client_ip: row.client_ip,
-        server_ip: row.server_ip,
+        client: Endpoint::new(row.client_ip, row.client),
+        server: Endpoint::new(row.server_ip, row.server),
         server_port: row.server_port,
         host: row.host,
         uri: row.uri,
@@ -411,17 +421,6 @@ fn png_response(png: Vec<u8>) -> Response {
     res
 }
 
-/// A PNG rendition of `row` (`max_side` px), 404 when it has none.
-fn render(session: &Session, row: &ObjectRow, max_side: u32) -> Result<Vec<u8>, ApiError> {
-    if row.thumb == thumb::NONE || row.thumb == thumb::FAILED {
-        return Err(ApiError::NotFound);
-    }
-    let original = read_original(session, row)?;
-    thumbs::render(&original, max_side)
-        .map(|r| r.png)
-        .map_err(|_| ApiError::NotFound)
-}
-
 /// The stored thumbnail, if it is there and looks like the PNG we wrote.
 fn stored_thumb(session: &Session, row: &ObjectRow) -> Option<Vec<u8>> {
     if row.thumb != thumb::READY {
@@ -435,36 +434,117 @@ fn stored_thumb(session: &Session, row: &ObjectRow) -> Option<Vec<u8>> {
     png.starts_with(b"\x89PNG\r\n\x1a\n").then_some(png)
 }
 
+/// What a rendition request needs once the database was read.
+enum Lookup {
+    /// The stored thumbnail.
+    Stored(Vec<u8>),
+    /// The original, to decode.
+    Decode {
+        original: Vec<u8>,
+        sha256: String,
+        session_dir: PathBuf,
+    },
+}
+
+/// Reads what a rendition of `sha256` needs: 404 for an object without rendition (SVG, not
+/// decodable), the stored thumbnail when `stored` allows it, else the original.
+fn lookup(state: &AppState, id: &str, sha256: &str, stored: bool) -> Result<Lookup, ApiError> {
+    let id = parse_id(id)?;
+    let (_, session) = open_ready(state, &id)?;
+    let row = find(&session, sha256)?;
+    if row.thumb == thumb::NONE || row.thumb == thumb::FAILED {
+        return Err(ApiError::NotFound);
+    }
+    if stored && let Some(png) = stored_thumb(&session, &row) {
+        return Ok(Lookup::Stored(png));
+    }
+    Ok(Lookup::Decode {
+        original: read_original(&session, &row)?,
+        sha256: row.sha256,
+        session_dir: session.dir().to_path_buf(),
+    })
+}
+
+/// Records an on-demand thumbnail (file, then state and dimensions), so that the next display
+/// reads it instead of decoding again. Best effort: failures are only logged.
+fn remember(
+    session_dir: &std::path::Path,
+    sha256: &str,
+    outcome: &Result<thumbs::Rendered, thumbs::ThumbError>,
+) {
+    let update = match outcome {
+        Ok(r) => {
+            let dir = session_dir.join(netsift_store::session::THUMBS_DIR);
+            if let Err(e) = thumbs::store_thumbnail(&dir, sha256, &r.png) {
+                tracing::warn!("cannot write a thumbnail: {e}");
+                return;
+            }
+            ThumbUpdate {
+                sha256: sha256.to_owned(),
+                state: thumb::READY,
+                width: Some(r.width),
+                height: Some(r.height),
+            }
+        }
+        Err(_) => ThumbUpdate {
+            sha256: sha256.to_owned(),
+            state: thumb::FAILED,
+            width: None,
+            height: None,
+        },
+    };
+    let written = Session::open(session_dir, OpenMode::ReadWrite)
+        .and_then(|mut s| store::set_thumbs(s.conn_mut(), &[update]));
+    if let Err(e) = written {
+        tracing::warn!("cannot record a thumbnail: {e}");
+    }
+}
+
+/// A PNG rendition: the stored thumbnail, else a decoding under [`RENDERING`]. Outside
+/// read-only mode, a thumbnail decoded here is stored for the next time.
+async fn rendition(
+    state: &Arc<AppState>,
+    id: String,
+    sha256: String,
+    max_side: u32,
+) -> Result<Vec<u8>, ApiError> {
+    let thumb_request = max_side == THUMB_SIZE;
+    let found = blocking(state, move |s| lookup(s, &id, &sha256, thumb_request)).await?;
+    let (original, sha256, session_dir) = match found {
+        Lookup::Stored(png) => return Ok(png),
+        Lookup::Decode {
+            original,
+            sha256,
+            session_dir,
+        } => (original, sha256, session_dir),
+    };
+    let _permit = RENDERING.acquire().await.map_err(|_| ApiError::Internal)?;
+    blocking(state, move |s| {
+        let outcome = thumbs::render(&original, max_side);
+        if thumb_request && !s.config.read_only {
+            remember(&session_dir, &sha256, &outcome);
+        }
+        outcome.map(|r| r.png).map_err(|_| ApiError::NotFound)
+    })
+    .await
+}
+
 async fn thumbnail(
     State(state): State<Arc<AppState>>,
     UrlPath((id, sha256)): UrlPath<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let id = parse_id(&id)?;
-    let png = blocking(&state, move |s| {
-        let (_, session) = open_ready(s, &id)?;
-        let row = find(&session, &sha256)?;
-        // Missing (import cancelled before the thumbnails, file removed): rendered now.
-        match stored_thumb(&session, &row) {
-            Some(png) => Ok(png),
-            None => render(&session, &row, THUMB_SIZE),
-        }
-    })
-    .await?;
-    Ok(png_response(png))
+    rendition(&state, id, sha256, THUMB_SIZE)
+        .await
+        .map(png_response)
 }
 
 async fn preview(
     State(state): State<Arc<AppState>>,
     UrlPath((id, sha256)): UrlPath<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let id = parse_id(&id)?;
-    let png = blocking(&state, move |s| {
-        let (_, session) = open_ready(s, &id)?;
-        let row = find(&session, &sha256)?;
-        render(&session, &row, PREVIEW_SIZE)
-    })
-    .await?;
-    Ok(png_response(png))
+    rendition(&state, id, sha256, PREVIEW_SIZE)
+        .await
+        .map(png_response)
 }
 
 #[cfg(test)]

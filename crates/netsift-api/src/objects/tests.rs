@@ -24,8 +24,12 @@ struct Env {
 }
 
 impl Env {
-    /// API over one session holding the HTTP gallery.
+    /// API (read-only) over one session holding the HTTP gallery.
     fn gallery() -> Self {
+        Self::with_mode(true)
+    }
+
+    fn with_mode(read_only: bool) -> Self {
         let tmp = tempfile::TempDir::new().unwrap();
         let data = tmp.path().join("data");
         let captures = tmp.path().join("captures");
@@ -47,7 +51,7 @@ impl Env {
             token: TOKEN.to_owned(),
             data_dir: data.clone(),
             captures_roots: vec![captures],
-            read_only: true,
+            read_only,
             cors_origins: vec![HeaderValue::from_static("tauri://localhost")],
             allow_any_path: false,
             max_imports: DEFAULT_MAX_IMPORTS,
@@ -152,6 +156,10 @@ async fn stats_and_filtered_pages() {
 
     let first = &items(&all)[0];
     assert_eq!(first["uri"], "/gallery/harbour.jpg");
+    assert_eq!(first["client"]["ip"], "192.168.1.24");
+    assert_eq!(first["client"]["category"], "private");
+    assert_eq!(first["server"]["ip"], "198.51.100.31");
+    assert_eq!(first["server_port"], 80);
     assert_eq!(
         first["url"],
         "http://images.example.test/gallery/harbour.jpg"
@@ -286,6 +294,34 @@ async fn invalid_digests_traversal_and_damaged_blobs_are_refused() {
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
+#[tokio::test]
+async fn an_on_demand_thumbnail_is_remembered_unless_read_only() {
+    let env = Env::with_mode(false);
+    let photo = env.by_uri("/gallery/dunes.webp").await;
+    let sha = photo["sha256"].as_str().unwrap().to_owned();
+    let path = env.session().thumb_path(&sha).unwrap();
+    // As after a cancelled import: no file, state pending.
+    std::fs::remove_file(&path).unwrap();
+    {
+        let session = Session::open(env.session().dir(), OpenMode::ReadWrite).unwrap();
+        session
+            .conn()
+            .execute(
+                "UPDATE objects SET thumb = 'pending', width = NULL, height = NULL WHERE sha256 = ?1",
+                [&sha],
+            )
+            .unwrap();
+    }
+    let (status, _, png) = env.raw(&format!("/objects/{sha}/thumb")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(std::fs::read(&path).unwrap(), png);
+    let row = store::object(env.session().conn(), &sha).unwrap().unwrap();
+    assert_eq!(
+        (row.thumb.as_str(), row.width, row.height),
+        ("ready", Some(360), Some(240))
+    );
+}
+
 #[test]
 fn file_names_are_sanitized() {
     let row = |uri: Option<&str>, mime: &str| ObjectRow {
@@ -302,11 +338,13 @@ fn file_names_are_sanitized() {
         last_ts: 0,
         flow_id: 1,
         seq: 0,
-        client_ip: "10.0.0.1".to_owned(),
-        server_ip: "10.0.0.2".to_owned(),
+        client_ip: "10.0.0.1".parse().unwrap(),
+        server_ip: "10.0.0.2".parse().unwrap(),
         server_port: 80,
         host: Some("h.test".to_owned()),
         uri: uri.map(ToOwned::to_owned),
+        client: netsift_store::connections::EndpointInfo::default(),
+        server: netsift_store::connections::EndpointInfo::default(),
     };
     assert_eq!(
         file_name(&row(Some("/a/photo.JPG?x=1"), "image/jpeg")),

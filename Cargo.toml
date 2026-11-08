@@ -68,6 +68,9 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 # Dependencies optimized even in dev: parsing and SQLite are much faster, rebuilt rarely.
 opt-level = 2
+# No debug info for dependencies (workspace crates keep line tables, so our backtraces keep their
+# line numbers): measured on a full `./x.sh check`, the target dir shrinks from 4.8 GB to 3.0 GB.
+debug = false
 
 [profile.release]
 lto = "thin"

@@ -27,10 +27,14 @@ scripts/wt.sh push <branche>              # git push -u origin <branche> (si un 
 scripts/wt.sh merge <branche> [--push] [--cleanup] [--no-check]
                                           # sync + check + merge --no-ff dans main
                                           # --push : pousse main, et la branche (sans --cleanup)
-                                          # --cleanup : supprime worktree + branche (avec --push :
-                                          #   aussi la branche distante)
-scripts/wt.sh rm <branche> [--delete-branch]
+                                          # --cleanup : supprime worktree + branche + target de
+                                          #   build (avec --push : aussi la branche distante)
+scripts/wt.sh rm <branche> [--delete-branch]  # supprime le worktree et son target de build
 ```
+
+`new` et `merge --cleanup` lancent aussi `./x.sh clean --auto` : suppression des targets orphelins
+du cache, silencieuse s'il n'y a rien à supprimer (`NETSIFT_NO_AUTO_CLEAN=1` la désactive). Un échec
+de ce nettoyage n'est qu'un avertissement : il ne fait jamais échouer la commande ni la fusion.
 
 `merge` est sérialisé par un verrou (`.git/wt-merge.lock`) : deux fusions ne peuvent pas se croiser.
 
@@ -61,8 +65,11 @@ scripts/wt.sh rm <branche> [--delete-branch]
 
 ## Conteneurs et parallélisme
 
-Chaque worktree a son propre répertoire `target` dans le volume de cache (`/cache/target/<slug>`) ;
-le registre cargo et `sccache` sont partagés, donc les dépendances ne sont compilées qu'une fois.
+Chaque worktree a son propre répertoire `target` dans le volume de cache (`/cache/target/<slug>`,
+3 à 7 Go) ; le registre cargo et `sccache` sont partagés, donc les dépendances ne sont compilées
+qu'une fois. x.sh écrit dans chaque target un marqueur `.origin` (chemin hôte, dernière
+utilisation) : `wt.sh rm` / `merge --cleanup` suppriment le target du worktree retiré, et
+`./x.sh clean` ceux dont le chemin a disparu (clones jetables, worktrees supprimés à la main).
 `./x.sh dev` dans un worktree utilise des ports dérivés du nom si `NETSIFT_UI_PORT` n'est pas fixé
 (voir skill `dev-env`). `./x.sh shots` n'expose aucun port et peut tourner en parallèle.
 

@@ -25,6 +25,7 @@ mod ingest;
 mod options;
 mod pipeline;
 mod plan;
+pub mod thumbs;
 pub mod translate;
 
 pub use error::EngineError;

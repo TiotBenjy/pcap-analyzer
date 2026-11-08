@@ -176,57 +176,37 @@ fn header_search_finds_a_cookie() {
 }
 
 #[test]
-fn bodies_reach_the_disk_only_when_stored() {
+fn only_images_reach_the_disk() {
     let tmp = TempDir::new().unwrap();
     let catalog = Catalog::open(tmp.path().join("data")).unwrap();
     let (packets, _) = traffic();
     let file = tmp.path().join("http.pcap");
     write_file(&file, &packets, &Encoding::pcap()).unwrap();
 
-    // Default: the engine stores blobs (TLS certificates), HTTP offers none.
+    // Default (P3.6): the image is stored; the page, the JSON document and the POST body not.
     let report = run(&catalog, &file, 2);
-    assert_eq!(
-        blob_files(&catalog, &report),
-        Vec::<std::path::PathBuf>::new()
-    );
+    let blobs = blob_files(&catalog, &report);
+    assert_eq!(blobs.len(), 1, "{blobs:?}");
+    assert!(std::fs::read(&blobs[0]).unwrap().starts_with(b"\x89PNG"));
     let session = catalog
         .open_session(&report.session, OpenMode::ReadOnly)
         .unwrap();
-    let digests: i64 = session
+    let count = |sql: &str| -> i64 { session.conn().query_row(sql, [], |r| r.get(0)).unwrap() };
+    assert_eq!(count("SELECT count(*) FROM http_transactions WHERE req_sha256 IS NOT NULL"), 0);
+    assert_eq!(count("SELECT count(*) FROM http_transactions WHERE resp_sha256 IS NOT NULL"), 1);
+    assert_eq!(count("SELECT count(*) FROM objects"), 1);
+    let sha: String = session
         .conn()
-        .query_row(
-            "SELECT count(*) FROM http_transactions WHERE resp_sha256 IS NOT NULL \
-             OR req_sha256 IS NOT NULL",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT sha256 FROM objects", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(digests, 0);
+    assert!(session.blob_path(&sha).unwrap().is_file());
 
-    // `store_bodies` (task P3.6): complete bodies become blobs, named by their digest.
+    // Switched off: nothing reaches the disk.
     let mut options = IngestOptions {
         shards: Some(2),
         ..IngestOptions::default()
     };
-    options.analyzers.config_mut().http.store_bodies = true;
+    options.analyzers.config_mut().http.store_bodies = false;
     let report = ingest(&catalog, &file, &options, &CancelToken::new(), &mut |_| {}).unwrap();
-    let session = catalog
-        .open_session(&report.session, OpenMode::ReadOnly)
-        .unwrap();
-    let mut stmt = session
-        .conn()
-        .prepare("SELECT DISTINCT resp_sha256 FROM http_transactions WHERE resp_sha256 IS NOT NULL")
-        .unwrap();
-    let stored: Vec<String> = stmt
-        .query_map([], |r| r.get(0))
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
-    // Page, JSON document (chunked) and image: three distinct bodies.
-    assert_eq!(stored.len(), 3, "{stored:?}");
-    for sha in &stored {
-        assert!(session.blob_path(sha).unwrap().is_file());
-    }
-    // Plus the body of the POST request.
-    assert_eq!(blob_files(&catalog, &report).len(), 4);
+    assert_eq!(blob_files(&catalog, &report), Vec::<std::path::PathBuf>::new());
 }

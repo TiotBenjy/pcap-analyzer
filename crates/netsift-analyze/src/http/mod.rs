@@ -23,13 +23,14 @@
 //! Every finished message goes through [`inspect::inspect_message`], which receives a
 //! [`MessageView`]: connection, start line, headers and the **decoded body** (with its state).
 //! It fills the body figures of the record (sniffed MIME type, preview) and calls
-//! [`RecordSink::put_blob`] for complete bodies, so objects appear in `http_transactions` as
-//! soon as the engine stores blobs (P3.6). Credentials (`Authorization: Basic`, login forms)
+//! [`RecordSink::put_blob`] for the bodies selected by [`objects::selected`] (images, by
+//! content, in responses), whose digest appears in `http_transactions` (P3.6). Credentials (`Authorization: Basic`, login forms)
 //! are to be emitted from the same function as `Record::Credential` (P3.7).
 
 mod body;
 pub mod inspect;
 mod message;
+pub mod objects;
 mod types;
 
 use std::collections::{HashMap, VecDeque};

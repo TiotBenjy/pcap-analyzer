@@ -35,6 +35,10 @@ pub enum StoreError {
     },
     #[error("could not upgrade the session schema: {0}")]
     UpgradeFailed(#[source] Box<StoreError>),
+    #[error("the session must be upgraded before it can be read, which is not allowed here")]
+    UpgradeNeeded,
+    #[error("the session is locked by another connection; try again")]
+    SessionBusy,
     #[error("not a NetSift {expected} database")]
     ForeignDatabase { expected: &'static str },
     #[error("session not found: {0}")]

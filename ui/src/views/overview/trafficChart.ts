@@ -36,8 +36,9 @@ export interface TrafficChartInput {
   selected: ReadonlySet<TrafficProtocol>;
   metric: Metric;
   scale: Scale;
-  zoom: Zoom;
   legend: LegendLayout;
+  /** Narrow chart (below 640 px): fewer time ticks. */
+  compact: boolean;
   format: TrafficFormat;
 }
 
@@ -49,6 +50,40 @@ const LEGEND_HEIGHT = 24;
 /** Series of the response that are selected, in display order (the server's order). */
 export function visibleSeries(data: TrafficSeries, selected: ReadonlySet<TrafficProtocol>): ProtocolSeries[] {
   return data.series.filter((s) => selected.has(s.protocol));
+}
+
+/** Multipliers of a byte axis step, within one IEC unit (1 B, 2 B, 5 B... 500 KiB, 1 MiB...). */
+const BYTE_STEPS = [1, 2, 5, 10, 20, 50, 100, 200, 500] as const;
+const Y_TICKS = 4;
+
+/**
+ * Round linear byte axis for values up to `peak`: a step of 1, 2 or 5 x 10^n x 1024^k bytes
+ * (20 KiB, not 19.5 KiB) giving the number of intervals closest to `ticks` (the larger step on
+ * a tie), and the first multiple of it at or above `peak`.
+ */
+export function byteAxis(peak: number, ticks: number = Y_TICKS): { interval: number; max: number } | null {
+  if (!Number.isFinite(peak) || peak <= 0) return null;
+  let best: { interval: number; max: number; miss: number } | null = null;
+  for (let unit = 1; unit <= 1024 ** 5; unit *= 1024) {
+    for (const m of BYTE_STEPS) {
+      const interval = m * unit;
+      const count = Math.ceil(peak / interval);
+      const miss = Math.abs(count - ticks);
+      if (best === null || miss <= best.miss) best = { interval, max: count * interval, miss };
+    }
+  }
+  return best === null ? null : { interval: best.interval, max: best.max };
+}
+
+/** Highest stacked value of a bucket (the top of the linear chart). */
+function stackedPeak(series: readonly (readonly number[])[], points: number): number {
+  let peak = 0;
+  for (let i = 0; i < points; i++) {
+    let sum = 0;
+    for (const values of series) sum += values[i] ?? 0;
+    if (sum > peak) peak = sum;
+  }
+  return peak;
 }
 
 /** Bucket start times, in milliseconds. */
@@ -92,13 +127,17 @@ export function tooltipHtml(params: readonly TooltipParam[], format: TrafficForm
 }
 
 export function buildTrafficOption(input: TrafficChartInput): EChartsCoreOption {
-  const { data, selected, metric, scale, zoom, legend, format } = input;
+  const { data, selected, metric, scale, legend, compact, format } = input;
   const log = scale === 'log';
   const times = bucketTimes(data);
   const visible = visibleSeries(data, selected);
+  const valuesOf = (s: ProtocolSeries) => (metric === 'bytes' ? s.bytes : s.packets) ?? [];
+  const bytes = metric === 'bytes';
+  // Round byte ticks; packets keep ECharts' decimal ticks. A log byte axis has a tick per unit.
+  const byteTicks = bytes && !log ? byteAxis(stackedPeak(visible.map(valuesOf), data.points)) : null;
 
   const series = visible.map((s) => {
-    const values = (metric === 'bytes' ? s.bytes : s.packets) ?? [];
+    const values = valuesOf(s);
     const name = format.protocol(s.protocol);
     const color = colorFor(s.protocol);
     return {
@@ -157,6 +196,8 @@ export function buildTrafficOption(input: TrafficChartInput): EChartsCoreOption 
       type: 'time',
       min: first,
       max: last,
+      // ECharts rounds the time step down (13 min / 3 gives 2 min ticks): 2 keeps narrow axes airy.
+      ...(compact ? { splitNumber: 2 } : {}),
       axisLabel: {
         // Level-based format: the axis picks the unit from its ticks, so it adapts to the
         // captured duration and to the zoom. Local time, ISO-like, no localized month names.
@@ -174,17 +215,18 @@ export function buildTrafficOption(input: TrafficChartInput): EChartsCoreOption 
     },
     yAxis: {
       type: log ? 'log' : 'value',
-      ...(log ? { logBase: 10, min: 1 } : { min: 0 }),
-      splitNumber: 4,
+      ...(log ? { logBase: bytes ? 1024 : 10, min: 1 } : { min: 0 }),
+      ...(byteTicks ?? {}),
+      splitNumber: Y_TICKS,
       axisLabel: { formatter: (v: number) => format.axis(v) },
       splitLine: { show: true },
     },
     dataZoom: [
-      { type: 'inside', start: zoom.start, end: zoom.end, filterMode: 'none' },
+      // No start / end: the window belongs to the user and survives option changes (the
+      // renderer keeps it); the view resets it with a `dataZoom` action.
+      { type: 'inside', filterMode: 'none' },
       {
         type: 'slider',
-        start: zoom.start,
-        end: zoom.end,
         filterMode: 'none',
         height: SLIDER_HEIGHT,
         bottom: sliderBottom,

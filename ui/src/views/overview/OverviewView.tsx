@@ -16,7 +16,7 @@ import { useOverviewSummary, useTraffic } from '../../api/overviewQueries';
 import { useSession } from '../../api/sessionQueries';
 import type { OverviewSummary } from '../../api/types/OverviewSummary';
 import type { TrafficProtocol } from '../../api/types/TrafficProtocol';
-import type { ChartEvents } from '../../charts/EChartsRenderer';
+import type { ChartEvents, ChartHandle } from '../../charts/EChartsRenderer';
 import { colorFor } from '../../charts/palette';
 import { CHART_HEIGHT } from '../../charts/sizes';
 import { Button } from '../../components/Button';
@@ -41,7 +41,6 @@ import {
   type Metric,
   type Scale,
   type TrafficFormat,
-  type Zoom,
   zoomOfEvent,
 } from './trafficChart';
 
@@ -203,13 +202,13 @@ function SummaryBand({
         icon={Clock}
         label={t('views.overview.stat.duration')}
         value={s === null ? null : hasPeriod ? formatDuration((s.duration_us ?? 0) / 1e6) : t('views.overview.noPeriod')}
-        hint={<span title={period}>{period === '' ? ' ' : period}</span>}
+        hint={period === '' ? ' ' : period}
       />
       <StatCard
         icon={Layers}
         label={t('views.overview.stat.packets')}
         value={s === null ? null : formatCount(s.packets)}
-        hint={<span title={links}>{links === '' ? ' ' : t('views.overview.linktypes', { list: links })}</span>}
+        hint={links === '' ? ' ' : t('views.overview.linktypes', { list: links })}
       />
       <StatCard
         icon={HardDrive}
@@ -240,7 +239,10 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
   const traffic = useTraffic(sessionId, { points: small ? SMALL_POINTS : POINTS }, enabled);
   const [metric, setMetric] = useState<Metric>('bytes');
   const [scale, setScale] = useState<Scale>('linear');
-  const [zoom, setZoom] = useState<Zoom>(FULL_ZOOM);
+  // The zoom window lives in the chart (never in the option, so dragging does not rebuild it);
+  // the view only follows whether it is zoomed, to enable the reset.
+  const [zoomed, setZoomed] = useState(false);
+  const chartHandle = useRef<ChartHandle>(null);
   // Protocols hidden by the user; new protocols are shown by default.
   const [hidden, setHidden] = useState<ReadonlySet<TrafficProtocol>>(new Set());
   const [boxRef, boxWidth] = useElementWidth<HTMLDivElement>();
@@ -261,7 +263,7 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
     return {
       protocol: (p) => t(`views.overview.protocols.${p}`),
       value: (v) => (metric === 'bytes' ? formatBytes(v, lang) : formatCount(v)),
-      axis: (v) => (metric === 'bytes' ? formatBytes(v, lang) : count.format(v)),
+      axis: (v) => (metric === 'bytes' ? formatBytes(v, lang, true) : count.format(v)),
       bucket: (ms) =>
         t('views.overview.traffic.bucket', {
           time: formatTimestamp(ms * 1000, !oneDay),
@@ -272,15 +274,16 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
   }, [t, lang, metric, data]);
 
   const option = useMemo(
-    () => (data === undefined ? {} : buildTrafficOption({ data, selected, metric, scale, zoom, legend, format })),
-    [data, selected, metric, scale, zoom, legend, format],
+    () =>
+      data === undefined ? {} : buildTrafficOption({ data, selected, metric, scale, legend, compact: small, format }),
+    [data, selected, metric, scale, legend, small, format],
   );
 
   const onEvents = useMemo<ChartEvents>(
     () => ({
       datazoom: (params) => {
         const z = zoomOfEvent(params);
-        if (z !== null) setZoom(z);
+        if (z !== null) setZoomed(isZoomed(z));
       },
     }),
     [],
@@ -289,6 +292,8 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
   const setSelected = useCallback(
     (next: Set<TrafficProtocol>) => {
       setHidden(new Set(present.filter((p) => !next.has(p))));
+      // With nothing selected the chart is removed: it comes back unzoomed.
+      if (next.size === 0) setZoomed(false);
     },
     [present],
   );
@@ -340,9 +345,10 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
           />
           <Button
             variant="ghost"
-            disabled={!isZoomed(zoom)}
+            disabled={!zoomed}
             onClick={() => {
-              setZoom(FULL_ZOOM);
+              chartHandle.current?.dispatchAction({ type: 'dataZoom', ...FULL_ZOOM });
+              setZoomed(false);
             }}
           >
             <RotateCcw aria-hidden size={16} strokeWidth={1.75} />
@@ -362,6 +368,7 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
             empty={noData || noneSelected}
             emptyText={noData ? t('views.overview.traffic.empty') : t('views.overview.traffic.noneSelected')}
             onEvents={onEvents}
+            handleRef={chartHandle}
           />
         </div>
       </div>

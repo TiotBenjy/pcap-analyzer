@@ -1,7 +1,7 @@
 import type { EChartsCoreOption } from 'echarts/core';
 import { BarChart3 } from 'lucide-react';
-import { lazy, Suspense } from 'react';
-import type { ChartEvents } from '../charts/EChartsRenderer';
+import { lazy, type Ref, Suspense } from 'react';
+import type { ChartEvents, ChartHandle } from '../charts/EChartsRenderer';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from './EmptyState';
 import { ErrorState } from './ErrorState';
@@ -23,13 +23,26 @@ interface ChartProps {
   emptyText?: string;
   /** ECharts event handlers (keep the object stable: handlers are rebound when it changes). */
   onEvents?: ChartEvents;
+  /** Imperative access to the chart once drawn (`null` while loading, empty or in error). */
+  handleRef?: Ref<ChartHandle>;
 }
 
 /**
  * The only way views draw charts: SVG renderer, shared palette, theme-aware text colors,
  * ResizeObserver, and the loading / empty / error states.
  */
-export function Chart({ option, height, ariaLabel, loading, error, onRetry, empty, emptyText, onEvents }: ChartProps) {
+export function Chart({
+  option,
+  height,
+  ariaLabel,
+  loading,
+  error,
+  onRetry,
+  empty,
+  emptyText,
+  onEvents,
+  handleRef,
+}: ChartProps) {
   const { t } = useTranslation();
   if (loading === true) return <Skeleton height={height} />;
   if (error !== undefined && error !== null) {
@@ -48,7 +61,7 @@ export function Chart({ option, height, ariaLabel, loading, error, onRetry, empt
   }
   return (
     <Suspense fallback={<Skeleton height={height} />}>
-      <EChartsRenderer option={option} height={height} ariaLabel={ariaLabel} onEvents={onEvents} />
+      <EChartsRenderer option={option} height={height} ariaLabel={ariaLabel} onEvents={onEvents} handleRef={handleRef} />
     </Suspense>
   );
 }

@@ -64,7 +64,9 @@ graphique vide sans état vide explicite.
   pour éviter les sauts de mise en page.
 - `grid.containLabel: true`, `axisLabel.hideOverlap: true`, `labelLayout.hideOverlap: true`,
   libellés d'axe tronqués à 24 caractères avec infobulle.
-- Légendes : en dessous du graphique sous 1024 px, à droite au-delà ; `type: 'scroll'` si trop d'entrées.
+- Légendes : en dessous du graphique quand **son conteneur** fait moins de 1024 px de large, à droite au-delà
+  (la largeur de la carte compte, pas celle de la fenêtre : sidebar et grilles la réduisent) ; `type: 'scroll'` si
+  trop d'entrées.
 - Infobulles : valeur formatée + pourcentage + unité.
 
 ## Graphes (onglets Network, DNS, Credentials)

@@ -22,6 +22,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
+  servers: async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   settings: '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
   'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
@@ -222,6 +223,18 @@ for (const [view, target] of views) {
           ).toBeVisible();
           await page.waitForLoadState('networkidle');
           // Clicking scrolled the main column: back to the top for the capture.
+          await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+        }
+
+        if (view === 'servers' && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('list', { name: 'Detected roles' })).toBeVisible();
+          const dns = page.getByRole('table', { name: 'DNS servers' }).or(page.getByRole('list', { name: 'DNS servers' }));
+          await expect(dns).toBeVisible();
+          // The first DNS server expanded: its evidence is laid out and checked too.
+          await page.getByRole('button', { name: /^Show the evidence of/ }).first().click();
+          await expect(
+            page.getByRole('table', { name: /^Evidence of/ }).or(page.getByRole('list', { name: /^Evidence of/ })),
+          ).toBeVisible();
           await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
         }
 

@@ -9,6 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use netsift_analyze::flow::FlowTable;
+use netsift_analyze::geo;
 use netsift_capture::PacketSource;
 use netsift_capture::chunkset::{ChunkGroup, ChunkSetSource, ChunkStats};
 use netsift_store::session::BLOBS_DIR;
@@ -432,6 +433,13 @@ impl RunCtx<'_> {
         registry.config_mut().blobs_dir = Some(Arc::new(
             self.catalog.session_dir(self.session).join(BLOBS_DIR),
         ));
+        if registry.config().geo.is_none() {
+            let path = o
+                .geoip_path
+                .clone()
+                .unwrap_or_else(|| geo::default_path(self.catalog.root()));
+            registry.config_mut().geo = geo::open_or_warn(&path);
+        }
         // Flow bounds are global: each shard's table gets its share.
         let mut flow = o.flow;
         flow.max_flows = (flow.max_flows / shards.max(1)).max(1);

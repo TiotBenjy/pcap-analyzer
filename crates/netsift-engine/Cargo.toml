@@ -22,4 +22,5 @@ workspace = true
 [dev-dependencies]
 insta = "1.49.0"
 netsift-fixtures.workspace = true
+netsift-geo = { workspace = true, features = ["test-util"] }
 tempfile = "3.27.0"

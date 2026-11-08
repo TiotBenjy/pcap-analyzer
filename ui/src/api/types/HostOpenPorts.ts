@@ -5,4 +5,8 @@ import type { OpenPortInfo } from "./OpenPortInfo";
 /**
  * A host and its open ports (TCP then UDP, by port).
  */
-export type HostOpenPorts = { host: Endpoint, ports: Array<OpenPortInfo>, };
+export type HostOpenPorts = { host: Endpoint, 
+/**
+ * Distinct clients of the flows to any open port of the host.
+ */
+clients: number, ports: Array<OpenPortInfo>, };

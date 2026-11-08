@@ -115,6 +115,8 @@ impl From<OpenPortEntry> for OpenPortInfo {
 #[ts(export)]
 pub struct HostOpenPorts {
     pub host: Endpoint,
+    /// Distinct clients of the flows to any open port of the host.
+    pub clients: u64,
     pub ports: Vec<OpenPortInfo>,
 }
 
@@ -122,6 +124,7 @@ impl From<HostPorts> for HostOpenPorts {
     fn from(h: HostPorts) -> Self {
         Self {
             host: Endpoint::new(h.ip, h.host),
+            clients: h.clients,
             ports: h.ports.into_iter().map(OpenPortInfo::from).collect(),
         }
     }

@@ -144,6 +144,9 @@ fn hosts_are_grouped_with_their_ports_and_clients() {
     let hosts = all(&conn, &PortFilter::default(), 100);
     assert_eq!(hosts[0].host.country.as_deref(), Some("FR"));
     assert_eq!(hosts[1].host.names, ["files.lan"]);
+    // Distinct clients over every open port (the UDP flow to :80 is not to an open port).
+    assert_eq!(hosts[1].clients, 2);
+    assert_eq!(hosts[0].clients, 0);
     assert_eq!(count_hosts(&conn, &PortFilter::default()).unwrap(), 3);
 }
 

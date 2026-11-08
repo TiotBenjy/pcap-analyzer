@@ -9,13 +9,15 @@ interface PairListProps {
   resolveNames: boolean;
   labels: NodeLabels;
   limit: number;
+  /** Selected node (search): its links are highlighted. */
+  selected: string | null;
 }
 
 /**
  * Links ranked by bytes, with bars split by direction: the layout below 768 px and when WebGL is
  * unavailable (same role as the ranked pairs of the Connections chord diagram).
  */
-export function PairList({ data, hideOrphans, resolveNames, labels, limit }: PairListProps) {
+export function PairList({ data, hideOrphans, resolveNames, labels, limit, selected }: PairListProps) {
   const { t, i18n } = useTranslation();
   const pairs = rankedPairs(data, hideOrphans, limit);
   const max = Math.max(1, ...pairs.map((p) => p.edge.bytes));
@@ -32,7 +34,11 @@ export function PairList({ data, hideOrphans, resolveNames, labels, limit }: Pai
           edge.protocols.join(', '),
         ].join('\n');
         return (
-          <li key={`${edge.source}|${edge.target}`} className="flex min-w-0 flex-col gap-1">
+          <li
+            key={`${edge.source}|${edge.target}`}
+            data-selected={selected !== null && (edge.source === selected || edge.target === selected) ? 'true' : undefined}
+            className="-mx-1.5 flex min-w-0 flex-col gap-1 rounded px-1.5 data-[selected=true]:bg-accent-soft"
+          >
             <div className="flex min-w-0 items-center gap-2 text-meta">
               <span data-testid="truncatable" title={title} className="min-w-0 flex-1 truncate font-mono">
                 {a} / {b}

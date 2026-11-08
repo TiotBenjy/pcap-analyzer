@@ -41,18 +41,20 @@ interface NodePanelProps {
   node: NetworkNode | null;
   labels: NodeLabels;
   resolveNames: boolean;
+  /** Nodes can be clicked (graph drawn); otherwise only the search selects. */
+  clickable: boolean;
   onExpand: (country: string) => void;
 }
 
 /** Detail of the selected node; a hint and the graph figures when nothing is selected. */
-export function NodePanel({ sessionId, data, node, labels, resolveNames, onExpand }: NodePanelProps) {
+export function NodePanel({ sessionId, data, node, labels, resolveNames, clickable, onExpand }: NodePanelProps) {
   const { t, i18n } = useTranslation();
   if (node === null) {
     return (
       <aside aria-label={t('views.network.panel.title')} className="flex min-w-0 flex-col gap-3 text-meta">
         <p className="flex items-start gap-2 text-muted">
           <MousePointerClick aria-hidden size={16} strokeWidth={1.75} className="mt-0.5 shrink-0" />
-          {t('views.network.panel.hint')}
+          {clickable ? t('views.network.panel.hint') : t('views.network.panel.hintSearch')}
         </p>
         <dl className="flex flex-col gap-1">
           <Row label={t('views.network.panel.hostsTotal')}>
@@ -76,7 +78,7 @@ export function NodePanel({ sessionId, data, node, labels, resolveNames, onExpan
   return (
     <aside aria-label={t('views.network.panel.title')} className="flex min-w-0 flex-col gap-3 text-meta">
       {node.kind === 'host' && node.endpoint !== null ? (
-        <HostDetail sessionId={sessionId} node={node} />
+        <HostDetail sessionId={sessionId} node={node} resolveNames={resolveNames} />
       ) : (
         <GroupDetail data={data} node={node} labels={labels} resolveNames={resolveNames} onExpand={onExpand} />
       )}
@@ -91,14 +93,14 @@ function Protocols({ list }: { list: readonly string[] }) {
     <ul className="flex flex-wrap gap-1">
       {list.map((p) => (
         <li key={p}>
-          <Badge>{p}</Badge>
+          <Badge className="uppercase">{p}</Badge>
         </li>
       ))}
     </ul>
   );
 }
 
-function HostDetail({ sessionId, node }: { sessionId: string; node: NetworkNode }) {
+function HostDetail({ sessionId, node, resolveNames }: { sessionId: string; node: NetworkNode; resolveNames: boolean }) {
   const { t, i18n } = useTranslation();
   const detail = useNetworkNode(sessionId, node.endpoint?.ip ?? null);
   const endpoint = node.endpoint;
@@ -120,11 +122,13 @@ function HostDetail({ sessionId, node }: { sessionId: string; node: NetworkNode 
         </div>
       </div>
       <dl className="flex flex-col gap-1">
-        <Row label={t('views.network.panel.address')}>
-          <span className="font-mono">{endpoint.ip}</span>
-        </Row>
         {endpoint.names.length > 0 && (
-          <Row label={t('views.network.panel.names')}>{endpoint.names.map((n) => cleanLabel(n, 253)).join(', ')}</Row>
+          <>
+            <Row label={t('views.network.panel.address')}>
+              <span className="font-mono">{endpoint.ip}</span>
+            </Row>
+            <Row label={t('views.network.panel.names')}>{endpoint.names.map((n) => cleanLabel(n, 253)).join(', ')}</Row>
+          </>
         )}
         <Row label={t('views.network.panel.sentInGraph')}>
           <span className="num">{formatBytes(node.bytes_sent, lang)}</span>
@@ -200,7 +204,7 @@ function HostDetail({ sessionId, node }: { sessionId: string; node: NetworkNode 
               <ol aria-label={t('views.network.panel.neighbors')} className="flex flex-col gap-1">
                 {d.neighbors.map((n) => (
                   <li key={n.endpoint.ip} className="flex min-w-0 items-center justify-between gap-2">
-                    <Endpoint endpoint={n.endpoint} className="min-w-0" />
+                    <Endpoint endpoint={n.endpoint} showName={resolveNames} className="min-w-0" />
                     <span className="num shrink-0 text-muted">{formatBytes(n.bytes_sent + n.bytes_received, lang)}</span>
                   </li>
                 ))}

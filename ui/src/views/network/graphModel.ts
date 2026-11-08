@@ -50,7 +50,7 @@ export interface NodeLabels {
 // Control characters and bidirectional overrides of a hostile name would garble the canvas text
 // or reorder it visually; they are dropped. The text is drawn with fillText (never parsed as HTML).
 // eslint-disable-next-line no-control-regex
-const UNSAFE_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+const UNSAFE_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g;
 
 /** Label safe for the canvas: no control or bidi characters, at most `max` characters. */
 export function cleanLabel(text: string, max: number = MAX_LABEL): string {
@@ -59,11 +59,17 @@ export function cleanLabel(text: string, max: number = MAX_LABEL): string {
   return chars.length <= max ? clean : `${chars.slice(0, max - 1).join('')}…`;
 }
 
-/** Log-scaled size between the bounds; `maxBytes` is the largest node of the graph. */
-export function nodeSize(bytes: number, maxBytes: number): number {
+/**
+ * Size on a log scale between the smallest (`minBytes`) and the largest (`maxBytes`) node of the
+ * graph, so that the whole 4 to 18 px range is used.
+ */
+export function nodeSize(bytes: number, minBytes: number, maxBytes: number): number {
   if (maxBytes <= 0 || bytes <= 0) return NODE_SIZE.min;
-  const ratio = Math.log1p(bytes) / Math.log1p(maxBytes);
-  return NODE_SIZE.min + Math.min(1, ratio) * (NODE_SIZE.max - NODE_SIZE.min);
+  const low = Math.log1p(Math.max(0, minBytes));
+  const high = Math.log1p(maxBytes);
+  if (high <= low) return NODE_SIZE.max;
+  const ratio = (Math.log1p(bytes) - low) / (high - low);
+  return NODE_SIZE.min + Math.min(1, Math.max(0, ratio)) * (NODE_SIZE.max - NODE_SIZE.min);
 }
 
 /** Log-scaled edge thickness between the bounds. */
@@ -145,6 +151,7 @@ export function buildGraph(data: NetworkGraph, { hideOrphans, resolveNames, labe
   const graph = new Graph<NodeAttributes, EdgeAttributes>({ type: 'undirected', multi: false, allowSelfLoops: false });
   const nodes = visibleNodes(data, hideOrphans);
   const maxNode = Math.max(0, ...nodes.map((n) => n.bytes));
+  const minNode = Math.min(maxNode, ...nodes.filter((n) => n.bytes > 0).map((n) => n.bytes));
   const count = Math.max(1, nodes.length);
   nodes.forEach((n, i) => {
     const angle = (2 * Math.PI * i) / count;
@@ -153,7 +160,7 @@ export function buildGraph(data: NetworkGraph, { hideOrphans, resolveNames, labe
     graph.addNode(n.id, {
       label: cleanLabel(text),
       title,
-      size: nodeSize(n.bytes, maxNode),
+      size: nodeSize(n.bytes, minNode, maxNode),
       color: nodeColor(n),
       x: Math.cos(angle),
       y: Math.sin(angle),

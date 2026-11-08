@@ -168,6 +168,8 @@ describe('Network view', () => {
         expect.anything(),
       );
     });
+    // With a protocol filter, volumes are those of whole conversations: said so.
+    expect(screen.getByText(/^Volumes of whole conversations/)).toBeInTheDocument();
     await user.click(screen.getAllByRole('button', { name: 'Disable all' })[0] ?? https);
     await waitFor(() => {
       expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ protocols: [] }), expect.anything());
@@ -193,12 +195,16 @@ describe('Network view', () => {
     const { container } = renderApp(`/sessions/${ID}/network`);
     await screen.findByRole('list', { name: 'Links ranked by bytes' });
     const panel = screen.getByRole('complementary', { name: 'Node details' });
-    expect(panel).toHaveTextContent('Select a node');
+    expect(panel).toHaveTextContent('Search an address or a name to see its details.');
     await user.type(screen.getByRole('searchbox'), '81.2.3');
     await waitFor(() => {
       expect(networkApi.getNetworkNode).toHaveBeenCalledWith(ID, '81.2.3.4', expect.anything());
     });
     expect(await within(panel).findByText('443/tcp')).toBeInTheDocument();
+    // The links of the found host are highlighted in the list.
+    const rows = within(screen.getByRole('list', { name: 'Links ranked by bytes' })).getAllByRole('listitem');
+    expect(rows[0]).toHaveAttribute('data-selected', 'true');
+    expect(rows[1]).not.toHaveAttribute('data-selected');
     expect(within(panel).getByText('Public')).toBeInTheDocument();
     expect(within(panel).getByText('France')).toBeInTheDocument();
     expect(within(panel).getByRole('list', { name: 'Main peers' })).toHaveTextContent('server.lan');
@@ -258,6 +264,7 @@ describe('Network view', () => {
     expect(await screen.findByText('No link between the nodes drawn')).toBeInTheDocument();
     expect(screen.queryByText('No communication matches the filters')).toBeNull();
     expect(screen.getByTestId('network-summary')).toHaveTextContent('14 hosts, 0 links');
+    expect(screen.getByText(/^No geolocated public host/)).toBeInTheDocument();
   });
 
   it('says so when nothing matches the filters', async () => {

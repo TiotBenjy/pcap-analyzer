@@ -1,6 +1,6 @@
 import { getRouteApi } from '@tanstack/react-router';
 import type Graph from 'graphology';
-import { Search, Share2 } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type GraphParams, NETWORK_PROTOCOLS } from '../../api/network';
@@ -41,7 +41,7 @@ const MD_QUERY = '(min-width: 768px)';
 /** Links listed by the narrow and fallback layouts. */
 const LISTED_PAIRS = 15;
 /** Address categories of the legend (the others use the "Other" grey). */
-const LEGEND = ADDRESS_CATEGORY_ORDER.slice(0, 6);
+const LEGEND = ADDRESS_CATEGORY_ORDER.slice(0, 7);
 
 /** Network: graph of the communications between hosts, bounded and folded by the server. */
 export default function NetworkView() {
@@ -209,7 +209,14 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
     ) : (
       <div className="flex min-w-0 flex-col gap-2">
         {wide && !webgl && <p className="text-meta text-muted">{t('views.network.graph.noWebgl')}</p>}
-        <PairList data={data} hideOrphans={hide} resolveNames={resolveNames} labels={labels} limit={LISTED_PAIRS} />
+        <PairList
+          data={data}
+          hideOrphans={hide}
+          resolveNames={resolveNames}
+          labels={labels}
+          limit={LISTED_PAIRS}
+          selected={selectedNode?.id ?? null}
+        />
       </div>
     );
     body = (
@@ -221,6 +228,7 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
           node={selectedNode}
           labels={labels}
           resolveNames={resolveNames}
+          clickable={drawn}
           onExpand={setExpand}
         />
       </div>
@@ -228,6 +236,9 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
   }
 
   const capped = data !== undefined && data.edges_total > data.edges.length;
+  const filtered = protocols.size !== NETWORK_PROTOCOLS.length;
+  const hasCluster = data?.nodes.some((n) => n.kind === 'cluster') ?? false;
+  const noCountry = data?.mode === 'countries' && data.nodes.length > 0 && !data.nodes.some((n) => n.kind === 'country');
   return (
     <Card
       title={t('views.network.graph.title')}
@@ -249,8 +260,13 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
     >
       <div className="flex flex-col gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <FilterBar
-            filters={filters}
+          {/* Full width below md: the "Filters" menu spans the bar, not only its button. */}
+          <div className="w-full min-w-0 md:w-auto">
+            <FilterBar
+              search={search}
+              onSearch={setSearch}
+              searchPlaceholder={t('views.network.graph.search')}
+              filters={filters}
             onToggle={(id, active) => {
               const next = new Set(protocols);
               if (active) next.add(id as NetworkProtocol);
@@ -260,7 +276,8 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
             onSetAll={(active) => {
               setProtocols(new Set(active ? NETWORK_PROTOCOLS : []));
             }}
-          />
+            />
+          </div>
           <Toggle
             label={t('views.network.graph.hideOrphans')}
             checked={hideOrphans}
@@ -270,19 +287,6 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
           />
           <Toggle label={t('views.network.graph.resolveNames')} checked={resolveNames} onChange={setResolveNames} />
           <Toggle label={t('views.network.graph.ipv6')} checked={ipv6} onChange={setIpv6} />
-          <label className="relative flex h-8 min-w-0 flex-1 basis-48 items-center sm:max-w-xs">
-            <span className="sr-only">{t('views.network.graph.search')}</span>
-            <Search aria-hidden size={16} strokeWidth={1.75} className="pointer-events-none absolute left-2.5 text-faint" />
-            <input
-              type="search"
-              value={search}
-              placeholder={t('views.network.graph.search')}
-              onChange={(e) => {
-                setSearch(e.target.value);
-              }}
-              className="h-8 w-full min-w-0 rounded-md border border-line bg-surface pr-2 pl-8 text-body placeholder:text-faint"
-            />
-          </label>
         </div>
         {data !== undefined && (
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-meta text-muted">
@@ -300,6 +304,8 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
                     bytes: formatBytes(data.total_bytes, lang),
                   })}
             </span>
+            {filtered && <span>{t('views.network.graph.wholeConversations')}</span>}
+            {noCountry && <span>{t('views.network.graph.noCountry')}</span>}
             {capped && <span>{t('views.network.graph.capped', { shown: data.edges.length, total: formatCount(data.edges_total) })}</span>}
             {query.trim() !== '' && found === null && <span>{t('views.network.graph.noMatch')}</span>}
             {expand !== null && mode === 'hosts' && (
@@ -326,7 +332,7 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
             <span aria-hidden className="size-2.5 rounded-full" style={{ background: OTHER_COLOR }} />
             {t('views.network.graph.legendOther')}
           </li>
-          {drawn && mode === 'hosts' && <li>{t('views.network.graph.expandHint')}</li>}
+          {drawn && hasCluster && <li>{t('views.network.graph.expandHint')}</li>}
         </ul>
       </div>
     </Card>

@@ -346,9 +346,14 @@ pub const EXPIRED_NOT_AFTER: i64 = 1_577_836_800;
 /// other. Client ports are fixed (`40_000 + n`, below the ephemeral range) so that the sessions
 /// can be merged into another scenario without 5-tuple collisions.
 pub fn tls_showcase(sc: &mut Scenario) {
+    tls_showcase_from_port(sc, 40_000);
+}
+
+/// [`tls_showcase`] with client ports `base + 1..=base + 8` (repeat it with distinct bases).
+pub fn tls_showcase_from_port(sc: &mut Scenario, base: u16) {
     let ws = hosts::workstation();
     let tcp = |n: u16, port: u16| TcpOptions {
-        client_port: Some(40_000 + n),
+        client_port: Some(base + n),
         ..TcpOptions::new(port)
     };
 

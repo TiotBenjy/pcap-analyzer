@@ -169,7 +169,9 @@ async fn transactions_are_filtered_sorted_and_paginated() {
     assert_eq!(first["query"], "lang=fr");
     assert_eq!(first["status"], 200);
     assert_eq!(first["client"]["ip"], "192.168.1.10");
-    assert_eq!(first["server"]["port"], 80);
+    assert_eq!(first["client"]["category"], "private");
+    assert_eq!(first["server_port"], 80);
+    assert!(first["server"]["names"].is_array());
     assert!(first["flow_id"].is_string());
     assert!(first["response_time_us"].as_i64().unwrap() > 0);
 

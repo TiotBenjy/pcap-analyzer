@@ -7,7 +7,9 @@
 //!   "About" card of the application). Shared between threads behind an `Arc`, with a
 //!   bounded LRU cache;
 //! - [`open_or_warn`]: what an import uses. Without a usable database, countries are simply
-//!   unknown.
+//!   unknown;
+//! - [`install`]: validation and atomic replacement of the database by a downloaded or
+//!   user-chosen file (no network here: the download is done by the API).
 
 // The database file is untrusted input: no panic paths in library code.
 #![deny(
@@ -20,6 +22,7 @@
 mod category;
 mod country;
 mod db;
+mod install;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_util;
 
@@ -28,6 +31,9 @@ pub use country::CountryCode;
 pub use db::{
     DB_DIR, DB_FILE_NAME, DEFAULT_CACHE_CAPACITY, GeoDb, GeoError, MAX_DB_BYTES, default_path,
     open_or_warn,
+};
+pub use install::{
+    MAX_COMPRESSED_BYTES, decode_database, install, read_database_file, remove_orphan_temp_files,
 };
 
 /// Crate name, used by smoke tests and diagnostics.

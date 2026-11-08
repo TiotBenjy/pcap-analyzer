@@ -22,7 +22,6 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
-import { OTHER_COLOR } from '../../charts/palette';
 import { formatCount, formatTimestamp, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { useTheme } from '../../theme/theme';
@@ -200,14 +199,9 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
   const suiteId = useId();
   const { theme } = useTheme();
   const wideTable = useMediaQuery(WIDE_TABLE_QUERY);
-  // Theme text color of the bar value labels (read again when the theme changes).
-  const labelColor = useMemo(() => {
-    void theme;
-    return getComputedStyle(document.documentElement).getPropertyValue('--ns-muted').trim() || OTHER_COLOR;
-  }, [theme]);
 
   const versionsOption = useMemo(() => buildVersionsOption(stats, fmt), [stats, fmt]);
-  const suitesOption = useMemo(() => buildSuitesOption(stats, fmt, labelColor), [stats, fmt, labelColor]);
+  const suitesOption = useMemo(() => buildSuitesOption(stats, fmt), [stats, fmt]);
   const matrixOption = useMemo(() => buildMatrixOption(stats, fmt, theme === 'dark'), [stats, fmt, theme]);
   const columnsOfMatrix = useMemo(() => matrixVersions(stats), [stats]);
 

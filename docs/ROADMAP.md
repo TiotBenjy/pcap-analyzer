@@ -249,6 +249,11 @@ Suivis de la vague 3.A :
   `maxminddb`) ; pas d'identifiant de fichier hors Unix pour détecter un remplacement externe ; tests de bout
   en bout manquants (import avec la base échangée, coupure en cours de corps). `Button` : les boutons pleins
   désactivés ont désormais un fond neutre dans toute l'app.
+- P3.8 (fusionnée le 2026-11-09, ADR-017 : rôles calculés à la lecture par la vue `server_evidence`, bornés
+  par rôle) : serveur DHCP pirate (incohérence option 54 / `src_ip`) non signalé ; DHCPv6, option overload
+  et options longues non décodées, NTP broadcast ignoré ; P4.2 : mesurer `server_evidence` et `server_roles`
+  sur 10 M paquets, coût des index de 0800 sur `dns_messages` et `http_transactions` ; P4.1 : cibles de fuzz
+  DHCP, NTP, Kerberos. Network (P3.9) : renseigner le champ `role` des nœuds.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -266,7 +271,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       `specs/pictures.md`.
 - [~] **P3.7** `feat/credentials` — Agrégation + émetteurs : HTTP Basic/formulaires, FTP, POP3, IMAP,
       SMTP AUTH, SNMP v1/v2c, LDAP simple bind, NTLM (depuis P3.5). Export hashcat. `specs/credentials.md`.
-- [~] **P3.8** `feat/servers` — Rôles DNS / DHCP / LDAP (+ NTP, Kerberos, SMB) avec preuves. `specs/servers.md`.
+- [x] **P3.8** `feat/servers` — Rôles DNS / DHCP / LDAP (+ NTP, Kerberos, SMB) avec preuves. `specs/servers.md`.
 - [~] **P3.9** `feat/network-map` — Graphe des communications (sigma.js), filtres protocoles, agrégation
       par pays. `specs/network.md`.
 

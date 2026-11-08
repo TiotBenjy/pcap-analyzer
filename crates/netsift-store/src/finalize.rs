@@ -68,6 +68,16 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         reads: &["dhcp_messages"],
         run: crate::servers::finalize,
     },
+    Finalizer {
+        id: "objects",
+        version: 1,
+        after: &[],
+        // Nothing to unlist: a session imported before P3.6 never stored bodies, so its
+        // `objects` stays "not analyzed" (ADR-013) rather than empty.
+        fills: &[],
+        reads: &["http_transactions"],
+        run: crate::objects::finalize,
+    },
 ];
 
 /// Outcome of [`run_finalizers`].

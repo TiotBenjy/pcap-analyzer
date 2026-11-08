@@ -14,7 +14,9 @@
       "Bash(find:*)",
       "Bash(shellcheck:*)",
       "Read(./.artifacts/screens/**)",
-      "Read(./.worktrees/**/.artifacts/screens/**)"
+      "Read(./.worktrees/**/.artifacts/screens/**)",
+      "Bash(scripts/release.sh:*)",
+      "Bash(scripts/release-status.sh:*)"
     ],
     "deny": [
       "Bash(cargo:*)",

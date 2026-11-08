@@ -62,6 +62,8 @@ pub enum StoreRecord {
     HostTraffic(HostTrafficRow),
     /// Commutative merging upsert of an open port (`ports`).
     OpenPort(OpenPortRow),
+    /// One TLS session with its hellos and certificates (`tls_*` tables).
+    Tls(Box<crate::tls::TlsSessionRow>),
 }
 
 impl StoreRecord {
@@ -77,6 +79,7 @@ impl StoreRecord {
             Self::Conversation(_) => "conversations",
             Self::HostTraffic(_) => "host_traffic",
             Self::OpenPort(_) => "open_ports",
+            Self::Tls(_) => "tls_sessions",
         }
     }
 
@@ -92,6 +95,7 @@ impl StoreRecord {
             Self::Conversation(r) => r.insert(conn),
             Self::HostTraffic(r) => r.insert(conn),
             Self::OpenPort(r) => r.insert(conn),
+            Self::Tls(r) => r.insert(conn),
         }
     }
 }
@@ -102,7 +106,7 @@ pub(crate) fn sat(v: u64) -> i64 {
 }
 
 /// Strict conversion for identifiers (saturating would merge distinct rows).
-fn id_i64(v: u64, field: &'static str) -> Result<i64> {
+pub(crate) fn id_i64(v: u64, field: &'static str) -> Result<i64> {
     i64::try_from(v).map_err(|_| StoreError::InvalidValue {
         field,
         reason: "identifier above i64::MAX",

@@ -106,9 +106,11 @@ fn count(session: &Session, table: &str) -> u32 {
 
 impl Stats {
     pub(crate) fn read(dir: &Path) -> Self {
-        let Ok(session) = Session::open(dir, OpenMode::ReadOnly) else {
-            return Self::default();
-        };
+        Session::open(dir, OpenMode::ReadOnly).map_or_else(|_| Self::default(), |s| Self::of(&s))
+    }
+
+    /// Figures of an already open session.
+    pub(crate) fn of(session: &Session) -> Self {
         let conn = session.conn();
         let meta = |key: &str| get_meta(conn, key).ok().flatten();
         let meta_i64 = |key: &str| meta(key).and_then(|v| v.parse::<i64>().ok());
@@ -124,8 +126,8 @@ impl Stats {
                 .unwrap_or(0),
             first_ts: meta_i64("stats.first_ts").or(chunk_first),
             last_ts: meta_i64("stats.last_ts").or(chunk_last),
-            chunks: count(&session, "chunks"),
-            anomalies: count(&session, "anomalies"),
+            chunks: count(session, "chunks"),
+            anomalies: count(session, "anomalies"),
             flows: netsift_store::query::count_flows(conn).unwrap_or(0),
             duration_ms: meta("stats.duration_ms").and_then(|v| v.parse().ok()),
         }

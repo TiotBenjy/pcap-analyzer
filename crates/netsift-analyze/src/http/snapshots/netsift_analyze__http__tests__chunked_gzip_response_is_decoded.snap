@@ -8,5 +8,5 @@ tx 0 192.168.1.10:49152 -> 203.0.113.80:8080 host=Some("www.example.test") path=
     body none wire=0 decoded=0 chunked=false encoding=None magic=None blob=false
   < HTTP/1.1 200 OK at +1000us
     headers=["Server", "Content-Type", "Content-Encoding", "Transfer-Encoding"] head=110
-    body complete wire=96 decoded=4831 chunked=true encoding=Some("gzip") magic=Some("text/html") blob=true
+    body complete wire=96 decoded=4831 chunked=true encoding=Some("gzip") magic=Some("text/html") blob=false
     preview "<!doctype html><title>t</title>lorem ipsum lorem ipsum lorem"

@@ -49,9 +49,9 @@ impl MessageView<'_> {
 }
 
 /// Extension point, called once per finished message: fills the derived figures of `body`
-/// (sniffed MIME type, preview, object). When [`HttpConfig::store_bodies`] is on, complete
-/// bodies are offered to the sink as objects ([`RecordSink::put_blob`], task P3.6, which also
-/// decides which bodies to keep). Credentials found in the message (P3.7) are to be emitted
+/// (sniffed MIME type, preview, object). When [`HttpConfig::store_bodies`] is on, the bodies
+/// selected by [`super::objects::selected`] are offered to the sink as objects
+/// ([`RecordSink::put_blob`], task P3.6). Credentials found in the message (P3.7) are to be emitted
 /// here through `out`.
 pub fn inspect_message(
     view: &MessageView<'_>,
@@ -72,9 +72,9 @@ pub fn inspect_message(
             config.preview_bytes,
         );
     }
-    // Objects only when P3.6 enables them (`store_bodies`): request bodies may hold passwords
-    // and writing every body to disk is not free.
-    if config.store_bodies && view.body_complete {
+    // Objects (P3.6): only the bodies selected by `objects::selected` reach the disk (images
+    // by content, in responses); request bodies may hold passwords.
+    if super::objects::selected(view, body.mime_magic, config) {
         body.blob = out.put_blob(view.body);
     }
 }

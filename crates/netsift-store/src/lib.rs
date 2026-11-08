@@ -16,6 +16,7 @@ pub mod finalize;
 pub mod http;
 mod id;
 pub mod migrate;
+pub mod objects;
 pub mod ports;
 pub mod query;
 pub mod records;

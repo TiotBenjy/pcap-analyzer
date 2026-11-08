@@ -391,3 +391,52 @@ acceptée : la remplacer par une nouvelle qui la référence.
     reste manuel, les tests automatiques utilisent un serveur HTTP local ;
   - `deny.toml` admet `CDLA-Permissive-2.0` pour la seule crate `webpki-root-certs` (données, tirée
     par `rustls-platform-verifier` pour wasm32 uniquement, absente de nos binaires).
+
+## ADR-017 — Rôles de serveurs dérivés à la lecture (vue SQL `server_evidence`)
+
+- Contexte : P3.8 (Servers). Un rôle d'infrastructure (DNS, DHCP, LDAP, NTP, Kerberos, SMB, HTTP) se
+  prouve surtout par des données que d'autres analyseurs stockent déjà (`dns_messages`, `open_ports`,
+  `flows`, `smb_sessions`, `smb_announces`, `http_transactions`, `hosts.names`). Seuls DHCP, NTP et
+  Kerberos n'avaient aucune table. Matérialiser une table de rôles par une étape de fin d'import
+  (ADR-014) aurait dupliqué ces données et obligé à rejouer l'étape à chaque nouvelle source de preuve.
+- Décision :
+  - l'analyseur `servers` n'enregistre que ce qui manque : `dhcp_messages` (un message par ligne),
+    `ntp_responses` et `kerberos_replies` (repliées par serveur, client et type, upserts commutatifs) ;
+  - les rôles ne sont **jamais stockés** : la vue `server_evidence (role, ip, kind, count, clients,
+    first_ts, last_ts, example)` les dérive à la lecture, une ligne par serveur, rôle et type de preuve
+    (`dns_response`, `open_port`, `dns_srv`, `dhcp_offer|ack|nak`, `ntp_response`,
+    `kdc_as_rep|tgs_rep|error`, `smb_session`, `browser_server`, `browser_dc`, `http_response`). La vue
+    `server_roles` (une ligne par rôle et serveur) alimente le compteur de l'Overview, lu à chaque
+    résumé : elle reprend les mêmes sources et conditions en simples `SELECT DISTINCT` (`UNION`), sans
+    agrégat ni exemple, et un test vérifie qu'elle donne les mêmes paires que `server_evidence` ;
+  - l'API borne les serveurs **par rôle** en SQL (`row_number() OVER (PARTITION BY role ...)`), après
+    le filtre de catégorie : un balayage HTTP de milliers de répondeurs ne masque jamais DHCP ou
+    Kerberos. Un serveur absent de `hosts` (sans catégorie stockée) passe le filtre SQL et l'API le
+    filtre d'après son adresse ;
+  - DHCP relayé : quand les deux étapes d'une réponse sont capturées (serveur vers relais, puis relais
+    vers client, émise depuis `giaddr`), l'étape du relais n'est pas comptée ;
+  - LDAP n'a pas de parseur ici : port 389/636/3268/3269 vu ouvert, ou cible d'un SRV `_ldap._tcp` /
+    `_gc._tcp` dont le nom a été appris par un hôte (`hosts.names`, rempli par l'étape `dns`) ;
+  - seule étape de fin d'import : `servers` (après `dns`, pour que le remplissage de `hosts.names`
+    reste déterministe quand un hôte atteint la limite de noms), qui apparie le nom d'hôte DHCP (option 12, souvent dans un
+    DISCOVER/REQUEST diffusé) à l'adresse de l'ACK de la même transaction (xid, MAC) et complète
+    `hosts.names` des hôtes déjà vus, comme l'étape `dns` ;
+  - la migration 0800 ajoute deux index couvrants sur des tables d'autres analyseurs
+    (`dns_messages_responder`, `http_transactions_server` partiel) pour que la vue reste indexée ;
+  - session mise à niveau (ADR-013) : `server_evidence` figure dans `meta.schema.tables_added_after_import`,
+    l'API répond `analyzed: false` sans rien lister (pas de demi-résultat DNS/SMB) et l'Overview affiche
+    le module « non analysé ».
+- Conséquences :
+  - une nouvelle preuve est une branche `UNION ALL` de plus dans une nouvelle migration (la vue est
+    recréée), sans réimport si ses données existent déjà ;
+  - coût : chaque lecture de la vue Servers évalue `server_evidence` une fois (agrégats indexés, une
+    sous-requête corrélée par serveur pour les exemples), le résumé d'Overview n'évalue que
+    `server_roles`. **Mesure sur une session de 10 M paquets à faire en P4.2** ;
+  - les index `dns_messages_responder` et `http_transactions_server` appartiennent à 0800 : une future
+    migration DNS ou HTTP qui recrée sa table (`CREATE TABLE ... AS`, copie puis renommage) doit les
+    recréer. Sur une session ancienne mise à niveau à l'ouverture (ADR-013), la migration 0800
+    construit l'index de `dns_messages` (lecture complète de la table, quelques secondes sur des
+    millions de transactions) pendant la première ouverture ;
+  - les tables lues par la vue ne peuvent plus être renommées sans recréer la vue (SQLite réécrit les vues
+    lors d'un `ALTER TABLE ... RENAME`) ; une migration qui supprime une de ces tables doit aussi supprimer
+    ou recréer la vue.

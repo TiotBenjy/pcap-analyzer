@@ -270,12 +270,10 @@ fn end_of_import_snapshot() {
 fn the_import_records_its_end_of_import_step() {
     let dir = tempfile::tempdir().unwrap();
     let session = import(dir.path(), all_records());
-    assert_eq!(
-        crate::query::get_meta(session.conn(), crate::finalize::MARKER_KEY)
-            .unwrap()
-            .as_deref(),
-        Some("dns:1")
-    );
+    let markers = crate::query::get_meta(session.conn(), crate::finalize::MARKER_KEY)
+        .unwrap()
+        .unwrap_or_default();
+    assert!(markers.split(',').any(|m| m == "dns:1"), "{markers}");
 }
 
 #[test]

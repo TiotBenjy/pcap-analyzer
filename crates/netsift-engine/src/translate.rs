@@ -17,6 +17,7 @@ use netsift_store::{
 use serde_json::{Value, json};
 
 // --- analyzers: one translation module each, sorted ---
+mod servers;
 mod tls;
 
 /// Store row of an analyzer record, or `None` for records that are not persisted (yet).
@@ -38,6 +39,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
         Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
+        Record::Server(s) => StoreRecord::Server(servers::server_row(s)),
         Record::Smb(SmbRecord::Announce(a)) => {
             StoreRecord::SmbAnnounce(Box::new(smb_announce_row(a)))
         }
@@ -158,6 +160,7 @@ pub fn approx_size(record: &StoreRecord) -> usize {
         }
         StoreRecord::HostTraffic(_) => 0,
         StoreRecord::Http(h) => h.heap_size(),
+        StoreRecord::Server(s) => s.heap_size(),
         StoreRecord::Tls(t) => t.approx_size(),
         // Rows of analyzers: a conservative estimate until they provide their own.
         _ => 1024,

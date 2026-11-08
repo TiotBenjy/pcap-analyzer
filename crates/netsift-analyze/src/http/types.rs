@@ -12,17 +12,28 @@ pub struct HttpConfig {
     pub max_body_bytes: u64,
     /// Decoded body bytes kept in memory by one analyzer instance (one shard) at a time, all
     /// messages together. Past it, bodies are still decoded and counted but not kept (no
-    /// object, no preview beyond what was kept).
+    /// object, no preview beyond what was kept). The bound is **per shard**: the engine runs
+    /// one instance per shard, so the total is this value times the number of shards (a
+    /// budget shared by every shard is a follow-up of task P4.2).
     pub max_retained_bytes: usize,
+    /// Offer complete bodies to the sink as objects ([`crate::RecordSink::put_blob`]). Off by
+    /// default: task P3.6 turns it on together with its selection rules (which bodies become
+    /// objects). While off, only the start of each body is kept in memory (preview and MIME
+    /// sniffing), and nothing is written to disk.
+    pub store_bodies: bool,
     /// Content decoding stops (`bomb`) when the decoded size exceeds this many times the
     /// encoded size, once at least [`RATIO_CHECK_MIN`] bytes were decoded.
     pub max_decompression_ratio: u64,
     /// Requests waiting for their response, per connection (pipelining). Past it, the oldest
     /// one is emitted without response.
     pub max_pending: usize,
-    /// Content decoders (gzip, deflate, brotli) alive at a time per shard: a brotli window may
-    /// take 16 MiB. Past it, new compressed bodies are counted but not decoded.
+    /// Content decoders (gzip, deflate, brotli) alive at a time per shard. Past it, new
+    /// compressed bodies are counted but not decoded (`not_decoded`).
     pub max_decoders: usize,
+    /// Brotli decoders alive at a time per shard, within `max_decoders`: the window of one
+    /// stream may take 16 MiB (`WBITS` 24) as soon as its header is read, before any output,
+    /// so the ratio check cannot protect against many idle streams.
+    pub max_brotli_decoders: usize,
     /// Size of the text preview kept for textual bodies, in bytes.
     pub preview_bytes: usize,
 }
@@ -34,10 +45,12 @@ impl Default for HttpConfig {
     fn default() -> Self {
         Self {
             max_body_bytes: 64 * 1024 * 1024,
-            max_retained_bytes: 256 * 1024 * 1024,
+            max_retained_bytes: 32 * 1024 * 1024,
+            store_bodies: false,
             max_decompression_ratio: 250,
             max_pending: 64,
             max_decoders: 64,
+            max_brotli_decoders: 4,
             preview_bytes: 4096,
         }
     }

@@ -1,5 +1,6 @@
-//! Window close decision and the texts of the native dialogs (startup failure, close during an
-//! import). Kept free of Tauri types so the logic is tested without a window.
+//! Quit decision (window close, Cmd+Q), raising the window for a second launch, and the texts of
+//! the native dialogs (startup failure, quit during an import). Kept free of Tauri types so the
+//! logic is tested without a window.
 
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
@@ -103,18 +104,19 @@ pub fn startup_message(lang: Language, error: &anyhow::Error) -> String {
     format!("{}\n\n{error:#}", texts(lang).startup_intro)
 }
 
-/// What to do with a window close request.
+/// What to do with a quit request: closing the window or an application exit request
+/// (Cmd+Q on macOS, which bypasses the window close event).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CloseDecision {
-    /// Let the window close (no import running, or the user already confirmed).
+    /// Let the application quit (no import running, or the user already confirmed).
     Close,
-    /// Keep the window and ask for confirmation.
+    /// Prevent it and ask for confirmation.
     Ask,
-    /// Keep the window: a confirmation dialog is already open.
+    /// Prevent it: a confirmation dialog is already open.
     Wait,
 }
 
-/// Close confirmation state of the main window.
+/// Quit confirmation state, shared by the window close and the exit request paths.
 #[derive(Debug, Default)]
 pub struct CloseGate {
     confirmed: AtomicBool,
@@ -139,6 +141,30 @@ impl CloseGate {
             self.confirmed.store(true, Ordering::Release);
         }
         self.asking.store(false, Ordering::Release);
+    }
+}
+
+/// The window operations used to bring the running instance to the front.
+pub trait Foreground {
+    type Error: std::fmt::Display;
+    fn unminimize(&self) -> Result<(), Self::Error>;
+    fn show(&self) -> Result<(), Self::Error>;
+    fn set_focus(&self) -> Result<(), Self::Error>;
+}
+
+/// A second launch brings the window of the running instance to the front: restore it if
+/// minimized, show it if hidden, then focus it. Each step is attempted even if a previous one
+/// failed (a window manager may refuse the focus but still restore the window).
+pub fn bring_to_front<W: Foreground>(window: &W) {
+    let results = [
+        ("unminimize", window.unminimize()),
+        ("show", window.show()),
+        ("focus", window.set_focus()),
+    ];
+    for (step, result) in results {
+        if let Err(e) = result {
+            tracing::warn!(step, error = %e, "cannot bring the window to the front");
+        }
     }
 }
 
@@ -237,6 +263,68 @@ mod tests {
         // "Quit": the window closes, even if the import is still running.
         gate.answer(true);
         assert_eq!(gate.request(1), CloseDecision::Close);
+    }
+
+    #[test]
+    fn window_close_and_exit_request_share_one_dialog() {
+        let gate = CloseGate::default();
+        // Close button: the dialog opens.
+        assert_eq!(gate.request(1), CloseDecision::Ask);
+        // Cmd+Q while it is open: no second dialog.
+        assert_eq!(gate.request(1), CloseDecision::Wait);
+        // "Quit" calls `exit(0)`, whose exit request must pass.
+        gate.answer(true);
+        assert_eq!(gate.request(1), CloseDecision::Close);
+    }
+
+    /// Records the calls; fails the steps listed in `failing`.
+    struct FakeWindow {
+        calls: std::cell::RefCell<Vec<&'static str>>,
+        failing: &'static [&'static str],
+    }
+
+    impl FakeWindow {
+        fn step(&self, name: &'static str) -> Result<(), String> {
+            self.calls.borrow_mut().push(name);
+            if self.failing.contains(&name) {
+                Err(format!("{name} refused"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl Foreground for FakeWindow {
+        type Error = String;
+        fn unminimize(&self) -> Result<(), String> {
+            self.step("unminimize")
+        }
+        fn show(&self) -> Result<(), String> {
+            self.step("show")
+        }
+        fn set_focus(&self) -> Result<(), String> {
+            self.step("set_focus")
+        }
+    }
+
+    #[test]
+    fn second_launch_restores_shows_and_focuses_the_window() {
+        let window = FakeWindow {
+            calls: std::cell::RefCell::default(),
+            failing: &[],
+        };
+        bring_to_front(&window);
+        assert_eq!(*window.calls.borrow(), ["unminimize", "show", "set_focus"]);
+    }
+
+    #[test]
+    fn second_launch_keeps_going_after_a_refused_step() {
+        let window = FakeWindow {
+            calls: std::cell::RefCell::default(),
+            failing: &["unminimize", "show"],
+        };
+        bring_to_front(&window);
+        assert_eq!(*window.calls.borrow(), ["unminimize", "show", "set_focus"]);
     }
 
     #[test]

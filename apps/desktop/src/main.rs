@@ -4,8 +4,10 @@
 //! start the HTTP API on `127.0.0.1:<random port>` with a random bearer token, then create the
 //! window on the bundled UI (`create: false` in `tauri.conf.json`). The UI obtains URL and token
 //! through the `get_api_endpoint` command (ADR-001). A startup failure is shown in a native
-//! dialog (release builds have no console on Windows). Closing during an import asks for
-//! confirmation; at exit the API stops within [`embedded::STOP_LIMIT`]. No other window, no
+//! dialog (release builds have no console on Windows). Quitting during an import (window close,
+//! or Cmd+Q on macOS) asks for confirmation; at exit the API stops within
+//! [`embedded::STOP_LIMIT`]. A second launch brings the running window to the front and exits
+//! before its own `setup`, so it never recovers the imports of the first. No other window, no
 //! outbound network access.
 
 // No console window on Windows release builds.
@@ -16,11 +18,11 @@ mod lifecycle;
 mod paths;
 
 use anyhow::{Context, Result};
-use tauri::{App, AppHandle, Manager, RunEvent, WebviewWindow, WindowEvent};
+use tauri::{App, AppHandle, ExitRequestApi, Manager, RunEvent, WebviewWindow, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use crate::embedded::{ApiEndpoint, EmbeddedApi, STOP_LIMIT};
-use crate::lifecycle::{CloseDecision, CloseGate, Language, LanguageCell, texts};
+use crate::lifecycle::{CloseDecision, CloseGate, Foreground, Language, LanguageCell, texts};
 
 /// Label of the only window (`app.windows[0]` of `tauri.conf.json`).
 const MAIN_WINDOW: &str = "main";
@@ -105,20 +107,40 @@ fn on_close_requested(window: &tauri::Window, api: &tauri::CloseRequestApi) {
         CloseDecision::Wait => api.prevent_close(),
         CloseDecision::Ask => {
             api.prevent_close();
-            if let Some(webview) = window.get_webview_window(window.label()) {
-                ask_close(&webview);
-            } else {
-                desktop.close.answer(false);
-            }
+            ask_quit(window.app_handle());
         }
     }
 }
 
-fn ask_close(window: &WebviewWindow) {
-    let t = texts(window.state::<LanguageCell>().get());
-    let target = window.clone();
-    window
-        .dialog()
+/// Cmd+Q on macOS (and `exit` calls) reach here without a window close event. Exit requests
+/// without a window (the window already closed, or a startup failure) are not held.
+fn on_exit_requested(app: &AppHandle, api: &ExitRequestApi) {
+    let Some(desktop) = app.try_state::<Desktop>() else {
+        return;
+    };
+    if app.get_webview_window(MAIN_WINDOW).is_none() {
+        return;
+    }
+    match desktop.close.request(desktop.api.running_imports()) {
+        CloseDecision::Close => {}
+        CloseDecision::Wait => api.prevent_exit(),
+        CloseDecision::Ask => {
+            api.prevent_exit();
+            ask_quit(app);
+        }
+    }
+}
+
+/// Confirmation dialog shared by both quit paths. "Quit" exits the application: the resulting
+/// exit request passes the confirmed [`CloseGate`].
+fn ask_quit(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+        app.state::<Desktop>().close.answer(false);
+        return;
+    };
+    let t = texts(app.state::<LanguageCell>().get());
+    let handle = app.clone();
+    app.dialog()
         .message(t.close_body)
         .title(t.close_title)
         .kind(MessageDialogKind::Warning)
@@ -126,13 +148,29 @@ fn ask_close(window: &WebviewWindow) {
             t.close_quit.to_owned(),
             t.close_keep.to_owned(),
         ))
-        .parent(window)
+        .parent(&window)
         .show(move |quit| {
-            target.state::<Desktop>().close.answer(quit);
-            if quit && let Err(e) = target.destroy() {
-                tracing::error!(error = %e, "cannot close the main window");
+            handle.state::<Desktop>().close.answer(quit);
+            if quit {
+                handle.exit(0);
             }
         });
+}
+
+/// [`lifecycle::bring_to_front`] on the Tauri window.
+struct MainWindow(WebviewWindow);
+
+impl Foreground for MainWindow {
+    type Error = tauri::Error;
+    fn unminimize(&self) -> tauri::Result<()> {
+        self.0.unminimize()
+    }
+    fn show(&self) -> tauri::Result<()> {
+        self.0.show()
+    }
+    fn set_focus(&self) -> tauri::Result<()> {
+        self.0.set_focus()
+    }
 }
 
 fn main() -> Result<()> {
@@ -144,6 +182,13 @@ fn main() -> Result<()> {
         .init();
 
     let app = tauri::Builder::default()
+        // First plugin: a second launch signals the running instance, then exits during
+        // `build`, before `setup` (no `recover_interrupted` on the imports of the first).
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+                lifecycle::bring_to_front(&MainWindow(window));
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(LanguageCell::new(Language::from_env()))
@@ -163,19 +208,21 @@ fn main() -> Result<()> {
         .build(tauri::generate_context!())
         .context("cannot build the Tauri application")?;
 
-    app.run(|app, event| {
-        if let RunEvent::Exit = event
-            && let Some(desktop) = app.try_state::<Desktop>()
-        {
-            // Cancels the imports and waits for their writer, within a bound.
-            if desktop.api.stop(STOP_LIMIT) {
-                tracing::info!("API stopped");
-            } else {
-                tracing::warn!(
-                    "API still busy at exit; interrupted imports are recovered at next start"
-                );
+    app.run(|app, event| match event {
+        RunEvent::ExitRequested { api, .. } => on_exit_requested(app, &api),
+        RunEvent::Exit => {
+            if let Some(desktop) = app.try_state::<Desktop>() {
+                // Cancels the imports and waits for their writer, within a bound.
+                if desktop.api.stop(STOP_LIMIT) {
+                    tracing::info!("API stopped");
+                } else {
+                    tracing::warn!(
+                        "API still busy at exit; interrupted imports are recovered at next start"
+                    );
+                }
             }
         }
+        _ => {}
     });
     Ok(())
 }

@@ -260,7 +260,7 @@ pub(crate) fn group(
                     .sort_by(|a, b| b.count.cmp(&a.count).then(a.kind.cmp(&b.kind)));
             }
             // Stable sort: equal counts keep the address order of the map.
-            servers.sort_by(|a, b| b.count.cmp(&a.count));
+            servers.sort_by_key(|s| std::cmp::Reverse(s.count));
             let total = servers.len() as u64;
             servers.truncate(limit);
             RoleServers {

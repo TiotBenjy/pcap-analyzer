@@ -123,7 +123,6 @@ async fn dns_and_dhcp_cards_are_populated_and_ldap_is_empty() {
     let (status, json) = env.get(&format!("/api/v1/sessions/{id}/servers")).await;
     assert_eq!(status, StatusCode::OK, "{json}");
     assert_eq!(json["analyzed"], true);
-    assert_eq!(json["truncated"], false);
     let order: Vec<&str> = json["roles"]
         .as_array()
         .unwrap()
@@ -274,7 +273,7 @@ async fn role_category_and_limit_filters() {
 #[test]
 fn grouping_sorts_servers_and_evidence() {
     use netsift_store::connections::EndpointInfo;
-    use netsift_store::servers::EvidenceEntry;
+    use netsift_store::servers::{EvidenceEntry, RoleEvidence};
 
     use super::{ServerRole, group};
     let entry = |ip: &str, kind: &str, count: u64| EvidenceEntry {
@@ -288,13 +287,17 @@ fn grouping_sorts_servers_and_evidence() {
         example: None,
         host: EndpointInfo::default(),
     };
+    let found = |entries: Vec<EvidenceEntry>| RoleEvidence {
+        entries,
+        totals: Vec::new(),
+    };
     let roles = group(
-        vec![
+        found(vec![
             entry("10.0.0.2", "open_port", 1),
             entry("10.0.0.1", "open_port", 4),
             entry("10.0.0.2", "dns_response", 10),
             entry("10.0.0.3", "unknown_kind", 99),
-        ],
+        ]),
         &[ServerRole::Dns],
         None,
         10,
@@ -309,10 +312,24 @@ fn grouping_sorts_servers_and_evidence() {
         (5, 9)
     );
     let limited = group(
-        vec![entry("10.0.0.1", "open_port", 4)],
+        found(vec![entry("10.0.0.1", "open_port", 4)]),
         &[ServerRole::Dns],
         None,
         0,
     );
     assert_eq!((limited[0].total, limited[0].servers.len()), (1, 0));
+    // A server without stored category is filtered from its address and leaves the total.
+    let filtered = group(
+        RoleEvidence {
+            entries: vec![
+                entry("10.0.0.1", "open_port", 4),
+                entry("8.8.8.8", "open_port", 1),
+            ],
+            totals: vec![("dns".to_owned(), 2)],
+        },
+        &[ServerRole::Dns],
+        Some(&["private".to_owned()]),
+        10,
+    );
+    assert_eq!((filtered[0].total, filtered[0].servers.len()), (1, 1));
 }

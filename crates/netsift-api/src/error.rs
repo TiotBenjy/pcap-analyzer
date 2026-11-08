@@ -28,6 +28,10 @@ pub enum ApiError {
     SessionTooNew,
     #[error("session upgrade failed")]
     SessionUpgradeFailed,
+    #[error("session upgrade needed")]
+    SessionUpgradeNeeded,
+    #[error("session busy")]
+    SessionBusy,
     #[error("internal error")]
     Internal,
 }
@@ -75,6 +79,16 @@ impl ApiError {
                 "session-upgrade-failed",
                 "The session could not be upgraded to this version of NetSift",
             ),
+            Self::SessionUpgradeNeeded => (
+                StatusCode::CONFLICT,
+                "session-upgrade-needed",
+                "The session must be upgraded to this version of NetSift, which a read-only server does not do",
+            ),
+            Self::SessionBusy => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "session-busy",
+                "The session is being upgraded by another request; try again",
+            ),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",
@@ -103,6 +117,10 @@ impl IntoResponse for ApiError {
             header::CONTENT_TYPE,
             header::HeaderValue::from_static("application/problem+json"),
         );
+        if matches!(self, Self::SessionBusy) {
+            res.headers_mut()
+                .insert(header::RETRY_AFTER, header::HeaderValue::from_static("1"));
+        }
         if matches!(self, Self::Unauthorized) {
             res.headers_mut().insert(
                 header::WWW_AUTHENTICATE,
@@ -128,6 +146,8 @@ impl From<netsift_store::StoreError> for ApiError {
                 "the session was created by an older version and is not upgraded in this state"
                     .to_owned(),
             ),
+            E::UpgradeNeeded => Self::SessionUpgradeNeeded,
+            E::SessionBusy => Self::SessionBusy,
             E::UpgradeFailed(source) => {
                 tracing::error!("session upgrade failed: {source}");
                 Self::SessionUpgradeFailed

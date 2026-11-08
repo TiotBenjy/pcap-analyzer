@@ -193,3 +193,36 @@ acceptée : la remplacer par une nouvelle qui la référence.
   la qualité des notes dépend des messages de commit ; une release en échec reste un brouillon sans
   fichiers ; signer plus tard (Windows Authenticode, Apple Developer ID + notarisation) demandera des
   secrets de dépôt et une nouvelle ADR ; la base GeoIP sera ajoutée aux bundles par P2.5.
+
+## ADR-012 — Cycle de vie de l'application desktop
+
+- Contexte : P2.5. L'application desktop doit démarrer sans console (release Windows), ne jamais perdre
+  silencieusement un import à la fermeture, embarquer la base GeoIP et n'accorder à la webview que le
+  strict nécessaire. Complète l'ADR-006 sans la remplacer.
+- Décision :
+  - démarrage dans `setup`, dans cet ordre : répertoire de données (`dirs::data_local_dir()/NetSift`,
+    avec `exports/`), `recover_interrupted`, résolution de la base GeoIP, démarrage de l'API, puis création
+    de la fenêtre (`create: false`). Toute erreur s'affiche dans un dialogue natif (texte en/fr selon la
+    locale de l'environnement), puis l'application quitte avec le code 1 ;
+  - fermeture : si `ServerMonitor::running_imports() > 0`, la fermeture de la fenêtre est suspendue et un
+    dialogue natif demande confirmation. La langue des dialogues est celle de l'UI, transmise par la
+    commande `set_ui_language`. Le dialogue est natif et non dans l'UI, pour qu'une webview figée
+    n'empêche jamais de quitter ;
+  - arrêt à `RunEvent::Exit` : signal d'arrêt de l'API, puis attente bornée par `STOP_LIMIT`
+    (`SHUTDOWN_GRACE` + `IMPORT_GRACE` + 2 s). Les imports annulés passent `incomplete`. Au-delà du délai,
+    le processus quitte et la session restée `importing` est récupérée au démarrage suivant ;
+  - GeoIP : la copie de `<données>/geoip/` est prioritaire (mise à jour sans réinstaller), sinon la base du
+    bundle (`bundle.resources` -> `geoip/`). L'état est exposé par `GET /server-info` (`geoip.status`
+    `available|missing|invalid`, `built_at_us`), qui est authentifié et décrit déjà la configuration du
+    serveur. `/health` reste une sonde de vivacité sans E/S et sans authentification. Le fichier n'est
+    rouvert que si sa taille ou sa date change ;
+  - capabilities : `dialog:allow-open` et `opener:allow-open-path`, ce dernier limité à
+    `$LOCALDATA/NetSift/exports`. `core:default` est retiré : l'UI n'appelle que ses propres commandes ;
+  - `allow_any_path: true`, car les chemins viennent du dialogue natif. `max_imports` vaut 1 jusqu'à
+    4 cœurs, sinon `DEFAULT_MAX_IMPORTS` ;
+  - `freezePrototype` est conservé. ECharts et graphology fonctionnent avec un `Object.prototype` gelé
+    (test Vitest dédié). `./x.sh shots` gèle aussi le prototype et échoue sur toute erreur de page.
+- Conséquences : une fonctionnalité qui a besoin d'une nouvelle API Tauri côté JS ajoute la permission
+  ciblée dans `capabilities/default.json`. Un export doit écrire sous `<données>/exports` pour pouvoir être
+  ouvert. La CI de release doit déposer la base dans `apps/desktop/resources/geoip/` avant le bundle.
+  sigma n'est pas encore vérifié avec le prototype gelé : à faire avec la vue du graphe réseau.

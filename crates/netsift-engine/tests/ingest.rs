@@ -243,7 +243,9 @@ fn single_file_input() {
     let meta = |k: &str| get_meta(session.conn(), k).unwrap();
     assert_eq!(meta("import.state").as_deref(), Some("ready"));
     assert_eq!(meta("stats.packets"), Some(packets.len().to_string()));
-    assert_eq!(meta("import.analyzers").as_deref(), Some("core"));
+    // Every built-in analyzer, `core` first.
+    let analyzers = meta("import.analyzers").unwrap_or_default();
+    assert_eq!(analyzers.split(',').next(), Some("core"), "{analyzers}");
     let info = catalog.get(&report.session).unwrap().unwrap();
     assert_eq!(info.sources, vec![std::fs::canonicalize(&file).unwrap()]);
     assert!(info.session_bytes > 0);

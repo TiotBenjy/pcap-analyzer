@@ -5,8 +5,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::analyzer::{Analyzer, AnalyzerId};
+use crate::connections::{ConnectionsAnalyzer, ConnectionsConfig};
 use crate::core::CoreAnalyzer;
 use crate::geo::GeoDb;
+use crate::ports::{PortsAnalyzer, PortsConfig};
 
 /// Settings of the `core` analyzer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,7 +35,9 @@ impl Default for CoreConfig {
 #[non_exhaustive]
 pub struct AnalyzerConfig {
     // --- per-analyzer settings: registration point, one field per analyzer, sorted ---
+    pub connections: ConnectionsConfig,
     pub core: CoreConfig,
+    pub ports: PortsConfig,
     // --- shared resources (read-only, shared by every shard), sorted ---
     /// `blobs/` directory of the session being imported (set by the engine).
     pub blobs_dir: Option<Arc<PathBuf>>,
@@ -56,6 +60,8 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
     vec![
         (CoreAnalyzer::ID, factory(CoreAnalyzer::boxed)),
         // --- analyzers: one line each, sorted alphabetically by id ---
+        (ConnectionsAnalyzer::ID, factory(ConnectionsAnalyzer::boxed)),
+        (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
     ]
 }
 
@@ -165,7 +171,9 @@ mod tests {
 
     #[test]
     fn filter_and_replace() {
-        let registry = Registry::default().filtered(|id| id != CoreAnalyzer::ID);
+        let registry = Registry::default().filtered(|id| id == CoreAnalyzer::ID);
+        assert_eq!(registry.ids(), vec![CoreAnalyzer::ID]);
+        let registry = registry.filtered(|id| id != CoreAnalyzer::ID);
         assert_eq!(registry.ids().len(), 0);
         let registry = registry
             .with(CoreAnalyzer::ID, CoreAnalyzer::boxed)

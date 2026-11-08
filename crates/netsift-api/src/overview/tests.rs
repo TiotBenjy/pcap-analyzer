@@ -171,11 +171,14 @@ async fn mixed_capture_shows_dns_http_and_tls_with_exact_totals() {
     let flows = summary["flow_count"].as_u64().unwrap();
     assert!(flows > 0);
     // Modules backed by an existing table only; no table yet for DNS, HTTP, TLS.
+    // Conversations: workstation (v4 and v6) to the resolver, the web and the TLS servers;
+    // open ports: DNS (v4 and v6), HTTP and TLS.
     assert_eq!(
         summary["modules"],
         serde_json::json!([
-            { "id": "connections", "count": flows },
+            { "id": "connections", "count": 4 },
             { "id": "hosts", "count": summary["host_count"] },
+            { "id": "openPorts", "count": 4 },
         ])
     );
 }

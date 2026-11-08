@@ -27,7 +27,9 @@ use std::net::IpAddr;
 
 use rusqlite::{Connection, params};
 
+use crate::connections::{ConversationRow, HostTrafficRow};
 use crate::error::{Result, StoreError};
+use crate::ports::OpenPortRow;
 
 /// Maximum number of names kept per host.
 pub const MAX_HOST_NAMES: usize = 64;
@@ -54,6 +56,12 @@ pub enum StoreRecord {
     /// Commutative merging upsert of a flow by `id`.
     Flow(FlowRow),
     // --- analyzers: one variant per table family, sorted alphabetically ---
+    /// Additive upsert of a conversation by (client, server) (`connections`).
+    Conversation(ConversationRow),
+    /// Additive upsert of the traffic of a host (`connections`).
+    HostTraffic(HostTrafficRow),
+    /// Commutative merging upsert of an open port (`ports`).
+    OpenPort(OpenPortRow),
 }
 
 impl StoreRecord {
@@ -66,6 +74,9 @@ impl StoreRecord {
             Self::Timeseries(_) => "timeseries",
             Self::Host(_) => "hosts",
             Self::Flow(_) => "flows",
+            Self::Conversation(_) => "conversations",
+            Self::HostTraffic(_) => "host_traffic",
+            Self::OpenPort(_) => "open_ports",
         }
     }
 
@@ -78,12 +89,15 @@ impl StoreRecord {
             Self::Timeseries(r) => r.insert(conn),
             Self::Host(r) => r.insert(conn),
             Self::Flow(r) => r.insert(conn),
+            Self::Conversation(r) => r.insert(conn),
+            Self::HostTraffic(r) => r.insert(conn),
+            Self::OpenPort(r) => r.insert(conn),
         }
     }
 }
 
 /// Saturating conversion for counters and sizes.
-fn sat(v: u64) -> i64 {
+pub(crate) fn sat(v: u64) -> i64 {
     i64::try_from(v).unwrap_or(i64::MAX)
 }
 

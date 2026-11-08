@@ -4,6 +4,7 @@ import { endpointAddress, endpointTitle } from './endpointText';
 import { Flag } from './Flag';
 
 interface EndpointProps {
+  /** `Endpoint` DTO of the API (address, names, category, country). */
   endpoint: EndpointInfo;
   /** Shows the first resolved name instead of the address when there is one. */
   showName?: boolean;
@@ -12,7 +13,10 @@ interface EndpointProps {
   className?: string;
 }
 
-/** Address (mono) or resolved name, with the country flag; truncated with the full text on hover. */
+/**
+ * Shared rendering of a host in tables and lists: address (mono) or first resolved name, with
+ * the country flag; truncated, the full description (address, names, country) on hover.
+ */
 export function Endpoint({ endpoint, showName = true, port, className }: EndpointProps) {
   const name = showName ? endpoint.names[0] : undefined;
   const address = endpointAddress(endpoint, port);

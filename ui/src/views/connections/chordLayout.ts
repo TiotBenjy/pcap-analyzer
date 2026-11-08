@@ -18,6 +18,17 @@ const LABEL_HEIGHT = 18;
 /** Gap between the arcs and the labels. */
 const LABEL_GAP = 6;
 const ARC_WIDTH = 14;
+/** Angular step and largest slide of a label along its arc, in radians (1 and 8 degrees). */
+const SHIFT_STEP = Math.PI / 180;
+const MAX_SHIFT = (8 * Math.PI) / 180;
+
+/** Offsets tried for a label, nearest to the middle of its arc first: 0, +1, -1, +2, -2... degrees. */
+function shifts(reach: number): number[] {
+  const out = [0];
+  for (let d = SHIFT_STEP; d <= reach + 1e-9; d += SHIFT_STEP) out.push(d, -d);
+  return out;
+}
+
 /** Largest diagram side, in px. */
 export const MAX_SIZE = 640;
 /** Below this outer radius the diagram is unreadable: the caller shows a ranked list instead. */
@@ -136,12 +147,27 @@ export function layoutChord(matrix: readonly (readonly number[])[], names: reado
   const from = outer + LABEL_GAP;
   for (const g of order) {
     const text = texts[g.index] ?? '';
-    const angle = (g.startAngle + g.endAngle) / 2;
-    const box = labelBox(angle, from, text.length * CHAR_WIDTH);
+    const mid = (g.startAngle + g.endAngle) / 2;
+    // The label may slide along its own arc (never past it, at most MAX_SHIFT) to clear a
+    // label already placed: a large arc is not left unnamed because of a neighbour.
+    const reach = Math.max(0, Math.min((g.endAngle - g.startAngle) / 2 - SHIFT_STEP / 2, MAX_SHIFT));
+    let angle = mid;
+    let box = labelBox(mid, from, text.length * CHAR_WIDTH);
+    let visible = false;
+    if (text !== '') {
+      for (const offset of shifts(reach)) {
+        const candidate = labelBox(mid + offset, from, text.length * CHAR_WIDTH);
+        if (!placed.some((p) => overlaps(p, candidate))) {
+          angle = mid + offset;
+          box = candidate;
+          visible = true;
+          break;
+        }
+      }
+    }
+    if (visible) placed.push(box);
     const degrees = (angle * 180) / Math.PI;
     const right = angle < Math.PI;
-    const visible = text !== '' && !placed.some((p) => overlaps(p, box));
-    if (visible) placed.push(box);
     labels.set(g.index, {
       index: g.index,
       text,

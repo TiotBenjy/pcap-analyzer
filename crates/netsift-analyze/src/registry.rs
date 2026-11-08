@@ -8,6 +8,7 @@ use crate::analyzer::{Analyzer, AnalyzerId};
 use crate::connections::{ConnectionsAnalyzer, ConnectionsConfig};
 use crate::core::CoreAnalyzer;
 use crate::geo::GeoDb;
+use crate::http::{HttpAnalyzer, HttpConfig};
 use crate::ports::{PortsAnalyzer, PortsConfig};
 use crate::tls::TlsAnalyzer;
 
@@ -38,6 +39,7 @@ pub struct AnalyzerConfig {
     // --- per-analyzer settings: registration point, one field per analyzer, sorted ---
     pub connections: ConnectionsConfig,
     pub core: CoreConfig,
+    pub http: HttpConfig,
     pub ports: PortsConfig,
     pub tls: crate::tls::TlsConfig,
     // --- shared resources (read-only, shared by every shard), sorted ---
@@ -63,6 +65,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (CoreAnalyzer::ID, factory(CoreAnalyzer::boxed)),
         // --- analyzers: one line each, sorted alphabetically by id ---
         (ConnectionsAnalyzer::ID, factory(ConnectionsAnalyzer::boxed)),
+        (HttpAnalyzer::ID, factory(HttpAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
         (TlsAnalyzer::ID, factory(TlsAnalyzer::boxed)),
     ]

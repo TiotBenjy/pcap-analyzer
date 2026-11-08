@@ -1,0 +1,27 @@
+---
+source: crates/netsift-analyze/src/http/tests.rs
+expression: render(&txs)
+---
+tx 0 192.168.1.10:49152 -> 203.0.113.80:80 host=Some("www.example.test") path=Some("/index.html") query=Some("lang=en") type=Some("text/html")
+  > GET /index.html?lang=en HTTP/1.1 at +0us
+    headers=["Host", "User-Agent", "Accept"] head=102
+    body none wire=0 decoded=0 chunked=false encoding=None magic=None blob=false
+  < HTTP/1.1 200 OK at +1000us
+    headers=["Server", "Content-Type", "Content-Length"] head=93
+    body complete wire=26 decoded=26 chunked=false encoding=None magic=Some("text/html") blob=false
+    preview "<html><p>Hello</p></html>\n"
+tx 1 192.168.1.10:49152 -> 203.0.113.80:80 host=Some("www.example.test") path=Some("/api/items") query=None type=None
+  > POST /api/items HTTP/1.1 at +2000us
+    headers=["Host", "User-Agent", "Content-Type", "Content-Length"] head=133
+    body complete wire=12 decoded=12 chunked=false encoding=None magic=None blob=false
+    preview "{\"name\":\"x\"}"
+  < HTTP/1.1 201 Created at +3000us
+    headers=["Server", "Content-Length"] head=57
+    body none wire=0 decoded=0 chunked=false encoding=None magic=None blob=false
+tx 2 192.168.1.10:49152 -> 203.0.113.80:80 host=Some("www.example.test") path=Some("/big.iso") query=None type=Some("application/octet-stream")
+  > HEAD /big.iso HTTP/1.1 at +4000us
+    headers=["Host", "User-Agent"] head=79
+    body none wire=0 decoded=0 chunked=false encoding=None magic=None blob=false
+  < HTTP/1.1 200 OK at +5000us
+    headers=["Server", "Content-Length", "Content-Type"] head=100
+    body none wire=0 decoded=0 chunked=false encoding=None magic=None blob=false

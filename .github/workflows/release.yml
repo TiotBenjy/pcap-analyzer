@@ -1,8 +1,16 @@
 name: Release
 
-# Déclenché par un tag v* sur main (ou manuellement). Construit les bundles desktop pour Linux ET
-# Windows (c'est l'objet de la CI : produire le binaire Windows sans toolchain Windows chez
-# l'utilisateur), puis crée une release GitHub en brouillon avec les artefacts.
+# Publication d'une version (ADR-011, docs/GIT_WORKFLOW.md « Publier une version »).
+# Déclenché par le push d'un tag vX.Y.Z (fait par scripts/release.sh, jamais à la main), ou
+# manuellement : sans tag, les bundles restent des artefacts du workflow et aucune release n'est créée.
+#
+# Publication en trois temps, jamais de release à moitié remplie :
+#   version  vérifie que Cargo.toml, ui/package.json, Cargo.lock et le tag concordent ;
+#   create   crée la release en BROUILLON, notes générées par git-cliff depuis le tag précédent ;
+#   bundle   construit les bundles (Linux, Windows, macOS) -> artefacts du workflow ;
+#   publish  joint tous les bundles + SHA256SUMS.txt au brouillon, puis le publie.
+# Si un bundle échoue, publish ne s'exécute pas : le brouillon reste sans fichiers (à supprimer ou à
+# compléter en relançant les jobs en échec). Bundles non signés (aucun secret) : voir les notes.
 # L'UI est construite par `beforeBuildCommand` (apps/desktop/tauri.conf.json).
 
 on:
@@ -10,30 +18,119 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# Jeton minimal par défaut ; seuls create et publish écrivent (contents: write).
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 env:
   CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
   RUST_VERSION: "1.99.1"
   NODE_VERSION: "22.14.0"
   TAURI_CLI_VERSION: "2.12.4"
+  GIT_CLIFF_VERSION: "v2.14.2" # = scripts/ct/cliff.sh (CHANGELOG.md local)
 
 jobs:
+  version:
+    name: Version unique
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # pour vérifier que le tag est sur main
+          persist-credentials: false
+      - name: Le tag désigne un commit de main
+        if: github.ref_type == 'tag'
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::$GITHUB_REF_NAME ne désigne pas un commit de main (utiliser scripts/release.sh)"; exit 1; }
+      - name: Cargo.toml, ui/package.json, Cargo.lock et tag concordent
+        id: v
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          version="$(bash scripts/check-version.sh ${TAG:+"$TAG"})"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # SemVer : un suffixe (-beta.1, -rc.1) fait une prerelease GitHub.
+          if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Version $version (prerelease : $prerelease)"
+
+  create:
+    name: Brouillon de release et notes
+    needs: version
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # historique complet + tags : git-cliff calcule la plage depuis le tag précédent
+          persist-credentials: false
+      - name: Notes (git-cliff, commits depuis le tag précédent)
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
+        with:
+          version: ${{ env.GIT_CLIFF_VERSION }}
+          config: cliff.toml
+          args: --current --strip all
+        env:
+          OUTPUT: release-notes.md
+      - name: Mentions d'installation (bundles non signés, sommes SHA-256)
+        run: |
+          cat .github/release-notes-footer.md >> release-notes.md
+          cat release-notes.md
+      - name: Release en brouillon
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: NetSift ${{ github.ref_name }}
+          body_path: release-notes.md
+          draft: true
+          prerelease: ${{ needs.version.outputs.prerelease }}
+
   bundle:
+    name: Bundles ${{ matrix.name }}
+    needs: version
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04 # glibc 2.35, comme l'image de dev
+          - name: linux-x86_64
+            os: ubuntu-22.04 # glibc 2.35, comme l'image de dev
             target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
-          - os: windows-latest
+            rust_targets: x86_64-unknown-linux-gnu
+            bundles: appimage,deb,rpm
+          - name: windows-x86_64
+            os: windows-latest
             target: x86_64-pc-windows-msvc
+            rust_targets: x86_64-pc-windows-msvc
             bundles: nsis,msi
+          # Un seul .dmg universel (aarch64 + x86_64) : les runners Intel (macos-13) sont retirés.
+          - name: macos-universal
+            os: macos-15
+            target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            bundles: dmg
     runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Dépendances système Linux
         if: runner.os == 'Linux'
@@ -42,48 +139,87 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libjavascriptcoregtk-4.1-dev patchelf
 
-      - uses: dtolnay/rust-toolchain@master
+      # Pas de cache (Rust ni npm) : un binaire publié ne dépend jamais d'un cache (build complet).
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master (2026-10-16)
         with:
           toolchain: ${{ env.RUST_VERSION }}
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release-${{ matrix.target }}
-      - uses: taiki-e/install-action@v2
+          targets: ${{ matrix.rust_targets }}
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: tauri-cli@${{ env.TAURI_CLI_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
+          # Pas de cache npm non plus (même règle que pour Rust) ; `npm ci` vérifie les empreintes.
+          package-manager-cache: false
 
-      # GeoIP (P2.2) : la base DB-IP sera téléchargée ici et déclarée dans `bundle.resources`.
+      # GeoIP : la base DB-IP n'est pas encore embarquée. P2.5 doit la déclarer dans
+      # `bundle.resources` et la lire dans l'app ; ajouter alors ici `bash scripts/ci/geoip.sh`.
 
       - name: Build et bundle Tauri
-        uses: tauri-apps/tauri-action@v0
+        working-directory: apps/desktop
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          tauriScript: cargo tauri
-          args: --bundles ${{ matrix.bundles }}
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseName: "NetSift ${{ github.ref_name }}"
-          releaseBody: "Bundles Linux (AppImage, .deb) et Windows (NSIS, MSI). Non signés."
-          releaseDraft: true
-          prerelease: false
+          # linuxdeploy (AppImage) est lui-même une AppImage : pas de FUSE nécessaire.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          BUNDLES: ${{ matrix.bundles }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          bundles="$BUNDLES"
+          # WiX (MSI) n'accepte que des versions numériques : pas de .msi pour une prerelease.
+          if [[ "$PRERELEASE" == "true" && "$RUNNER_OS" == "Windows" ]]; then bundles="nsis"; fi
+          cargo tauri build --target "$TARGET" --bundles "$bundles"
 
-      # Exécution manuelle (sans tag) : les bundles sont publiés comme artefacts du workflow.
-      - name: Artefacts (exécution manuelle)
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+      - name: Collecte des bundles (noms avec version et architecture)
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p dist
+          find "target/$TARGET/release/bundle" -maxdepth 2 -type f \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*-setup.exe' \
+               -o -name '*.msi' -o -name '*.dmg' \) -name 'NetSift[-_]*' -exec cp -v {} dist/ \;
+          count=0
+          for f in dist/*; do
+            [[ -f "$f" ]] || continue
+            count=$((count + 1))
+            # Le nom porte la version de Cargo.toml : app et release ont la même version.
+            [[ "$(basename "$f")" == *"$VERSION"* ]] || { echo "::error::$f ne contient pas $VERSION"; exit 1; }
+          done
+          [[ "$count" -gt 0 ]] || { echo "::error::aucun bundle produit"; exit 1; }
+          ls -l dist
+
+      - uses: actions/upload-artifact@v7
         with:
-          name: bundles-${{ matrix.target }}
-          path: |
-            target/release/bundle/appimage/*.AppImage
-            target/release/bundle/deb/*.deb
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
+          name: bundles-${{ matrix.name }}
+          path: dist/*
           if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publication (fichiers, SHA256SUMS.txt)
+    needs: [version, create, bundle]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bundles-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS.txt
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      # Réutilise le brouillon créé par `create` (même tag) : ajoute les fichiers, puis le publie
+      # (input `draft` omis). Corps et nom du brouillon conservés.
+      - name: Fichiers et publication
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          prerelease: ${{ needs.version.outputs.prerelease }}
+          make_latest: ${{ needs.version.outputs.prerelease == 'true' && 'false' || 'true' }}

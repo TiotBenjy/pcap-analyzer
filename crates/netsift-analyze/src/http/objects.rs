@@ -57,7 +57,12 @@ mod tests {
         }
     }
 
-    fn view<'a>(key: &'a FlowKey, role: Role, status: Option<u16>, body: &'a [u8]) -> MessageView<'a> {
+    fn view<'a>(
+        key: &'a FlowKey,
+        role: Role,
+        status: Option<u16>,
+        body: &'a [u8],
+    ) -> MessageView<'a> {
         MessageView {
             flow: FlowId(1),
             key,
@@ -84,14 +89,23 @@ mod tests {
         assert!(selected(&ok, Some("image/svg+xml"), &config));
         assert!(selected(&ok, Some("image/x-icon"), &config));
         // Not an image by content (whatever the declared type), or not shown by the view.
-        for other in [None, Some("text/html"), Some("application/pdf"), Some("image/tiff")] {
+        for other in [
+            None,
+            Some("text/html"),
+            Some("application/pdf"),
+            Some("image/tiff"),
+        ] {
             assert!(!selected(&ok, other, &config), "{other:?}");
         }
         // Requests (forms, uploads) never.
         let req = view(&key, Role::Request, None, &png);
         assert!(!selected(&req, Some("image/png"), &config));
         // Partial content, incomplete body.
-        assert!(!selected(&view(&key, Role::Response, Some(206), &png), Some("image/png"), &config));
+        assert!(!selected(
+            &view(&key, Role::Response, Some(206), &png),
+            Some("image/png"),
+            &config
+        ));
         let cut = MessageView {
             body_complete: false,
             ..ok
@@ -99,7 +113,11 @@ mod tests {
         assert!(!selected(&cut, Some("image/png"), &config));
         // Size bounds.
         let tiny = [0u8; 8];
-        assert!(!selected(&view(&key, Role::Response, Some(200), &tiny), Some("image/gif"), &config));
+        assert!(!selected(
+            &view(&key, Role::Response, Some(200), &tiny),
+            Some("image/gif"),
+            &config
+        ));
         let bounded = HttpConfig {
             object_max_bytes: 99,
             ..HttpConfig::default()

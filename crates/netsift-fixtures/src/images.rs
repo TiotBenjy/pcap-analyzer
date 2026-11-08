@@ -18,22 +18,47 @@ use crate::time::NS_PER_MS;
 
 /// Colour themes of [`scene`] (sky top, sky bottom, ground, sun).
 const THEMES: [[[u8; 3]; 4]; 6] = [
-    [[38, 70, 140], [150, 190, 230], [52, 110, 72], [250, 214, 110]],
+    [
+        [38, 70, 140],
+        [150, 190, 230],
+        [52, 110, 72],
+        [250, 214, 110],
+    ],
     [[90, 40, 90], [240, 150, 110], [70, 60, 80], [255, 230, 160]],
     [[20, 30, 60], [60, 80, 130], [30, 40, 50], [235, 235, 220]],
-    [[120, 170, 210], [220, 235, 245], [200, 180, 130], [255, 250, 220]],
-    [[30, 90, 100], [120, 200, 190], [40, 70, 60], [250, 200, 120]],
-    [[160, 80, 40], [250, 200, 140], [110, 70, 40], [255, 240, 200]],
+    [
+        [120, 170, 210],
+        [220, 235, 245],
+        [200, 180, 130],
+        [255, 250, 220],
+    ],
+    [
+        [30, 90, 100],
+        [120, 200, 190],
+        [40, 70, 60],
+        [250, 200, 120],
+    ],
+    [
+        [160, 80, 40],
+        [250, 200, 140],
+        [110, 70, 40],
+        [255, 240, 200],
+    ],
 ];
 
-fn mix(a: [u8; 3], b: [u8; 3], t: u32, n: u32) -> [u8; 3] {
-    let n = n.max(1);
-    let t = t.min(n);
-    let ch = |x: u8, y: u8| {
-        let v = (u32::from(x) * (n - t) + u32::from(y) * t) / n;
-        u8::try_from(v).unwrap_or(u8::MAX)
+/// Linear blend from `from` (at `step` 0) to `to` (at `steps`).
+fn mix(from: [u8; 3], to: [u8; 3], step: u32, steps: u32) -> [u8; 3] {
+    let steps = steps.max(1);
+    let step = step.min(steps);
+    let channel = |lo: u8, hi: u8| {
+        let value = (u32::from(lo) * (steps - step) + u32::from(hi) * step) / steps;
+        u8::try_from(value).unwrap_or(u8::MAX)
     };
-    [ch(a[0], b[0]), ch(a[1], b[1]), ch(a[2], b[2])]
+    [
+        channel(from[0], to[0]),
+        channel(from[1], to[1]),
+        channel(from[2], to[2]),
+    ]
 }
 
 /// A small landscape (sky gradient, sun, hills), identical for identical arguments.
@@ -44,7 +69,11 @@ pub fn scene(width: u32, height: u32, theme: usize) -> RgbImage {
     assert!(width > 0 && height > 0, "image dimensions must be non-zero");
     let [top, bottom, ground, sun] = THEMES[theme % THEMES.len()];
     let (w, h) = (i64::from(width), i64::from(height));
-    let (cx, cy, r) = (w * (2 + i64::try_from(theme % 5).unwrap_or(0)) / 8, h / 3, h.min(w) / 7 + 1);
+    let (cx, cy, r) = (
+        w * (2 + i64::try_from(theme % 5).unwrap_or(0)) / 8,
+        h / 3,
+        h.min(w) / 7 + 1,
+    );
     RgbImage::from_fn(width, height, |x, y| {
         let (xi, yi) = (i64::from(x), i64::from(y));
         // Hills: two sine-like bumps from integer arithmetic.
@@ -52,7 +81,12 @@ pub fn scene(width: u32, height: u32, theme: usize) -> RgbImage {
         let bump = (phase - 180).abs();
         let horizon = h * 3 / 5 + (bump - 90) * h / 1400;
         let color = if yi > horizon {
-            mix(ground, [10, 20, 10], u32::try_from(yi - horizon).unwrap_or(0), height)
+            mix(
+                ground,
+                [10, 20, 10],
+                u32::try_from(yi - horizon).unwrap_or(0),
+                height,
+            )
         } else if (xi - cx).pow(2) + (yi - cy).pow(2) <= r * r {
             sun
         } else {
@@ -83,8 +117,13 @@ pub fn gif(width: u32, height: u32, theme: usize) -> Vec<u8> {
     {
         let rgba = image::DynamicImage::ImageRgb8(scene(width, height, theme)).into_rgba8();
         let mut enc = GifEncoder::new_with_speed(&mut out, 30);
-        enc.encode(rgba.as_raw(), width, height, image::ExtendedColorType::Rgba8)
-            .unwrap_or_default();
+        enc.encode(
+            rgba.as_raw(),
+            width,
+            height,
+            image::ExtendedColorType::Rgba8,
+        )
+        .unwrap_or_default();
     }
     out
 }
@@ -160,7 +199,11 @@ pub fn dimension_bomb_png(width: u32, height: u32) -> Vec<u8> {
     };
     chunk(&mut out, b"IHDR", &ihdr);
     // zlib stream of a few zero bytes.
-    chunk(&mut out, b"IDAT", &[0x78, 0x9c, 0x63, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01]);
+    chunk(
+        &mut out,
+        b"IDAT",
+        &[0x78, 0x9c, 0x63, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01],
+    );
     chunk(&mut out, b"IEND", &[]);
     out
 }
@@ -222,7 +265,13 @@ pub fn gallery(sc: &mut Scenario) {
     let mut s = sc.tcp_open(browser(), images_server(), &TcpOptions::new(80));
     let page = b"<!doctype html><html><head><title>Gallery</title></head><body><h1>Gallery</h1></body></html>";
     get(&mut s, host, "/gallery/", "text/html; charset=utf-8", page);
-    get(&mut s, host, "/gallery/app.js", "application/javascript", b"document.title = 'Gallery';\n");
+    get(
+        &mut s,
+        host,
+        "/gallery/app.js",
+        "application/javascript",
+        b"document.title = 'Gallery';\n",
+    );
     let photos: [(&str, Vec<u8>, &str); 7] = [
         ("/gallery/harbour.jpg", jpeg(640, 420, 0), "image/jpeg"),
         ("/gallery/dusk.jpg", jpeg(480, 640, 1), "image/jpeg"),
@@ -236,9 +285,21 @@ pub fn gallery(sc: &mut Scenario) {
         get(&mut s, host, path, ct, body);
     }
     // Served with a generic type: kept, the type comes from the content.
-    get(&mut s, host, "/download?id=42", "application/octet-stream", &png(256, 256, 4));
+    get(
+        &mut s,
+        host,
+        "/download?id=42",
+        "application/octet-stream",
+        &png(256, 256, 4),
+    );
     // An HTML error page labelled as an image: not an object.
-    get(&mut s, host, "/gallery/missing.png", "image/png", b"<html><body>Not found</body></html>");
+    get(
+        &mut s,
+        host,
+        "/gallery/missing.png",
+        "image/png",
+        b"<html><body>Not found</body></html>",
+    );
     // Login form (request body): never stored.
     let form = b"user=alice&password=correct-horse";
     let req = format!(
@@ -258,10 +319,28 @@ pub fn gallery(sc: &mut Scenario) {
     get(&mut s, cdn, "/brand/logo.svg", "image/svg+xml", &svg());
     get(&mut s, cdn, "/t.gif?u=1", "image/gif", &pixel_gif());
     // Same content as on the images server: one object, two occurrences.
-    get(&mut s, cdn, "/mirror/night.png", "image/png", &png(400, 300, 2));
-    get(&mut s, cdn, "/thumbs/tile.png", "image/png", &png(96, 96, 5));
+    get(
+        &mut s,
+        cdn,
+        "/mirror/night.png",
+        "image/png",
+        &png(400, 300, 2),
+    );
+    get(
+        &mut s,
+        cdn,
+        "/thumbs/tile.png",
+        "image/png",
+        &png(96, 96, 5),
+    );
     // Complete at the HTTP level, but the file itself is cut: no thumbnail.
-    get(&mut s, cdn, "/broken/cut.jpg", "image/jpeg", &truncated_jpeg(320, 240, 300));
+    get(
+        &mut s,
+        cdn,
+        "/broken/cut.jpg",
+        "image/jpeg",
+        &truncated_jpeg(320, 240, 300),
+    );
     s.close();
     sc.advance(10 * NS_PER_MS);
 }

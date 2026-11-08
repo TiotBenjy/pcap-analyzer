@@ -160,7 +160,7 @@ Suivis de la vague 2.A :
 
 ### Vague 2.B
 
-- [~] **P2.4** `feat/ui-overview` — Vue Overview (`specs/overview.md`) : série temporelle par protocole,
+- [x] **P2.4** `feat/ui-overview` — Vue Overview (`specs/overview.md`) : série temporelle par protocole,
       cartes de modules avec compteurs, résumé de session.
 - [~] **P2.5** `feat/desktop-integration` — Dialogue de dossier natif, jeton API, CSP, répertoire de données,
       fermeture propre pendant un import.

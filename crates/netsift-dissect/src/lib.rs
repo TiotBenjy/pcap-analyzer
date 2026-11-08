@@ -31,6 +31,7 @@
 
 mod bytes;
 mod decoded;
+pub mod dns;
 mod error;
 pub mod ethertype;
 mod ipext;

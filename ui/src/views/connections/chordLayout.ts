@@ -1,4 +1,4 @@
-import { type Chord, type ChordSubgroup, chord, ribbon } from 'd3-chord';
+import { type Chord, type ChordSubgroup, chordDirected, ribbon } from 'd3-chord';
 import { arc } from 'd3-shape';
 
 // Geometry of the chord diagram (pure: unit-tested without a browser).
@@ -42,9 +42,11 @@ export interface ChordGroupShape {
 }
 
 export interface ChordRibbonShape {
+  /** Sending node. */
   source: number;
+  /** Receiving node. */
   target: number;
-  /** Bytes from `source` to `target`, and back. */
+  /** Bytes from `source` to `target` (the ribbon), and back (another ribbon). */
   forward: number;
   backward: number;
   path: string;
@@ -105,7 +107,9 @@ export function layoutChord(matrix: readonly (readonly number[])[], names: reado
   if (outer < MIN_RADIUS) return null;
   const inner = outer - ARC_WIDTH;
 
-  const layout = chord()
+  // Directed layout: one ribbon per direction, as wide at both ends; an arc spans what its node
+  // sends and receives.
+  const layout = chordDirected()
     .padAngle(Math.min(0.04, (Math.PI * 2) / (n * 8)))
     .sortSubgroups((a, b) => b - a)(matrix.map((row) => [...row]));
   const arcPath = arc<{ startAngle: number; endAngle: number }>().innerRadius(inner).outerRadius(outer);

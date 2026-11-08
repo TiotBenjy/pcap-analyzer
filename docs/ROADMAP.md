@@ -138,8 +138,15 @@ Suivis de la vague 2.A :
 - P2.1 : `fs/browse` et inventaire : traiter explicitement les liens symboliques qui sortent de la racine
   autorisée ; mesurer le coût de `GET /sessions?limit=1000` sur un gros catalogue.
 - P2.5 : `ApiConfig::max_imports` et `allow_any_path: true` à renseigner dans `apps/desktop`.
-- Relecture visuelle des captures (`ui-reviewer`) en attente d'une décision sur l'accès à
-  `.artifacts/screens/` (règle `Read(./.artifacts/**)`).
+- P2.3, frise des chunks : lisible à 375 px (largeur minimale par chunk plus grande, défilement
+  interne) ; rendre visible le trou d'un fichier manquant (aujourd'hui ~3 px sous la ligne pointillée).
+- P2.3 : `useSessions` ignore le drapeau `truncated` (liste coupée à 5 000 sans avertissement) ; les shots
+  Sources supposent une session démo `ready` avec chunks.
+- P2.4 : sous-titre d'Overview avec le nom de la session, comme Sources.
+- Settings : aligner les valeurs entre cartes, largeur maximale des formulaires à 1920 px.
+- Sidebar : « Captures » est rangé sous l'intitulé « Session » alors que la vue est globale.
+- Relecture visuelle : `.artifacts/screens/` est lisible depuis le 2026-11-08 ; la phase 0 (Overview,
+  Settings) a été relue avec P2.3.
 
 ### Vague 2.B
 

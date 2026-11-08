@@ -1,0 +1,60 @@
+# git-cliff configuration: CHANGELOG.md (scripts/release.sh) and GitHub release notes
+# (.github/workflows/release.yml). Version pinned in docs/STACK_VERSIONS.md.
+# Groups are in French (project documentation language); commit messages stay in English.
+
+[changelog]
+header = """
+# Journal des modifications
+
+Modifications notables de NetSift, par version. Généré par [git-cliff](https://git-cliff.org)
+à partir des messages de commit (Conventional Commits) : ne pas éditer à la main.\n
+"""
+body = """
+{%- set repo = "https://github.com/TiotBenjy/pcap-analyzer" -%}
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}]({{ repo }}/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## Non publié
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.breaking %}**[rupture]** {% endif %}\
+{% if commit.scope %}**{{ commit.scope }}** : {% endif %}\
+{{ commit.message | split(pat="\n") | first | trim | upper_first }} \
+([{{ commit.id | truncate(length=7, end="") }}]({{ repo }}/commit/{{ commit.id }}))\
+{% endfor %}
+{% endfor %}
+{%- if previous and previous.version and version %}
+**Comparaison** : [{{ previous.version }}...{{ version }}]({{ repo }}/compare/{{ previous.version }}...{{ version }})
+{% endif %}\n
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+# Non-conventional commits are kept (group "Autres") rather than silently dropped.
+filter_unconventional = false
+require_conventional = false
+split_commits = false
+protect_breaking_commits = false
+# Order matters: the first matching parser wins. The HTML comments only sort the groups.
+commit_parsers = [
+  { message = "^merge\\(", skip = true },
+  { message = "^Merge ", skip = true },
+  { message = "^docs\\(roadmap\\)", skip = true },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^feat", group = "<!-- 0 -->Fonctionnalités" },
+  { message = "^fix", group = "<!-- 1 -->Corrections" },
+  { message = "^perf", group = "<!-- 2 -->Performances" },
+  { message = "^docs", group = "<!-- 3 -->Documentation" },
+  { message = "^(build|ci)", group = "<!-- 4 -->Build/CI" },
+  { message = "^test", group = "<!-- 5 -->Tests" },
+  { message = ".*", group = "<!-- 6 -->Autres" },
+]
+filter_commits = false
+# Release tags only (vX.Y.Z and vX.Y.Z-pre); any other tag is ignored.
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+"
+topo_order = false
+sort_commits = "oldest"

@@ -3,6 +3,7 @@
 # Equivalent de x.sh. Docker Desktop ou Podman requis ; aucune toolchain Rust/Node sur l'hote.
 #
 #   ./x.ps1 image | check | test | cargo <args> | npm <args> | dev | shots [vue] | desktop | shell
+#   ./x.ps1 geoip | cliff [args]
 #   ./x.ps1 -C <dir> <sous-commande>   execute avec <dir> comme racine (worktree)
 #
 # Variables d'env : ENGINE=docker|podman, NETSIFT_UI_PORT, NETSIFT_API_PORT, REBUILD=1, NO_SCCACHE=1
@@ -76,7 +77,7 @@ switch ($Cmd) {
   "deny"      { Run-In @() "cargo deny check $r" -Tty }
   "npm"       { Run-In @() "cd ui && npm $r" -Tty }
   "ui"        { Run-In @() "cd ui && npm run $r" -Tty }
-  "check"     { Run-In @() "set -e; cargo fmt --all --check; cargo clippy --workspace --all-targets --all-features -- -D warnings; cargo nextest run --workspace; if [ -f ui/package.json ]; then cd ui && (npm ci || npm install) && npm run -s lint && npm run -s typecheck && npm run -s test -- --run; fi; echo OK" }
+  "check"     { Run-In @() "set -e; bash scripts/check-version.sh >/dev/null; bash scripts/tests/check-version.sh; bash scripts/tests/release.sh; cargo fmt --all --check; cargo clippy --workspace --all-targets --all-features -- -D warnings; cargo nextest run --workspace; if [ -f ui/package.json ]; then cd ui && (npm ci || npm install) && npm run -s lint && npm run -s typecheck && npm run -s test -- --run; fi; echo OK" }
   "dev" {
     $up = UiPort; $ap = ApiPort
     Write-Host ">> UI  : http://localhost:$up"
@@ -89,5 +90,7 @@ switch ($Cmd) {
   "shots"     { Run-In @() "bash scripts/ct/shots.sh $r" }
   "desktop"   { Run-In @() "bash scripts/ct/desktop.sh linux" }
   "geoip"     { Run-In @() "bash scripts/ct/geoip.sh" }
+  # git-cliff : depuis le checkout racine seulement (un worktree a besoin du montage git de x.sh).
+  "cliff"     { Run-In @() "bash scripts/ct/cliff.sh $r" }
   default     { Get-Content "$Root/x.ps1" | Select-Object -Skip 2 -First 12 | ForEach-Object { $_ -replace '^#\s?','' } }
 }

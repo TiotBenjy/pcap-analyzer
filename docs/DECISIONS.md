@@ -377,7 +377,7 @@ acceptée : la remplacer par une nouvelle qui la référence.
     `<données>/geoip/`, `fsync`, renommage atomique vers `dbip-country-lite.mmdb`. Un échec laisse
     l'ancienne base intacte ;
   - la copie utilisateur `<données>/geoip/dbip-country-lite.mmdb` est lue en premier, la base du bundle
-    (`ApiConfig::geoip_path` en desktop) sert de repli et n'est jamais écrite ;
+    (`ApiConfig::geoip_fallback_path` en desktop) sert de repli et n'est jamais écrite ;
   - rechargement à chaud : l'API garde la base chargée (`Arc<GeoDb>`) et la remplace après une
     installation ; chaque import reçoit au démarrage la base du moment (`AnalyzerConfig::geo`) et la
     garde jusqu'à sa fin. Un fichier remplacé hors de l'application est détecté par taille, date de

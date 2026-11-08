@@ -77,7 +77,7 @@ pub fn api_config(
         allow_any_path: true,
         max_imports: max_imports(cores),
         // Fallback only: the API reads and writes the user copy under `data_dir` first.
-        geoip_path: geoip_bundled,
+        geoip_fallback_path: geoip_bundled,
     }
 }
 
@@ -171,7 +171,10 @@ mod tests {
         assert_eq!(config.captures_roots, Vec::<PathBuf>::new());
         assert_eq!(config.max_imports, netsift_api::DEFAULT_MAX_IMPORTS);
         // The bundled copy is the fallback; updates write the user copy under `<data_dir>/geoip/`.
-        assert_eq!(config.geoip_path, Some(PathBuf::from("/r/geoip/x.mmdb")));
+        assert_eq!(
+            config.geoip_fallback_path,
+            Some(PathBuf::from("/r/geoip/x.mmdb"))
+        );
         assert_eq!(config.data_dir, PathBuf::from("/d"));
         let origins: Vec<_> = config
             .cors_origins

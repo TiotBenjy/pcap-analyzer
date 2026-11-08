@@ -26,7 +26,7 @@ fn config() -> ApiConfig {
         cors_origins: vec![HeaderValue::from_static("tauri://localhost")],
         allow_any_path: false,
         max_imports: DEFAULT_MAX_IMPORTS,
-        geoip_path: None,
+        geoip_fallback_path: None,
     }
 }
 
@@ -1108,7 +1108,7 @@ async fn server_info_reads_the_configured_fallback_geoip_path() {
     std::fs::write(&path, b"garbage").unwrap();
     let config = ApiConfig {
         data_dir: tmp.path().join("data"),
-        geoip_path: Some(path.clone()),
+        geoip_fallback_path: Some(path.clone()),
         ..config()
     };
     let (app, state) = build(config, default_ingest_options());

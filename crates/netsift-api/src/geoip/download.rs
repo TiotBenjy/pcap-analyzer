@@ -165,7 +165,9 @@ pub(crate) async fn fetch(
             return Err(DownloadError::TooLarge);
         }
         progress(0, total);
-        let mut body = Vec::new();
+        // Announced size, already checked against the bound: one allocation in the usual case.
+        let mut body =
+            Vec::with_capacity(usize::try_from(total.unwrap_or(0).min(max_bytes)).unwrap_or(0));
         while let Some(chunk) = response.chunk().await? {
             let received =
                 u64::try_from(body.len().saturating_add(chunk.len())).unwrap_or(u64::MAX);

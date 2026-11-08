@@ -32,7 +32,9 @@ pub use db::{
     DB_DIR, DB_FILE_NAME, DEFAULT_CACHE_CAPACITY, GeoDb, GeoError, MAX_DB_BYTES, default_path,
     open_or_warn,
 };
-pub use install::{MAX_COMPRESSED_BYTES, decode_database, install, read_database_file};
+pub use install::{
+    MAX_COMPRESSED_BYTES, decode_database, install, read_database_file, remove_orphan_temp_files,
+};
 
 /// Crate name, used by smoke tests and diagnostics.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");

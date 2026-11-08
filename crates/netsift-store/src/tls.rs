@@ -34,7 +34,7 @@ pub mod cert_issue {
 pub enum TlsOutcome {
     /// Both sides switched to encrypted traffic.
     Complete,
-    /// Anything less (no ServerHello, alert, capture cut).
+    /// Anything less (no `ServerHello`, alert, capture cut).
     Partial,
 }
 
@@ -77,7 +77,7 @@ pub struct TlsAlertRow {
     pub from_server: bool,
 }
 
-/// Decoded ClientHello (lists in wire order, GREASE included).
+/// Decoded `ClientHello` (lists in wire order, GREASE included).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClientHelloRow {
     pub legacy_version: u16,
@@ -97,7 +97,7 @@ pub struct ClientHelloRow {
     pub key_share_groups: Vec<u16>,
 }
 
-/// Decoded ServerHello.
+/// Decoded `ServerHello`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ServerHelloRow {
     pub legacy_version: u16,
@@ -113,6 +113,7 @@ pub struct ServerHelloRow {
 }
 
 /// An X.509 certificate (every field derived from its DER).
+#[allow(clippy::struct_excessive_bools)] // flags of the certificate, stored as columns
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CertificateRow {
     /// Hex SHA-256 of the DER: primary key and blob name.
@@ -270,44 +271,10 @@ impl TlsSessionRow {
             return Ok(()); // replayed session: everything below is already there
         }
         if let Some(ch) = &self.client_hello {
-            conn.prepare_cached(
-                "INSERT OR IGNORE INTO tls_client_hellos (session_id, legacy_version, random, \
-                 session_ticket, legacy_session_id, cipher_suites, compressions, extensions, \
-                 groups, point_formats, signature_algs, supported_versions, key_share_groups) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            )?
-            .execute(params![
-                id,
-                ch.legacy_version,
-                ch.random,
-                ch.session_ticket,
-                ch.legacy_session_id,
-                json!(&ch.cipher_suites),
-                json!(&ch.compressions),
-                json!(&ch.extensions),
-                json!(&ch.groups),
-                json!(&ch.point_formats),
-                json!(&ch.signature_algs),
-                json!(&ch.supported_versions),
-                json!(&ch.key_share_groups),
-            ])?;
+            ch.insert(conn, id)?;
         }
         if let Some(sh) = &self.server_hello {
-            conn.prepare_cached(
-                "INSERT OR IGNORE INTO tls_server_hellos (session_id, legacy_version, random, \
-                 legacy_session_id, cipher_suite, compression, extensions, selected_version) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            )?
-            .execute(params![
-                id,
-                sh.legacy_version,
-                sh.random,
-                sh.legacy_session_id,
-                sh.cipher_suite,
-                sh.compression,
-                json!(&sh.extensions),
-                sh.selected_version,
-            ])?;
+            sh.insert(conn, id)?;
         }
         for (position, c) in self.certificates.iter().enumerate() {
             c.insert(conn)?;
@@ -328,6 +295,56 @@ impl TlsSessionRow {
             )?
             .execute(params![n.id, n.name, n.weak])?;
         }
+        Ok(())
+    }
+}
+
+impl ClientHelloRow {
+    fn insert(&self, conn: &Connection, id: i64) -> Result<()> {
+        let ch = self;
+        conn.prepare_cached(
+            "INSERT OR IGNORE INTO tls_client_hellos (session_id, legacy_version, random, \
+             session_ticket, legacy_session_id, cipher_suites, compressions, extensions, \
+             groups, point_formats, signature_algs, supported_versions, key_share_groups) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        )?
+        .execute(params![
+            id,
+            ch.legacy_version,
+            ch.random,
+            ch.session_ticket,
+            ch.legacy_session_id,
+            json!(&ch.cipher_suites),
+            json!(&ch.compressions),
+            json!(&ch.extensions),
+            json!(&ch.groups),
+            json!(&ch.point_formats),
+            json!(&ch.signature_algs),
+            json!(&ch.supported_versions),
+            json!(&ch.key_share_groups),
+        ])?;
+        Ok(())
+    }
+}
+
+impl ServerHelloRow {
+    fn insert(&self, conn: &Connection, id: i64) -> Result<()> {
+        let sh = self;
+        conn.prepare_cached(
+            "INSERT OR IGNORE INTO tls_server_hellos (session_id, legacy_version, random, \
+             legacy_session_id, cipher_suite, compression, extensions, selected_version) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        )?
+        .execute(params![
+            id,
+            sh.legacy_version,
+            sh.random,
+            sh.legacy_session_id,
+            sh.cipher_suite,
+            sh.compression,
+            json!(&sh.extensions),
+            sh.selected_version,
+        ])?;
         Ok(())
     }
 }
@@ -518,8 +535,10 @@ fn like_pattern(q: Option<&str>) -> Option<String> {
 
 fn filter_params(f: &TlsSessionFilter) -> [Value; 5] {
     [
-        f.version.map_or(Value::Null, |v| Value::Integer(i64::from(v))),
-        f.suite.map_or(Value::Null, |v| Value::Integer(i64::from(v))),
+        f.version
+            .map_or(Value::Null, |v| Value::Integer(i64::from(v))),
+        f.suite
+            .map_or(Value::Null, |v| Value::Integer(i64::from(v))),
         like_pattern(f.q.as_deref()).map_or(Value::Null, Value::Text),
         Value::Integer(i64::from(f.weak_only)),
         Value::Integer(i64::from(f.cert_issues_only)),
@@ -575,9 +594,9 @@ pub struct TlsStatsRows {
     pub certificates: u64,
     /// `(negotiated version or NULL, count)`, most frequent first.
     pub versions: Vec<(Option<u16>, u64)>,
-    /// Negotiated suites, most frequent first (sessions without ServerHello excluded).
+    /// Negotiated suites, most frequent first (sessions without `ServerHello` excluded).
     pub suites: Vec<SuiteCount>,
-    /// `(version, suite, count)` for every pair (sessions without ServerHello excluded).
+    /// `(version, suite, count)` for every pair (sessions without `ServerHello` excluded).
     pub pairs: Vec<(Option<u16>, u16, u64)>,
     /// `(sni, count)`, most frequent first, at most `top` rows.
     pub sni: Vec<(String, u64)>,

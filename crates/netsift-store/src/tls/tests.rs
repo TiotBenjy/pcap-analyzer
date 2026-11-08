@@ -134,7 +134,10 @@ fn sessions_pages_filters_and_details() {
     assert_eq!(p2.items.iter().map(|s| s.id).collect::<Vec<_>>(), vec![1]);
     assert_eq!(p2.next_cursor, None);
     let first = &p2.items[0];
-    assert_eq!(first.leaf_subject_cn.as_deref(), Some("shared.example.test"));
+    assert_eq!(
+        first.leaf_subject_cn.as_deref(),
+        Some("shared.example.test")
+    );
     assert_eq!(first.alpn_offered, vec!["h2", "http/1.1"]);
     assert_eq!(first.cert_count, 1);
 
@@ -156,16 +159,31 @@ fn sessions_pages_filters_and_details() {
     assert_eq!(only(f(Some(0x0303), None, None, false, false)), vec![2]);
     assert_eq!(only(f(None, Some(0x1301), None, false, false)), vec![1]);
     assert_eq!(only(f(None, None, Some("HOST3"), false, false)), vec![3]);
-    assert_eq!(only(f(None, None, Some("198.51"), false, false)), vec![1, 2, 3]);
-    assert_eq!(only(f(None, None, Some("%"), false, false)), Vec::<i64>::new());
+    assert_eq!(
+        only(f(None, None, Some("198.51"), false, false)),
+        vec![1, 2, 3]
+    );
+    assert_eq!(
+        only(f(None, None, Some("%"), false, false)),
+        Vec::<i64>::new()
+    );
     assert_eq!(only(f(None, None, None, true, false)), vec![2]);
     assert_eq!(only(f(None, None, None, false, true)), vec![2]);
-    assert_eq!(count_sessions(&conn, &f(None, None, None, true, false)).unwrap(), 1);
+    assert_eq!(
+        count_sessions(&conn, &f(None, None, None, true, false)).unwrap(),
+        1
+    );
 
     let d = session_detail(&conn, 2).unwrap().unwrap();
     assert_eq!(d.certificates.len(), 2);
-    assert_eq!(d.certificates[0].subject_cn.as_deref(), Some("old.example.test"));
-    assert_eq!(d.client_hello.unwrap().cipher_suites, vec![0x0a0a, 0x1301, 0x000a]);
+    assert_eq!(
+        d.certificates[0].subject_cn.as_deref(),
+        Some("old.example.test")
+    );
+    assert_eq!(
+        d.client_hello.unwrap().cipher_suites,
+        vec![0x0a0a, 0x1301, 0x000a]
+    );
     assert_eq!(d.server_hello.unwrap().selected_version, Some(0x0303));
     assert_eq!(
         d.cipher_names.iter().map(|c| c.id).collect::<Vec<_>>(),
@@ -292,7 +310,13 @@ fn blob_paths_are_validated() {
         blob_relpath(&hex).unwrap(),
         std::path::Path::new("ab").join(&hex)
     );
-    for bad in ["", "../etc", &"AB".repeat(32), &"ab".repeat(31), &format!("{}/x", "a".repeat(62))] {
+    for bad in [
+        "",
+        "../etc",
+        &"AB".repeat(32),
+        &"ab".repeat(31),
+        &format!("{}/x", "a".repeat(62)),
+    ] {
         assert!(blob_relpath(bad).is_none(), "{bad}");
     }
 }

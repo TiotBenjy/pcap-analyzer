@@ -216,6 +216,10 @@ Suivis de la vague 3.A :
   375 px) ; `Endpoint` local à migrer vers le composant commun ; DTLS et STARTTLS non traités, une session
   TLS par flux ; P4.2 : filtres SQL `?n IS NULL OR col = ?n` qui neutralisent les index (aussi HTTP),
   recherche `LIKE` et `count(*)` filtré ; blobs sans fsync ni balayage des `.tmp` laissés par un crash.
+- [x] `fix/session-migrate-on-open` (fusionnée le 2026-11-08, ADR-013) : migrations appliquées à l'ouverture
+  des sessions `ready`/`incomplete`. Reste : vues Connections/Open Ports vides au lieu de « non analysé »
+  sur une session migrée, messages d'erreur génériques hors Overview, `SessionGate` laisse passer une
+  session trop récente, `Stats::read` avale les erreurs.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).

@@ -10,16 +10,42 @@ import { fileURLToPath } from 'node:url';
 //   4. every [data-testid="truncatable"] element has a title
 // Select views with SHOT_VIEW=<name>|all.
 
-/** Views covered by the visual tests. Add a line when a view is implemented. */
-const VIEWS: Record<string, string> = {
+/**
+ * Views covered by the visual tests. Add a line when a view is implemented. Session views resolve
+ * their path at run time, on the demo session created by `netsift demo-session`.
+ */
+const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
-  overview: '/overview',
+  overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   settings: '/settings',
+  sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
 };
+
+/** Placeholder id when no session exists: the session views then render their error or not-found state. */
+const NO_SESSION = '00000000000000000000000000';
+
+/**
+ * Demo session used by the session views: the ready session with the most anomalies, then the
+ * most chunks (best coverage timeline). Read through the `vite preview` proxy, which adds the token.
+ */
+async function demoSessionId(page: Page): Promise<string> {
+  const res = await page.request.get('/api/v1/sessions?limit=1000');
+  if (!res.ok()) return NO_SESSION;
+  const body = (await res.json()) as { items?: { id: string; state: string; anomaly_count: number; chunk_count: number }[] };
+  const ranked = [...(body.items ?? [])].sort(
+    (a, b) =>
+      Number(b.state === 'ready') - Number(a.state === 'ready') ||
+      b.anomaly_count - a.anomaly_count ||
+      b.chunk_count - a.chunk_count,
+  );
+  return ranked[0]?.id ?? NO_SESSION;
+}
 
 const WIDTHS = [375, 768, 1280, 1920] as const;
 const THEMES = ['light', 'dark'] as const;
 const HEIGHT = 900;
+/** Upper bound of a capture height (very long views are cut there). */
+const MAX_SHOT_HEIGHT = 6000;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(here, '../../../.artifacts/screens');
@@ -89,7 +115,7 @@ test.beforeAll(() => {
   mkdirSync(OUT_DIR, { recursive: true });
 });
 
-for (const [view, path] of views) {
+for (const [view, target] of views) {
   for (const theme of THEMES) {
     for (const width of WIDTHS) {
       test(`${view} ${width}px ${theme}`, async ({ page }) => {
@@ -105,6 +131,7 @@ for (const [view, path] of views) {
         await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
         await page.setViewportSize({ width, height: HEIGHT });
 
+        const path = typeof target === 'string' ? target : await target(page);
         await page.goto(`/#${path}`);
         await page.locator('#main h1').first().waitFor();
         await page.waitForLoadState('networkidle');
@@ -112,20 +139,69 @@ for (const [view, path] of views) {
 
         await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /\bdark\b/ : /^(?!.*\bdark\b)/);
 
+        // With the demo sessions, the data views must show data, not an empty or error state.
+        if (view === 'captures' && (await demoSessionId(page)) !== NO_SESSION) {
+          await expect(
+            page.getByRole('table', { name: 'Sessions' }).or(page.getByRole('list', { name: 'Sessions' })),
+          ).toBeVisible();
+        }
+        if (view === 'sources' && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('img', { name: /^Coverage timeline/ })).toBeVisible();
+          await expect(page.getByRole('table', { name: 'Chunks of the session' })).toBeVisible();
+        }
+
         if (view === 'settings') {
           // /server-info is authenticated: "Read-only" proves the proxy injects a valid token.
           await expect(page.getByTestId('backend-status')).toContainText('Connected');
           await expect(page.getByTestId('server-mode')).toHaveText('Read-only');
         }
 
-        await page.screenshot({ path: `${OUT_DIR}/${view}-${width}-${theme}.png`, fullPage: true });
+        const check = async (when: string) => {
+          const r = await inspectLayout(page);
+          expect(r.pageOverflow, `horizontal page overflow (${when})`).toBeNull();
+          expect(r.mainOverflow, `horizontal overflow in the main column (${when})`).toBeNull();
+          expect(r.overlaps, `overlapping chart labels (${when})`).toEqual([]);
+          expect(r.outside, `chart labels outside their SVG (${when})`).toEqual([]);
+          expect(r.untitled, `truncatable elements without title (${when})`).toEqual([]);
+        };
+        await check(`${HEIGHT}px high`);
 
-        const r = await inspectLayout(page);
-        expect(r.pageOverflow, 'horizontal page overflow').toBeNull();
-        expect(r.mainOverflow, 'horizontal overflow in the main column').toBeNull();
-        expect(r.overlaps, 'overlapping chart labels').toEqual([]);
-        expect(r.outside, 'chart labels outside their SVG').toEqual([]);
-        expect(r.untitled, 'truncatable elements without title').toEqual([]);
+        // `#main` scrolls, not the page, so `fullPage` alone would only capture the first screen:
+        // grow the viewport to the content height (same width, same layout) before the capture.
+        const contentHeight = await page.evaluate(() => {
+          const main = document.getElementById('main');
+          return main === null ? 0 : Math.ceil(main.getBoundingClientRect().top + main.scrollHeight);
+        });
+        if (contentHeight > HEIGHT) {
+          await page.setViewportSize({ width, height: Math.min(contentHeight, MAX_SHOT_HEIGHT) });
+          await page.waitForTimeout(100); // ResizeObserver-driven layouts (timeline) settle
+        }
+
+        // Key data must be visible in the capture, not clipped by an internal scroll.
+        const hidden = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-shot-visible]')]
+            .filter((el) => {
+              const r = el.getBoundingClientRect();
+              if (r.width === 0 || r.right > window.innerWidth || r.bottom > window.innerHeight) return true;
+              const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+              return hit === null || !el.contains(hit);
+            })
+            .map((el) => el.getAttribute('data-shot-visible')),
+        );
+        expect(hidden, 'key elements hidden or clipped in the capture').toEqual([]);
+        if (view === 'sources' && !path.includes(NO_SESSION)) {
+          await expect(page.getByRole('heading', { name: 'Anomalies' })).toBeInViewport();
+          // From 1280 px, every chunk column fits: no hidden internal horizontal scroll.
+          if (width >= 1280) {
+            await expect(page.getByRole('columnheader', { name: 'Format' })).toBeInViewport({ ratio: 1 });
+          }
+        }
+        if (view === 'captures' && width >= 1280 && (await demoSessionId(page)) !== NO_SESSION) {
+          await expect(page.getByRole('columnheader', { name: 'Actions' })).toBeInViewport({ ratio: 1 });
+        }
+
+        await page.screenshot({ path: `${OUT_DIR}/${view}-${width}-${theme}.png`, fullPage: true });
+        await check('full height');
       });
     }
   }

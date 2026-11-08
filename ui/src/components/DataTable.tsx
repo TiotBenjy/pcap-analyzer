@@ -1,6 +1,7 @@
 import {
   type ColumnDef,
   flexRender,
+  type RowData,
   getCoreRowModel,
   getSortedRowModel,
   type SortingState,
@@ -12,6 +13,14 @@ import { type KeyboardEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/cn';
 import { EmptyState } from './EmptyState';
+
+declare module '@tanstack/react-table' {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature imposed by TanStack
+  interface ColumnMeta<TData extends RowData, TValue> {
+    /** `right` for numeric columns (header and cells). */
+    align?: 'left' | 'right';
+  }
+}
 
 /** Above this many rows the body is virtualized (docs/UI_GUIDELINES.md). */
 export const VIRTUALIZE_THRESHOLD = 200;
@@ -94,19 +103,23 @@ export function DataTable<T>({
             <tr key={hg.id}>
               {hg.headers.map((header) => {
                 const sorted = header.column.getIsSorted();
+                const right = header.column.columnDef.meta?.align === 'right';
                 return (
                   <th
                     key={header.id}
                     scope="col"
                     style={{ width: header.getSize() }}
                     aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'}
-                    className="relative h-8 border-b border-line px-3 text-left text-meta font-medium text-muted select-none"
+                    className={cn(
+                      'relative h-8 border-b border-line px-3 text-meta font-medium text-muted select-none',
+                      right ? 'text-right' : 'text-left',
+                    )}
                   >
                     {header.isPlaceholder ? null : header.column.getCanSort() ? (
                       <button
                         type="button"
                         onClick={header.column.getToggleSortingHandler()}
-                        className="inline-flex max-w-full items-center gap-1 hover:text-fg"
+                        className={cn('inline-flex max-w-full items-center gap-1 hover:text-fg', right && 'flex-row-reverse')}
                       >
                         <span className="truncate">{flexRender(header.column.columnDef.header, header.getContext())}</span>
                         {sorted === 'asc' && <ArrowUp aria-hidden size={14} strokeWidth={1.75} />}
@@ -163,7 +176,10 @@ export function DataTable<T>({
               )}
             >
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className="truncate px-3">
+                <td
+                  key={cell.id}
+                  className={cn('truncate px-3', cell.column.columnDef.meta?.align === 'right' && 'text-right')}
+                >
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}

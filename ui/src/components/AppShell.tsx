@@ -2,10 +2,12 @@ import { Outlet, useRouterState } from '@tanstack/react-router';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ImportHost } from '../app/ImportHost';
 import { findNavItem } from '../app/nav';
 import { readPref, writePref } from '../lib/storage';
 import { useTheme } from '../theme/theme';
 import { Button } from './Button';
+import { ImportIndicator } from './ImportIndicator';
 import { Sidebar } from './Sidebar';
 
 const COLLAPSED_KEY = 'netsift.sidebar.collapsed';
@@ -137,7 +139,8 @@ export function AppShell() {
           <span className="min-w-0 truncate font-medium lg:hidden">
             {current === undefined ? t('app.name') : t(`nav.items.${current.id}`)}
           </span>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex min-w-0 items-center gap-1">
+            <ImportIndicator />
             <Button
               variant="ghost"
               icon
@@ -162,6 +165,7 @@ export function AppShell() {
           </div>
         </main>
       </div>
+      <ImportHost />
     </div>
   );
 }

@@ -52,8 +52,8 @@ export function buildPortsOption(stats: OpenPortStats, format: PortsFormat): ECh
         data: stats.top.map((p) => p.hosts),
         itemStyle: { color: CATEGORICAL[0], borderRadius: [0, 3, 3, 0] },
         barMaxWidth: 18,
-        // Text color of the theme, without the outline ECharts adds to bar labels.
-        label: { show: true, position: 'right', fontSize: 12, textBorderWidth: 0 },
+        // Color and outline come from the chart theme (`seriesLabel`, EChartsRenderer).
+        label: { show: true, position: 'right', fontSize: 12 },
       },
     ],
   };

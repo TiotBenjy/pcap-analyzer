@@ -136,13 +136,13 @@ Suivis de la vague 2.A :
 - [x] P2.1 : anomalies publiées pendant l'import et id de session fourni par `Progress`
   (`feat/engine-live-progress`, fusionnée le 2026-11-08 ; trous et chevauchements restent publiés en fin
   de lecture, `analyzer_panicked` seulement en base).
-- Outillage, hygiène du cache (après fusion de P4.6, qui touche `x.sh` et `wt.sh`) : chaque worktree a
-  son `/cache/target/<slug>` jamais supprimé (~100 Go d'orphelins purgés à la main le 2026-11-08).
-  `wt.sh merge --cleanup` / `wt.sh rm` suppriment le target du worktree ; `./x.sh clean` purge les targets
-  orphelins (marqueur du chemin d'origine dans chaque target) et les images dangling ; plafond sccache.
-- Tests UI de P2.3 (CapturesView, SourcesView, ImportWizard, routes) : dépassent le délai de 1 s quand
-  plusieurs gates tournent en parallèle, ce qui fait échouer `wt.sh merge` au hasard ; fiabiliser (délais,
-  `findBy*` plutôt qu'attentes fixes, ou `testTimeout` UI relevé).
+- [x] Outillage, hygiène du cache (`chore/cache-hygiene`, fusionnée le 2026-11-08) : `./x.sh clean`,
+  nettoyage automatique dans `wt.sh`, sccache à 5 GiB, dépendances sans debuginfo en dev (-37 %).
+  Reste : `x.ps1` sans `.origin` ni `clean` (les targets grossissent sous Windows).
+- [x] Tests UI instables (`test/ui-flaky`, fusionnée le 2026-11-08) : préchargement des routes, user-event
+  sans délai, délais 5 s / 20 s, 4 workers ; 6/6 sous charge ~100. Reste : au-delà d'une charge ~150-200 des
+  dépassements restent possibles ; un Vitest s'est bloqué indéfiniment sous charge sur l'ancien main
+  (soupçon : `src/test/freezePrototype.test.ts`) -> borner la durée du gate UI et vérifier ce test.
 - P2.1 : `fs/browse` et inventaire : traiter explicitement les liens symboliques qui sortent de la racine
   autorisée ; mesurer le coût de `GET /sessions?limit=1000` sur un gros catalogue.
 - P2.5 : `ApiConfig::max_imports` et `allow_any_path: true` à renseigner dans `apps/desktop`.

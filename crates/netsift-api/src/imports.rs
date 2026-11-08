@@ -764,6 +764,30 @@ mod tests {
     }
 
     #[test]
+    fn published_warnings_are_bounded() {
+        let handle = ImportHandle {
+            cancel: CancelToken::new(),
+            status: watch::Sender::new(Status::default()),
+            order: 0,
+        };
+        let row = AnomalyRow {
+            kind: "time_gap".to_owned(),
+            chunk_id: Some(1),
+            ts: Some(5_000),
+            detail: serde_json::json!({ "gap_ns": 7_000 }),
+        };
+        // 250 rows over two callbacks: the first 200 are kept.
+        handle.publish(None, &vec![row.clone(); 150]);
+        handle.publish(None, &vec![row; 100]);
+        let status = handle.status.borrow();
+        assert_eq!(status.warnings.len(), MAX_WARNINGS);
+        let first = &status.warnings[0];
+        assert_eq!((first.id.clone(), first.ts_us), (None, Some(5)));
+        assert_eq!(first.detail["gap_us"], 7);
+        assert!(status.progress.is_none() && status.last.is_none());
+    }
+
+    #[test]
     fn skip_reasons() {
         assert_eq!(skip_reason(0, true), "empty");
         assert_eq!(skip_reason(5, false), "unreadable");

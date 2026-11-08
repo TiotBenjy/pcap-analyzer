@@ -73,6 +73,14 @@ function AboutCard() {
             </dd>
           </>
         )}
+        {/* CC BY 4.0 attribution of the country database. Plain text: the application never
+            opens external URLs. Whether the database is installed is not exposed by the API yet. */}
+        <dt className="self-start text-muted">{t('views.settings.geoip.label')}</dt>
+        <dd className="flex min-w-0 flex-col gap-0.5" data-testid="geoip-attribution">
+          <span className="break-words">{t('views.settings.geoip.attribution')}</span>
+          <span className="break-all text-muted">{t('views.settings.geoip.source')}</span>
+          <span className="break-words text-muted">{t('views.settings.geoip.license')}</span>
+        </dd>
       </dl>
     </Card>
   );

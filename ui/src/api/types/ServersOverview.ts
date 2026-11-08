@@ -12,8 +12,4 @@ analyzed: boolean,
 /**
  * Every role (or the requested one), in display order.
  */
-roles: Array<RoleServers>, 
-/**
- * The evidence of a very large session was cut: totals are lower bounds.
- */
-truncated: boolean, };
+roles: Array<RoleServers>, };

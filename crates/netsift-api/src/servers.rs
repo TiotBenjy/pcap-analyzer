@@ -6,11 +6,12 @@
 //!
 //! Roles are derived at read time (`netsift_store::servers`, ADR-017). Every role is listed, in
 //! a fixed order, even without server; `limit` bounds the servers listed per role (strongest
-//! evidence first), `total` gives how many there are. A session upgraded after its import is not
+//! evidence first, bounded per role in SQL after the category filter), `total` gives how many
+//! there are. A session upgraded after its import is not
 //! analyzed (`analyzed: false`, no server), ADR-013. Like the other views: 404 for an unknown
 //! session, 409 while importing or failed.
 
-use std::collections::BTreeMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -18,7 +19,7 @@ use std::sync::Arc;
 use axum::extract::{Path as UrlPath, State};
 use axum::routing::get;
 use axum::{Json, Router};
-use netsift_store::servers::{self as store, EvidenceEntry};
+use netsift_store::servers::{self as store, RoleEvidence};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -37,7 +38,7 @@ pub(crate) fn routes() -> Router<Arc<AppState>> {
 }
 
 /// Infrastructure role of a host, in display order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
 pub enum ServerRole {
@@ -180,8 +181,6 @@ pub struct ServersOverview {
     pub analyzed: bool,
     /// Every role (or the requested one), in display order.
     pub roles: Vec<RoleServers>,
-    /// The evidence of a very large session was cut: totals are lower bounds.
-    pub truncated: bool,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -202,15 +201,19 @@ fn category_label(ip: IpAddr, stored: Option<&str>) -> &'static str {
         .as_str()
 }
 
-/// Groups evidence rows by role and server; applies the category filter and the limit.
+/// Groups evidence rows (in the order of the store: role, server rank, evidence count) by role
+/// and server. Rows of servers without a stored category are filtered here from their address;
+/// such a dropped server also leaves the total of its role.
 pub(crate) fn group(
-    entries: Vec<EvidenceEntry>,
+    found: RoleEvidence,
     roles: &[ServerRole],
     categories: Option<&[String]>,
     limit: usize,
 ) -> Vec<RoleServers> {
-    let mut by_role: BTreeMap<ServerRole, BTreeMap<IpAddr, RoleServer>> = BTreeMap::new();
-    for e in entries {
+    let mut by_role: HashMap<ServerRole, (Vec<RoleServer>, HashMap<IpAddr, usize>)> =
+        HashMap::new();
+    let mut dropped: HashMap<ServerRole, HashSet<IpAddr>> = HashMap::new();
+    for e in found.entries {
         let (Some(role), Some(kind)) = (ServerRole::parse(&e.role), EvidenceKind::parse(&e.kind))
         else {
             continue;
@@ -221,6 +224,7 @@ pub(crate) fn group(
         if let Some(allowed) = categories {
             let label = category_label(e.ip, e.host.category.as_deref());
             if !allowed.iter().any(|c| c == label) {
+                dropped.entry(role).or_default().insert(e.ip);
                 continue;
             }
         }
@@ -232,36 +236,44 @@ pub(crate) fn group(
             last_ts_us: convert::us(e.last_ts),
             example: e.example,
         };
-        let server = by_role
-            .entry(role)
-            .or_default()
-            .entry(e.ip)
-            .or_insert_with(|| RoleServer {
+        let (servers, index) = by_role.entry(role).or_default();
+        let at = *index.entry(e.ip).or_insert_with(|| {
+            servers.push(RoleServer {
                 endpoint: Endpoint::new(e.ip, e.host),
                 count: 0,
                 first_ts_us: evidence.first_ts_us,
                 last_ts_us: evidence.last_ts_us,
                 evidence: Vec::new(),
             });
-        server.count = server.count.saturating_add(evidence.count);
-        server.first_ts_us = server.first_ts_us.min(evidence.first_ts_us);
-        server.last_ts_us = server.last_ts_us.max(evidence.last_ts_us);
-        server.evidence.push(evidence);
+            servers.len() - 1
+        });
+        if let Some(server) = servers.get_mut(at) {
+            server.count = server.count.saturating_add(evidence.count);
+            server.first_ts_us = server.first_ts_us.min(evidence.first_ts_us);
+            server.last_ts_us = server.last_ts_us.max(evidence.last_ts_us);
+            server.evidence.push(evidence);
+        }
     }
+    let totals: HashMap<ServerRole, u64> = found
+        .totals
+        .iter()
+        .filter_map(|(r, n)| ServerRole::parse(r).map(|r| (r, *n)))
+        .collect();
     roles
         .iter()
         .map(|role| {
-            let mut servers: Vec<RoleServer> = by_role
-                .remove(role)
-                .map(|m| m.into_values().collect())
-                .unwrap_or_default();
+            let mut servers = by_role.remove(role).map(|(s, _)| s).unwrap_or_default();
             for s in &mut servers {
                 s.evidence
                     .sort_by(|a, b| b.count.cmp(&a.count).then(a.kind.cmp(&b.kind)));
             }
-            // Stable sort: equal counts keep the address order of the map.
+            // Stable: equal counts keep the rank order of the store.
             servers.sort_by_key(|s| std::cmp::Reverse(s.count));
-            let total = servers.len() as u64;
+            let dropped = dropped.get(role).map_or(0, |d| d.len() as u64);
+            let total = totals
+                .get(role)
+                .map_or(servers.len() as u64, |n| n.saturating_sub(dropped))
+                .max(servers.len() as u64);
             servers.truncate(limit);
             RoleServers {
                 role: *role,
@@ -293,19 +305,22 @@ async fn list(
         if !store::analyzed(conn)? {
             return Ok(ServersOverview {
                 analyzed: false,
-                roles: group(Vec::new(), &roles, None, limit),
-                truncated: false,
+                roles: group(RoleEvidence::default(), &roles, None, limit),
             });
         }
         let role = match roles.as_slice() {
             [only] => Some(only.as_str()),
             _ => None,
         };
-        let (entries, truncated) = store::evidence(conn, role)?;
+        let q = store::EvidenceQuery {
+            role,
+            categories: categories.as_deref(),
+            limit: u32::try_from(limit).unwrap_or(MAX_LIMIT),
+        };
+        let found = store::evidence(conn, &q)?;
         Ok(ServersOverview {
             analyzed: true,
-            roles: group(entries, &roles, categories.as_deref(), limit),
-            truncated,
+            roles: group(found, &roles, categories.as_deref(), limit),
         })
     })
     .await

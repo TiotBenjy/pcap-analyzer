@@ -493,3 +493,39 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - les tables lues par la vue ne peuvent plus être renommées sans recréer la vue (SQLite réécrit les vues
     lors d'un `ALTER TABLE ... RENAME`) ; une migration qui supprime une de ces tables doit aussi supprimer
     ou recréer la vue.
+
+## ADR-018 — Graphe Network : agrégation bornée à la lecture, disposition en Web Worker
+
+- Contexte : P3.9. Une session peut compter des milliers d'hôtes ; sigma.js (WebGL) reste fluide jusqu'à
+  quelques milliers de nœuds, mais le graphe devient illisible bien avant (défaut principal de la
+  référence) ; la disposition ForceAtlas2 bloque le fil principal si elle y tourne ; la CSP desktop
+  (`script-src 'self'`, ADR-006) et le prototype gelé de Tauri contraignent les dépendances.
+- Décision :
+  - **aucune table** : le graphe est replié à la lecture depuis `conversations` (une ligne par paire
+    client/serveur, bien plus petite que `flows`), `hosts`, `host_traffic` et `open_ports`
+    (`netsift_store::network`) ; chaque requête est un parcours de `conversations` avec les hôtes lus par
+    clé primaire. La plage `0900_network.sql` reste libre ;
+  - **bornes serveur** : en mode hôtes, les `limit` hôtes les plus volumineux (40 par défaut, 10 à 150)
+    ont leur nœud, les autres hôtes publics géolocalisés forment un nœud par pays (15 au plus, les plus
+    gros), tout le reste un nœud « autres » ; un pays déplié (`expand`) ajoute au plus 30 de ses hôtes.
+    En mode pays : un nœud par pays, plus « LAN et local » et « pays inconnu ». Au plus 400 arêtes non
+    orientées, les plus volumineuses ; les orphelins (hôtes sans trafic retenu par les filtres) sont
+    comptés, et 30 au plus sont listés sur demande ;
+  - **filtre protocole** : une conversation est retenue si elle porte une étiquette d'un des groupes
+    choisis (DNS, HTTP, HTTPS = `tls`, SSH, FTP, Telnet, RDP, SMB = `smb` + `netbios`, TCP, UDP,
+    Autres) ; ses octets comptent en entier, `conversations` ne les ventilant pas par protocole ;
+  - **disposition** : ForceAtlas2 de `graphology-layout-forceatlas2`, itérations fixes (150 à 600 selon
+    la taille), départ déterministe (cercle par rang), puis figée. Elle tourne dans un worker module
+    servi par l'origine de l'application (`new Worker(new URL('./layout.worker.ts', import.meta.url))`),
+    pas dans le worker `blob:` fourni par la bibliothèque, que `script-src 'self'` refuse ; repli sur le
+    fil principal si le worker manque ou échoue (graphe borné, coût de quelques dizaines de ms) ;
+  - **repli sans WebGL** : la vue teste un contexte WebGL ; sans lui (webview sans accélération), et
+    sous 768 px, elle liste les liens classés par octets au lieu d'un canevas vide ;
+  - sigma reste en 3.0.2 (`docs/STACK_VERSIONS.md`) ; la 4.0, publiée fin octobre 2026, change d'API et
+    fera l'objet d'une montée de version dédiée. Les nœuds sont des disques colorés par catégorie
+    d'adresse : la forme par catégorie (`NodeShape` de la palette) demande des programmes WebGL
+    sigma dédiés, reportés.
+- Conséquences : temps de réponse proportionnel au nombre de conversations (trois à quatre parcours par
+  requête : nœuds, arêtes, orphelins, compteurs de protocoles), à mesurer en P4.2 ; une
+  matérialisation (`0900_network.sql`) ne se justifierait qu'au-delà de la cible de 300 ms. Le rôle
+  « serveur » d'un nœud (`role`, P3.8) est prévu dans le contrat et reste `null` d'ici là.

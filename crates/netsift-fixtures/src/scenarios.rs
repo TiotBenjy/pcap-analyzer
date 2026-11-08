@@ -6,7 +6,10 @@ use std::net::Ipv6Addr;
 use crate::packet::{Host, Packet};
 use crate::proto::dns::DnsType;
 use crate::proto::netbios::{self, HostAnnouncement, NetbiosName};
-use crate::scenario::{DnsExchange, FtpLogin, HttpGet, Scenario, SnmpGet, TlsHandshake};
+use crate::proto::x509::{CertSpec, certificate};
+use crate::scenario::{
+    DnsExchange, FtpLogin, HttpGet, Scenario, SnmpGet, TcpOptions, TlsAlert, TlsHandshake,
+};
 use crate::time::{NS_PER_MS, NS_PER_SEC};
 
 /// Hosts used by the built-in scenarios.
@@ -333,4 +336,108 @@ pub fn fragmentation() -> (Scenario, Vec<FragmentedDatagram>) {
         });
     }
     (sc, expected)
+}
+
+/// 2020-01-01T00:00:00Z: end of validity of the expired certificate of [`tls_showcase`].
+pub const EXPIRED_NOT_AFTER: i64 = 1_577_836_800;
+
+/// Varied TLS sessions (TLS 1.0 to 1.3, weak suites, certificate chain issued by a CA,
+/// expired self-signed certificate, alerts, unanswered hello, non-standard port), one after the
+/// other. Client ports are fixed (`40_000 + n`, below the ephemeral range) so that the sessions
+/// can be merged into another scenario without 5-tuple collisions.
+pub fn tls_showcase(sc: &mut Scenario) {
+    let ws = hosts::workstation();
+    let tcp = |n: u16, port: u16| TcpOptions {
+        client_port: Some(40_000 + n),
+        ..TcpOptions::new(port)
+    };
+
+    // TLS 1.3, AES-128-GCM and AES-256-GCM.
+    let mut hs = TlsHandshake::tls13("www.example.test");
+    hs.tcp = tcp(1, 443);
+    sc.tls_handshake(ws, hosts::tls_server(), &hs);
+    sc.advance(EXCHANGE_GAP_NS);
+    let mut hs = TlsHandshake::tls13("api.example.test");
+    hs.selected_suite = 0x1302;
+    hs.tcp = tcp(2, 443);
+    sc.tls_handshake(ws, hosts::web_server(), &hs);
+    sc.advance(EXCHANGE_GAP_NS);
+
+    // TLS 1.2, ECDHE-RSA, chain leaf + CA.
+    let mut leaf = CertSpec::new("shop.example.test");
+    leaf.issuer = Some("NetSift Test CA".to_owned());
+    leaf.serial = 0x2002;
+    let mut ca = CertSpec::new("NetSift Test CA");
+    ca.ca = true;
+    ca.dns_names.clear();
+    ca.serial = 0x0ca1;
+    let mut hs = TlsHandshake::new("shop.example.test");
+    hs.selected_suite = crate::proto::tls::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256;
+    hs.alpn = vec!["http/1.1".to_owned()];
+    hs.selected_alpn = Some("http/1.1".to_owned());
+    hs.certificate_chain = vec![certificate(&leaf), certificate(&ca)];
+    hs.server_key_exchange = true;
+    hs.complete = true;
+    hs.tcp = tcp(3, 443);
+    sc.tls_handshake(ws, hosts::web_server(), &hs);
+    sc.advance(EXCHANGE_GAP_NS);
+
+    // TLS 1.2, CBC-SHA1 suite, expired self-signed certificate rejected by the client.
+    let mut old = CertSpec::new("legacy.example.test");
+    old.not_before = 1_262_304_000; // 2010-01-01
+    old.not_after = EXPIRED_NOT_AFTER;
+    old.serial = 0x0bad;
+    let mut hs = TlsHandshake::new("legacy.example.test");
+    hs.alpn.clear();
+    hs.selected_alpn = None;
+    hs.cipher_suites = vec![0x002f, 0x0035, 0x000a];
+    hs.selected_suite = 0x002f;
+    hs.certificate_chain = vec![certificate(&old)];
+    hs.alert = Some(TlsAlert {
+        level: 2,
+        description: 42,
+        from_server: false,
+    });
+    hs.tcp = tcp(4, 443);
+    sc.tls_handshake(ws, hosts::tls_server(), &hs);
+    sc.advance(EXCHANGE_GAP_NS);
+
+    // TLS 1.0, 3DES, LAN server on a non-standard port.
+    let mut hs = TlsHandshake::new("printer.example.test");
+    hs.alpn.clear();
+    hs.selected_alpn = None;
+    hs.client_version = 0x0301;
+    hs.server_version = 0x0301;
+    hs.cipher_suites = vec![0x000a, 0x0005, 0x002f];
+    hs.selected_suite = 0x000a;
+    hs.complete = true;
+    hs.tcp = tcp(5, 4443);
+    sc.tls_handshake(ws, hosts::file_server(), &hs);
+    sc.advance(EXCHANGE_GAP_NS);
+
+    // TLS 1.2, RC4.
+    let mut hs = TlsHandshake::new("intranet.example.test");
+    hs.cipher_suites = vec![0x0005, 0xc02f];
+    hs.selected_suite = 0x0005;
+    hs.selected_alpn = Some("http/1.1".to_owned());
+    hs.complete = true;
+    hs.tcp = tcp(6, 8443);
+    sc.tls_handshake(ws, hosts::file_server(), &hs);
+    sc.advance(EXCHANGE_GAP_NS);
+
+    // Unanswered ClientHello, then a server refusing the handshake.
+    let mut hs = TlsHandshake::tls13("blocked.example.test");
+    hs.respond = false;
+    hs.tcp = tcp(7, 443);
+    sc.tls_handshake(ws, hosts::tls_server(), &hs);
+    sc.advance(EXCHANGE_GAP_NS);
+    let mut hs = TlsHandshake::tls13("refused.example.test");
+    hs.respond = false;
+    hs.alert = Some(TlsAlert {
+        level: 2,
+        description: 40,
+        from_server: true,
+    });
+    hs.tcp = tcp(8, 443);
+    sc.tls_handshake(ws, hosts::web_server(), &hs);
 }

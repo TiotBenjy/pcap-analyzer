@@ -290,7 +290,7 @@ impl TlsAnalyzer {
         };
         match (from_server, kind) {
             (false, 1) if t.client_hello.is_none() => {
-                t.client_hello = hello::parse_client_hello(body)
+                t.client_hello = hello::parse_client_hello(body);
             }
             (true, 2) if t.server_hello.as_ref().is_none_or(|sh| sh.retry) => {
                 if let Some(sh) = hello::parse_server_hello(body) {

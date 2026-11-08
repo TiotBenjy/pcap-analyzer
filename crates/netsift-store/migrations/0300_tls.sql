@@ -93,7 +93,7 @@ CREATE TABLE tls_certificates (
     self_signed     INTEGER NOT NULL DEFAULT 0 CHECK (self_signed IN (0, 1)),
     is_ca           INTEGER NOT NULL DEFAULT 0 CHECK (is_ca IN (0, 1))
 ) WITHOUT ROWID;
-CREATE INDEX tls_certificates_subject_cn ON tls_certificates (coalesce(subject_cn, ''), sha256);
+CREATE INDEX tls_certificates_subject_cn ON tls_certificates (lower(coalesce(subject_cn, '')), sha256);
 CREATE INDEX tls_certificates_not_after ON tls_certificates (not_after);
 
 -- Certificate chain of each session, leaf first (position 0).

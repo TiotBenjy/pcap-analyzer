@@ -55,7 +55,8 @@ docs/                      cette documentation
 Dépendances autorisées entre crates (pas de cycle, pas de raccourci) :
 `dissect` <- `flow`, `analyze`; `flow` <- `analyze` <- `engine` (qui atteint `flow` et `dissect` via les
 réexports d'`analyze`); `capture` <- `engine`; `store` <- `engine`, `api`; `geo` <- `analyze`, `api`;
-`engine` + `store` <- `api` <- `cli`, `desktop`; `engine` + `store` <- `cli` (`netsift ingest`).
+`engine` + `store` <- `api` <- `cli`, `desktop`; `engine` + `store` <- `cli` (`netsift ingest`); `fixtures` <- `cli`
+uniquement derrière la feature `demo` (`netsift demo-session`, jamais dans les builds de release).
 `dissect` ne dépend d'aucune autre crate interne.
 
 ## Modèle d'exécution du pipeline

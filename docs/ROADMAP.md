@@ -190,7 +190,7 @@ Suivis de la vague 2.B :
 
 ### Vague 3.A (parallèle, indépendantes)
 
-- [~] **P3.1** `feat/dns` — DNS + mDNS + NBNS (+ LLMNR) : transactions, codes réponse, types. `specs/dns.md`.
+- [x] **P3.1** `feat/dns` — DNS + mDNS + NBNS (+ LLMNR) : transactions, codes réponse, types. `specs/dns.md`.
 - [x] **P3.2** `feat/http` — HTTP/1.x : transactions, en-têtes, corps bornés, décompression gzip/deflate/br,
       chunked ; vues HTTP et HTTP Headers. `specs/http.md`, `specs/http-headers.md`.
 - [x] **P3.3** `feat/tls` — TLS : ClientHello/ServerHello, versions, suites, SNI, ALPN, JA3/JA4 (client),
@@ -227,6 +227,12 @@ Suivis de la vague 3.A :
   `WHERE` dynamique (filtres sans index), coût des deux FTS5 trigram ; P4.1 : cible de fuzz HTTP.
   Piège i18n : passer `t` en paramètre d'un helper peut faire échouer `tsc` (type trop profond) quand le
   dictionnaire grossit : passer plutôt les libellés.
+- P3.1 (fusionnée le 2026-11-08, ADR-014 : étapes de fin d'import `SESSION_FINALIZERS`, rattrapées à
+  l'ouverture) : pas de phase « finalisation » dédiée dans `Progress` ; carte du monde non couverte par le
+  test de fumée desktop (pas de serveur localisé dans la démo, pas de GeoIP) ; Sankey optionnel non fait ;
+  P4.2 : coût de la finalisation sur une session très chargée en DNS (UPDATE de `pair_id`, reconstruction
+  trigram), percentiles de latence par OFFSET, `LIKE` des recherches courtes ; P4.1 : cible de fuzz DNS.
+  Connections affiche désormais les noms résolus (`hosts.names` alimenté par le finaliseur DNS).
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).

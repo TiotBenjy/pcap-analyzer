@@ -130,3 +130,19 @@ acceptée : la remplacer par une nouvelle qui la référence.
     publique du format (feature `test-util` de `netsift-geo`), sans données sous licence.
 - Conséquences : requêtes de filtrage par catégorie/pays en SQL pur (colonnes indexées) ; changer de base
   GeoIP n'affecte que les imports suivants ; ajouter une catégorie est un changement de contrat (UI, API).
+
+## ADR-010 — Routes liées à une session
+
+- Contexte : toutes les vues d'analyse (Overview, Sources, puis DNS, HTTP, ...) affichent une session ;
+  l'URL doit être partageable et le retour arrière fiable, sans état global implicite.
+- Décision :
+  - les vues d'analyse vivent sous `/sessions/$sessionId/<vue>`, enfants code-splittés d'une route
+    parente (`SessionLayout`) ; `/captures` et `/settings` restent hors session ;
+  - la dernière session ouverte est mémorisée (identifiant ULID seul, clé `netsift.session.last`) ;
+    la sidebar résout les entrées `scope: 'session'` vers la session de l'URL, sinon la dernière,
+    et les désactive s'il n'y en a aucune ;
+  - les chemins hérités (`/overview`, `/dns`, ...) redirigent vers la dernière session, sinon vers
+    `/captures` ; une session inconnue (404) affiche un état « introuvable » et est oubliée.
+- Conséquences : chaque nouvelle vue ajoute une ligne `NAV_ITEMS` avec `scope: 'session'` et une route
+  enfant de `sessionRoute` ; elle lit l'identifiant via `getRouteApi('/sessions/$sessionId/<vue>')` ;
+  ses filtres sont des paramètres de recherche sous ce chemin.

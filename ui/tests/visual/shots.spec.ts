@@ -20,6 +20,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   dns: async (page) => `/sessions/${await demoSessionId(page)}/dns`,
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
+  network: async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   pictures: async (page) => `/sessions/${await demoSessionId(page)}/pictures`,
@@ -187,6 +188,18 @@ for (const [view, target] of views) {
               ? page.getByRole('img', { name: /^Traffic between the \d+ main endpoints/ })
               : page.getByRole('list', { name: 'Pairs of endpoints ranked by bytes' }),
           ).toBeVisible();
+        }
+        if (view === 'network' && !path.includes(NO_SESSION)) {
+          await expect(page.getByTestId('network-summary')).toBeVisible();
+          if (width >= 768) {
+            // sigma (WebGL) draws the graph once the layout worker answered; without WebGL the
+            // links are listed, which the capture must make obvious.
+            const canvas = page.getByTestId('network-canvas');
+            await expect(canvas.or(page.getByText('WebGL is unavailable', { exact: false }))).toBeVisible();
+            if ((await canvas.count()) > 0) await expect(canvas).toHaveAttribute('data-ready', 'true');
+          } else {
+            await expect(page.getByRole('list', { name: 'Links ranked by bytes' })).toBeVisible();
+          }
         }
         if (view === 'open-ports' && !path.includes(NO_SESSION)) {
           await expect(page.getByRole('img', { name: /^Ports open on the most hosts/ })).toBeVisible();

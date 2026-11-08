@@ -8,7 +8,7 @@ interface EndpointProps {
   endpoint: EndpointInfo;
   /** Shows the first resolved name instead of the address when there is one. */
   showName?: boolean;
-  /** Optional port, appended as `ip:port` (`[ip]:port` for IPv6). */
+  /** Optional port, appended as `ip:port` (`[ip]:port` for IPv6), the port in grey. */
   port?: number;
   className?: string;
 }
@@ -25,7 +25,15 @@ export function Endpoint({ endpoint, showName = true, port, className }: Endpoin
     <span className={cn('inline-flex max-w-full min-w-0 items-center gap-1.5 align-middle', className)}>
       {endpoint.country !== null && <Flag country={endpoint.country} />}
       <span data-testid="truncatable" title={title} className={cn('truncate', name === undefined && 'font-mono')}>
-        {name ?? address}
+        {name ??
+          (port === undefined ? (
+            address
+          ) : (
+            <>
+              {address.slice(0, address.length - String(port).length - 1)}
+              <span className="text-faint">:{port}</span>
+            </>
+          ))}
       </span>
     </span>
   );

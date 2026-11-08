@@ -15,6 +15,7 @@ use netsift_flow::{FlowCtx, FlowId};
 use crate::classify::AppProto;
 use crate::connections::{ConversationDelta, HostTrafficDelta};
 use crate::geo::{AddressCategory, CountryCode};
+use crate::http::HttpTransaction;
 use crate::ports::OpenPortSeen;
 
 /// One record for the store. Not `Eq`: variants may carry floating-point values.
@@ -32,6 +33,8 @@ pub enum Record {
     Conversation(ConversationDelta),
     /// `connections`: traffic sent and received by one host (additive).
     HostTraffic(HostTrafficDelta),
+    /// An HTTP request and its response (`http` analyzer), boxed: much larger than the others.
+    Http(Box<HttpTransaction>),
     /// `ports`: a service seen answering (merged by host, transport and port).
     OpenPort(OpenPortSeen),
     /// One TLS session (`tls` analyzer).

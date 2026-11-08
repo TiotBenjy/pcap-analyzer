@@ -1,0 +1,9 @@
+---
+source: crates/netsift-engine/tests/http.rs
+expression: "expected.join(\"\\n\")"
+---
+4223190445238569362/0 GET www.example.test/ 200 text/html resp=5/5 complete headers=3
+4223190445238569362/1 GET www.example.test/data.json 200 application/json resp=8790/9035 complete headers=3
+4223190445238569362/2 POST www.example.test/form 204 - resp=0/0 none headers=2
+5567254070937813367/0 GET slow.example.test/never - - resp=0/- - headers=1
+5859487496406192752/0 GET www.example.test/images/logo.png 200 image/png resp=35317/35317 complete headers=7

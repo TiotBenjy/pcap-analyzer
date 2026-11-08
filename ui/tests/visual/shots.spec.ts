@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
+  http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
+  'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   settings: '/settings',
@@ -189,6 +191,22 @@ for (const [view, target] of views) {
           await expect(page.getByTestId('tls-summary')).toBeVisible();
           await expect(page.getByRole('img', { name: /^Negotiated TLS versions/ })).toBeVisible();
           await expect(page.getByRole('table', { name: 'TLS sessions' })).toBeVisible();
+        }
+        if ((view === 'http' || view === 'http-headers') && !path.includes(NO_SESSION)) {
+          const list = view === 'http' ? 'HTTP transactions' : 'HTTP transactions and their headers';
+          await expect(page.getByRole('img', { name: /^Transactions by request method/ })).toBeVisible();
+          await expect(page.getByRole('list', { name: list })).toBeVisible();
+          if (view === 'http-headers') {
+            // Search a session cookie: the expanded row then shows masked values and highlights.
+            const before = (await page.getByTestId('http-row-count').textContent()) ?? '';
+            await page.getByRole('searchbox').fill('session');
+            await expect(page.getByTestId('http-row-count')).not.toHaveText(before);
+            await page.waitForLoadState('networkidle');
+          }
+          // The first row expanded: details (and masked header values) are part of the review.
+          await page.getByRole('list', { name: list }).getByRole('button', { expanded: false }).first().click();
+          await expect(page.getByRole('table', { name: 'Request headers' }).first()).toBeVisible();
+          await page.waitForLoadState('networkidle');
         }
 
         if (view === 'settings') {

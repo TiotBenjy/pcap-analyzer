@@ -11,6 +11,7 @@
 pub mod catalog;
 pub mod connections;
 mod error;
+pub mod http;
 mod id;
 pub mod migrate;
 pub mod ports;

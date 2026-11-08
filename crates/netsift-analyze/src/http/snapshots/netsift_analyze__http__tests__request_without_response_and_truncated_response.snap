@@ -1,0 +1,16 @@
+---
+source: crates/netsift-analyze/src/http/tests.rs
+expression: render(&txs)
+---
+tx 0 192.168.1.10:49152 -> 203.0.113.80:80 host=Some("www.example.test") path=Some("/no-answer") query=None type=None
+  > GET /no-answer HTTP/1.1 at +0us
+    headers=["Host", "User-Agent"] head=80
+    body none wire=0 decoded=0 chunked=false encoding=None magic=None blob=false
+tx 0 192.168.1.10:49153 -> 203.0.113.80:80 host=Some("www.example.test") path=Some("/cut") query=None type=None
+  > GET /cut HTTP/1.1 at +5000us
+    headers=["Host", "User-Agent"] head=74
+    body none wire=0 decoded=0 chunked=false encoding=None magic=None blob=false
+  < HTTP/1.1 200 OK at +6000us
+    headers=["Server", "Content-Length"] head=55
+    body incomplete wire=2000 decoded=2000 chunked=false encoding=None magic=None blob=false
+    preview "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

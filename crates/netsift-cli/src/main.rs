@@ -1,5 +1,8 @@
 //! `netsift` command-line entry point.
 
+#[cfg(any(feature = "demo", test))]
+#[cfg_attr(not(feature = "demo"), allow(dead_code))]
+mod demo;
 mod ingest;
 
 use std::io::IsTerminal;
@@ -30,6 +33,9 @@ enum Command {
     Ingest(ingest::IngestArgs),
     /// Serve the HTTP API (used by `./x.sh dev`, screenshots, and for debugging with curl).
     Serve(ServeArgs),
+    /// Generate synthetic demo captures and import them (screenshots, previews).
+    #[cfg(feature = "demo")]
+    DemoSession(demo::DemoArgs),
 }
 
 #[derive(Debug, Args)]
@@ -99,6 +105,9 @@ async fn serve(args: ServeArgs) -> Result<()> {
         captures_roots: args.captures_roots,
         read_only: args.read_only,
         cors_origins: Vec::new(),
+        // Dev web mode: scan and import stay inside the captures roots.
+        allow_any_path: false,
+        max_imports: netsift_api::DEFAULT_MAX_IMPORTS,
     };
     netsift_api::serve(listener, config, shutdown_signal()).await?;
     info!("API stopped");
@@ -175,6 +184,10 @@ fn main() -> Result<ExitCode> {
     match cli.command {
         Command::Ingest(args) => ingest_command(&runtime, &args),
         Command::Serve(args) => runtime.block_on(serve(args)).map(|()| ExitCode::SUCCESS),
+        #[cfg(feature = "demo")]
+        Command::DemoSession(args) => {
+            demo::run(&args, &mut std::io::stdout()).map(|()| ExitCode::SUCCESS)
+        }
     }
 }
 

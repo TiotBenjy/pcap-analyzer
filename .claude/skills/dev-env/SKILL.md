@@ -26,7 +26,7 @@ directement sur l'hôte : si tu vois « Commande bloquée », reformule avec `./
 | GeoIP | `./x.sh geoip` |
 | Changelog / notes | `./x.sh cliff [args]` |
 | Shell dans le conteneur | `./x.sh shell` |
-| Nettoyer le cache de build | `./x.sh clean [--dry-run] [--all] [--images]` (voir « Disque plein ») |
+| Nettoyer le cache de build | `./x.sh clean [--dry-run] [--all [--yes]] [--images]` (voir « Disque plein ») |
 | Dans un worktree | `./x.sh -C .worktrees/<branche> <cmd>` |
 
 ## Première utilisation
@@ -86,9 +86,11 @@ versions sans tag laissées par chaque reconstruction).
 2. Supprimer les orphelins : `./x.sh clean`. Est orphelin un target dont le `.origin` désigne un
    chemin disparu, ou, sans `.origin` (anciens targets), qui ne correspond à aucun worktree de
    `git worktree list` et n'a pas servi depuis 2 h. Jamais supprimés : `tools/`, un target dont le
-   chemin existe, un target dont un build tient le verrou cargo.
+   chemin existe, un target dont un build tient le verrou cargo. Chaque `clean` purge aussi les
+   restes de suppressions interrompues (`/cache/target/.trash-*`), comptés dans l'espace libéré.
 3. Encore à court : `./x.sh clean --all` vide aussi les targets des worktrees existants (équivalent
-   d'un `cargo clean` partout ; prochain build plus long). À éviter pendant qu'un agent compile.
+   d'un `cargo clean` partout ; prochain build plus long). Il demande confirmation dans un terminal ;
+   sans terminal (agent, script), `--yes` est obligatoire. À éviter pendant qu'un agent compile.
 4. Images : `./x.sh clean --images` lance `podman|docker image prune -f` (images sans tag
    uniquement, de tous les projets ; jamais `netsift-dev:latest` ni une image utilisée).
 5. Dernier recours : `podman volume rm netsift-cache` (tout se recompile, git-cliff compris).

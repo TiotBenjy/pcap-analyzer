@@ -13,6 +13,14 @@
 # are found by this name (the newline added by echo is part of the hashed input).
 cache_slug() { printf '%s\n' "$1" | sha1sum | cut -c1-12; }
 
+# Shell snippet that x.sh prepends to every command run in the container: writes
+# $CARGO_TARGET_DIR/.origin (path=$NETSIFT_ORIGIN, last_used=<UTC date>) through a temporary file
+# renamed atomically. `$$` is 1 in every container, hence $RANDOM in the temporary name.
+# Never makes the command fail. `./x.sh clean` recognises an orphan by this marker without
+# hashing paths that no longer exist.
+# shellcheck disable=SC2016,SC2034 # used by x.sh, expanded by the container shell
+CACHE_ORIGIN_MARK='{ _ns_tmp="$CARGO_TARGET_DIR/.origin.$$.$RANDOM"; mkdir -p "$CARGO_TARGET_DIR" && printf "path=%s\nlast_used=%s\n" "$NETSIFT_ORIGIN" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_ns_tmp" && mv -f "$_ns_tmp" "$CARGO_TARGET_DIR/.origin"; } 2>/dev/null || true; unset _ns_tmp; '
+
 # Only directories named like a slug are managed; anything else (tools/, root/...) is kept.
 cache_is_slug() { [[ "$1" =~ ^[0-9a-f]{12}$ ]]; }
 

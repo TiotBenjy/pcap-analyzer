@@ -14,7 +14,7 @@ CT="$ROOT/scripts/ct/cache.sh"
 TMP="$(mktemp -d)"
 LOCK_PID=""
 release_lock() { [[ -n "$LOCK_PID" ]] && pkill -P "$LOCK_PID" 2>/dev/null; LOCK_PID=""; }
-cleanup() { release_lock; rm -rf "$TMP"; }
+cleanup() { release_lock; chmod -R u+rwx "$TMP" 2>/dev/null; rm -rf "$TMP"; }
 trap cleanup EXIT
 set +e
 
@@ -104,6 +104,21 @@ check "human bytes" test "$(cache_human 512)" = "512 B"
 check "human KiB" test "$(cache_human 1536)" = "1.5 KiB"
 check "human GiB" test "$(cache_human $((3 * 1024 * 1024 * 1024)))" = "3.0 GiB"
 
+# --- Origin marker (snippet prepended by x.sh, run here on the host) -------------------
+mark="$TMP/mark/target"
+out="$(CARGO_TARGET_DIR="$mark" NETSIFT_ORIGIN="/home/u/a dir" bash -c "${CACHE_ORIGIN_MARK}echo ran")"; rc=$?
+check "marker: command runs" test "$out" = "ran"
+check "marker: exit status of the command" test "$rc" -eq 0
+check "marker: path" test "$(sed -n 's/^path=//p' "$mark/.origin")" = "/home/u/a dir"
+check "marker: last_used" grep -Eq '^last_used=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$' "$mark/.origin"
+check "marker: no temporary file left" test "$(find "$mark" -maxdepth 1 -name '.origin.*' | wc -l)" -eq 0
+check "marker: helper variable unset" test -z "$(CARGO_TARGET_DIR="$mark" bash -c "${CACHE_ORIGIN_MARK}echo \"\${_ns_tmp:-}\"")"
+CARGO_TARGET_DIR="$mark" bash -c "${CACHE_ORIGIN_MARK}false"; rc=$?
+check "marker: keeps a failing status" test "$rc" -eq 1
+out="$(CARGO_TARGET_DIR=/proc/netsift-denied/t bash -c "${CACHE_ORIGIN_MARK}echo ran" 2>&1)"; rc=$?
+check "marker: unwritable target never fails" test "$rc" -eq 0
+check "marker: unwritable target is silent" test "$out" = "ran"
+
 # --- Fake volume -----------------------------------------------------------------------
 # mk_target <name> [origin path] [age]: a target with a profile dir, a lock file and a payload.
 VOL="$TMP/vol"
@@ -167,12 +182,46 @@ check "ct usage: sccache" contains "$out" $'\nsccache\t'
 check "ct usage: target/tools" contains "$out" "target/tools	"
 check "ct usage: fs" contains "$out" "fs-avail	"
 
+# Trash left by an interrupted deletion: reported by `list`, deleted by `list --purge` only.
+mkdir -p "$VOL/target/.trash-$S_GONE-1-2/debug"
+head -c 8192 /dev/zero > "$VOL/target/.trash-$S_GONE-1-2/debug/x"
+out="$(CACHE_ROOT="$VOL" bash "$CT" list)"
+check "ct list: trash pending" contains "$out" "#trash	.trash-$S_GONE-1-2	"
+check "ct list: trash state" contains "$out" "	pending"
+check "ct list: trash kept" test -d "$VOL/target/.trash-$S_GONE-1-2"
+out="$(CACHE_ROOT="$VOL" bash "$CT" list --purge)"
+check "ct list --purge: reported" contains "$out" "	purged"
+check "ct list --purge: deleted" test ! -e "$VOL/target/.trash-$S_GONE-1-2"
+
+# du / rm failures (permissions are not enforced for root).
+if [[ "$(id -u)" != 0 ]]; then
+  mk_target aaaaaaaaaaab "$TMP/gone" "3 hours ago"
+  mkdir -p "$VOL/target/aaaaaaaaaaab/debug/locked"
+  touch "$VOL/target/aaaaaaaaaaab/debug/locked/f"
+  chmod 000 "$VOL/target/aaaaaaaaaaab/debug/locked"
+  out="$(CACHE_ROOT="$VOL" bash "$CT" sizes aaaaaaaaaaab)"; rc=$?
+  check "ct sizes: du failure does not abort" test "$rc" -eq 0
+  check "ct sizes: du failure still sized" contains "$out" "aaaaaaaaaaab	"
+  out="$(CACHE_ROOT="$VOL" bash "$CT" rm "aaaaaaaaaaab@2026-11-08T10:00:00Z" "cccccccccccc@")"; rc=$?
+  check "ct rm: failure does not abort the batch" test "$rc" -eq 0
+  check "ct rm: failed reported" contains "$out" "failed	aaaaaaaaaaab	"
+  check "ct rm: batch continues" has_line "$out" "skipped	cccccccccccc	missing"
+  check "ct rm: renamed to trash" test ! -e "$VOL/target/aaaaaaaaaaab"
+  check "ct rm: trash left" test -n "$(find "$VOL/target" -maxdepth 1 -name '.trash-aaaaaaaaaaab-*')"
+  chmod -R u+rwx "$VOL/target"
+  out="$(CACHE_ROOT="$VOL" bash "$CT" list --purge)"
+  check "ct list --purge: failed deletion purged later" test -z "$(find "$VOL/target" -maxdepth 1 -name '.trash-*')"
+fi
+
 # --- ./x.sh clean (local mode, no container) -------------------------------------------
 xclean() { NETSIFT_CACHE_ROOT="$VOL" bash "$ROOT/x.sh" clean "$@" 2>&1; }
 release_lock
 mk_volume
 hold_lock
+mkdir -p "$VOL/target/.trash-$S_OLD-1-2"
 out="$(xclean --dry-run)"; rc=$?
+check "clean dry-run: trash reported" contains "$out" ".trash-$S_OLD-1-2"
+check "clean dry-run: trash kept" test -d "$VOL/target/.trash-$S_OLD-1-2"
 check "clean dry-run: ok" test "$rc" -eq 0
 check "clean dry-run: lists orphan" contains "$out" "$S_GONE"
 check "clean dry-run: lists unknown" contains "$out" "$S_OLD"
@@ -182,6 +231,8 @@ check "clean dry-run: report" contains "$out" "sccache"
 
 out="$(xclean)"; rc=$?
 check "clean: ok" test "$rc" -eq 0
+check "clean: trash purged" test ! -e "$VOL/target/.trash-$S_OLD-1-2"
+check "clean: trash reported" contains "$out" "purgé"
 check "clean: orphan deleted" test ! -e "$VOL/target/$S_GONE"
 check "clean: unknown deleted" test ! -e "$VOL/target/$S_OLD"
 check "clean: origin exists kept" test -d "$VOL/target/$S_EXIST"
@@ -201,7 +252,13 @@ check "clean --auto: reports a deletion" contains "$out" "$S_GONE"
 check "clean --auto: deleted" test ! -e "$VOL/target/$S_GONE"
 check "clean --auto: no usage report" not contains "$out" "sccache"
 
-out="$(xclean --all)"; rc=$?
+out="$(xclean --all </dev/null)"; rc=$?
+check "clean --all without tty nor --yes: refused" test "$rc" -ne 0
+check "clean --all without tty nor --yes: message" contains "$out" "--yes"
+check "clean --all without tty nor --yes: nothing deleted" test -d "$VOL/target/$S_EXIST"
+out="$(xclean --all --dry-run </dev/null)"; rc=$?
+check "clean --all --dry-run: no confirmation needed" test "$rc" -eq 0
+out="$(xclean --all --yes </dev/null)"; rc=$?
 check "clean --all: ok" test "$rc" -eq 0
 check "clean --all: live deleted" test ! -e "$VOL/target/$S_EXIST"
 check "clean --all: live root deleted" test ! -e "$VOL/target/$(cache_slug "$ROOT")"
@@ -222,6 +279,18 @@ check "clean --worktree: others kept" test -d "$VOL/target/$S_EXIST"
 mk_target "$(cache_slug "$TMP/exists")"
 xclean --worktree "$TMP/exists" >/dev/null
 check "clean --worktree: existing path kept" test -d "$VOL/target/$(cache_slug "$TMP/exists")"
+
+if [[ "$(id -u)" != 0 ]]; then
+  mk_target aaaaaaaaaaac "$TMP/gone" "3 hours ago"
+  mkdir -p "$VOL/target/aaaaaaaaaaac/debug/locked"
+  touch "$VOL/target/aaaaaaaaaaac/debug/locked/f"
+  chmod 000 "$VOL/target/aaaaaaaaaaac/debug/locked"
+  out="$(xclean)"; rc=$?
+  check "clean: failed deletion exits non-zero" test "$rc" -ne 0
+  check "clean: failed deletion reported" contains "$out" "non supprimé"
+  check "clean: failed deletion not announced as deleted" not contains "$out" "target aaaaaaaaaaac supprimé"
+  chmod -R u+rwx "$VOL/target"
+fi
 
 out="$(xclean --bogus)"; rc=$?
 check "clean: unknown option fails" test "$rc" -ne 0

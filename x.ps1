@@ -80,7 +80,7 @@ switch ($Cmd) {
   "deny"      { Run-In @() "cargo deny check $r" -Tty }
   "npm"       { Run-In @() "cd ui && npm $r" -Tty }
   "ui"        { Run-In @() "cd ui && npm run $r" -Tty }
-  "check"     { Run-In @() "set -e; bash scripts/check-version.sh >/dev/null; bash scripts/tests/check-version.sh; bash scripts/tests/release.sh; bash scripts/tests/cache.sh; cargo fmt --all --check; cargo clippy --workspace --all-targets --all-features -- -D warnings; cargo nextest run --workspace; if [ -f ui/package.json ]; then cd ui && (npm ci || npm install) && npm run -s lint && npm run -s typecheck && npm run -s test -- --run; fi; echo OK" }
+  "check"     { Run-In @() "set -e; bash scripts/check-version.sh >/dev/null; bash scripts/tests/check-version.sh; bash scripts/tests/release.sh; [ ! -f scripts/tests/cache.sh ] || bash scripts/tests/cache.sh; cargo fmt --all --check; cargo clippy --workspace --all-targets --all-features -- -D warnings; cargo nextest run --workspace; if [ -f ui/package.json ]; then cd ui && (npm ci || npm install) && npm run -s lint && npm run -s typecheck && npm run -s test -- --run; fi; echo OK" }
   "dev" {
     $up = UiPort; $ap = ApiPort
     Write-Host ">> UI  : http://localhost:$up"

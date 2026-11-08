@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::analyzer::{Analyzer, AnalyzerId};
 use crate::core::CoreAnalyzer;
+use crate::geo::GeoDb;
 
 /// Settings of the `core` analyzer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +37,8 @@ pub struct AnalyzerConfig {
     // --- shared resources (read-only, shared by every shard), sorted ---
     /// `blobs/` directory of the session being imported (set by the engine).
     pub blobs_dir: Option<Arc<PathBuf>>,
+    /// Country database (set by the engine when one is available): `hosts.country`.
+    pub geo: Option<Arc<GeoDb>>,
 }
 
 /// Constructor of one analyzer instance. Closures may capture shared resources.

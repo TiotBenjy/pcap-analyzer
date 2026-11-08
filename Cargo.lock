@@ -2131,6 +2131,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
 
 [[package]]
+name = "ipnetwork"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf370abdafd54d13e54a620e8c3e1145f28e46cc9d704bc6d94414559df41763"
+
+[[package]]
 name = "is-docker"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2428,6 +2434,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
+name = "lru"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a9f71e3591c7ec44d3e563e87bf14ddc2bada8519dca046e5b0e560cd004e2d"
+dependencies = [
+ "hashbrown 0.17.1",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2452,6 +2467,18 @@ name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
+
+[[package]]
+name = "maxminddb"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b43d2458d977b610b04a3858e6504f06133663d303a1a0606601b530bfc9bc6"
+dependencies = [
+ "ipnetwork",
+ "memchr",
+ "serde",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "memchr"
@@ -2656,6 +2683,7 @@ dependencies = [
  "netsift-analyze",
  "netsift-capture",
  "netsift-fixtures",
+ "netsift-geo",
  "netsift-store",
  "serde_json",
  "tempfile",
@@ -2697,6 +2725,12 @@ dependencies = [
 [[package]]
 name = "netsift-geo"
 version = "0.1.0"
+dependencies = [
+ "lru",
+ "maxminddb",
+ "thiserror 2.0.21",
+ "tracing",
+]
 
 [[package]]
 name = "netsift-store"

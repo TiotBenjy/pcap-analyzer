@@ -36,9 +36,11 @@ function withAxisDefaults(axis: Obj, theme: Readonly<Obj>): Obj {
   return { ...out, axisLabel: { hideOverlap: true, ...label } };
 }
 
-function withSeriesDefaults(series: Obj): Obj {
+function withSeriesDefaults(series: Obj, label: Readonly<Obj> | undefined): Obj {
   const layout = isObj(series.labelLayout) ? series.labelLayout : {};
-  return { ...series, labelLayout: { hideOverlap: true, ...layout } };
+  const out: Obj = { ...series, labelLayout: { hideOverlap: true, ...layout } };
+  if (label !== undefined) out.label = mergeUnder({ ...label }, isObj(series.label) ? series.label : {});
+  return out;
 }
 
 /** Theme colors merged under every option (the view's values win). */
@@ -49,6 +51,12 @@ export interface ChartTheme {
   axis?: Readonly<Obj>;
   /** Slider data zooms: `borderColor`, `fillerColor`, `handleStyle`, `dataBackground`... */
   slider?: Readonly<Obj>;
+  /**
+   * Series labels (values at the end of bars...). ECharts does not apply the global
+   * `textStyle.color` to them and outlines them by default: the theme sets their color and a
+   * transparent outline (a zero outline width is replaced by the default one).
+   */
+  seriesLabel?: Readonly<Obj>;
 }
 
 export function normalizeOption(option: EChartsCoreOption, width: number, theme: ChartTheme = {}): EChartsCoreOption {
@@ -59,7 +67,7 @@ export function normalizeOption(option: EChartsCoreOption, width: number, theme:
     if (axes !== null) out[key] = axes.map((a) => withAxisDefaults(a, theme.axis ?? {}));
   }
   const series = asList(out.series);
-  if (series !== null) out.series = series.map(withSeriesDefaults);
+  if (series !== null) out.series = series.map((x) => withSeriesDefaults(x, theme.seriesLabel));
 
   const zooms = asList(out.dataZoom);
   if (zooms !== null) {

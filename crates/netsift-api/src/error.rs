@@ -32,6 +32,14 @@ pub enum ApiError {
     SessionUpgradeNeeded,
     #[error("session busy")]
     SessionBusy,
+    #[error("GeoIP download failed")]
+    GeoipDownloadFailed,
+    #[error("invalid GeoIP database")]
+    GeoipInvalid,
+    #[error("GeoIP database too large")]
+    GeoipTooLarge,
+    #[error("GeoIP update already running")]
+    GeoipUpdateRunning,
     #[error("internal error")]
     Internal,
 }
@@ -88,6 +96,26 @@ impl ApiError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 "session-busy",
                 "The session is being upgraded by another request; try again",
+            ),
+            Self::GeoipDownloadFailed => (
+                StatusCode::BAD_GATEWAY,
+                "geoip-download-failed",
+                "The GeoIP database could not be downloaded",
+            ),
+            Self::GeoipInvalid => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "geoip-invalid",
+                "The file is not a usable country database",
+            ),
+            Self::GeoipTooLarge => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "geoip-too-large",
+                "The GeoIP database is larger than allowed",
+            ),
+            Self::GeoipUpdateRunning => (
+                StatusCode::CONFLICT,
+                "geoip-update-running",
+                "A GeoIP update is already running",
             ),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,

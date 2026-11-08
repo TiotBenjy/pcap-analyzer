@@ -429,6 +429,8 @@ async fn start(
         let selection = selection(&req.group_ids, plan.grouping.groups.len())?;
         plan.select(selection).map_err(|e| input_error(&e))?;
         let mut options = s.ingest_template.clone();
+        // The database of this moment: a later update does not affect this import.
+        options.analyzers.config_mut().geo = s.geoip.current().0;
         options.name = name;
         options.selection = selection;
         options.recursive = req.recursive;

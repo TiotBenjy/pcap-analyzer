@@ -27,6 +27,12 @@ allow = [
 confidence-threshold = 0.9
 # The allow-list anticipates future dependencies: do not warn on unused entries.
 unused-allowed-license = "allow"
+# Exceptions par crate, limitées à des données (jamais du code) :
+exceptions = [
+  # Certificats racine de Mozilla, tirés par rustls-platform-verifier pour la seule cible wasm32 :
+  # absents de nos binaires (le téléchargement GeoIP utilise le magasin de certificats du système).
+  { crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
+]
 # La base GeoIP DB-IP Lite est CC BY 4.0 (donnée, pas du code) : attribution gérée dans l'app, hors scope deny.
 
 [bans]

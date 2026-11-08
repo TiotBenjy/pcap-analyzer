@@ -23,6 +23,7 @@ mod imports;
 mod overview;
 mod ports;
 mod sessions;
+mod smb;
 mod tls;
 
 use std::future::{Future, IntoFuture};
@@ -217,6 +218,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(overview::routes())
         .merge(ports::routes())
         .merge(sessions::routes())
+        .merge(smb::routes())
         .merge(tls::routes())
         .route("/server-info", get(dto::server_info))
         .route_layer(axum::middleware::from_fn_with_state(

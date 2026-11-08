@@ -398,6 +398,7 @@ async fn open_ports_of_the_spec_fixture() {
     assert_eq!(port["evidence"], "syn_ack");
     assert!(port["detected"].is_null());
     assert_eq!(page["items"][0]["host"]["category"], "private");
+    assert_eq!(page["items"][0]["clients"], 2);
 
     let stats = env.ok(&format!("{base}/stats")).await;
     assert_eq!(stats["distinct_ports"], 3);

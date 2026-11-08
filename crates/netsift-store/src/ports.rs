@@ -163,6 +163,8 @@ pub struct OpenPortEntry {
 pub struct HostPorts {
     pub ip: IpAddr,
     pub host: EndpointInfo,
+    /// Distinct clients of the flows to any open port of the host.
+    pub clients: u64,
     pub ports: Vec<OpenPortEntry>,
 }
 
@@ -206,8 +208,11 @@ pub fn hosts_page(
     let mut hosts: Vec<HostPorts> = Vec::with_capacity(page.items.len());
     {
         let mut stmt = conn.prepare(
-            "SELECT p.value, h.names, h.category, h.country FROM json_each(?1) p \
-             LEFT JOIN hosts h ON h.ip = p.value ORDER BY p.key",
+            "SELECT p.value, h.names, h.category, h.country, \
+             (SELECT count(DISTINCT f.src_ip) FROM open_ports o JOIN flows f \
+              ON f.dst_ip = o.ip AND f.dst_port = o.port AND f.transport = o.transport \
+              WHERE o.ip = p.value) \
+             FROM json_each(?1) p LEFT JOIN hosts h ON h.ip = p.value ORDER BY p.key",
         )?;
         let rows = stmt.query_map([&ips], |r| {
             let raw: String = r.get(0)?;
@@ -218,6 +223,7 @@ pub fn hosts_page(
                     category: r.get(2)?,
                     country: r.get(3)?,
                 },
+                clients: r.get(4)?,
                 ports: Vec::new(),
             })
         })?;

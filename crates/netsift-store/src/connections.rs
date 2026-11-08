@@ -335,7 +335,8 @@ pub struct CountryTraffic {
     pub hosts: u64,
 }
 
-/// Bytes sent (or received) per country of the host, largest first (bounded by the number
+/// Bytes sent (or received) per country of the host (`total()`: no integer overflow error,
+/// saturated at `i64::MAX`), largest first (bounded by the number
 /// of countries, plus the two groups of hosts without country).
 pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<CountryTraffic>> {
     let col = match side {
@@ -343,7 +344,8 @@ pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<Count
         TrafficSide::Received => "t.bytes_received",
     };
     let sql = format!(
-        "SELECT h.country, coalesce(h.category, '') = 'public' AS public, sum({col}), count(*) \
+        "SELECT h.country, coalesce(h.category, '') = 'public' AS public, \
+         CAST(min(total({col}), 9223372036854775807.0) AS INTEGER), count(*) \
          FROM host_traffic t LEFT JOIN hosts h ON h.ip = t.ip WHERE {col} > 0 \
          GROUP BY h.country, public ORDER BY 3 DESC, 1"
     );

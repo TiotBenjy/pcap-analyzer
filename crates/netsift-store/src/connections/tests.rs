@@ -329,3 +329,28 @@ fn countries_group_hosts_with_and_without_country() {
         "hosts that received nothing are left out: {received:?}"
     );
 }
+
+#[test]
+fn country_sums_saturate_instead_of_failing() {
+    let conn = db();
+    for ip in ["81.0.0.1", "81.0.0.2"] {
+        insert(
+            &conn,
+            StoreRecord::HostTraffic(HostTrafficRow {
+                ip: ip.parse().unwrap(),
+                bytes_sent: u64::MAX,
+                bytes_received: 0,
+                packets_sent: 1,
+                packets_received: 0,
+            }),
+        );
+        insert(
+            &conn,
+            StoreRecord::Host(host(ip, "public", Some("FR"), &[])),
+        );
+    }
+    let sent = country_traffic(&conn, TrafficSide::Sent).unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].bytes, i64::MAX as u64);
+    assert_eq!(sent[0].hosts, 2);
+}

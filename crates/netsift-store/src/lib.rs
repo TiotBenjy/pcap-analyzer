@@ -6,7 +6,8 @@
 //! - [`StoreWriter`]: single writer thread committing [`StoreRecord`]s in batches;
 //! - [`query`]: base read queries and keyset pagination;
 //! - [`traffic`]: overview queries (resampled time series, totals, row counts);
-//! - [`connections`], [`ports`]: tables and queries of the Connections and Open Ports views.
+//! - [`connections`], [`ports`]: tables and queries of the Connections and Open Ports views;
+//! - [`network`]: bounded communication graph of the Network view (read queries only).
 
 pub mod catalog;
 pub mod connections;
@@ -16,6 +17,7 @@ pub mod finalize;
 pub mod http;
 mod id;
 pub mod migrate;
+pub mod network;
 pub mod objects;
 pub mod ports;
 pub mod query;

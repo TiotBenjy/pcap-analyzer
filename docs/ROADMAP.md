@@ -193,7 +193,7 @@ Suivis de la vague 2.B :
 - [~] **P3.1** `feat/dns` — DNS + mDNS + NBNS (+ LLMNR) : transactions, codes réponse, types. `specs/dns.md`.
 - [~] **P3.2** `feat/http` — HTTP/1.x : transactions, en-têtes, corps bornés, décompression gzip/deflate/br,
       chunked ; vues HTTP et HTTP Headers. `specs/http.md`, `specs/http-headers.md`.
-- [~] **P3.3** `feat/tls` — TLS : ClientHello/ServerHello, versions, suites, SNI, ALPN, JA3/JA4 (client),
+- [x] **P3.3** `feat/tls` — TLS : ClientHello/ServerHello, versions, suites, SNI, ALPN, JA3/JA4 (client),
       certificats X.509 (export DER/PEM). `specs/tls.md`.
 - [x] **P3.4** `feat/connections-ports` — Agrégats de flux, ports ouverts (SYN-ACK / réponses UDP), table
       IANA des services embarquée. `specs/connections.md`, `specs/open-ports.md`.
@@ -210,6 +210,12 @@ Suivis de la vague 3.A :
   boîtes tournées) ; tableau des conversations sans indice de défilement à 375/768 px ; badges de la
   sidebar non alimentés (`AppShell` ne transmet aucun compteur) ; P4.2 : `hosts_page` (deux
   `count(DISTINCT)` par hôte), `HOSTS_FROM` ré-agrégé à chaque page, `count_conversations` en scan.
+- P3.3 (fusionnée le 2026-11-08) : téléchargement DER/PEM en desktop non vérifié (`<a download>` sur URL
+  blob, aucun `on_download` dans `apps/desktop`) -> à tester sur un bundle, sinon écrire dans
+  `<données>/exports` et ouvrir avec `opener` ; tableau des sessions sans cartes sous `md` (SNI invisible à
+  375 px) ; `Endpoint` local à migrer vers le composant commun ; DTLS et STARTTLS non traités, une session
+  TLS par flux ; P4.2 : filtres SQL `?n IS NULL OR col = ?n` qui neutralisent les index (aussi HTTP),
+  recherche `LIKE` et `count(*)` filtré ; blobs sans fsync ni balayage des `.tmp` laissés par un crash.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).

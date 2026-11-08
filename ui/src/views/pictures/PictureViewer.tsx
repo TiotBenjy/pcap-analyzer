@@ -1,13 +1,15 @@
 import { ChevronLeft, ChevronRight, Download, FileCode, ImageOff } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRendition } from '../../api/objectQueries';
 import { downloadObject, hasRendition } from '../../api/objects';
 import type { ObjectItem } from '../../api/types/ObjectItem';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { Endpoint } from '../../components/Endpoint';
 import { formatBytes, formatCount, formatTimestamp } from '../../lib/format';
-import { dimensions, displayName, typeLabel } from './format';
+import { CopyButton } from '../tls/parts';
+import { cleanText, dimensions, displayName, typeLabel } from './format';
 
 interface PictureViewerProps {
   sessionId: string;
@@ -28,6 +30,17 @@ export function PictureViewer({ sessionId, items, index, onIndex, onClose }: Pic
   const count = items.length;
   const hasPrev = index > 0;
   const hasNext = index < count - 1;
+  const prevRef = useRef<HTMLButtonElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
+
+  // At an end of the list, the button just used is disabled: focus moves to the other one
+  // instead of being lost.
+  useEffect(() => {
+    const active = document.activeElement;
+    const lost = active === null || active === document.body;
+    if (!hasNext && (lost || active === nextRef.current)) prevRef.current?.focus();
+    else if (!hasPrev && (lost || active === prevRef.current)) nextRef.current?.focus();
+  }, [hasPrev, hasNext]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,6 +72,7 @@ export function PictureViewer({ sessionId, items, index, onIndex, onClose }: Pic
             </span>
           )}
           <Button
+            ref={prevRef}
             icon
             aria-label={t('views.pictures.viewer.previous')}
             title={t('views.pictures.viewer.previous')}
@@ -70,6 +84,7 @@ export function PictureViewer({ sessionId, items, index, onIndex, onClose }: Pic
             <ChevronLeft aria-hidden size={16} strokeWidth={1.75} />
           </Button>
           <Button
+            ref={nextRef}
             icon
             aria-label={t('views.pictures.viewer.next')}
             title={t('views.pictures.viewer.next')}
@@ -140,19 +155,22 @@ function Preview({ sessionId, item }: { sessionId: string; item: ObjectItem }) {
 function Metadata({ item }: { item: ObjectItem }) {
   const { t } = useTranslation();
   const unknown = t('views.pictures.viewer.unknown');
+  const url = item.url ?? item.uri;
+  const urlLabel = t('views.pictures.viewer.url');
+  const shaLabel = t('views.pictures.viewer.sha256');
   const rows: [string, ReactNode][] = [
-    [t('views.pictures.viewer.url'), item.url ?? item.uri ?? unknown],
-    [t('views.pictures.viewer.host'), item.host ?? unknown],
-    [t('views.pictures.viewer.server'), `${item.server_ip}:${item.server_port}`],
-    [t('views.pictures.viewer.client'), item.client_ip],
+    [urlLabel, url === null ? unknown : <Copyable value={cleanText(url)} name={urlLabel} />],
+    [t('views.pictures.viewer.host'), item.host === null ? unknown : cleanText(item.host)],
+    [t('views.pictures.viewer.server'), <Endpoint endpoint={item.server} port={item.server_port} />],
+    [t('views.pictures.viewer.client'), <Endpoint endpoint={item.client} />],
     [t('views.pictures.viewer.type'), `${typeLabel(item.mime)} (${item.mime})`],
-    [t('views.pictures.viewer.declared'), item.declared_type ?? unknown],
+    [t('views.pictures.viewer.declared'), item.declared_type === null ? unknown : cleanText(item.declared_type)],
     [t('views.pictures.viewer.dimensions'), dimensions(item) ?? unknown],
     [t('views.pictures.viewer.size'), `${formatBytes(item.size)} (${formatCount(item.size)})`],
     [t('views.pictures.viewer.occurrences'), formatCount(item.occurrences)],
     [t('views.pictures.viewer.firstSeen'), formatTimestamp(item.first_ts_us)],
     [t('views.pictures.viewer.lastSeen'), formatTimestamp(item.last_ts_us)],
-    [t('views.pictures.viewer.sha256'), item.sha256],
+    [shaLabel, <Copyable value={item.sha256} name={shaLabel} />],
   ];
   return (
     <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-1.5 text-body sm:grid-cols-[minmax(8rem,auto)_minmax(0,1fr)]">
@@ -163,5 +181,15 @@ function Metadata({ item }: { item: ObjectItem }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/** A long value (URL, digest), wrapped, with a copy button. */
+function Copyable({ value, name }: { value: string; name: string }) {
+  return (
+    <span className="flex min-w-0 items-start gap-1">
+      <span className="min-w-0 flex-1 break-all">{value}</span>
+      <CopyButton value={value} name={name} />
+    </span>
   );
 }

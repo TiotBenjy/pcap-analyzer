@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { FileCode, ImageOff } from 'lucide-react';
+import { FileCode, Image, ImageOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRendition } from '../../api/objectQueries';
@@ -8,7 +8,7 @@ import type { ObjectItem } from '../../api/types/ObjectItem';
 import { cn } from '../../lib/cn';
 import { formatBytes } from '../../lib/format';
 import { useElementWidth } from '../../lib/useElementWidth';
-import { displayName, typeLabel } from './format';
+import { dimensions, displayName, typeLabel } from './format';
 
 /** Grids longer than this are virtualized (docs/specs/pictures.md). */
 export const VIRTUALIZE_FROM = 300;
@@ -21,6 +21,8 @@ const CAPTION = 40;
 const VIRTUAL_HEIGHT = 720;
 /** Images smaller than this (both sides) are shown at their size, not enlarged to the tile. */
 const SMALL_IMAGE = 64;
+/** Images smaller than this (both sides, tracking pixels) are not drawn: an icon and their size. */
+const TINY_IMAGE = 8;
 
 interface PictureGridProps {
   sessionId: string;
@@ -168,7 +170,16 @@ function Tile({ sessionId, item, onOpen }: TileProps) {
 function TileImage({ sessionId, item, enabled }: { sessionId: string; item: ObjectItem; enabled: boolean }) {
   const { t } = useTranslation();
   const renderable = hasRendition(item);
-  const thumb = useRendition(sessionId, item.sha256, 'thumb', enabled && renderable);
+  const tiny = item.width !== null && item.height !== null && item.width < TINY_IMAGE && item.height < TINY_IMAGE;
+  const thumb = useRendition(sessionId, item.sha256, 'thumb', enabled && renderable && !tiny);
+  if (tiny) {
+    return (
+      <span className="flex flex-col items-center gap-1 px-2 text-center text-meta text-muted">
+        <Image aria-hidden size={24} strokeWidth={1.5} />
+        <span className="num">{dimensions(item)}</span>
+      </span>
+    );
+  }
   if (!renderable || thumb.isError) {
     const svg = item.mime === 'image/svg+xml';
     const Icon = svg ? FileCode : ImageOff;

@@ -124,10 +124,14 @@ describe('graph model', () => {
   });
 
   it('scales sizes on a log scale', () => {
-    expect(nodeSize(0, 100)).toBe(NODE_SIZE.min);
-    expect(nodeSize(100, 0)).toBe(NODE_SIZE.min);
-    expect(nodeSize(1_000, 1_000_000)).toBeGreaterThan(NODE_SIZE.min);
-    expect(nodeSize(1_000, 1_000_000)).toBeLessThan(NODE_SIZE.max);
+    expect(nodeSize(0, 1, 100)).toBe(NODE_SIZE.min);
+    expect(nodeSize(100, 1, 0)).toBe(NODE_SIZE.min);
+    // The smallest and largest nodes of the graph take the bounds.
+    expect(nodeSize(1_000, 1_000, 1_000_000)).toBe(NODE_SIZE.min);
+    expect(nodeSize(1_000_000, 1_000, 1_000_000)).toBe(NODE_SIZE.max);
+    expect(nodeSize(31_623, 1_000, 1_000_000)).toBeCloseTo((NODE_SIZE.min + NODE_SIZE.max) / 2, 0);
+    // A single size: the largest.
+    expect(nodeSize(5, 5, 5)).toBe(NODE_SIZE.max);
     expect(edgeSize(5, 5)).toBe(EDGE_SIZE.max);
   });
 
@@ -135,6 +139,7 @@ describe('graph model', () => {
     // A right-to-left override would visually reverse the rest of the name.
     expect(cleanLabel('evil\u202Egnp.exe')).toBe('evilgnp.exe');
     expect(cleanLabel('a\u0000b\u001bc\u200Bd')).toBe('abcd');
+    expect(cleanLabel('a\u061Cb\u2028c\u2029d\u2060e\u2064f')).toBe('abcdef');
     const long = cleanLabel('x'.repeat(100));
     expect([...long]).toHaveLength(MAX_LABEL);
     expect(long.endsWith('\u2026')).toBe(true);

@@ -22,10 +22,36 @@ const THEME_COLORS = {
 const LABEL_THRESHOLD = 14;
 
 type HoverData = PartialButFor<NodeDisplayData, 'x' | 'y' | 'size' | 'label' | 'color'>;
+type GraphSettings = Settings<NodeAttributes, EdgeAttributes>;
+
+/** Gap between a node and its label. */
+const LABEL_GAP = 5;
+
+/**
+ * Left edge of a label: right of the node, or left of it when the text would cross the right
+ * edge of the canvas (sigma frames the nodes, not their labels).
+ */
+function labelX(ctx: CanvasRenderingContext2D, x: number, size: number, width: number): number {
+  const canvasWidth = ctx.canvas.clientWidth > 0 ? ctx.canvas.clientWidth : Number.POSITIVE_INFINITY;
+  const right = x + size + LABEL_GAP;
+  return right + width + 4 <= canvasWidth ? right : Math.max(4, x - size - LABEL_GAP - width);
+}
+
+/** Label at rest, kept inside the canvas. */
+function labelDrawer(colors: (typeof THEME_COLORS)[Theme]) {
+  return (ctx: CanvasRenderingContext2D, data: HoverData, settings: GraphSettings): void => {
+    const label = data.label;
+    if (label === null || label === '') return;
+    const size = settings.labelSize;
+    ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
+    ctx.fillStyle = colors.label;
+    ctx.fillText(label, labelX(ctx, data.x, data.size, ctx.measureText(label).width), data.y + size / 3);
+  };
+}
 
 /** Hover box drawn in the theme colors (sigma's default is a white box). */
 function hoverDrawer(colors: (typeof THEME_COLORS)[Theme]) {
-  return (ctx: CanvasRenderingContext2D, data: HoverData, settings: Settings<NodeAttributes, EdgeAttributes>): void => {
+  return (ctx: CanvasRenderingContext2D, data: HoverData, settings: GraphSettings): void => {
     const size = settings.labelSize;
     ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
     ctx.fillStyle = colors.surface;
@@ -38,7 +64,7 @@ function hoverDrawer(colors: (typeof THEME_COLORS)[Theme]) {
     const label = data.label;
     if (label === null || label === '') return;
     const width = ctx.measureText(label).width;
-    const x = data.x + data.size + 5;
+    const x = labelX(ctx, data.x, data.size, width);
     const top = data.y - size / 2 - 4;
     ctx.beginPath();
     ctx.rect(x - 4, top, width + 8, size + 8);
@@ -97,8 +123,9 @@ export function SigmaGraph({ graph, theme, selected, focus, onSelect, onExpand, 
         labelGridCellSize: 120,
         labelRenderedSizeThreshold: LABEL_THRESHOLD,
         defaultEdgeColor: colors.edge,
+        defaultDrawNodeLabel: labelDrawer(colors),
         defaultDrawNodeHover: hoverDrawer(colors),
-        stagePadding: 24,
+        stagePadding: 32,
         minCameraRatio: 0.1,
         maxCameraRatio: 4,
         nodeReducer: (node, data) => {
@@ -167,9 +194,18 @@ export function SigmaGraph({ graph, theme, selected, focus, onSelect, onExpand, 
   useEffect(() => {
     const r = renderer.current;
     if (r === null || focus === null || !graph.hasNode(focus)) return;
-    const d = r.getNodeDisplayData(focus);
-    if (d === undefined) return;
-    void r.getCamera().animate({ x: d.x, y: d.y, ratio: 0.5 }, { duration: 300 });
+    // Frame the node with its neighbors (display coordinates: the whole graph spans about 1).
+    const points = [focus, ...graph.neighbors(focus)]
+      .map((n) => r.getNodeDisplayData(n))
+      .filter((d) => d !== undefined);
+    if (points.length === 0) return;
+    const xs = points.map((d) => d.x);
+    const ys = points.map((d) => d.y);
+    const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    const ratio = Math.min(1, Math.max(0.2, span * 1.3));
+    const x = (Math.max(...xs) + Math.min(...xs)) / 2;
+    const y = (Math.max(...ys) + Math.min(...ys)) / 2;
+    void r.getCamera().animate({ x, y, ratio }, { duration: 300 });
   }, [focus, graph]);
 
   const camera = (action: 'in' | 'out' | 'reset') => {

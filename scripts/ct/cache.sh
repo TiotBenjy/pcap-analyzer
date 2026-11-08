@@ -4,12 +4,15 @@
 # which alone can tell whether a checkout path still exists.
 # Tests run it on a plain directory: CACHE_ROOT=<dir> bash scripts/ct/cache.sh <cmd>.
 #
-#   list               one line per target dir:
+#   list [--purge]     first the leftovers of interrupted deletions (target/.trash-*):
+#                      "#trash TAB name TAB bytes TAB pending|purged|failed" (deleted with --purge),
+#                      then one line per target dir:
 #                      name TAB origin path TAB last_used TAB locked (0|1) TAB newest mtime
 #   sizes <name...>    name TAB bytes on disk
 #   rm <name@last...>  deletes target/<name> if its last_used is still <last> and no build holds
-#                      its cargo lock; prints "deleted TAB name TAB bytes" or
-#                      "skipped TAB name TAB reason"
+#                      its cargo lock; prints "deleted TAB name TAB bytes",
+#                      "failed TAB name TAB bytes" (left in target/.trash-*, purged by the next
+#                      clean) or "skipped TAB name TAB reason"
 #   usage              category TAB bytes (target/<name>, top-level dirs, fs-avail, fs-size)
 set -euo pipefail
 
@@ -43,11 +46,25 @@ newest_mtime() {
 
 locked_flag() { if locked "$1"; then echo 1; else echo 0; fi; }
 
-bytes() { du -s -B1 "$1" 2>/dev/null | cut -f1; }
+# Bytes on disk; 0 when du fails (unreadable subdir: du still prints a total but exits 1, which
+# must not abort the whole batch under `set -e` + pipefail).
+bytes() {
+  local b
+  b="$({ du -s -B1 "$1" 2>/dev/null || true; } | cut -f1)"
+  echo "${b:-0}"
+}
 
 cmd_list() {
   [[ -d "$TARGETS" ]] || return 0
-  local d name
+  local d name size state
+  for d in "$TARGETS"/.trash-*; do
+    [[ -d "$d" && ! -L "$d" ]] || continue
+    size="$(bytes "$d")"; state=pending
+    if [[ "${1:-}" == "--purge" ]]; then
+      if rm -rf "$d" 2>/dev/null; then state=purged; else state=failed; fi
+    fi
+    printf '#trash\t%s\t%s\t%s\n' "${d##*/}" "$size" "$state"
+  done
   for d in "$TARGETS"/*/; do
     d="${d%/}"; name="${d##*/}"
     [[ -d "$d" && ! -L "$d" ]] || continue
@@ -67,10 +84,6 @@ cmd_sizes() {
 
 cmd_rm() {
   local arg name last d trash size
-  # Leftovers of an interrupted deletion (renamed first, see below).
-  for trash in "$TARGETS"/.trash-*; do
-    if [[ -d "$trash" ]]; then rm -rf "$trash" 2>/dev/null || true; fi
-  done
   for arg in "$@"; do
     name="${arg%%@*}"; last="${arg#*@}"; d="$TARGETS/$name"
     if ! is_slug "$name"; then printf 'skipped\t%s\tnot-a-slug\n' "$name"; continue; fi
@@ -79,14 +92,17 @@ cmd_rm() {
       printf 'skipped\t%s\tused-since-listing\n' "$name"; continue
     fi
     if locked "$d"; then printf 'skipped\t%s\tin-use\n' "$name"; continue; fi
-    size="$(bytes "$d")"
-    # Atomic rename first: a build starting now gets a fresh, empty target dir.
-    trash="$TARGETS/.trash-$name-$$"
-    if mv "$d" "$trash" 2>/dev/null; then
-      rm -rf "$trash" 2>/dev/null || true
-      printf 'deleted\t%s\t%s\n' "$name" "${size:-0}"
+    # Atomic rename right after the checks (nothing slow in between): a build starting from now on
+    # gets a fresh, empty target dir. Sized and deleted afterwards, under the trash name.
+    trash="$TARGETS/.trash-$name-$$-$RANDOM"
+    if ! mv "$d" "$trash" 2>/dev/null; then
+      printf 'skipped\t%s\trename-failed\n' "$name"; continue
+    fi
+    size="$(bytes "$trash")"
+    if rm -rf "$trash" 2>/dev/null; then
+      printf 'deleted\t%s\t%s\n' "$name" "$size"
     else
-      printf 'skipped\t%s\trename-failed\n' "$name"
+      printf 'failed\t%s\t%s\n' "$name" "$size"
     fi
   done
 }
@@ -109,7 +125,7 @@ cmd_usage() {
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  list) cmd_list ;;
+  list) cmd_list "$@" ;;
   sizes) cmd_sizes "$@" ;;
   rm) cmd_rm "$@" ;;
   usage) cmd_usage ;;

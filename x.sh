@@ -18,9 +18,10 @@
 #   ./x.sh fuzz [cible] [durée]  cargo-fuzz (nightly dans le conteneur)
 #   ./x.sh shell                 shell interactif dans le conteneur
 #   ./x.sh run <cmd...>          commande brute dans le conteneur
-#   ./x.sh clean [--dry-run] [--all] [--images]
+#   ./x.sh clean [--dry-run] [--all [--yes]] [--images]
 #                                nettoie le cache de build : targets orphelins (défaut), tous les
-#                                targets sauf tools/ (--all), images sans tag (--images)
+#                                targets sauf tools/ (--all, confirmation ou --yes), images sans
+#                                tag (--images)
 #   ./x.sh -C <dir> <sous-cmd>   exécuter la sous-commande avec <dir> comme racine (worktree)
 #
 # Variables : ENGINE=docker|podman (sinon auto), NETSIFT_UI_PORT, NETSIFT_API_PORT,
@@ -77,11 +78,9 @@ slug() { cache_slug "$WORKDIR"; }
 # 5 GiB suffisent aux dépendances du workspace et laissent de la place aux targets.
 SCCACHE_SIZE="5G"
 
-# Marqueur d'origine écrit dans le target avant chaque commande : chemin hôte du worktree et date
-# de dernière utilisation. `./x.sh clean` reconnaît ainsi un target orphelin (chemin disparu)
-# sans recalculer le sha1 de chemins supprimés. Ne fait jamais échouer la commande.
-# shellcheck disable=SC2016 # développé dans le conteneur, pas sur l'hôte
-ORIGIN_MARK='{ mkdir -p "$CARGO_TARGET_DIR" && printf "path=%s\nlast_used=%s\n" "$NETSIFT_ORIGIN" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$CARGO_TARGET_DIR/.origin.$$" && mv -f "$CARGO_TARGET_DIR/.origin.$$" "$CARGO_TARGET_DIR/.origin"; } 2>/dev/null || true; '
+# Marqueur d'origine écrit dans le target avant chaque commande (CACHE_ORIGIN_MARK, défini et
+# testé dans scripts/lib/cache.sh) : chemin hôte du worktree et date de dernière utilisation.
+ORIGIN_MARK="$CACHE_ORIGIN_MARK"
 
 # CI n'est transmis que s'il est défini : certains outils (tauri-cli) refusent CI="".
 CI_ENV=(); [[ -n "${CI:-}" ]] && CI_ENV=(-e "CI=${CI}")
@@ -193,19 +192,25 @@ reason_label() {
 listing_field() { awk -F'\t' -v n="$2" -v f="$3" '$1 == n { print $f; exit }' <<<"$1"; }
 
 cmd_clean() {
-  local dry=0 all=0 images=0 auto=0 wt=""
+  local dry=0 all=0 images=0 auto=0 yes=0 wt=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -n|--dry-run) dry=1 ;;
       --all) all=1 ;;
+      -y|--yes) yes=1 ;;
       --images) images=1 ;;
       --auto) auto=1 ;;                                  # wt.sh : silencieux, sans rapport
       --worktree) wt="${2:-}"; [[ -n "$wt" ]] || { echo "x.sh clean: --worktree <chemin>" >&2; return 2; }
                   shift ;;                               # wt.sh rm : target d'un worktree supprimé
-      *) echo "x.sh clean: option inconnue : $1 (--dry-run, --all, --images)" >&2; return 2 ;;
+      *) echo "x.sh clean: option inconnue : $1 (--dry-run, --all [--yes], --images)" >&2; return 2 ;;
     esac
     shift
   done
+  # --all vide aussi les targets des worktrees actifs : confirmation explicite.
+  if [[ "$all" == 1 && "$dry" == 0 && "$yes" == 0 && ! -t 0 ]]; then
+    echo "x.sh clean: --all supprime aussi les targets des worktrees actifs ; sans terminal, ajouter --yes" >&2
+    return 2
+  fi
 
   # Aucun build d'image ni création de volume pour nettoyer.
   if [[ -z "${NETSIFT_CACHE_ROOT:-}" ]]; then
@@ -220,8 +225,14 @@ cmd_clean() {
     fi
   fi
 
-  local listing decisions
-  listing="$(cache_ct list)"
+  # Listage ; hors --dry-run, purge au passage les restes de suppressions interrompues (.trash-*).
+  local raw listing trash rc=0
+  if [[ "$dry" == 1 ]]; then raw="$(cache_ct list)" || rc=$?; else raw="$(cache_ct list --purge)" || rc=$?; fi
+  if [[ "$rc" -ne 0 ]]; then echo "x.sh clean: échec du listage du cache (code $rc)" >&2; return 1; fi
+  trash="$(grep '^#trash' <<<"$raw" || true)"
+  listing="$(grep -v '^#trash' <<<"$raw" || true)"
+
+  local decisions
   if [[ -n "$wt" ]]; then
     decisions="$(cache_select_worktree "$wt" <<<"$listing")"
   else
@@ -232,38 +243,68 @@ cmd_clean() {
   fi
 
   local -a names=() args=()
-  local verdict name reason
+  local verdict name reason size origin state freed=0 failed=0
   while IFS=$'\t' read -r verdict name reason; do
     [[ "$verdict" == delete ]] || continue
     names+=("$name")
     args+=("$name@$(listing_field "$listing" "$name" 3)")
   done <<<"$decisions"
 
-  local freed=0 line size origin
+  # Restes de suppressions interrompues : comptés dans l'espace libéré (ou libérable).
+  while IFS=$'\t' read -r _ name size state; do
+    [[ -n "$name" ]] || continue
+    case "$state" in
+      purged) freed=$((freed + ${size:-0}))
+              printf '>> Cache : reste de suppression %s purgé (%s)\n' "$name" "$(cache_human "${size:-0}")" ;;
+      pending) freed=$((freed + ${size:-0}))
+               printf '>> Reste de suppression à purger : %s (%s)\n' "$name" "$(cache_human "${size:-0}")" ;;
+      *) failed=1; echo "x.sh clean: impossible de purger $name" >&2 ;;
+    esac
+  done <<<"$trash"
+
+  if [[ ${#names[@]} -gt 0 && "$all" == 1 && "$dry" == 0 && "$yes" == 0 ]]; then
+    local answer=""
+    printf '>> --all : %d target(s) à supprimer, worktrees actifs compris (%s). Continuer ? [o/N] ' \
+      "${#names[@]}" "${names[*]}"
+    read -r answer || true
+    if [[ "$answer" != [oOyY]* ]]; then echo ">> Abandon, rien n'est supprimé."; return 1; fi
+  fi
+
   if [[ ${#names[@]} -gt 0 ]]; then
+    local out
     if [[ "$dry" == 1 ]]; then
+      out="$(cache_ct sizes "${names[@]}")" || { echo "x.sh clean: échec du calcul des tailles" >&2; return 1; }
       echo ">> Targets à supprimer (--dry-run, rien n'est supprimé) :"
       while IFS=$'\t' read -r name size; do
         [[ -n "$name" ]] || continue
-        freed=$((freed + size))
+        freed=$((freed + ${size:-0}))
         reason="$(awk -F'\t' -v n="$name" '$2 == n { print $3; exit }' <<<"$decisions")"
         origin="$(listing_field "$listing" "$name" 2)"
-        printf '   %s  %10s  %-30s %s %s\n' "$name" "$(cache_human "$size")" "$(reason_label "$reason")" \
+        printf '   %s  %10s  %-30s %s %s\n' "$name" "$(cache_human "${size:-0}")" "$(reason_label "$reason")" \
           "${origin:--}" "$(listing_field "$listing" "$name" 3)"
-      done < <(cache_ct sizes "${names[@]}")
+      done <<<"$out"
     else
+      rc=0
+      out="$(cache_ct rm "${args[@]}")" || rc=$?
       while IFS=$'\t' read -r verdict name size; do
         case "$verdict" in
           deleted)
-            freed=$((freed + size))
+            freed=$((freed + ${size:-0}))
             origin="$(listing_field "$listing" "$name" 2)"
             reason="$(awk -F'\t' -v n="$name" '$2 == n { print $3; exit }' <<<"$decisions")"
-            printf '>> Cache : target %s supprimé (%s, %s%s)\n' "$name" "$(cache_human "$size")" \
+            printf '>> Cache : target %s supprimé (%s, %s%s)\n' "$name" "$(cache_human "${size:-0}")" \
               "$(reason_label "$reason")" "${origin:+ : $origin}" ;;
+          failed)
+            failed=1
+            echo "x.sh clean: target $name renommé mais non supprimé (purgé au prochain clean)" >&2 ;;
           skipped)
             [[ "$auto" == 1 ]] || printf '>> Cache : target %s conservé (%s)\n' "$name" "$size" ;;
         esac
-      done < <(cache_ct rm "${args[@]}")
+      done <<<"$out"
+      if [[ "$rc" -ne 0 ]]; then
+        echo "x.sh clean: le conteneur de suppression a échoué (code $rc), lot peut-être incomplet" >&2
+        failed=1
+      fi
     fi
   fi
 
@@ -278,11 +319,11 @@ cmd_clean() {
     fi
   fi
 
-  [[ "$auto" == 1 || -n "$wt" ]] && return 0
+  if [[ "$auto" == 1 || -n "$wt" ]]; then return "$failed"; fi
 
   # Rapport : espace libéré et occupation du volume par catégorie.
   local usage key bytes total=0 label
-  usage="$(cache_ct usage)"
+  usage="$(cache_ct usage)" || { echo "x.sh clean: échec du calcul de l'occupation" >&2; return 1; }
   echo
   if [[ "$dry" == 1 ]]; then
     echo "Libérable : $(cache_human "$freed")"
@@ -307,15 +348,15 @@ cmd_clean() {
       tools) label="git-cliff (conservé)" ;;
       *) label="" ;;
     esac
-    total=$((total + bytes))
-    printf '  %-20s %10s%s\n' "$key" "$(cache_human "$bytes")" "${label:+  $label}"
+    total=$((total + ${bytes:-0}))
+    printf '  %-20s %10s%s\n' "$key" "$(cache_human "${bytes:-0}")" "${label:+  $label}"
   done <<<"$usage"
   printf '  %-20s %10s\n' "total" "$(cache_human "$total")"
   local avail fsize
   avail="$(awk -F'\t' '$1 == "fs-avail" { print $2 }' <<<"$usage")"
   fsize="$(awk -F'\t' '$1 == "fs-size" { print $2 }' <<<"$usage")"
   [[ -n "$avail" ]] && echo "Libre sur le système de fichiers du volume : $(cache_human "$avail") / $(cache_human "$fsize")"
-  return 0
+  return "$failed"
 }
 
 case "$CMD" in
@@ -335,10 +376,12 @@ case "$CMD" in
 
   check)
     # Gate identique à la CI. S'arrête à la première erreur.
+    # shellcheck disable=SC2016 # script exécuté par bash dans le conteneur, pas développé ici
     run_in_q -- '
       set -e
       echo "== version =="      && bash scripts/check-version.sh >/dev/null && bash scripts/tests/check-version.sh \
-        && bash scripts/tests/release.sh && bash scripts/tests/cache.sh
+        && bash scripts/tests/release.sh \
+        && { [ ! -f scripts/tests/cache.sh ] || bash scripts/tests/cache.sh; }
       echo "== rustfmt =="      && cargo fmt --all --check
       echo "== clippy =="       && cargo clippy --workspace --all-targets --all-features -- -D warnings
       echo "== cargo-deny =="   && (cargo deny check || true)   # avertit sans bloquer au début du projet

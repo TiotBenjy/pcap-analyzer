@@ -27,6 +27,22 @@ permissions:
   contents: read
 
 jobs:
+  version:
+    name: Version unique et scripts de release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      # Cargo.toml (source de vérité), ui/package.json, ui/package-lock.json, Cargo.lock (ADR-011).
+      - run: bash scripts/check-version.sh
+      - run: bash scripts/tests/check-version.sh
+      - run: bash scripts/tests/release.sh
+      # shellcheck est préinstallé sur les runners Ubuntu.
+      - name: shellcheck (scripts de version et de release)
+        run: |
+          shellcheck --version | head -2
+          shellcheck -x scripts/check-version.sh scripts/release.sh scripts/release-status.sh \
+            scripts/tests/check-version.sh scripts/tests/release.sh scripts/ct/cliff.sh
+
   rust:
     name: Rust (fmt, clippy, tests, bindings)
     runs-on: ubuntu-22.04

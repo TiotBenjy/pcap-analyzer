@@ -17,6 +17,26 @@ monter de version ensuite délibérément, en revérifiant `./x.sh check`.
 | tauri-cli | 2.12.4 | |
 | cargo-xwin | dernière (best-effort) | build Windows local expérimental uniquement |
 
+## Publication des versions (P4.6, relevé le 2026-11-08)
+
+| Outil | Version | Notes |
+|---|---|---|
+| git-cliff | 2.14.2 | local : `./x.sh cliff` (compilé une fois dans le volume de cache, `scripts/ct/cliff.sh`) ; CI : input `version` de l'action. Suivi : l'installer dans `docker/Dockerfile` (binstall) |
+| orhun/git-cliff-action | v4.9.1 (`a9a95522b26fe6403f7bb24031f21fb573d0f5ff`) | notes de release, épinglée par SHA |
+| softprops/action-gh-release | v3.0.4 (`8a0cd651e5b2365bd640854a3fa5dfc70e4875f3`) | brouillon, fichiers, publication ; épinglée par SHA |
+| dtolnay/rust-toolchain | master du 2026-10-16 (`683b588c487a69d01f6c6ddf40f036ff682cc2c8`) | épinglée par SHA |
+| taiki-e/install-action | v2.90.2 (`3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2`) | installe tauri-cli ; épinglée par SHA |
+| actions/checkout | v7 | runtime Node 24 ; `persist-credentials: false` |
+| actions/setup-node | v7 | runtime Node 24 ; `package-manager-cache: false` (aucun cache en release) |
+| actions/upload-artifact | v7 | runtime Node 24 |
+| actions/download-artifact | v8 | `pattern` + `merge-multiple` (pas d'`artifact-ids` unique) ; une empreinte en désaccord fait échouer le run |
+| Runner macOS | `macos-15` | build universel aarch64 + x86_64 (`macos-13` Intel retiré) |
+
+`release.yml` n'utilise que des actions en runtime Node 24 ou composites (aucun avertissement
+« Node.js 20 is deprecated »). Pas de `Swatinem/rust-cache` ni de cache npm dans les builds de
+release : un binaire publié ne dépend jamais d'un cache. Les bundles sont construits par
+`cargo tauri build` directement (pas de `tauri-apps/tauri-action`, voir ADR-011).
+
 ## UI — combinaison validée (install + tsc --noEmit + vite build OK)
 
 ```

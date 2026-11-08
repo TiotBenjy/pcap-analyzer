@@ -25,7 +25,9 @@ wt_path() { echo "$WT_DIR/$1"; }
 
 cmd_new() {
   local br="${1:?branche requise}" base="${2:-$MAIN}"
-  [[ "$br" =~ ^(feat|fix|perf|refactor|test|docs|chore|ci)/[a-z0-9][a-z0-9-]*$ ]] \
+  # Points admis pour les numéros de version (chore/release-0.2.0), jamais en fin ni doublés.
+  [[ "$br" =~ ^(feat|fix|perf|refactor|test|docs|chore|ci)/[a-z0-9][a-z0-9.-]*$ \
+     && "$br" != *..* && "$br" != *. ]] \
     || die "nom de branche invalide : $br (attendu type/nom-court)"
   local path; path="$(wt_path "$br")"
   [[ -e "$path" ]] && die "le worktree existe déjà : $path"
@@ -91,7 +93,15 @@ cmd_merge() {
   echo ">> Fusion de $br dans $MAIN (--no-ff)…"
   git -C "$ROOT" merge --no-ff "$br" -m "merge($br): intégration"
 
-  if [[ "$do_push" == "1" ]] && has_remote; then git -C "$ROOT" push origin "$MAIN"; git push origin "$br" || true; fi
+  if [[ "$do_push" == "1" ]] && has_remote; then
+    git -C "$ROOT" push origin "$MAIN"
+    # --cleanup : la branche fusionnée disparaît aussi du remote ; sinon elle y est sauvegardée.
+    if [[ "$do_cleanup" == "1" ]]; then
+      git push origin --delete "$br" 2>/dev/null || true
+    else
+      git push origin "$br" || true
+    fi
+  fi
   if [[ "$do_cleanup" == "1" ]]; then cmd_rm "$br" --delete-branch; fi
   echo ">> $br fusionné dans $MAIN."
 }

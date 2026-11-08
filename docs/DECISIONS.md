@@ -148,3 +148,48 @@ acceptée : la remplacer par une nouvelle qui la référence.
   registre `SESSION_VIEWS` (`chemin -> import()` paresseux, `src/app/router.ts`) ; une entrée de
   navigation sans vue enregistrée reçoit le module d'attente partagé. La vue lit l'identifiant via
   `getRouteApi('/sessions/$sessionId')` ; ses filtres sont des paramètres de recherche sous ce chemin.
+
+## ADR-011 — Publication des versions : version unique, notes git-cliff, release en trois temps
+
+- Contexte : P4.6 ; publier des releases GitHub complètes (Linux, Windows, macOS) dont la version est
+  exactement celle de l'application, avec des notes tirées de l'historique, sans `gh` et sans secret,
+  depuis une procédure qu'un agent peut exécuter seul sans enfreindre « `main` n'est poussé que par
+  `wt.sh merge --push` ».
+- Décision :
+  - **version unique** : `[workspace.package] version` de `Cargo.toml` ; les crates en héritent
+    (`version.workspace = true`), Tauri la lit (aucune `version` dans `tauri.conf.json`), l'API la
+    renvoie ; `ui/package.json` et `ui/package-lock.json` sont des copies synchronisées.
+    `scripts/check-version.sh [vX.Y.Z]` vérifie tout (y compris `Cargo.lock` et le tag) dans le gate,
+    `ci.yml` et en premier dans `release.yml` ; un suffixe SemVer donne une prerelease ;
+  - **notes et CHANGELOG** générés par git-cliff (`cliff.toml`, groupes en français, fusions,
+    `docs(roadmap)` et `chore(release)` exclus) : même version (2.14.2) en local (`./x.sh cliff`,
+    installé dans le volume de cache, pas dans l'image) et en CI (`orhun/git-cliff-action`) ;
+  - **procédure** `scripts/release.sh X.Y.Z` : branche `chore/release-X.Y.Z` (versions, lockfiles,
+    CHANGELOG, commit), fusion par `wt.sh merge --push` (gate complet, seul chemin qui pousse `main`),
+    puis tag annoté sur le commit de fusion et push du tag, seul déclencheur de `release.yml`.
+    Non interactive, sans mode « sans push » (tests : clone jetable avec un remote bare local),
+    nettoyage automatique en cas d'échec avant la fusion ; suivi sans jeton par
+    `scripts/release-status.sh` (API publique GitHub) ;
+  - **publication en trois temps** : `create` (brouillon + notes), `bundle` (artefacts du workflow),
+    `publish` (tous les fichiers + `SHA256SUMS.txt` joints au brouillon, puis publication). Les
+    bundles passent par les artefacts plutôt que d'être téléversés un par un : la release ne reçoit
+    ses fichiers qu'une fois tous les bundles réussis. Build direct par `cargo tauri build` (pas
+    `tauri-action`, qui ajoute des archives `.app.tar.gz` aux noms sans architecture) ;
+    actions tierces épinglées par SHA (`softprops/action-gh-release`, `git-cliff-action`,
+    `dtolnay/rust-toolchain`, `taiki-e/install-action`), `persist-credentials: false` ;
+    `permissions: contents: write` sur `create` et `publish` seulement ; **aucun cache** (Rust ni
+    npm) dans les builds de release : un binaire publié ne dépend jamais d'un cache ;
+  - **bundle en échec** : un échec passager se relance (« Re-run failed jobs ») ; un échec qui
+    demande une correction de code se règle en publiant `X.Y.Z+1` (le brouillon `vX.Y.Z` est
+    supprimé, le tag reste) plutôt qu'en supprimant et réécrivant le tag publié ;
+  - **bundles** : Linux `.AppImage`, `.deb`, `.rpm` (Ubuntu 22.04, glibc 2.35), Windows NSIS et MSI
+    (pas de MSI pour une prerelease : WiX exige une version numérique ; deb et rpm ordonnent mal
+    `X.Y.Z-pre`, donc prereleases déconseillées pour l'instant), macOS **universel** `.dmg`
+    (un seul job sur `macos-15` : les runners Intel `macos-13` sont retirés), macOS 11 minimum ;
+  - **pas de signature** (aucun certificat ni secret) : signature ad hoc macOS (`signingIdentity: "-"`)
+    pour que l'app se lance sur Apple Silicon, sans notarisation ; avertissements SmartScreen et
+    Gatekeeper documentés dans les notes de release.
+- Conséquences : un numéro de version ne se modifie qu'à un endroit et ne peut pas diverger du tag ;
+  la qualité des notes dépend des messages de commit ; une release en échec reste un brouillon sans
+  fichiers ; signer plus tard (Windows Authenticode, Apple Developer ID + notarisation) demandera des
+  secrets de dépôt et une nouvelle ADR ; la base GeoIP sera ajoutée aux bundles par P2.5.

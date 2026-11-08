@@ -445,7 +445,9 @@ impl WriterSink {
 
 impl RecordSink for WriterSink {
     fn emit(&mut self, record: Record) {
-        self.push(to_store(record));
+        if let Some(row) = to_store(record) {
+            self.push(row);
+        }
     }
 
     fn put_blob(&mut self, data: &[u8]) -> Option<BlobRef> {

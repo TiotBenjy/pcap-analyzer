@@ -57,7 +57,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'tls', scope: 'session', path: '/tls', icon: Lock, group: 'analysis', enabled: true },
   { id: 'connections', scope: 'session', path: '/connections', icon: Cable, group: 'analysis', enabled: true },
   { id: 'openPorts', scope: 'session', path: '/open-ports', icon: DoorOpen, group: 'analysis', enabled: true },
-  { id: 'smb', scope: 'session', path: '/smb', icon: FolderTree, group: 'analysis', enabled: false },
+  { id: 'smb', scope: 'session', path: '/smb', icon: FolderTree, group: 'analysis', enabled: true },
   { id: 'pictures', scope: 'session', path: '/pictures', icon: Image, group: 'analysis', enabled: false },
   { id: 'credentials', scope: 'session', path: '/credentials', icon: KeyRound, group: 'analysis', enabled: false },
   { id: 'servers', scope: 'session', path: '/servers', icon: Server, group: 'analysis', enabled: false },

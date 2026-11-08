@@ -36,6 +36,7 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
     migration!(200, "http", "0200_http.sql"),
     migration!(300, "tls", "0300_tls.sql"),
     migration!(400, "flows", "0400_flows.sql"),
+    migration!(500, "smb", "0500_smb.sql"),
 ];
 
 /// Migrations of `catalog.db`, sorted by version (owned by the core only).

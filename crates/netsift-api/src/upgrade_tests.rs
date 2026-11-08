@@ -117,6 +117,10 @@ impl Env {
 const BEFORE_0400: &str = "DROP INDEX flows_service; DROP TABLE conversations; \
     DROP TABLE host_traffic; DROP TABLE open_ports; \
     DELETE FROM schema_migrations WHERE version = 400;";
+/// Undoes migration 0500 (SMB), including the `smb_items` view: the session looks imported by a
+/// build that predates SMB.
+const BEFORE_0500: &str = "DROP VIEW smb_items; DROP TABLE smb_announces; \
+    DROP TABLE smb_sessions; DELETE FROM schema_migrations WHERE version = 500;";
 /// Forgets the core migration: the session looks created by a build that lacked it, and the
 /// upgrade fails because its tables already exist.
 const FORGET_CORE: &str = "DELETE FROM schema_migrations WHERE version = 1;";
@@ -174,6 +178,21 @@ async fn an_older_session_is_upgraded_with_its_new_modules_not_run() {
     // The views of these modules answer too.
     let (status, _, json) = env.get(&format!("/api/v1/sessions/{id}/timeseries")).await;
     assert_eq!(status, StatusCode::OK, "{json}");
+}
+
+#[tokio::test]
+async fn an_smb_view_added_on_upgrade_is_not_listed_as_run() {
+    // The `smb_items` view backs the SMB module card: added on upgrade, it must report "not run"
+    // (absent from modules), not "0 rows", for a session imported before SMB existed.
+    let env = Env::new(false);
+    let id = env.import();
+    env.tamper(&id, BEFORE_0500);
+    assert!(env.outdated(&id));
+
+    let (status, _, summary) = env.get(&format!("/api/v1/sessions/{id}/summary")).await;
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert!(!env.outdated(&id), "migrated by the read");
+    assert!(!module_ids(&summary).contains(&"smb"), "{summary}");
 }
 
 #[tokio::test]

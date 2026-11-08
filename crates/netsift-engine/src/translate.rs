@@ -2,10 +2,12 @@
 
 use netsift_analyze::connections::{ConversationDelta, HostTrafficDelta};
 use netsift_analyze::flow::TcpState;
+use netsift_analyze::http::{HttpMessage, HttpTransaction};
 use netsift_analyze::ports::OpenPortSeen;
 use netsift_analyze::{FlowSummary, HostSeen, Record, TrafficSample};
 use netsift_capture::chunkset::{Anomaly, AnomalyKind, ChunkGroup, ChunkStats, MemberStatus};
 use netsift_capture::{CaptureFormat, ReadWarning};
+use netsift_store::http::{HttpMessageRow, HttpRow};
 use netsift_store::{
     AnomalyRow, ChunkFormat, ChunkRow, ChunkStatus, ConversationRow, FlowRow, HostRow,
     HostTrafficRow, OpenPortRow, StoreRecord, TimeseriesRow,
@@ -26,6 +28,7 @@ pub fn to_store(record: Record) -> StoreRecord {
         // --- analyzers: one arm each, sorted alphabetically ---
         Record::Conversation(c) => StoreRecord::Conversation(conversation_row(&c)),
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
+        Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
         Record::Tls(s) => StoreRecord::Tls(Box::new(tls::session_row(*s))),
     }
@@ -60,6 +63,7 @@ pub fn approx_size(record: &StoreRecord) -> usize {
                 + p.banner.as_ref().map_or(0, String::len)
         }
         StoreRecord::HostTraffic(_) => 0,
+        StoreRecord::Http(h) => h.heap_size(),
         StoreRecord::Tls(t) => t.approx_size(),
         // Rows of analyzers: a conservative estimate until they provide their own.
         _ => 1024,
@@ -161,6 +165,57 @@ fn open_port_row(p: OpenPortSeen) -> OpenPortRow {
         banner: p.banner,
         first_ts: p.first_ts,
         last_ts: p.last_ts,
+    }
+}
+
+fn http_message(m: HttpMessage) -> HttpMessageRow {
+    HttpMessageRow {
+        ts: m.ts_ns,
+        frame: m.frame,
+        head_len: m.head_len,
+        body_wire: m.body.wire_len,
+        body_len: m.body.decoded_len,
+        body_state: m.body.state.as_str().to_owned(),
+        chunked: m.body.chunked,
+        encoding: m.body.content_encoding,
+        mime_magic: m.body.mime_magic.map(ToOwned::to_owned),
+        sha256: m.body.blob.map(|b| b.to_hex()),
+        preview: m.body.preview,
+        headers: m.headers.into_iter().map(|h| (h.name, h.value)).collect(),
+    }
+}
+
+fn http_row(t: HttpTransaction) -> HttpRow {
+    let version = t
+        .request
+        .as_ref()
+        .map(|r| r.minor_version)
+        .or_else(|| t.response.as_ref().map(|r| r.minor_version))
+        .map(|minor| format!("HTTP/1.{minor}"));
+    HttpRow {
+        // Flow ids are non-negative by construction (`FlowId::derive`).
+        flow_id: t.flow.0.unsigned_abs(),
+        seq: t.seq,
+        client_ip: t.client.ip,
+        client_port: t.client.port,
+        server_ip: t.server.ip,
+        server_port: t.server.port,
+        ts: t.ts_ns(),
+        end_ts: t.end_ts_ns(),
+        host: t.host(),
+        path: t.path(),
+        query: t.query(),
+        version,
+        content_type: t.content_type(),
+        user_agent: t.user_agent().map(ToOwned::to_owned),
+        referer: t.referer().map(ToOwned::to_owned),
+        req_content_type: t.request_content_type(),
+        method: t.request.as_ref().map(|r| r.method.clone()),
+        uri: t.request.as_ref().map(|r| r.target.clone()),
+        status: t.response.as_ref().map(|r| r.status),
+        reason: t.response.as_ref().map(|r| r.reason.clone()),
+        request: t.request.map(|r| http_message(r.message)),
+        response: t.response.map(|r| http_message(r.message)),
     }
 }
 

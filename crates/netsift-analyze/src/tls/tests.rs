@@ -195,6 +195,45 @@ fn tls13_with_sni_alpn_and_grease() {
 }
 
 #[test]
+fn hello_retry_request_in_middlebox_compatibility_mode() {
+    let mut hs = TlsHandshake::tls13("retry.example.test");
+    hs.hello_retry = true;
+    let (s, _) = one(&hs);
+    let sh = s.server_hello.as_ref().unwrap();
+    assert!(!sh.retry, "the second ServerHello is kept");
+    assert_ne!(sh.random, hello::HELLO_RETRY_RANDOM);
+    assert_eq!(s.version(), Some(0x0304));
+    assert_eq!(s.cipher.unwrap().name, "TLS_AES_128_GCM_SHA256");
+    assert_eq!(s.outcome, Outcome::Complete);
+    assert_eq!(s.sni(), Some("retry.example.test"));
+    assert_eq!(s.cert_status, CertStatus::Encrypted);
+}
+
+#[test]
+fn scanner_hello_with_hundreds_of_suites() {
+    let hello = wire::ClientHello {
+        version: 0x0303,
+        random: [1; 32],
+        session_id: Vec::new(),
+        cipher_suites: (1..=320).collect(),
+        sni: None,
+        alpn: Vec::new(),
+        supported_versions: Vec::new(),
+        key_share_groups: Vec::new(),
+        grease: None,
+    };
+    let bytes = wire::client_hello_record(&hello);
+    let sessions = run_stream(&[(Direction::ToServer, bytes, 0)]);
+    let ch = sessions[0].client_hello.as_ref().unwrap();
+    assert_eq!(ch.cipher_suites.len(), 320);
+    assert!(sessions[0].ja4.as_deref().unwrap().starts_with("t12i99"));
+    assert_eq!(
+        sessions[0].ja3.as_ref().unwrap().text.matches('-').count(),
+        319 + 6
+    );
+}
+
+#[test]
 fn client_hello_split_over_tiny_segments() {
     let mut hs = TlsHandshake::tls13("fragmented.example.test");
     hs.tcp.mss = 37;

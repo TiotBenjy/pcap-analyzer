@@ -21,7 +21,8 @@ pub mod ext {
 }
 
 /// Bounds of the decoded lists (a hello is at most one handshake message, already bounded).
-const MAX_LIST: usize = 256;
+/// Scanners offer several hundred suites: the lists must stay complete for the fingerprints.
+const MAX_LIST: usize = 4096;
 /// Longest kept SNI / ALPN value, in bytes.
 const MAX_NAME: usize = 255;
 
@@ -47,6 +48,8 @@ pub struct ClientHello {
     pub extensions: Vec<u16>,
     pub sni: Option<String>,
     pub alpn: Vec<String>,
+    /// Raw bytes of the first ALPN value (JA4 works on bytes, not on the sanitized text).
+    pub alpn_first: Option<Vec<u8>>,
     pub groups: Vec<u16>,
     pub point_formats: Vec<u8>,
     pub signature_algs: Vec<u16>,
@@ -59,6 +62,24 @@ pub struct ClientHello {
 }
 
 impl ClientHello {
+    /// Approximate heap size (shard memory bound).
+    pub fn approx_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.random.len()
+            + self.session_id.len()
+            + 2 * (self.cipher_suites.len()
+                + self.extensions.len()
+                + self.groups.len()
+                + self.signature_algs.len()
+                + self.supported_versions.len()
+                + self.key_share_groups.len())
+            + self.compressions.len()
+            + self.point_formats.len()
+            + self.sni.as_ref().map_or(0, String::len)
+            + self.alpn.iter().map(|a| a.len() + 24).sum::<usize>()
+            + self.alpn_first.as_ref().map_or(0, Vec::len)
+    }
+
     /// Highest version offered: `supported_versions` (GREASE excluded) when present, else the
     /// legacy version.
     pub fn offered_version(&self) -> u16 {
@@ -90,6 +111,15 @@ pub struct ServerHello {
 }
 
 impl ServerHello {
+    /// Approximate heap size (shard memory bound).
+    pub fn approx_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.random.len()
+            + self.session_id.len()
+            + 2 * self.extensions.len()
+            + self.alpn.as_ref().map_or(0, String::len)
+    }
+
     /// Negotiated version.
     pub fn version(&self) -> u16 {
         self.selected_version.unwrap_or(self.legacy_version)
@@ -180,8 +210,8 @@ fn sni(body: &[u8]) -> Option<String> {
     None
 }
 
-/// Protocol names of an ALPN extension (RFC 7301 3.1).
-fn alpn(body: &[u8]) -> Vec<String> {
+/// Raw protocol names of an ALPN extension (RFC 7301 3.1), empty names skipped.
+fn alpn_raw(body: &[u8]) -> Vec<&[u8]> {
     let mut out = Vec::new();
     let Some(list) = Reader(body).vec16() else {
         return out;
@@ -189,12 +219,17 @@ fn alpn(body: &[u8]) -> Vec<String> {
     let mut list = Reader(list);
     while !list.is_empty() && out.len() < MAX_LIST {
         match list.vec8() {
-            Some(name) if !name.is_empty() => out.push(text(name)),
+            Some(name) if !name.is_empty() => out.push(name),
             Some(_) => {}
             None => break,
         }
     }
     out
+}
+
+/// Protocol names of an ALPN extension, as display text.
+fn alpn(body: &[u8]) -> Vec<String> {
+    alpn_raw(body).into_iter().map(text).collect()
 }
 
 /// Groups of a `ClientHello` `key_share` extension (RFC 8446 4.2.8).
@@ -229,7 +264,11 @@ pub fn parse_client_hello(body: &[u8]) -> Option<ClientHello> {
         out.extensions.push(kind);
         match kind {
             ext::SERVER_NAME => out.sni = sni(body),
-            ext::ALPN => out.alpn = alpn(body),
+            ext::ALPN => {
+                let names = alpn_raw(body);
+                out.alpn_first = names.first().map(|n| n.to_vec());
+                out.alpn = names.into_iter().map(text).collect();
+            }
             ext::SUPPORTED_GROUPS => {
                 out.groups = Reader(body).vec16().map(u16_list).unwrap_or_default();
             }

@@ -173,6 +173,8 @@ struct Tracked {
     alert: Option<Alert>,
     client_app: bool,
     server_app: bool,
+    /// Approximate heap size of the decoded hellos and certificates (shard memory bound).
+    decoded: usize,
 }
 
 #[derive(Debug)]
@@ -233,6 +235,7 @@ impl TlsAnalyzer {
         if ctx.key.proto != 6
             || !looks_like_tls(data, hs_type)
             || self.tracked >= self.config.max_flows
+            || self.buffered >= self.config.max_buffered
         {
             return FlowState::Ignored;
         }
@@ -249,12 +252,13 @@ impl TlsAnalyzer {
             alert: None,
             client_app: false,
             server_app: false,
+            decoded: 0,
         }))
     }
 
     /// Handles the decoded events of one direction.
     fn apply(
-        &self,
+        config: &TlsConfig,
         t: &mut Tracked,
         from_server: bool,
         events: Vec<Event>,
@@ -262,7 +266,7 @@ impl TlsAnalyzer {
     ) {
         for event in events {
             match event {
-                Event::Handshake(msg) => self.message(t, from_server, &msg, out),
+                Event::Handshake(msg) => Self::message(config, t, from_server, &msg, out),
                 Event::ChangeCipherSpec => {}
                 Event::Alert(level, description) => {
                     if t.alert.is_none() {
@@ -284,16 +288,24 @@ impl TlsAnalyzer {
         }
     }
 
-    fn message(&self, t: &mut Tracked, from_server: bool, msg: &[u8], out: &mut dyn RecordSink) {
+    fn message(
+        config: &TlsConfig,
+        t: &mut Tracked,
+        from_server: bool,
+        msg: &[u8],
+        out: &mut dyn RecordSink,
+    ) {
         let (Some(&kind), Some(body)) = (msg.first(), msg.get(4..)) else {
             return;
         };
         match (from_server, kind) {
             (false, 1) if t.client_hello.is_none() => {
                 t.client_hello = hello::parse_client_hello(body);
+                t.decoded += t.client_hello.as_ref().map_or(0, ClientHello::approx_size);
             }
             (true, 2) if t.server_hello.as_ref().is_none_or(|sh| sh.retry) => {
                 if let Some(sh) = hello::parse_server_hello(body) {
+                    t.decoded += sh.approx_size();
                     t.server_hello = Some(sh);
                 }
             }
@@ -305,12 +317,15 @@ impl TlsAnalyzer {
                 else {
                     return;
                 };
-                for raw in chain.cert_chain.iter().take(self.config.max_chain) {
-                    if raw.data.len() > self.config.max_certificate {
+                for raw in chain.cert_chain.iter().take(config.max_chain) {
+                    if raw.data.len() > config.max_certificate {
                         continue;
                     }
-                    let mut c = Certificate::from_der(raw.data);
-                    c.stored = out.put_blob(raw.data).is_some();
+                    // The blob store hashes the content: its digest is reused.
+                    let blob = out.put_blob(raw.data);
+                    let mut c = Certificate::from_der_with_digest(raw.data, blob.map(|b| b.sha256));
+                    c.stored = blob.is_some();
+                    t.decoded += c.approx_size();
                     t.certificates.push(c);
                 }
             }
@@ -414,7 +429,7 @@ impl TlsAnalyzer {
         self.tracked = self.tracked.saturating_sub(1);
         self.buffered = self
             .buffered
-            .saturating_sub(t.client.buffered() + t.server.buffered());
+            .saturating_sub(t.client.buffered() + t.server.buffered() + t.decoded);
         if let Some(session) = self.session(flow, t) {
             out.emit(Record::Tls(Box::new(session)));
         }
@@ -433,16 +448,20 @@ impl Analyzer for TlsAnalyzer {
         data: &[u8],
         out: &mut dyn RecordSink,
     ) {
-        let state = match self.flows.remove(&ctx.id) {
-            Some(state) => state,
-            None => self.start(ctx, dir, data),
-        };
-        let FlowState::Tracked(mut t) = state else {
+        if !self.flows.contains_key(&ctx.id) {
+            let state = self.start(ctx, dir, data);
             self.flows.insert(ctx.id, state);
+        }
+        let Self {
+            config,
+            flows,
+            buffered,
+            ..
+        } = self;
+        let Some(FlowState::Tracked(t)) = flows.get_mut(&ctx.id) else {
             return;
         };
         let from_server = dir == Direction::ToClient;
-        let max_message = self.config.max_handshake_message;
         let mut events = Vec::new();
         {
             let parser = if from_server {
@@ -454,20 +473,32 @@ impl Analyzer for TlsAnalyzer {
             if ctx.gap_before > 0 {
                 parser.abandon();
             }
-            parser.feed(data, max_message, &mut events);
+            parser.feed(data, config.max_handshake_message, &mut events);
             let after = parser.buffered();
-            self.buffered = self.buffered.saturating_sub(before).saturating_add(after);
-            if self.buffered > self.config.max_buffered {
+            *buffered = buffered.saturating_sub(before).saturating_add(after);
+            if *buffered > config.max_buffered {
                 parser.abandon();
-                self.buffered = self.buffered.saturating_sub(after);
+                *buffered = buffered.saturating_sub(after);
             }
         }
-        self.apply(&mut t, from_server, events, out);
-        if t.client_app && t.server_app {
+        let decoded = t.decoded;
+        Self::apply(config, t, from_server, events, out);
+        *buffered = buffered.saturating_add(t.decoded.saturating_sub(decoded));
+        // TLS 1.3 (or a HelloRetryRequest): `ChangeCipherSpec` is a compatibility dummy on both
+        // sides, so that the plaintext hellos that follow it are still parsed.
+        if !t.client.tls13
+            && t.server_hello
+                .as_ref()
+                .is_some_and(|sh| sh.retry || sh.version() == 0x0304)
+        {
+            t.client.set_tls13();
+            t.server.set_tls13();
+        }
+        if t.client_app
+            && t.server_app
+            && let Some(FlowState::Tracked(t)) = self.flows.insert(ctx.id, FlowState::Done)
+        {
             self.close(ctx.id, *t, out);
-            self.flows.insert(ctx.id, FlowState::Done);
-        } else {
-            self.flows.insert(ctx.id, FlowState::Tracked(t));
         }
     }
 

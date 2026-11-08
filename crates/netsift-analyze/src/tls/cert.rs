@@ -69,13 +69,36 @@ pub struct Certificate {
 impl Certificate {
     /// Digests and fields of a DER certificate (`stored` left false).
     pub fn from_der(der: &[u8]) -> Self {
+        Self::from_der_with_digest(der, None)
+    }
+
+    /// Same as [`Certificate::from_der`], reusing a SHA-256 already computed (blob store).
+    pub fn from_der_with_digest(der: &[u8], sha256: Option<[u8; 32]>) -> Self {
         Self {
-            sha256: Sha256::digest(der).into(),
+            sha256: sha256.unwrap_or_else(|| Sha256::digest(der).into()),
             sha1: Sha1::digest(der).into(),
             size: u64::try_from(der.len()).unwrap_or(u64::MAX),
             stored: false,
             info: parse(der),
         }
+    }
+}
+
+impl Certificate {
+    /// Approximate heap size (shard memory bound).
+    pub fn approx_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.info.as_ref().map_or(0, |i| {
+                std::mem::size_of::<CertInfo>()
+                    + i.subject.len()
+                    + i.issuer.len()
+                    + i.serial.len()
+                    + i.key_algorithm.len()
+                    + i.signature_algorithm.len()
+                    + i.subject_cn.as_ref().map_or(0, String::len)
+                    + i.issuer_cn.as_ref().map_or(0, String::len)
+                    + i.san.iter().map(|s| s.len() + 24).sum::<usize>()
+            })
     }
 }
 

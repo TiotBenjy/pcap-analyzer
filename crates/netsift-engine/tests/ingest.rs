@@ -20,6 +20,8 @@ use netsift_fixtures::anomaly::{
     CrossChunkCase, dns_across_chunks, http_request_across_chunks, mixed_encodings, remove_chunk,
     write_two_prefixes,
 };
+use netsift_fixtures::proto::netbios::HostAnnouncement;
+use netsift_fixtures::scenario::SmbNtlm;
 use netsift_fixtures::scenarios::hosts;
 use netsift_fixtures::scenarios::{Kind, generate};
 use netsift_fixtures::{
@@ -95,6 +97,32 @@ fn tables(catalog: &Catalog, report: &IngestReport) -> Tables {
              coalesce(tcp_state, '-') FROM flows ORDER BY id",
         ),
     }
+}
+
+/// Rendered `smb_announces` and `smb_sessions` tables, for cross-run comparisons.
+fn smb_tables(catalog: &Catalog, report: &IngestReport) -> String {
+    let session = catalog
+        .open_session(&report.session, OpenMode::ReadOnly)
+        .unwrap();
+    let mut s = String::new();
+    for r in rows(
+        &session,
+        "SELECT src_ip || ' ' || server_name || ' ' || dst_name || ' ' || os_label || ' n=' || \
+         announce_count || ' ' || first_ts || '..' || last_ts FROM smb_announces \
+         ORDER BY src_ip, server_name, dst_name",
+    ) {
+        writeln!(s, "announce {r}").unwrap();
+    }
+    for r in rows(
+        &session,
+        "SELECT flow_id || ' ' || client_ip || ':' || client_port || ' -> ' || server_ip || ':' \
+         || server_port || ' ' || protocol || ' ' || coalesce(dialect, '-') || ' ' || signing || \
+         ' ' || coalesce(account, '-') || ' ' || coalesce(domain, '-') || ' ' || \
+         coalesce(ntlm_phase, '-') FROM smb_sessions ORDER BY flow_id",
+    ) {
+        writeln!(s, "session {r}").unwrap();
+    }
+    s
 }
 
 fn scalar(catalog: &Catalog, report: &IngestReport, sql: &str) -> i64 {
@@ -246,6 +274,7 @@ fn single_file_input() {
     // Every built-in analyzer, `core` first.
     let analyzers = meta("import.analyzers").unwrap_or_default();
     assert_eq!(analyzers.split(',').next(), Some("core"), "{analyzers}");
+    assert!(analyzers.split(',').any(|a| a == "smb"), "{analyzers}");
     let info = catalog.get(&report.session).unwrap().unwrap();
     assert_eq!(info.sources, vec![std::fs::canonicalize(&file).unwrap()]);
     assert!(info.session_bytes > 0);
@@ -819,4 +848,39 @@ fn a_dns_transaction_cut_between_two_chunks_stays_paired() {
         check("SELECT count(*) FROM flows WHERE app_proto IS NOT 'dns'"),
         0
     );
+}
+
+#[test]
+fn smb_session_across_chunks_is_the_same_on_any_shard_count() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let mut sc = Scenario::new();
+    sc.smb_host_announcement(
+        hosts::file_server(),
+        hosts::broadcast(),
+        &HostAnnouncement::default(),
+    );
+    sc.smb_ntlm(
+        hosts::workstation(),
+        hosts::file_server(),
+        &SmbNtlm::v2("alice", "CORP"),
+    );
+    let packets = sc.into_packets();
+
+    // Single file.
+    let file = tmp.path().join("smb.pcap");
+    write_file(&file, &packets, &Encoding::pcap()).unwrap();
+    let single = run(&catalog, &file, &options(1));
+
+    // Two packets per chunk, so the TCP session is cut between files.
+    let dir = tmp.path().join("chunks");
+    let opts = SplitOptions::new(SplitBy::Packets(2), Naming::Dumpcap);
+    split_to_dir(&dir, &packets, &opts).unwrap();
+    let one = run(&catalog, &dir, &options(1));
+    let four = run(&catalog, &dir, &options(4));
+
+    let reference = smb_tables(&catalog, &single);
+    assert!(reference.contains("authenticate"), "{reference}");
+    assert_eq!(smb_tables(&catalog, &one), reference);
+    assert_eq!(smb_tables(&catalog, &four), reference);
 }

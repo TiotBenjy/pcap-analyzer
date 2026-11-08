@@ -4,35 +4,46 @@ use netsift_analyze::connections::{ConversationDelta, HostTrafficDelta};
 use netsift_analyze::flow::TcpState;
 use netsift_analyze::http::{HttpMessage, HttpTransaction};
 use netsift_analyze::ports::OpenPortSeen;
-use netsift_analyze::{FlowSummary, HostSeen, Record, TrafficSample};
+use netsift_analyze::{
+    FlowSummary, HostSeen, Record, SmbAnnounce, SmbRecord, SmbSession, TrafficSample,
+};
 use netsift_capture::chunkset::{Anomaly, AnomalyKind, ChunkGroup, ChunkStats, MemberStatus};
 use netsift_capture::{CaptureFormat, ReadWarning};
 use netsift_store::http::{HttpMessageRow, HttpRow};
 use netsift_store::{
     AnomalyRow, ChunkFormat, ChunkRow, ChunkStatus, ConversationRow, FlowRow, HostRow,
-    HostTrafficRow, OpenPortRow, StoreRecord, TimeseriesRow,
+    HostTrafficRow, OpenPortRow, SmbAnnounceRow, SmbSessionRow, StoreRecord, TimeseriesRow,
 };
 use serde_json::{Value, json};
 
 // --- analyzers: one translation module each, sorted ---
 mod tls;
 
-/// Store row of an analyzer record. Registration point: each analyzer that adds a [`Record`]
-/// variant adds **one arm** in the sorted zone.
-pub fn to_store(record: Record) -> StoreRecord {
-    match record {
+/// Store row of an analyzer record, or `None` for records that are not persisted (yet).
+/// Registration point: each analyzer that adds a [`Record`] variant adds **one arm** in the
+/// sorted zone.
+pub fn to_store(record: Record) -> Option<StoreRecord> {
+    Some(match record {
         // --- core ---
         Record::Timeseries(s) => StoreRecord::Timeseries(timeseries_row(&s)),
         Record::Host(h) => StoreRecord::Host(host_row(h)),
         Record::Flow(f) => StoreRecord::Flow(flow_row(&f)),
         // --- analyzers: one arm each, sorted alphabetically ---
         Record::Conversation(c) => StoreRecord::Conversation(conversation_row(&c)),
+        // In-memory contract only until the Credentials task (P3.7) designs its table: dropped
+        // here, never written nor logged. The SMB view keeps its non-secret metadata in
+        // `smb_sessions`.
+        Record::Credential(_) => return None,
         Record::Dns(t) => StoreRecord::Dns(Box::new(dns_row(*t))),
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
         Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
+        Record::Smb(SmbRecord::Announce(a)) => {
+            StoreRecord::SmbAnnounce(Box::new(smb_announce_row(a)))
+        }
+        Record::Smb(SmbRecord::Session(s)) => StoreRecord::SmbSession(Box::new(smb_session_row(s))),
         Record::Tls(s) => StoreRecord::Tls(Box::new(tls::session_row(*s))),
-    }
+    })
 }
 
 fn dns_row(t: netsift_analyze::dns::DnsTransaction) -> netsift_store::dns::DnsRow {
@@ -68,6 +79,52 @@ fn dns_row(t: netsift_analyze::dns::DnsTransaction) -> netsift_store::dns::DnsRo
         has_query: t.has_query,
         has_response: t.has_response,
         pending: t.pending,
+    }
+}
+
+/// Lower-case hex of a byte slice.
+fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        })
+}
+
+fn smb_announce_row(a: SmbAnnounce) -> SmbAnnounceRow {
+    SmbAnnounceRow {
+        ts: a.ts,
+        src_ip: a.src_ip,
+        kind: a.kind.as_str().to_owned(),
+        server_name: a.server_name,
+        dst_name: a.dst_name,
+        os_major: a.os_major,
+        os_minor: a.os_minor,
+        os_label: a.os_label,
+        server_type: a.server_type,
+        comment: a.comment,
+    }
+}
+
+fn smb_session_row(s: SmbSession) -> SmbSessionRow {
+    SmbSessionRow {
+        flow_id: s.flow_id.0.unsigned_abs(),
+        client_ip: s.client.ip,
+        client_port: s.client.port,
+        server_ip: s.server.ip,
+        server_port: s.server.port,
+        first_ts: s.first_ts,
+        last_ts: s.last_ts,
+        protocol: s.protocol.as_str().to_owned(),
+        dialect: s.dialect,
+        signing: s.signing.as_str().to_owned(),
+        server_guid: s.server_guid.map(|g| to_hex(&g)),
+        domain: s.domain,
+        account: s.account,
+        workstation: s.workstation,
+        ntlm_phase: s.ntlm_phase.map(|p| p.as_str().to_owned()),
     }
 }
 
@@ -433,7 +490,7 @@ mod tests {
             tcp_state: Some(TcpState::Reset),
             end: EndReason::Closed,
         };
-        let StoreRecord::Flow(row) = to_store(Record::Flow(FlowSummary {
+        let Some(StoreRecord::Flow(row)) = to_store(Record::Flow(FlowSummary {
             flow,
             app_proto: Some(AppProto::Tls),
         })) else {

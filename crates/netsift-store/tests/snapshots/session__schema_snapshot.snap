@@ -471,6 +471,101 @@ CREATE TABLE meta (
     value TEXT NOT NULL
 ) WITHOUT ROWID;
 
+-- table network_country_edges
+CREATE TABLE network_country_edges (
+    a             TEXT NOT NULL,
+    b             TEXT NOT NULL,
+    mask          INTEGER NOT NULL,
+    cat_a         TEXT NOT NULL,
+    cat_b         TEXT NOT NULL,
+    v6            INTEGER NOT NULL,
+    bytes_fwd     INTEGER NOT NULL,
+    bytes_rev     INTEGER NOT NULL,
+    packets       INTEGER NOT NULL,
+    flows         INTEGER NOT NULL,
+    conversations INTEGER NOT NULL,
+    protocols     TEXT NOT NULL CHECK (json_valid(protocols))
+);
+
+-- table network_edges
+CREATE TABLE network_edges (
+    a             TEXT NOT NULL,
+    b             TEXT NOT NULL,
+    mask          INTEGER NOT NULL,
+    cat_a         TEXT NOT NULL,
+    cat_b         TEXT NOT NULL,
+    v6            INTEGER NOT NULL,
+    bytes_fwd     INTEGER NOT NULL,                 -- a -> b
+    bytes_rev     INTEGER NOT NULL,
+    packets       INTEGER NOT NULL,
+    flows         INTEGER NOT NULL,
+    conversations INTEGER NOT NULL,
+    protocols     TEXT NOT NULL CHECK (json_valid(protocols))  -- sorted labels
+);
+
+-- table network_expand
+CREATE TABLE network_expand (
+    country       TEXT NOT NULL,                    -- country of `x`
+    x             TEXT NOT NULL,                    -- the expandable host
+    x_is_src      INTEGER NOT NULL CHECK (x_is_src IN (0, 1)),
+    other_node    TEXT NOT NULL,                    -- node key of the other end
+    other_ip      TEXT NOT NULL,                    -- the other end when expandable too, else ''
+    mask          INTEGER NOT NULL,
+    cat_x         TEXT NOT NULL,
+    cat_other     TEXT NOT NULL,
+    v6            INTEGER NOT NULL,
+    bytes_fwd     INTEGER NOT NULL,                 -- client -> server
+    bytes_rev     INTEGER NOT NULL,
+    packets       INTEGER NOT NULL,
+    flows         INTEGER NOT NULL,
+    conversations INTEGER NOT NULL,
+    protocols     TEXT NOT NULL CHECK (json_valid(protocols))
+);
+
+-- index network_expand_country
+CREATE INDEX network_expand_country ON network_expand (country);
+
+-- table network_host_counts
+CREATE TABLE network_host_counts (
+    node     TEXT NOT NULL,
+    cnode    TEXT NOT NULL,
+    category TEXT NOT NULL,
+    v6       INTEGER NOT NULL,
+    mask     INTEGER NOT NULL,
+    hosts    INTEGER NOT NULL
+);
+
+-- table network_hosts
+CREATE TABLE network_hosts (
+    ip       TEXT PRIMARY KEY NOT NULL,
+    country  TEXT,
+    category TEXT NOT NULL,                         -- '' when unknown
+    v6       INTEGER NOT NULL CHECK (v6 IN (0, 1)),
+    mask     INTEGER NOT NULL,                      -- union of the groups of its conversations
+    bytes    INTEGER NOT NULL,                      -- bytes of its conversations
+    traffic  INTEGER NOT NULL,                      -- host_traffic sent + received (orphan order)
+    rank     INTEGER,                               -- 1 = most bytes; NULL without conversation
+    crank    INTEGER,                               -- rank within its country
+    keyed    INTEGER NOT NULL CHECK (keyed IN (0, 1)),  -- node = 'h:<ip>'
+    node     TEXT NOT NULL,
+    cnode    TEXT NOT NULL
+) WITHOUT ROWID;
+
+-- index network_hosts_crank
+CREATE INDEX network_hosts_crank ON network_hosts (country, crank) WHERE crank IS NOT NULL;
+
+-- index network_hosts_keyed
+CREATE INDEX network_hosts_keyed ON network_hosts (rank) WHERE keyed = 1;
+
+-- index network_hosts_traffic
+CREATE INDEX network_hosts_traffic ON network_hosts (traffic, ip);
+
+-- table network_protocols
+CREATE TABLE network_protocols (
+    grp           TEXT PRIMARY KEY NOT NULL,
+    conversations INTEGER NOT NULL
+) WITHOUT ROWID;
+
 -- table ntp_responses
 CREATE TABLE ntp_responses (
     server_ip TEXT NOT NULL,

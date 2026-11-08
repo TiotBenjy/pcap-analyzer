@@ -89,6 +89,7 @@ export const en = {
         attribution: 'IP geolocation by DB-IP',
         source: 'https://db-ip.com',
         license: 'Licensed under CC BY 4.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
       },
     },
     notFound: {

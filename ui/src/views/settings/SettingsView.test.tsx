@@ -17,6 +17,7 @@ describe('SettingsView', () => {
     expect(geoip).toHaveTextContent('IP geolocation by DB-IP');
     expect(geoip).toHaveTextContent('https://db-ip.com');
     expect(geoip).toHaveTextContent('CC BY 4.0');
+    expect(geoip).toHaveTextContent('https://creativecommons.org/licenses/by/4.0/');
     expect(geoip.querySelector('a')).toBeNull();
   });
 

@@ -35,14 +35,11 @@ pub fn ensure_data_dir(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Country database for the imports: a copy in the data directory first (lets the user update
-/// it without reinstalling), else the one shipped in the bundle. `None` when neither exists:
-/// the API then reports it missing and countries stay unknown.
-pub fn resolve_geoip(data_dir: &Path, resource_dir: Option<&Path>) -> Option<PathBuf> {
-    let user = netsift_api::default_geoip_path(data_dir);
-    if user.is_file() {
-        return Some(user);
-    }
+/// Country database shipped in the bundle, `None` when the bundle has none. The API reads the
+/// user copy `<data_dir>/geoip/dbip-country-lite.mmdb` first (downloaded or imported from
+/// Settings, which write it there) and falls back to this one; without either, countries stay
+/// unknown.
+pub fn bundled_geoip(resource_dir: Option<&Path>) -> Option<PathBuf> {
     let bundled = resource_dir?
         .join(GEOIP_RESOURCE_DIR)
         .join(netsift_api::GEOIP_FILE_NAME);
@@ -60,11 +57,12 @@ pub fn max_imports(cores: usize) -> usize {
 }
 
 /// API configuration of the desktop app: paths come from native dialogs (any absolute path is
-/// accepted), CORS admits only the webview origins, no folder browser.
+/// accepted), CORS admits only the webview origins, no folder browser. The user copy of the
+/// GeoIP database stays at its default location under `data_dir` (read and written by the API).
 pub fn api_config(
     token: String,
     data_dir: PathBuf,
-    geoip_path: Option<PathBuf>,
+    geoip_bundled: Option<PathBuf>,
     cores: usize,
 ) -> ApiConfig {
     ApiConfig {
@@ -78,7 +76,8 @@ pub fn api_config(
             .collect(),
         allow_any_path: true,
         max_imports: max_imports(cores),
-        geoip_path,
+        // Fallback only: the API reads and writes the user copy under `data_dir` first.
+        geoip_path: geoip_bundled,
     }
 }
 
@@ -142,33 +141,21 @@ mod tests {
     }
 
     #[test]
-    fn geoip_prefers_the_data_dir_copy_then_the_bundle() {
+    fn bundled_geoip_is_the_resource_file_when_present() {
         let tmp = tempfile::tempdir().unwrap();
-        let data = tmp.path().join("data");
         let resources = tmp.path().join("resources");
-        assert_eq!(resolve_geoip(&data, Some(&resources)), None);
-        assert_eq!(resolve_geoip(&data, None), None);
+        assert_eq!(bundled_geoip(Some(&resources)), None);
+        assert_eq!(bundled_geoip(None), None);
 
         let bundled = resources
             .join(GEOIP_RESOURCE_DIR)
             .join(netsift_api::GEOIP_FILE_NAME);
-        std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        // A directory named like the database is not one.
+        std::fs::create_dir_all(&bundled).unwrap();
+        assert_eq!(bundled_geoip(Some(&resources)), None);
+        std::fs::remove_dir(&bundled).unwrap();
         std::fs::write(&bundled, b"mmdb").unwrap();
-        assert_eq!(resolve_geoip(&data, Some(&resources)), Some(bundled));
-        assert_eq!(resolve_geoip(&data, None), None);
-
-        let user = netsift_api::default_geoip_path(&data);
-        std::fs::create_dir_all(user.parent().unwrap()).unwrap();
-        std::fs::write(&user, b"mmdb").unwrap();
-        assert_eq!(resolve_geoip(&data, Some(&resources)), Some(user.clone()));
-        assert_eq!(resolve_geoip(&data, None), Some(user));
-    }
-
-    #[test]
-    fn geoip_ignores_a_directory_named_like_the_database() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(netsift_api::default_geoip_path(tmp.path())).unwrap();
-        assert_eq!(resolve_geoip(tmp.path(), None), None);
+        assert_eq!(bundled_geoip(Some(&resources)), Some(bundled));
     }
 
     #[test]
@@ -183,6 +170,7 @@ mod tests {
         assert!(!config.read_only);
         assert_eq!(config.captures_roots, Vec::<PathBuf>::new());
         assert_eq!(config.max_imports, netsift_api::DEFAULT_MAX_IMPORTS);
+        // The bundled copy is the fallback; updates write the user copy under `<data_dir>/geoip/`.
         assert_eq!(config.geoip_path, Some(PathBuf::from("/r/geoip/x.mmdb")));
         assert_eq!(config.data_dir, PathBuf::from("/d"));
         let origins: Vec<_> = config

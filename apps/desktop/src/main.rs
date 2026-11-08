@@ -55,11 +55,16 @@ fn start(app: &App) -> Result<()> {
         tracing::warn!(session = %id, "interrupted import marked incomplete");
     }
     let resource_dir = app.path().resource_dir().ok();
-    let geoip = paths::resolve_geoip(&data_dir, resource_dir.as_deref());
+    let user_geoip = netsift_api::default_geoip_path(&data_dir);
+    let geoip = paths::bundled_geoip(resource_dir.as_deref());
     if let Some(path) = &geoip {
-        tracing::info!(path = %path.display(), "GeoIP database");
+        tracing::info!(
+            user = %user_geoip.display(),
+            bundled = %path.display(),
+            "GeoIP databases (the user copy first)"
+        );
     } else {
-        tracing::warn!("no GeoIP database: countries will be unknown");
+        tracing::info!(user = %user_geoip.display(), "GeoIP database: no bundled copy");
     }
     let cores = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
     let config = paths::api_config(paths::random_token()?, data_dir, geoip, cores);

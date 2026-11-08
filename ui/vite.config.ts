@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { availableParallelism } from 'node:os';
 import { defineConfig } from 'vite';
+import { frozenPrototype } from './vite-plugins/frozenPrototype';
 
 // Dev mode (./x.sh dev): the browser talks to Vite only; Vite proxies /api to the Rust backend
 // and injects the bearer token, so the token never reaches the page.
@@ -10,7 +11,7 @@ const apiUrl = process.env.NETSIFT_API_URL ?? 'http://127.0.0.1:7878';
 const apiToken = process.env.NETSIFT_API_TOKEN ?? '';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [frozenPrototype(), react(), tailwindcss()],
   // Relative asset paths: required by the Tauri custom protocol.
   base: './',
   server: {

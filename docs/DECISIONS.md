@@ -227,11 +227,24 @@ acceptée : la remplacer par une nouvelle qui la référence.
     `$LOCALDATA/NetSift/exports`. `core:default` est retiré : l'UI n'appelle que ses propres commandes ;
   - `allow_any_path: true`, car les chemins viennent du dialogue natif. `max_imports` vaut 1 jusqu'à
     4 cœurs, sinon `DEFAULT_MAX_IMPORTS` ;
-  - `freezePrototype` est conservé. ECharts et graphology fonctionnent avec un `Object.prototype` gelé
-    (test Vitest dédié). `./x.sh shots` gèle aussi le prototype et échoue sur toute erreur de page.
+  - `freezePrototype` est conservé (tauri 2 ne gèle que `Object.prototype`, avant tout script). ECharts
+    6.0/6.1 ne le supporte pas tel quel : à l'évaluation de son module, `mockMethods` de
+    `lib/core/Scheduler.js` affecte `target.constructor` sur un `{}` (piège de l'« override mistake »),
+    ce qui empêchait tout graphique de se charger dans l'AppImage (« Attempted to assign to readonly
+    property. » sous WebKitGTK, correctif du 2026-11-08). Le plugin Vite `ui/vite-plugins/frozenPrototype.ts`
+    remplace cette affectation par `Object.defineProperty` au build, et fait échouer le build si le code
+    d'ECharts change. L'ancien test Vitest `freezePrototype.test.ts` est supprimé : il importait ECharts
+    avant de geler (son runner ne supporte pas un prototype gelé), n'a donc pas vu ce défaut, et gelait
+    le prototype d'un worker partagé. La référence est le test de fumée desktop (`ui/tests/desktop`),
+    lancé par `./x.sh shots` sur la build de production sous WebKit (le moteur de WebKitGTK) et
+    Chromium, avec le prototype gelé avant tout script et un faux pont Tauri ; il échoue sur toute
+    erreur de page ou de console. Désactiver `freezePrototype` reste le dernier recours
+    si une dépendance ne peut pas être corrigée : c'est une défense en profondeur, pas une exigence
+    fonctionnelle.
 - Conséquences : une fonctionnalité qui a besoin d'une nouvelle API Tauri côté JS ajoute la permission
   ciblée dans `capabilities/default.json`. Un export doit écrire sous `<données>/exports` pour pouvoir être
-  ouvert. sigma n'est pas encore vérifié avec le prototype gelé : à faire avec la vue du graphe réseau.
+  ouvert. sigma et graphology ne sont pas encore vérifiés avec le prototype gelé : la vue du graphe
+  réseau doit être ajoutée au test de fumée desktop.
 - Vérifications manuelles (sur un bundle installé, à chaque release ou changement de `apps/desktop`) :
   1. Premier lancement : la fenêtre s'ouvre et `<données>/exports` est créé.
   2. Import d'un dossier puis d'un fichier unique par le dialogue système : progression, puis Overview.

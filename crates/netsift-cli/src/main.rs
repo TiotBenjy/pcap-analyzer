@@ -99,6 +99,8 @@ async fn serve(args: ServeArgs) -> Result<()> {
         captures_roots: args.captures_roots,
         read_only: args.read_only,
         cors_origins: Vec::new(),
+        // Dev web mode: scan and import stay inside the captures roots.
+        allow_any_path: false,
     };
     netsift_api::serve(listener, config, shutdown_signal()).await?;
     info!("API stopped");

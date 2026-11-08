@@ -79,6 +79,8 @@ fn start_api() -> Result<ApiHandle> {
             .iter()
             .map(|o| HeaderValue::from_static(o))
             .collect(),
+        // P2.5 sets it to true once the native folder dialog is wired.
+        allow_any_path: false,
     };
     let (tx, rx) = oneshot::channel::<()>();
     tauri::async_runtime::spawn(async move {

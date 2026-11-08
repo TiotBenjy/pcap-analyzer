@@ -10,18 +10,22 @@ repository.workspace = true
 
 [dependencies]
 axum.workspace = true
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 netsift-engine.workspace = true
 netsift-geo.workspace = true
 netsift-store.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["time"] }
 tower-http.workspace = true
 tracing.workspace = true
 ts-rs.workspace = true
 
 [dev-dependencies]
+netsift-capture.workspace = true
+netsift-fixtures.workspace = true
+tempfile = "3.27.0"
 tokio = { workspace = true, features = ["io-util"] }
 tower.workspace = true
 

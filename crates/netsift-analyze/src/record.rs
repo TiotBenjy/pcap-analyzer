@@ -34,6 +34,8 @@ pub enum Record {
     HostTraffic(HostTrafficDelta),
     /// `ports`: a service seen answering (merged by host, transport and port).
     OpenPort(OpenPortSeen),
+    /// One TLS session (`tls` analyzer).
+    Tls(Box<crate::tls::TlsSession>),
 }
 
 /// Packets and wire bytes of one application protocol during one second.

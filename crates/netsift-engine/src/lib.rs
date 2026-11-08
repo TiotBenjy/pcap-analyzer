@@ -19,6 +19,7 @@
     clippy::panic
 )]
 
+mod blobs;
 mod error;
 mod ingest;
 mod options;

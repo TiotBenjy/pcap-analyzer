@@ -63,6 +63,9 @@ export function colorFor(category: string): string {
 /** Sequential single-hue blue scale (5 steps), light to dark, for choropleths and heatmaps. */
 export const SEQUENTIAL = ['#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'] as const;
 
+/** Same blue scale for the dark theme: dark to bright, so that low values do not glare. */
+export const SEQUENTIAL_DARK = ['#172554', '#1e3a8a', '#1d4ed8', '#3b82f6', '#93c5fd'] as const;
+
 /**
  * Address categories (`AddressCategory`, backend labels) for network legends: color and node shape
  * are defined once. Labels come from the dictionaries (`addressCategories.<label>`; `private` is

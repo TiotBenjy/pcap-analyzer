@@ -101,6 +101,12 @@ impl Session {
         self.dir.join(BLOBS_DIR)
     }
 
+    /// Path of the blob whose SHA-256 is `sha256_hex` (see [`blob_relpath`]), `None` when the
+    /// digest is malformed. The file may not exist.
+    pub fn blob_path(&self, sha256_hex: &str) -> Option<PathBuf> {
+        blob_relpath(sha256_hex).map(|rel| self.blobs_dir().join(rel))
+    }
+
     /// Directory of thumbnails.
     pub fn thumbs_dir(&self) -> PathBuf {
         self.dir.join(THUMBS_DIR)
@@ -125,6 +131,17 @@ impl Session {
     pub fn into_conn(self) -> Connection {
         self.conn
     }
+}
+
+/// Location of a blob inside `blobs/`: `<first two hex digits>/<64 hex digits>`. `None` unless
+/// `sha256_hex` is exactly 64 lower-case hexadecimal digits (never a path traversal).
+pub fn blob_relpath(sha256_hex: &str) -> Option<PathBuf> {
+    let valid = sha256_hex.len() == 64
+        && sha256_hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    let prefix = sha256_hex.get(..2).filter(|_| valid)?;
+    Some(Path::new(prefix).join(sha256_hex))
 }
 
 /// True when a core data table (anything but `meta`) already has rows.

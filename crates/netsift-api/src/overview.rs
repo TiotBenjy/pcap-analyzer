@@ -202,6 +202,7 @@ const MODULES: &[(&str, &str)] = &[
     ("connections", "conversations"),
     ("hosts", "hosts"),
     ("openPorts", "open_ports"),
+    ("tls", "tls_sessions"),
 ];
 
 /// Opens a session whose data can be shown: 404 when unknown, 409 while importing or failed.

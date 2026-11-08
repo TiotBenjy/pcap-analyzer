@@ -526,6 +526,7 @@ impl RunCtx<'_> {
                     max_record_bytes: self.options.record_batch_bytes,
                     fault: parts.fault.clone(),
                     end_ts: Arc::clone(&end_ts),
+                    blobs_dir: parts.registry.config().blobs_dir.clone(),
                 };
                 match thread::Builder::new()
                     .name(format!("netsift-shard-{index}"))

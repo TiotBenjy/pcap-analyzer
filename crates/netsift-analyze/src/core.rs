@@ -185,6 +185,7 @@ impl Analyzer for CoreAnalyzer {
 
 /// Merges records the way the store does (tests and diagnostics): sums time series by
 /// `(bucket, proto)`, unites hosts by IP. Flows are kept as they are.
+#[allow(clippy::match_wildcard_for_single_variants)] // records of the other analyzers
 pub fn merge_core(records: &[Record]) -> (Vec<TrafficSample>, Vec<HostSeen>, Vec<FlowSummary>) {
     let mut ts: BTreeMap<(i64, AppProto), Counter> = BTreeMap::new();
     let mut hosts: BTreeMap<IpAddr, HostSeen> = BTreeMap::new();

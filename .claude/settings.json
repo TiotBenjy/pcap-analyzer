@@ -12,7 +12,9 @@
       "Bash(rg:*)",
       "Bash(sed:*)",
       "Bash(find:*)",
-      "Bash(shellcheck:*)"
+      "Bash(shellcheck:*)",
+      "Read(./.artifacts/screens/**)",
+      "Read(./.worktrees/**/.artifacts/screens/**)"
     ],
     "deny": [
       "Bash(cargo:*)",
@@ -28,7 +30,8 @@
       "Bash(git push -f:*)",
       "Read(./captures/**)",
       "Read(./.data/**)",
-      "Read(./.artifacts/**)"
+      "Read(./.artifacts/shots-data/**)",
+      "Read(./.worktrees/**/.artifacts/shots-data/**)"
     ]
   },
   "hooks": {

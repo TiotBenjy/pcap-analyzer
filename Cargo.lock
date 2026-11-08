@@ -2605,11 +2605,15 @@ name = "netsift-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "futures-util",
+ "netsift-capture",
  "netsift-engine",
+ "netsift-fixtures",
  "netsift-geo",
  "netsift-store",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tower",

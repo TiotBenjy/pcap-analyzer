@@ -1,0 +1,13 @@
+---
+source: crates/netsift-analyze/src/servers/tests.rs
+assertion_line: 87
+expression: render(&records)
+---
+dhcp 0.0.0.0 -> 255.255.255.255 op=1 type=Some("discover") xid=3903f326 mac=Some([2, 0, 94, 16, 0, 48]) yiaddr=None server_id=None requested=None mask=None routers=[] dns=[] lease=None hostname=Some("laptop-30")
+dhcp 192.168.1.1 -> 255.255.255.255 op=2 type=Some("offer") xid=3903f326 mac=Some([2, 0, 94, 16, 0, 48]) yiaddr=Some(192.168.1.30) server_id=Some(192.168.1.1) requested=None mask=Some(255.255.255.0) routers=[192.168.1.1] dns=[192.168.1.1] lease=Some(86400) hostname=None
+dhcp 0.0.0.0 -> 255.255.255.255 op=1 type=Some("request") xid=3903f326 mac=Some([2, 0, 94, 16, 0, 48]) yiaddr=None server_id=Some(192.168.1.1) requested=Some(192.168.1.30) mask=None routers=[] dns=[] lease=None hostname=Some("laptop-30")
+dhcp 192.168.1.1 -> 255.255.255.255 op=2 type=Some("ack") xid=3903f326 mac=Some([2, 0, 94, 16, 0, 48]) yiaddr=Some(192.168.1.30) server_id=Some(192.168.1.1) requested=None mask=Some(255.255.255.0) routers=[192.168.1.1] dns=[192.168.1.1] lease=Some(86400) hostname=None
+ntp 203.0.113.123 -> 192.168.1.30 v4 stratum=2 ref="192.0.2.1"
+kerberos 192.168.1.5 -> 192.168.1.30 transport=17 error realm=Some("CORP.EXAMPLE") error=Some(25)
+kerberos 192.168.1.5 -> 192.168.1.30 transport=17 as_rep realm=Some("CORP.EXAMPLE") error=None
+kerberos 192.168.1.5 -> 192.168.1.30 transport=6 tgs_rep realm=Some("CORP.EXAMPLE") error=None

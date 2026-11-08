@@ -157,14 +157,14 @@ impl HttpRow {
             .prepare_cached(
                 "INSERT INTO http_transactions (flow_id, seq, client_ip, client_port, server_ip, \
                  server_port, ts, end_ts, method, method_group, uri, host, path, query, version, \
-                 status, status_class, reason, content_type, user_agent, referer, \
+                 status, status_key, status_class, reason, content_type, user_agent, referer, \
                  req_ts, req_frame, req_head_len, req_body_wire, req_body_len, req_body_state, \
                  req_chunked, req_encoding, req_content_type, req_mime_magic, req_sha256, \
                  req_preview, resp_ts, resp_frame, resp_head_len, resp_body_wire, resp_body_len, \
                  resp_body_state, resp_chunked, resp_encoding, resp_mime_magic, resp_sha256, \
                  resp_preview) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, \
                  ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, \
-                 ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44) \
+                 ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45) \
                  RETURNING id",
             )?
             .query_row(
@@ -185,6 +185,7 @@ impl HttpRow {
                     self.query,
                     self.version,
                     self.status,
+                    self.status.map_or(-1, i64::from),
                     status_class(self.status),
                     self.reason,
                     self.content_type,
@@ -328,8 +329,10 @@ impl HttpEntry {
     }
 }
 
-/// Every filter of [`HttpFilter`], with `NULL` parameters for the unused ones.
-const FILTER: &str = "(?1 IS NULL OR t.method_group IN (SELECT value FROM json_each(?1))) \
+/// Every filter of [`HttpFilter`], with `NULL` parameters for the unused ones. The sort
+/// indexes serve the order (`sort_queries_use_indexes`); the filters themselves are evaluated
+/// row by row (building the condition from the active filters only is a follow-up).
+pub(crate) const FILTER: &str = "(?1 IS NULL OR t.method_group IN (SELECT value FROM json_each(?1))) \
     AND (?2 IS NULL OR t.status_class IN (SELECT value FROM json_each(?2)) \
          OR CAST(t.status AS TEXT) IN (SELECT value FROM json_each(?2))) \
     AND (?3 IS NULL OR t.host = ?3) \
@@ -415,7 +418,7 @@ pub fn transactions_page(
         sort: match sort {
             HttpSort::Time => "t.ts",
             HttpSort::Size => "t.resp_body_len",
-            HttpSort::Status => "coalesce(t.status, -1)",
+            HttpSort::Status => "t.status_key",
         },
         tiebreak: "t.id",
         descending,

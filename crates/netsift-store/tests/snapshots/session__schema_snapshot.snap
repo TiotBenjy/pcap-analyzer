@@ -235,6 +235,7 @@ CREATE TABLE http_transactions (
     query           TEXT,
     version         TEXT,                               -- 'HTTP/1.1', request else response
     status          INTEGER,
+    status_key      INTEGER NOT NULL,                   -- status, -1 without response (sort key)
     status_class    TEXT NOT NULL,                      -- '1xx'..'5xx', 'other', 'none'
     reason          TEXT,
     content_type    TEXT,                               -- response media type
@@ -282,7 +283,7 @@ CREATE INDEX http_transactions_resp_sha256 ON http_transactions (resp_sha256);
 CREATE INDEX http_transactions_size ON http_transactions (resp_body_len);
 
 -- index http_transactions_status
-CREATE INDEX http_transactions_status ON http_transactions (coalesce(status, -1));
+CREATE INDEX http_transactions_status ON http_transactions (status_key);
 
 -- index http_transactions_status_class
 CREATE INDEX http_transactions_status_class ON http_transactions (status_class);

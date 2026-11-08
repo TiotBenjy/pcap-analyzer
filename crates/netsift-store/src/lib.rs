@@ -19,6 +19,7 @@ pub mod records;
 pub mod schema;
 pub mod session;
 mod time;
+pub mod tls;
 pub mod traffic;
 pub mod writer;
 

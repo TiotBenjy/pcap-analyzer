@@ -158,6 +158,70 @@ fn only_images_reach_the_disk_and_thumbnails_are_generated() {
     assert_eq!(failed, "/broken/cut.jpg");
 }
 
+/// The blob files of a session, as `<sha>` names.
+fn blob_names(catalog: &Catalog, report: &IngestReport) -> Vec<String> {
+    let mut names: Vec<String> = files(&catalog.session_dir(&report.session).join("blobs"))
+        .iter()
+        .filter_map(|p| p.file_name()?.to_str().map(ToOwned::to_owned))
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn a_large_download_in_parallel_does_not_starve_the_images() {
+    use netsift_fixtures::Host;
+    use netsift_fixtures::scenario::TcpOptions;
+
+    // A 3 MiB download (not an image) spread over the time of the gallery, with a shard
+    // budget of 1 MiB: only its preview may be kept, whatever shard it shares.
+    let mut gallery_sc = Scenario::new();
+    gallery(&mut gallery_sc);
+    let start = gallery_sc.packets().first().map_or(0, |p| p.ts_ns);
+    let mut packets = gallery_sc.into_packets();
+    let mut sc = Scenario::starting_at(start - 500_000_000).with_seed(99);
+    let client = Host::v4([0x02, 0, 0x5e, 0x10, 0, 0x30], [192, 168, 1, 30]);
+    let server = Host::v4([0x02, 0, 0x5e, 0x10, 0, 0x01], [198, 51, 100, 40]);
+    let mut s = sc.tcp_open(client, server, &TcpOptions::new(80));
+    s.client_send(b"GET /backup.tar HTTP/1.1\r\nHost: files.example.test\r\n\r\n");
+    let size = 3 * 1024 * 1024;
+    s.server_send(
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/x-tar\r\nContent-Length: {size}\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    // Two thirds before the gallery starts, the rest once it is over: the body stays open
+    // (and, before ADR-016's retention rules, its bytes stayed counted) during the gallery.
+    s.server_send(&vec![0x55u8; size * 2 / 3]);
+    s.scenario().advance(2_000_000_000);
+    s.server_send(&vec![0x55u8; size - size * 2 / 3]);
+    s.close();
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let file = tmp.path().join("mixed.pcap");
+    write_file(&file, &packets, &Encoding::pcap()).unwrap();
+    let mut results = Vec::new();
+    for shards in [1, 4] {
+        let mut options = IngestOptions {
+            shards: Some(shards),
+            ..IngestOptions::default()
+        };
+        options.analyzers.config_mut().http.max_retained_bytes = 1024 * 1024;
+        let report = ingest(&catalog, &file, &options, &CancelToken::new(), &mut |_| {}).unwrap();
+        results.push((
+            object_rows(&catalog, &report),
+            blob_names(&catalog, &report),
+        ));
+    }
+    assert_eq!(results[0].0.len(), GALLERY_OBJECTS, "{:#?}", results[0].0);
+    assert_eq!(results[0].1.len(), GALLERY_OBJECTS);
+    assert_eq!(results[0], results[1]);
+}
+
 #[test]
 fn the_blob_budget_bounds_the_session() {
     let tmp = TempDir::new().unwrap();

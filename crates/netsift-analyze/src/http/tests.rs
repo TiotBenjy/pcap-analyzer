@@ -98,7 +98,7 @@ fn run_with(packets: &[Packet], config: HttpConfig, blobs: bool) -> Vec<HttpTran
     txs
 }
 
-/// Bodies offered as objects, as task P3.6 will configure it.
+/// Bodies offered as objects (`store_bodies`, the default since P3.6).
 fn storing() -> HttpConfig {
     HttpConfig {
         store_bodies: true,

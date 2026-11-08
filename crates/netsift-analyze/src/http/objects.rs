@@ -22,6 +22,12 @@ pub const IMAGE_TYPES: &[&str] = &[
     "image/x-icon",
 ];
 
+/// True when `prefix` (the start of a decoded body) has the signature of one of
+/// [`IMAGE_TYPES`]: such a body may become an object and is kept whole while it is read.
+pub fn is_image_content(prefix: &[u8]) -> bool {
+    super::inspect::sniff_mime(prefix).is_some_and(|m| IMAGE_TYPES.contains(&m))
+}
+
 /// True when the body of `view`, sniffed as `mime_magic`, is to be stored as an object.
 pub fn selected(view: &MessageView<'_>, mime_magic: Option<&str>, config: &HttpConfig) -> bool {
     let size = view.body.len() as u64;

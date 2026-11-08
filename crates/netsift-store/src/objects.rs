@@ -11,11 +11,15 @@
 //! that keeps the thumbnail columns (`width`, `height`, `thumb`) of rows already present, so a
 //! replay never loses the generated thumbnails.
 
+use std::net::IpAddr;
+
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, ToSql, params};
 
+use crate::connections::EndpointInfo;
 use crate::error::Result;
 use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::records::conversion;
 
 /// Thumbnail states (`objects.thumb`).
 pub mod thumb {
@@ -77,16 +81,34 @@ pub struct ObjectRow {
     pub last_ts: i64,
     pub flow_id: i64,
     pub seq: u32,
-    pub client_ip: String,
-    pub server_ip: String,
+    pub client_ip: IpAddr,
+    pub server_ip: IpAddr,
     pub server_port: u16,
     pub host: Option<String>,
     pub uri: Option<String>,
+    /// What the session knows about both ends (`hosts`).
+    pub client: EndpointInfo,
+    pub server: EndpointInfo,
 }
 
 const COLUMNS: &str = "o.id, o.sha256, o.size, o.mime, o.declared_type, o.width, o.height, \
                        o.thumb, o.occurrences, o.first_ts, o.last_ts, o.flow_id, o.seq, \
-                       o.client_ip, o.server_ip, o.server_port, o.host, o.uri";
+                       o.client_ip, o.server_ip, o.server_port, o.host, o.uri, \
+                       hc.names, hc.category, hc.country, hv.names, hv.category, hv.country";
+/// `objects` with the hosts of both ends.
+const FROM: &str = "objects AS o LEFT JOIN hosts AS hc ON hc.ip = o.client_ip \
+                    LEFT JOIN hosts AS hv ON hv.ip = o.server_ip";
+
+fn ip(raw: &str, col: usize) -> rusqlite::Result<IpAddr> {
+    raw.parse().map_err(|e| conversion(col, e))
+}
+
+fn names(raw: Option<String>, col: usize) -> rusqlite::Result<Vec<String>> {
+    raw.map_or_else(
+        || Ok(Vec::new()),
+        |raw| serde_json::from_str(&raw).map_err(|e| conversion(col, e)),
+    )
+}
 
 fn unsigned(v: i64) -> u64 {
     u64::try_from(v).unwrap_or(0)
@@ -109,11 +131,21 @@ impl ObjectRow {
             last_ts: r.get(10)?,
             flow_id: r.get(11)?,
             seq: u32::try_from(r.get::<_, i64>(12)?).unwrap_or(u32::MAX),
-            client_ip: r.get(13)?,
-            server_ip: r.get(14)?,
+            client_ip: ip(&r.get::<_, String>(13)?, 13)?,
+            server_ip: ip(&r.get::<_, String>(14)?, 14)?,
             server_port: u16::try_from(r.get::<_, i64>(15)?).unwrap_or(0),
             host: r.get(16)?,
             uri: r.get(17)?,
+            client: EndpointInfo {
+                names: names(r.get(18)?, 18)?,
+                category: r.get(19)?,
+                country: r.get(20)?,
+            },
+            server: EndpointInfo {
+                names: names(r.get(21)?, 21)?,
+                category: r.get(22)?,
+                country: r.get(23)?,
+            },
         })
     }
 }
@@ -192,7 +224,7 @@ pub fn objects_page(
     request: &PageRequest,
 ) -> Result<Page<ObjectRow>> {
     let query = Keyset {
-        from: "objects AS o",
+        from: FROM,
         select: COLUMNS,
         sort: match sort {
             ObjectSort::Time => "o.id",
@@ -219,7 +251,7 @@ pub fn count_objects(conn: &Connection, filter: &ObjectFilter) -> Result<u64> {
 
 /// One object by hex SHA-256.
 pub fn object(conn: &Connection, sha256: &str) -> Result<Option<ObjectRow>> {
-    let sql = format!("SELECT {COLUMNS} FROM objects AS o WHERE o.sha256 = ?1");
+    let sql = format!("SELECT {COLUMNS} FROM {FROM} WHERE o.sha256 = ?1");
     Ok(conn
         .query_row(&sql, [sha256], ObjectRow::from_row)
         .optional()?)
@@ -278,25 +310,40 @@ pub fn stats(conn: &Connection, images_only: bool, top_hosts: u32) -> Result<Obj
 /// An object waiting for its thumbnail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingThumb {
+    pub id: i64,
     pub sha256: String,
     pub size: u64,
     pub mime: String,
 }
 
-/// Objects whose thumbnail is still [`thumb::PENDING`], in order of appearance.
-pub fn pending_thumbs(conn: &Connection) -> Result<Vec<PendingThumb>> {
-    let mut stmt =
-        conn.prepare("SELECT sha256, size, mime FROM objects WHERE thumb = 'pending' ORDER BY id")?;
+/// Up to `limit` objects whose thumbnail is still [`thumb::PENDING`], in order of appearance,
+/// after the object `after_id` (keyset: pass the last `id` of the previous batch, 0 first).
+pub fn pending_thumbs(conn: &Connection, after_id: i64, limit: u32) -> Result<Vec<PendingThumb>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, sha256, size, mime FROM objects WHERE thumb = 'pending' AND id > ?1 \
+         ORDER BY id LIMIT ?2",
+    )?;
     let rows = stmt
-        .query_map([], |r| {
+        .query_map(params![after_id, limit], |r| {
             Ok(PendingThumb {
-                sha256: r.get(0)?,
-                size: unsigned(r.get(1)?),
-                mime: r.get(2)?,
+                id: r.get(0)?,
+                sha256: r.get(1)?,
+                size: unsigned(r.get(2)?),
+                mime: r.get(3)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
+}
+
+/// Objects whose thumbnail is still [`thumb::PENDING`].
+pub fn count_pending_thumbs(conn: &Connection) -> Result<u64> {
+    let n: i64 = conn.query_row(
+        "SELECT count(*) FROM objects WHERE thumb = 'pending'",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(unsigned(n))
 }
 
 /// Outcome of the thumbnail of one object.

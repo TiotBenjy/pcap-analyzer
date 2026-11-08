@@ -31,7 +31,7 @@ CREATE TABLE objects (
 CREATE INDEX objects_size ON objects (size, id);
 CREATE INDEX objects_mime ON objects (mime, id);
 CREATE INDEX objects_host ON objects (host, id);
-CREATE INDEX objects_thumb ON objects (thumb);
+CREATE INDEX objects_thumb ON objects (thumb, id);
 
 -- What the Pictures view lists (and the overview counts): images, SVG included.
 CREATE VIEW pictures AS SELECT * FROM objects WHERE mime LIKE 'image/%';

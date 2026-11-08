@@ -136,7 +136,7 @@ fn a_replay_keeps_the_thumbnails() {
     let (_d, mut s) = session();
     insert(s.conn(), &transactions());
     finalize(s.conn()).unwrap();
-    let pending = pending_thumbs(s.conn()).unwrap();
+    let pending = pending_thumbs(s.conn(), 0, 10).unwrap();
     assert_eq!(
         pending
             .iter()
@@ -144,6 +144,12 @@ fn a_replay_keeps_the_thumbnails() {
             .collect::<Vec<_>>(),
         vec![SHA_B, SHA_A]
     );
+    assert_eq!(count_pending_thumbs(s.conn()).unwrap(), 2);
+    // Batches by keyset.
+    let first = pending_thumbs(s.conn(), 0, 1).unwrap();
+    assert_eq!(first.len(), 1);
+    let next = pending_thumbs(s.conn(), first[0].id, 1).unwrap();
+    assert_eq!(next[0].sha256, SHA_A);
     set_thumbs(
         s.conn_mut(),
         &[ThumbUpdate {
@@ -161,7 +167,7 @@ fn a_replay_keeps_the_thumbnails() {
         ("ready", Some(16), Some(8))
     );
     assert_eq!(a.occurrences, 3);
-    assert_eq!(pending_thumbs(s.conn()).unwrap().len(), 1);
+    assert_eq!(pending_thumbs(s.conn(), 0, 10).unwrap().len(), 1);
     assert!(object(s.conn(), "missing").unwrap().is_none());
 }
 

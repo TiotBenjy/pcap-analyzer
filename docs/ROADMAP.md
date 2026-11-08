@@ -256,12 +256,12 @@ Hors vague (demande utilisateur du 2026-11-08) :
 
 ### Vague 3.B (dépend de 3.A)
 
-- [ ] **P3.6** `feat/pictures` — Extraction d'objets HTTP (images), dédup SHA-256, miniatures Rust. Dép. P3.2.
+- [~] **P3.6** `feat/pictures` — Extraction d'objets HTTP (images), dédup SHA-256, miniatures Rust. Dép. P3.2.
       `specs/pictures.md`.
-- [ ] **P3.7** `feat/credentials` — Agrégation + émetteurs : HTTP Basic/formulaires, FTP, POP3, IMAP,
+- [~] **P3.7** `feat/credentials` — Agrégation + émetteurs : HTTP Basic/formulaires, FTP, POP3, IMAP,
       SMTP AUTH, SNMP v1/v2c, LDAP simple bind, NTLM (depuis P3.5). Export hashcat. `specs/credentials.md`.
-- [ ] **P3.8** `feat/servers` — Rôles DNS / DHCP / LDAP (+ NTP, Kerberos, SMB) avec preuves. `specs/servers.md`.
-- [ ] **P3.9** `feat/network-map` — Graphe des communications (sigma.js), filtres protocoles, agrégation
+- [~] **P3.8** `feat/servers` — Rôles DNS / DHCP / LDAP (+ NTP, Kerberos, SMB) avec preuves. `specs/servers.md`.
+- [~] **P3.9** `feat/network-map` — Graphe des communications (sigma.js), filtres protocoles, agrégation
       par pays. `specs/network.md`.
 
 ---

@@ -126,7 +126,7 @@ cmd_rm() {
   local path; path="$(wt_path "$br")"
   [[ -d "$path" ]] && git worktree remove "$path" --force
   git worktree prune
-  [[ "$del" == "--delete-branch" ]] && branch_exists "$br" && git branch -D "$br" || true
+  if [[ "$del" == "--delete-branch" ]] && branch_exists "$br"; then git branch -D "$br" || true; fi
   echo ">> Worktree $br supprimé."
   [[ -e "$path" ]] || clean_worktree_target "$path"
 }

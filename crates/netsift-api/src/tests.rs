@@ -26,7 +26,7 @@ fn config() -> ApiConfig {
         cors_origins: vec![HeaderValue::from_static("tauri://localhost")],
         allow_any_path: false,
         max_imports: DEFAULT_MAX_IMPORTS,
-        geoip_path: None,
+        geoip_fallback_path: None,
     }
 }
 
@@ -1076,7 +1076,13 @@ async fn server_info_reports_the_geoip_database() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         json["geoip"],
-        json!({ "status": "missing", "built_at_us": null })
+        json!({
+            "status": "missing",
+            "source": null,
+            "built_at_us": null,
+            "size_bytes": null,
+            "installed_at_us": null,
+        })
     );
 
     // Installed at the default location while the server runs (`./x.sh geoip`).
@@ -1088,24 +1094,29 @@ async fn server_info_reports_the_geoip_database() {
         .unwrap();
     let (_, json) = env.call("GET", "/api/v1/server-info", &Value::Null).await;
     assert_eq!(json["geoip"]["status"], "available");
+    assert_eq!(json["geoip"]["source"], "user");
     assert!(json["geoip"]["built_at_us"].is_i64());
     // The imports read the same file.
     assert_eq!(env.state.ingest_template.geoip_path.as_ref(), Some(&path));
 }
 
 #[tokio::test]
-async fn server_info_reads_the_configured_geoip_path() {
+async fn server_info_reads_the_configured_fallback_geoip_path() {
     let tmp = tempfile::TempDir::new().unwrap();
     let path = tmp.path().join("bundle").join("country.mmdb");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"garbage").unwrap();
     let config = ApiConfig {
         data_dir: tmp.path().join("data"),
-        geoip_path: Some(path.clone()),
+        geoip_fallback_path: Some(path.clone()),
         ..config()
     };
     let (app, state) = build(config, default_ingest_options());
-    assert_eq!(state.ingest_template.geoip_path.as_ref(), Some(&path));
+    // The fallback is never handed to the engine: imports get the loaded database.
+    assert_eq!(
+        state.ingest_template.geoip_path,
+        Some(netsift_geo::default_path(&tmp.path().join("data")))
+    );
     let (status, _, json) = read(
         app.oneshot(req("GET", "/api/v1/server-info", &Value::Null))
             .await

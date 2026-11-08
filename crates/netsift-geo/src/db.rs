@@ -23,6 +23,10 @@ pub const DEFAULT_CACHE_CAPACITY: usize = 65_536;
 /// Larger files are refused (the country database is about 10 MiB).
 pub const MAX_DB_BYTES: u64 = 64 << 20;
 
+/// Path of the ISO country code in a record.
+pub(crate) const COUNTRY_PATH: [PathElement<'static>; 2] =
+    [PathElement::Key("country"), PathElement::Key("iso_code")];
+
 /// The cache is split in independently locked shards so that flow shards rarely contend.
 const CACHE_SHARDS: usize = 16;
 
@@ -40,6 +44,12 @@ pub enum GeoError {
     TooLarge,
     #[error("invalid GeoIP database: {0}")]
     Invalid(#[from] maxminddb::MaxMindDbError),
+    #[error("invalid gzip data: {0}")]
+    Compression(std::io::Error),
+    #[error("not a country database (type {0:?})")]
+    NotCountry(String),
+    #[error("the GeoIP database has no country for any control address")]
+    NoControlAnswer,
 }
 
 impl GeoError {
@@ -148,12 +158,10 @@ impl GeoDb {
     }
 
     fn lookup(&self, ip: IpAddr) -> Option<CountryCode> {
-        const PATH: [PathElement<'static>; 2] =
-            [PathElement::Key("country"), PathElement::Key("iso_code")];
         let code = self
             .reader
             .lookup(ip)
-            .and_then(|r| r.decode_path::<String>(&PATH));
+            .and_then(|r| r.decode_path::<String>(&COUNTRY_PATH));
         match code {
             // "ZZ" is the user-assigned code for "unknown".
             Ok(code) => code

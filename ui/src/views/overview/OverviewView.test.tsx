@@ -13,7 +13,7 @@ import type { Chart } from '../../components/Chart';
 import { renderApp, setViewportWide } from '../../test/renderApp';
 import { session } from '../../test/sessionFixtures';
 import { moduleState, MODULE_ITEMS } from './modules';
-import { buildTrafficOption, FULL_ZOOM, tooltipHtml, type TrafficFormat, zoomOfEvent } from './trafficChart';
+import { buildTrafficOption, byteAxis, tooltipHtml, type TrafficFormat, zoomOfEvent } from './trafficChart';
 
 vi.mock('../../api/sessions');
 vi.mock('../../api/overview', async (importOriginal) => ({
@@ -28,10 +28,15 @@ vi.mock('../../api/client', async (importOriginal) => ({
 
 // ECharts does not run in jsdom: the chart is replaced by a probe exposing its props.
 type ChartProps = ComponentProps<typeof Chart>;
-const chart: { props: ChartProps | null } = { props: null };
+const chart = {
+  props: null as ChartProps | null,
+  dispatchAction: vi.fn<(action: { type: string } & Record<string, unknown>) => void>(),
+};
 vi.mock('../../components/Chart', () => ({
   Chart: (props: ChartProps) => {
     chart.props = props;
+    const handle = props.handleRef;
+    if (typeof handle === 'object' && handle !== null) handle.current = { dispatchAction: chart.dispatchAction };
     return <div data-testid="chart" data-empty={String(props.empty === true)} />;
   },
 }));
@@ -81,7 +86,7 @@ interface SeriesProbe {
   data: [number, number | null][];
 }
 
-const optionOf = () => (chart.props?.option ?? {}) as { series?: SeriesProbe[]; legend?: unknown; dataZoom?: { start: number }[] };
+const optionOf = () => (chart.props?.option ?? {}) as { series?: SeriesProbe[]; legend?: unknown };
 const seriesNames = () => (optionOf().series ?? []).map((s) => s.name);
 
 describe('Overview view', () => {
@@ -154,23 +159,26 @@ describe('Overview view', () => {
     expect(dns?.data.map((d) => d[1])).toEqual([1, null, 3]);
   });
 
-  it('follows the zoom and resets it', async () => {
+  it('follows the zoom without rebuilding the option and resets it through the chart', async () => {
     renderApp(`/sessions/${ID}/overview`);
     await waitFor(() => {
-      expect(chart.props?.onEvents).toBeDefined();
+      expect(seriesNames()).toHaveLength(3);
     });
     const reset = screen.getByRole('button', { name: 'Reset zoom' });
     expect(reset).toBeDisabled();
+    const before = chart.props?.option;
     act(() => {
       chart.props?.onEvents?.datazoom?.({ batch: [{ start: 20, end: 60 }] });
     });
     await waitFor(() => {
-      expect(optionOf().dataZoom?.[0]?.start).toBe(20);
+      expect(reset).toBeEnabled();
     });
-    expect(reset).toBeEnabled();
+    // Same option object: the renderer does not re-apply it while the user drags.
+    expect(chart.props?.option).toBe(before);
     await userEvent.click(reset);
-    expect(optionOf().dataZoom?.[0]?.start).toBe(0);
+    expect(chart.dispatchAction).toHaveBeenCalledWith({ type: 'dataZoom', start: 0, end: 100 });
     expect(reset).toBeDisabled();
+    expect(chart.props?.option).toBe(before);
   });
 
   it('hides the legend below 640 px', async () => {
@@ -238,13 +246,50 @@ describe('traffic chart option', () => {
       selected: new Set(['tls', 'dns']),
       metric: 'bytes',
       scale: 'linear',
-      zoom: FULL_ZOOM,
       legend: 'right',
+      compact: false,
       format: FORMAT,
-    }) as { series: SeriesProbe[]; legend: { orient: string; data: string[]; selectedMode: boolean } };
+    }) as {
+      series: SeriesProbe[];
+      legend: { orient: string; data: string[]; selectedMode: boolean };
+      yAxis: { interval?: number; max?: number };
+      dataZoom: Record<string, unknown>[];
+    };
     expect(option.series.map((s) => s.name)).toEqual(['DNS', 'TLS']);
+    // Stacked peak 5300 B (DNS 300 + TLS 5000): round 2 KiB ticks up to 6 KiB.
+    expect(option.yAxis).toMatchObject({ interval: 2048, max: 6144 });
+    // The zoom window is not part of the option.
+    expect(option.dataZoom.every((z) => !('start' in z) && !('end' in z))).toBe(true);
     expect(option.series[1]?.data.map((d) => d[0])).toEqual([T0 / 1000, T0 / 1000 + 60_000, T0 / 1000 + 120_000]);
     expect(option.legend).toMatchObject({ orient: 'vertical', data: ['DNS', 'TLS'], selectedMode: false });
+  });
+
+  it('uses round byte ticks only for bytes, and fewer time ticks on narrow charts', () => {
+    const base = { data: traffic(), selected: new Set(['dns', 'http', 'tls'] as const), legend: 'none', format: FORMAT } as const;
+    interface Axes {
+      xAxis: { splitNumber?: number };
+      yAxis: { interval?: number; logBase?: number };
+    }
+    const axes = (option: unknown) => option as Axes;
+    const packets = axes(buildTrafficOption({ ...base, metric: 'packets', scale: 'linear', compact: true }));
+    expect(packets.yAxis.interval).toBeUndefined();
+    expect(packets.xAxis.splitNumber).toBe(2);
+    const log = axes(buildTrafficOption({ ...base, metric: 'bytes', scale: 'log', compact: false }));
+    expect(log.yAxis).toMatchObject({ logBase: 1024 });
+    expect(log.yAxis.interval).toBeUndefined();
+    expect(log.xAxis.splitNumber).toBeUndefined();
+  });
+
+  it('picks byte steps of 1, 2 or 5 x 10^n in the right IEC unit', () => {
+    expect(byteAxis(0)).toBeNull();
+    expect(byteAxis(3)).toEqual({ interval: 1, max: 3 });
+    expect(byteAxis(78_000)).toEqual({ interval: 20 * 1024, max: 80 * 1024 });
+    // 85 KiB: five 20 KiB steps rather than two 50 KiB ones.
+    expect(byteAxis(85 * 1024)).toEqual({ interval: 20 * 1024, max: 100 * 1024 });
+    expect(byteAxis(3 * 1024 ** 2)).toEqual({ interval: 1024 ** 2, max: 3 * 1024 ** 2 });
+    expect(byteAxis(1.9 * 1024 ** 3)).toEqual({ interval: 500 * 1024 ** 2, max: 2000 * 1024 ** 2 });
+    // Past 500 of a unit, the next unit.
+    expect(byteAxis(3000 * 1024)).toEqual({ interval: 1024 * 1024, max: 3 * 1024 * 1024 });
   });
 
   it('sorts the tooltip by value, drops zeros and adds the share and total', () => {

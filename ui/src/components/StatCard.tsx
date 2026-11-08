@@ -1,5 +1,4 @@
 import type { LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 interface StatCardProps {
@@ -8,8 +7,8 @@ interface StatCardProps {
   value: string | null;
   /** Full value or explanation shown on hover (the value may be truncated). */
   title?: string;
-  /** Secondary line under the value (period, anomalies...). */
-  hint?: ReactNode;
+  /** Secondary text under the value (period, anomalies...): up to two lines, full text on hover. */
+  hint?: string;
   icon?: LucideIcon;
   /** Colors the hint text only (never a large fill). */
   tone?: 'neutral' | 'warning';
@@ -31,7 +30,13 @@ export function StatCard({ label, value, title, hint, icon: Icon, tone = 'neutra
         </p>
       )}
       {hint !== undefined && (
-        <div className={cn('min-w-0 truncate text-meta', tone === 'warning' ? 'text-warning' : 'text-muted')}>{hint}</div>
+        <p
+          // A blank hint only keeps the card heights even: nothing to truncate.
+          {...(hint.trim() === '' ? {} : { 'data-testid': 'truncatable', title: hint })}
+          className={cn('line-clamp-2 min-w-0 break-words text-meta', tone === 'warning' ? 'text-warning' : 'text-muted')}
+        >
+          {hint}
+        </p>
       )}
     </div>
   );

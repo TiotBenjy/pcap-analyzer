@@ -119,8 +119,12 @@ describe('StatCard', () => {
     const { rerender } = render(<StatCard label="Packets" value={null} />);
     expect(screen.queryByTestId('truncatable')).toBeNull();
     rerender(<StatCard label="Packets" value="1.2 MiB" title="1,258,291 B" hint="Link: Ethernet" />);
-    expect(screen.getByTestId('truncatable')).toHaveAttribute('title', '1,258,291 B');
-    expect(screen.getByText('Link: Ethernet')).toBeInTheDocument();
+    const [value, hint] = screen.getAllByTestId('truncatable');
+    expect(value).toHaveAttribute('title', '1,258,291 B');
+    // The hint wraps on two lines at most and keeps its full text on hover.
+    expect(hint).toHaveTextContent('Link: Ethernet');
+    expect(hint).toHaveAttribute('title', 'Link: Ethernet');
+    expect(hint).toHaveClass('line-clamp-2');
   });
 });
 

@@ -10,8 +10,11 @@ const UNITS = {
   fr: ['o', 'Kio', 'Mio', 'Gio', 'Tio'],
 } as const;
 
-/** IEC byte sizes: KiB/MiB/GiB in English, Kio/Mio/Gio in French (docs/UI_GUIDELINES.md). */
-export function formatBytes(bytes: number, lang: string = i18n.language): string {
+/**
+ * IEC byte sizes: KiB/MiB/GiB in English, Kio/Mio/Gio in French (docs/UI_GUIDELINES.md).
+ * `trimZeros` drops a zero decimal (`20 KiB`, not `20.0 KiB`), for axis ticks.
+ */
+export function formatBytes(bytes: number, lang: string = i18n.language, trimZeros = false): string {
   const units = lang.startsWith('fr') ? UNITS.fr : UNITS.en;
   let value = Math.max(0, bytes);
   let i = 0;
@@ -20,9 +23,10 @@ export function formatBytes(bytes: number, lang: string = i18n.language): string
     i++;
   }
   const digits = i === 0 || value >= 100 ? 0 : 1;
-  const num = new Intl.NumberFormat(lang, { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(
-    value,
-  );
+  const num = new Intl.NumberFormat(lang, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: trimZeros ? 0 : digits,
+  }).format(value);
   return `${num}\u00a0${units[i] ?? units[0]}`;
 }
 

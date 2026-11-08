@@ -2683,6 +2683,7 @@ dependencies = [
  "netsift-analyze",
  "netsift-capture",
  "netsift-fixtures",
+ "netsift-geo",
  "netsift-store",
  "serde_json",
  "tempfile",

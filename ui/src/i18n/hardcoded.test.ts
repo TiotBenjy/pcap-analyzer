@@ -6,11 +6,16 @@ import { describe, expect, it } from 'vitest';
 // text, at the attributes a user sees or hears (title, aria-label, placeholder, alt...) and at the
 // text-bearing properties of chart options (axis and series names, titles, graphic text).
 
-const SOURCES = import.meta.glob(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!../api/types/**', '!../i18n/**', '!../test/**'], {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>;
+// `lib/errorReport.ts` builds the technical bug report of "Copy details": a fixed English format
+// meant for the developers, like a stack trace.
+const SOURCES = import.meta.glob(
+  ['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!../api/types/**', '!../i18n/**', '!../test/**', '!../lib/errorReport.ts'],
+  {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  },
+) as Record<string, string>;
 
 /** JSX attributes whose value is shown or read out. */
 const VISIBLE_ATTRIBUTES = new Set([
@@ -125,6 +130,13 @@ function scan(file: string, source: string): Finding[] {
     if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && PROSE.test(node.text) && !isDeveloperText(node)) {
       if (!LANGUAGE_NEUTRAL.has(node.text.trim())) report(node, node.text);
     }
+    // A colon written in code between a label and a value: French spaces it (`labelled()`).
+    const parts = ts.isTemplateExpression(node)
+      ? [node.head.text, ...node.templateSpans.map((span) => span.literal.text)]
+      : ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
+        ? [node.text]
+        : [];
+    if (parts.some((part) => /^: |[^\s:]: $/.test(part)) && !isDeveloperText(node)) report(node, 'hard-coded colon: use labelled()');
     ts.forEachChild(node, visit);
   };
   visit(sf);
@@ -147,6 +159,7 @@ describe('hard-coded UI strings', () => {
       'export const B = () => <input placeholder={cond ? "Search" : t("x")} aria-label={`Close ${n}`} />;',
       'el.textContent = "Total";',
       'const empty = "No data found"; throw new Error("Bad state here");',
+      'const line = `${label}: ${value}`;',
     ].join('\n');
     expect(scan('sample.tsx', sample).map((f) => f.text)).toEqual([
       'Open file',
@@ -156,6 +169,7 @@ describe('hard-coded UI strings', () => {
       'Close',
       'Total',
       'No data found',
+      'hard-coded colon: use labelled()',
     ]);
   });
 });

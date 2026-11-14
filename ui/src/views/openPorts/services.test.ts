@@ -40,7 +40,7 @@ describe('open port services', () => {
       distinct_ports: 5,
       open_ports: 9,
     };
-    const option = buildPortsOption(stats, { hosts: (n) => `${n} hosts` }) as {
+    const option = buildPortsOption(stats, { hosts: (n) => `${n} hosts`, count: String }) as {
       yAxis: { data: string[]; inverse: boolean };
       series: { data: number[] }[];
     };

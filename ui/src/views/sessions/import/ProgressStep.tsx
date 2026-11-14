@@ -12,7 +12,7 @@ import {
 } from '../../../app/importTracker';
 import { Button } from '../../../components/Button';
 import { ErrorNote } from '../../../components/ErrorNote';
-import { formatBytes, formatCount, formatDuration, formatPercent } from '../../../lib/format';
+import { colon, formatCount, formatDuration, formatPercent, formatRate } from '../../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
 import { SessionStateBadge } from '../SessionStateBadge';
 import { WizardDialog } from './WizardDialog';
@@ -110,7 +110,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
 
         <dl className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-x-4 gap-y-2">
           <Stat label={t('views.import.packets')}>{p === null ? '' : formatCount(p.packets)}</Stat>
-          <Stat label={t('views.import.rate')}>{p === null ? '' : `${formatBytes(p.rate_bps)}/s`}</Stat>
+          <Stat label={t('views.import.rate')}>{p === null ? '' : formatRate(p.rate_bps)}</Stat>
           <Stat label={t('views.import.eta')}>
             {p === null || !active ? '' : p.eta_s === null ? t('views.import.unknown') : formatDuration(p.eta_s)}
           </Stat>
@@ -133,7 +133,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
                       <span className="font-medium">{anomalyLabel(t, w.code)}</span>
                       <span className="text-muted">
                         {' '}
-                        ({anomalyWhere(t, w)}){detail === '' ? '' : `: ${detail}`}
+                        ({anomalyWhere(t, w)}){detail === '' ? '' : `${colon(i18n.language)} ${detail}`}
                       </span>
                     </span>
                   </li>

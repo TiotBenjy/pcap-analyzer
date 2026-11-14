@@ -22,6 +22,8 @@ export function portsTooltip(label: string, value: string): string {
 export interface PortsFormat {
   /** Tooltip value: `3 hosts`. */
   hosts: (n: number) => string;
+  /** Count at the end of a bar, grouped for the language. */
+  count: (n: number) => string;
 }
 
 export function buildPortsOption(stats: OpenPortStats, format: PortsFormat): EChartsCoreOption {
@@ -53,7 +55,7 @@ export function buildPortsOption(stats: OpenPortStats, format: PortsFormat): ECh
         itemStyle: { color: CATEGORICAL[0], borderRadius: [0, 3, 3, 0] },
         barMaxWidth: 18,
         // Color and outline come from the chart theme (`seriesLabel`, EChartsRenderer).
-        label: { show: true, position: 'right', fontSize: 12 },
+        label: { show: true, position: 'right', fontSize: 12, formatter: (p: { value: number }) => format.count(p.value) },
       },
     ],
   };

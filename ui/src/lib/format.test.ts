@@ -3,6 +3,7 @@ import i18n from '../i18n';
 import {
   baseName,
   colon,
+  formatByteCount,
   formatBytes,
   formatCompact,
   formatCount,
@@ -90,6 +91,10 @@ describe('numbers', () => {
     expect(colon('en')).toBe(':');
     expect(labelled('Total', '3', 'en')).toBe('Total: 3');
     expect(labelled('Total', '3', 'fr')).toBe('Total\u00a0: 3');
+  });
+  it('writes exact byte counts with the unit of the language', () => {
+    expect(formatByteCount(1234, 'en')).toBe('1,234\u00a0B');
+    expect(formatByteCount(1234, 'fr')).toBe(`1${NNBSP}234\u00a0o`);
   });
   it('formats rates and latencies', () => {
     expect(formatRate(1536, 'en')).toBe('1.5\u00a0KiB/s');

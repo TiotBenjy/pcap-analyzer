@@ -29,7 +29,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { StatCard } from '../../components/StatCard';
 import { sessionVersionMessage } from '../../lib/errors';
-import { formatBytes, formatCompact, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { formatByteCount, formatBytes, formatCompact, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { SessionStateBadge } from '../sessions/SessionStateBadge';
 import { linktypeName } from './linktypes';
@@ -216,7 +216,7 @@ function SummaryBand({
         icon={HardDrive}
         label={t('views.overview.stat.volume')}
         value={s === null ? null : formatBytes(s.bytes)}
-        {...(s === null ? {} : { title: `${formatCount(s.bytes)} B` })}
+        {...(s === null ? {} : { title: formatByteCount(s.bytes) })}
         hint={avg === null ? ' ' : t('views.overview.avgPacket', { size: avg })}
       />
       <StatCard icon={Monitor} label={t('views.overview.stat.hosts')} value={s === null ? null : formatCount(s.host_count)} />

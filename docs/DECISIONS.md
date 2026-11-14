@@ -506,13 +506,29 @@ acceptée : la remplacer par une nouvelle qui la référence.
   coûte environ 1 s à 500 000 conversations.
 - Décision :
   - **matérialisation en fin d'import** : l'étape `network` (`SESSION_FINALIZERS`, ADR-014) replie
-    `conversations`, `hosts` et `host_traffic` dans les tables de `0900_network.sql`, en deux passes
-    sur `conversations` et une agrégation en mémoire bornée par le nombre d'hôtes et de clés repliées.
-    Les arêtes y sont repliées par (nœud client, nœud serveur, groupes de protocoles en masque de bits,
+    `conversations`, `hosts` et `host_traffic` dans les tables de `0900_network.sql`. Les arêtes y sont repliées par (nœud client, nœud serveur, groupes de protocoles en masque de bits,
     catégories des deux extrémités, IPv6) : une requête lit quelques milliers de lignes (table
     `network_edges`, index pour le reste) et finit le repli en mémoire. Résultat déterministe (égalités
     départagées par l'adresse), idempotent, indépendant de l'ordre d'arrivée ; une session mise à niveau
     rejoue l'étape à l'ouverture (ADR-013) ;
+  - **mémoire de l'étape bornée quel que soit le nombre d'hôtes** : un scan ou un flood à sources
+    usurpées peut amener des millions d'adresses, et un import tourne avec `temp_store = MEMORY` (un tri
+    ou un `GROUP BY` SQLite garderait alors toutes les lignes en mémoire). L'état par hôte vit donc dans
+    `network_hosts`, sur disque, et aucune instruction ne trie ni ne groupe une table d'hôtes ou de
+    conversations : (1) lecture de `conversations` dans l'ordre de stockage, octets et groupes cumulés
+    par adresse dans la table de travail `network_ends` (un upsert par extrémité), puis fusion avec
+    `hosts`, les deux lus dans l'ordre des adresses par index, un hôte à la fois en mémoire, inséré dans
+    l'ordre de la clé primaire ; (2) une passe dans l'ordre des rangs (index `network_hosts_bytes`) à état constant
+    (compteur par groupe et par pays), qui ne met à jour que les hôtes relus par le graphe (hôtes à clé,
+    30 premiers de chaque pays) ; (3) une passe sur `conversations`, extrémités trouvées par clé
+    primaire, repli dans des tables de hachage indexées par clés de nœud (hôtes à clé, pays, « autres »,
+    hôtes dépliables) ; (4) comptage des hôtes par clé de nœud sur un simple parcours. Tests : identité
+    avec une implémentation de référence en mémoire sur une session aléatoire pleine d'égalités,
+    idempotence, indépendance à l'ordre d'arrivée, plans de requête sans tri, tailles des tables en
+    mémoire identiques à 1 000 et 10 000 adresses usurpées. Coût : un passage par SQLite par extrémité
+    et par hôte, plus lent que l'agrégation en mémoire de la première version (3,8 s à 500 000
+    conversations, mesurés sur une base en mémoire), mais le pic de mémoire de l'étape reste de
+    quelques Mio à 650 000 hôtes ;
   - **hôtes à clé** : un hôte garde son adresse comme clé s'il est parmi les 150 plus volumineux, ou
     parmi les 150 plus volumineux ayant l'un des groupes de protocoles. Les N premiers hôtes ayant du
     trafic qui passe un filtre protocole sont donc toujours à clé (un hôte dans les N premiers d'un
@@ -541,18 +557,24 @@ acceptée : la remplacer par une nouvelle qui la référence.
     fera l'objet d'une montée de version dédiée. Les nœuds sont des disques colorés par catégorie
     d'adresse : la forme par catégorie (`NodeShape` de la palette) demande des programmes WebGL
     sigma dédiés, reportés. L'export PNG/SVG de la spec est reporté.
-- Mesures (test `network::tests::timings`, build release, session synthétique : 500 hôtes LAN, 20 pays,
-  7 combinaisons de protocoles) :
+- Mesures (test `network::tests::timings`, build release, base sur disque avec les réglages d'un import
+  (WAL, cache de 64 Mio, `temp_store = MEMORY`), session synthétique : 500 hôtes LAN, 20 pays,
+  7 combinaisons de protocoles, 40 % d'adresses publiques distinctes) :
 
-  | Conversations | Étape de fin d'import | Graphe par défaut | HTTPS | Dépliage + orphelins | Pays | Détail d'hôte |
-  |---|---|---|---|---|---|---|
-  | 50 000 | 0,27 s | 19 ms | 6 ms | 25 ms | 2 ms | 1 ms |
-  | 500 000 | 3,8 s | 108 ms | 11 ms | 94 ms | 3 ms | 8 ms |
+  | Conversations | Hôtes | Étape de fin d'import | Pic mémoire de l'étape | Graphe par défaut | HTTPS | Dépliage + orphelins | Pays | Détail d'hôte |
+  |---|---|---|---|---|---|---|---|---|
+  | 50 000 | 17 000 | 0,4 s | + 4 Mio | 21 ms | 6 ms | 21 ms | 2 ms | 1 ms |
+  | 500 000 | 162 000 | 5,7 s | + 4 Mio | 35 ms | 9 ms | 30 ms | 2 ms | 7 ms |
+  | 2 000 000 | 648 000 | 33 s | + 3 Mio | 32 ms | 11 ms | 35 ms | 3 ms | 37 ms |
+
+  À 2 000 000 conversations, l'étape se partage entre les hôtes (17 s), le repli (14 s) et les rangs
+  (2 s) : les lectures par clé débordent du cache de pages.
 
   Avant : environ 1 s (50 000) et 17 s (500 000) par requête par défaut.
 - Conséquences : les requêtes du graphe ne dépendent plus du nombre de conversations mais du nombre de
   clés repliées (`network_edges` : environ 21 000 lignes à 500 000 conversations) ; l'import paie
-  l'étape une fois (environ 8 µs par conversation, dans sa phase `finishing`). Les nombres d'hôtes par
+  l'étape une fois, dans sa phase `finishing` (environ 11 µs par conversation à 500 000, 16 µs à
+  2 000 000). Les nombres d'hôtes par
   nœud ne tiennent pas compte du filtre de catégorie au-delà des deux extrémités d'une arête (un hôte
   dont toutes les conversations sont écartées par ce filtre n'est ni dessiné ni orphelin) ; les
   étiquettes de protocole d'un nœud pays dont on a déplié des hôtes peuvent garder celles de ces hôtes.

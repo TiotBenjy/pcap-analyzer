@@ -32,10 +32,10 @@ pub enum Record {
     // --- analyzers: registration point, one variant per analyzer, sorted alphabetically ---
     /// `connections`: flows from a client to a server, folded per IP pair (additive).
     Conversation(ConversationDelta),
-    /// Authentication material observed by any protocol analyzer. Generic by design so the
-    /// Credentials tab (task P3.7) only has to aggregate: every emitting analyzer (SMB/NTLM
-    /// here, later HTTP Basic, FTP, SNMP...) produces this one shape. Sensitive: never logged,
-    /// masked in the UI (see `docs/specs/credentials.md`).
+    /// Authentication material observed by any protocol analyzer (`smb`, `http`,
+    /// `credentials`). Generic by design so the Credentials tab only has to aggregate: every
+    /// emitter produces this one shape (`credentials` table). Sensitive: never logged, masked in
+    /// the UI (see `docs/specs/credentials.md`).
     Credential(Credential),
     /// A DNS, mDNS, LLMNR or NBNS transaction (`dns` analyzer).
     Dns(Box<crate::dns::DnsTransaction>),
@@ -117,17 +117,18 @@ impl SecretState {
 
 /// A credential (or offline-recoverable material) seen in the capture.
 ///
-/// In-memory contract only (task P3.5): the engine does **not** persist it yet
-/// ([`crate::Record::Credential`] is dropped by `to_store`). The Credentials tab (task P3.7) owns
-/// the storage schema and aggregates every protocol analyzer's `Credential`. The SMB view keeps
-/// its own non-secret metadata in `smb_sessions`.
+/// Stored in the `credentials` table (ADR-019), folded per identical credential (same protocol,
+/// type, client, server, identity and secret). The SMB view keeps its own non-secret metadata in
+/// `smb_sessions`.
 ///
 /// Sensitive fields (`secret`, `hashcat_line`) are never logged: [`fmt::Debug`] redacts them.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Credential {
-    /// Emitting protocol, lower case (`smb`, later `http`, `ftp`, `snmp`...).
+    /// Emitting protocol, lower case (`smb`, `http`, `ftp`, `smtp`, `pop3`, `imap`, `ldap`,
+    /// `snmp`).
     pub source_protocol: &'static str,
-    /// Finer credential type, lower case (`ntlmv1`, `ntlmv2`, `http-basic`...).
+    /// Credential type, lower case: `ntlmv1`, `ntlmv2`, `ntlm` (no crackable line), `http-basic`,
+    /// `http-form`, `ftp`, `mail`, `ldap`, `snmp`.
     pub kind: &'static str,
     /// Flow the credential belongs to, when it comes from a tracked flow.
     pub flow_id: Option<FlowId>,
@@ -143,11 +144,13 @@ pub struct Credential {
     pub secret_state: SecretState,
     /// The secret itself, for `plaintext` credentials (never for NTLM). Masked in the UI.
     pub secret: Option<String>,
-    /// hashcat mode number for offline recovery, when applicable (5500 `NetNTLMv1`, 5600 v2).
+    /// hashcat mode number for offline recovery, when applicable (5500 `NetNTLMv1`, 5600 v2,
+    /// 16400 CRAM-MD5).
     pub hashcat_mode: Option<u32>,
     /// Ready-to-crack hashcat line, for `recoverable` credentials. Masked in the UI.
     pub hashcat_line: Option<String>,
-    /// Extra non-secret context as ordered key/value pairs (e.g. SMB dialect, server challenge).
+    /// Extra non-secret context as ordered key/value pairs (SMB dialect, server challenge, SASL
+    /// mechanism, `result` = `accepted` / `rejected`...).
     pub details: Vec<(String, String)>,
 }
 

@@ -51,8 +51,8 @@ impl MessageView<'_> {
 /// Extension point, called once per finished message: fills the derived figures of `body`
 /// (sniffed MIME type, preview, object). When [`HttpConfig::store_bodies`] is on, the bodies
 /// selected by [`super::objects::selected`] are offered to the sink as objects
-/// ([`RecordSink::put_object`], task P3.6). Credentials found in the message (P3.7) are to be emitted
-/// here through `out`.
+/// ([`RecordSink::put_object`], task P3.6). Credentials found in the message are emitted next to
+/// it by `auth::inspect` (P3.7), which keeps per-connection state.
 pub fn inspect_message(
     view: &MessageView<'_>,
     body: &mut HttpBody,

@@ -1,4 +1,5 @@
 import type { Dictionary } from './en';
+import { credentialsFr } from './credentials';
 import { picturesFr } from './pictures';
 import { tlsFr } from './tls';
 
@@ -932,6 +933,7 @@ export const fr: Dictionary = {
       back: 'Aller à Captures',
     },
     // --- analysis views kept in their own module: one line each, sorted ---
+    credentials: credentialsFr,
     pictures: picturesFr,
     tls: tlsFr,
   },

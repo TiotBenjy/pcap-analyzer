@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::analyzer::{Analyzer, AnalyzerId};
 use crate::connections::{ConnectionsAnalyzer, ConnectionsConfig};
 use crate::core::CoreAnalyzer;
+use crate::credentials::CredentialsAnalyzer;
 use crate::dns::{DnsAnalyzer, DnsConfig};
 use crate::geo::GeoDb;
 use crate::http::{HttpAnalyzer, HttpConfig};
@@ -71,6 +72,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (CoreAnalyzer::ID, factory(CoreAnalyzer::boxed)),
         // --- analyzers: one line each, sorted alphabetically by id ---
         (ConnectionsAnalyzer::ID, factory(ConnectionsAnalyzer::boxed)),
+        (CredentialsAnalyzer::ID, factory(CredentialsAnalyzer::boxed)),
         (DnsAnalyzer::ID, factory(DnsAnalyzer::boxed)),
         (HttpAnalyzer::ID, factory(HttpAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),

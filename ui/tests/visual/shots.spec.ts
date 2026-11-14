@@ -17,6 +17,9 @@ import { fileURLToPath } from 'node:url';
 const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
+  credentials: async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
+  'credentials-export': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
+  'credentials-open': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
   dns: async (page) => `/sessions/${await demoSessionId(page)}/dns`,
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
@@ -34,6 +37,20 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
 };
+
+/** Secrets of the demo session (fake fixture values), which the Credentials captures must never show. */
+const DEMO_SECRETS = [
+  's3cret-fixture',
+  'demo-only',
+  'basic-fixture',
+  'proxy-fixture',
+  'smtp-fixture',
+  'login-fixture',
+  'pop-fixture',
+  'imap-fixture',
+  'ldap-fixture',
+  '::CONTOSO:',
+];
 
 /** Placeholder id when no session exists: the session views then render their error or not-found state. */
 const NO_SESSION = '00000000000000000000000000';
@@ -210,6 +227,40 @@ for (const [view, target] of views) {
           await expect(panel.getByRole('list', { name: 'Main peers' })).toBeVisible();
           await page.waitForLoadState('networkidle');
           await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+        }
+        if (view.startsWith('credentials') && !path.includes(NO_SESSION)) {
+          const list = page.getByRole('list', { name: 'Credentials' });
+          await expect(list).toBeVisible();
+          await expect(
+            page.getByRole('table', { name: 'Credential paths' }).or(page.getByRole('list', { name: 'Credential paths' })),
+          ).toBeVisible();
+          if (view === 'credentials-open') {
+            // The first card expanded: its secret is fetched but stays masked in the capture.
+            await list.getByRole('button', { expanded: false }).first().click();
+            await expect(page.getByText(/^Hidden \(\d+ characters?\)$/).first()).toBeVisible();
+            await page.waitForLoadState('networkidle');
+            await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+          }
+          if (view === 'credentials-export') {
+            // Confirmation dialog: checked and captured on its own, then the export runs and the
+            // sensitive-data banner is part of the main capture.
+            await page.getByRole('button', { name: 'Export CSV', exact: true }).first().click();
+            const dialog = page.getByRole('dialog', { name: 'Export sensitive data' });
+            await expect(dialog).toBeVisible();
+            const r = await inspectLayout(page);
+            expect(r.pageOverflow, 'horizontal page overflow (export dialog)').toBeNull();
+            expect(r.untitled, 'truncatable elements without title (export dialog)').toEqual([]);
+            await page.screenshot({ path: `${OUT_DIR}/credentials-export-dialog-${width}-${theme}.png` });
+            const download = page.waitForEvent('download');
+            await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+            const file = await download;
+            expect(file.suggestedFilename()).toMatch(/^credentials-.*\.csv$/);
+            await expect(page.getByText(/was exported\. It contains sensitive data\./)).toBeVisible();
+            await expect(dialog).toBeHidden();
+          }
+          // Fixture secrets of the demo session never appear in clear text.
+          const text = await page.evaluate(() => document.body.innerText);
+          for (const secret of DEMO_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
         }
         if (view === 'open-ports' && !path.includes(NO_SESSION)) {
           await expect(page.getByRole('img', { name: /^Ports open on the most hosts/ })).toBeVisible();

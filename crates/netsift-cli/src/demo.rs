@@ -22,7 +22,8 @@ use netsift_fixtures::{Naming, Packet, SplitBy, SplitOptions, http_mix, split_to
 use netsift_store::Catalog;
 
 /// Demo rounds plus one `NTLMv2` authentication over SMB, so the SMB view shows an announced-OS
-/// donut, host announcements and an authentication (added here, like HTTP/TLS, not in `Kind`).
+/// donut, host announcements and an authentication (added here, like HTTP/TLS, not in `Kind`),
+/// the infrastructure exchanges of the Servers view and the credentials showcase.
 fn demo_packets(rounds: usize, seed: u64) -> Vec<Packet> {
     let mut packets = generate(Kind::Demo, rounds, seed);
     let start = packets.last().map_or(0, |p| p.ts_ns) + NS_PER_SEC;
@@ -34,6 +35,9 @@ fn demo_packets(rounds: usize, seed: u64) -> Vec<Packet> {
     );
     // Servers view: DHCP lease, NTP, DNS SRV of a domain controller, LDAP and Kerberos.
     netsift_fixtures::servers::servers_showcase(&mut sc);
+    // Credentials view: one exchange of every emitter (mail, LDAP, HTTP NTLM, proxy...), on top
+    // of the FTP, SNMP, HTTP Basic and login form of the demo rounds.
+    netsift_fixtures::credentials::credentials_showcase(&mut sc);
     packets.extend(sc.into_packets());
     packets
 }

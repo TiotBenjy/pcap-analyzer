@@ -9,6 +9,8 @@
 //! - [`classify`]: application protocol labels ([`AppProto`]) from flows and well-known ports;
 //! - [`core`]: the built-in `core` analyzer (traffic time series, hosts, flows);
 //! - [`connections`]: conversations between hosts and traffic per host;
+//! - [`credentials`]: FTP, mail (SMTP AUTH, POP3, IMAP), LDAP simple bind and SNMP community
+//!   credentials (HTTP and SMB emit theirs from their own analyzers);
 //! - [`ports`]: open ports (SYN-ACK, UDP replies) with services detected by content;
 //! - [`servers`]: DHCP, NTP and Kerberos servers (the Servers view derives the other roles);
 //! - [`services`]: IANA service names of ports (embedded registry);
@@ -32,6 +34,7 @@ pub mod analyzer;
 pub mod classify;
 pub mod connections;
 pub mod core;
+pub mod credentials;
 pub mod dns;
 pub mod http;
 pub mod ports;
@@ -46,6 +49,7 @@ pub mod tls;
 
 pub use analyzer::{Analyzer, AnalyzerId, BlobRef, RecordSink};
 pub use classify::AppProto;
+pub use credentials::CredentialsAnalyzer;
 pub use netsift_dissect as dissect;
 pub use netsift_flow as flow;
 pub use netsift_geo as geo;

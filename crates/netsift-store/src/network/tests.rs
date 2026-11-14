@@ -860,6 +860,9 @@ fn the_step_memory_does_not_depend_on_the_number_of_hosts() {
 fn the_step_reads_by_index_and_never_sorts() {
     let conn = db();
     two_hundred(&conn);
+    // With statistics, as after `PRAGMA optimize` (rerun at the opening of a session).
+    finalized(&conn);
+    conn.execute_batch("ANALYZE").unwrap();
     let plan = |sql: &str| -> String {
         let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
         let rows = stmt.query_map([], |r| r.get::<_, String>(3)).unwrap();
@@ -1415,4 +1418,26 @@ fn host_roles_come_from_the_servers_view() {
     assert_eq!(roles.len(), 1, "only the asked hosts having a role");
     assert_eq!(roles[&ips[0]], ["dns", "kerberos", "ldap"]);
     assert!(host_roles(&conn, &[]).unwrap().is_empty());
+}
+
+#[test]
+fn the_step_declares_every_network_table() {
+    // Otherwise an upgraded session keeps listing them as added after its import (ADR-013).
+    let conn = db();
+    let step = crate::finalize::SESSION_FINALIZERS
+        .iter()
+        .find(|f| f.id == "network")
+        .unwrap();
+    let mut stmt = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'network\\_%' ESCAPE '\\'")
+        .unwrap();
+    let tables: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(tables.len(), TABLES.len());
+    for t in &tables {
+        assert!(step.fills.contains(&t.as_str()), "{t}");
+    }
 }

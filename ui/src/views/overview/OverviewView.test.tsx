@@ -322,7 +322,7 @@ describe('traffic chart option', () => {
     );
     expect(html.indexOf('TLS')).toBeLessThan(html.indexOf('DNS'));
     expect(html).not.toContain('HTTP');
-    expect(html).toContain('75.0 %');
+    expect(html).toContain('75%');
     expect(html).toContain('400 B');
     expect(tooltipHtml([{ seriesName: '<b>', value: [0, 1] }], FORMAT)).toContain('&lt;b&gt;');
   });

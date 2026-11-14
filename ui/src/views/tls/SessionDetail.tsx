@@ -13,9 +13,9 @@ import { Card } from '../../components/Card';
 import { ErrorState } from '../../components/ErrorState';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
-import { formatBytes, formatTimestamp } from '../../lib/format';
+import { formatBytes, formatDate, formatTimestamp, labelled } from '../../lib/format';
 import { CodeList, Field, Fields, IssueBadges, MonoValue, SuiteName } from './parts';
-import { alertName, formatDate, hex4, versionLabel, versionTone } from './tlsFormat';
+import { alertName, hex4, versionLabel, versionTone } from './tlsFormat';
 
 type Tab = 'overview' | 'client' | 'server' | 'certificates';
 
@@ -28,7 +28,7 @@ interface SessionDetailProps {
 
 /** Details of one TLS session: overview, decoded hellos and certificate chain. */
 export function SessionDetail({ sessionId, item, onClose }: SessionDetailProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [tab, setTab] = useState<Tab>('overview');
   const detail = useTlsSession(sessionId, item.id);
   const server = `${item.server_ip}:${item.server_port}`;
@@ -54,7 +54,7 @@ export function SessionDetail({ sessionId, item, onClose }: SessionDetailProps) 
 
   return (
     <Card
-      title={`${t('views.tls.detail.title')}: ${item.sni ?? server}`}
+      title={labelled(t('views.tls.detail.title'), item.sni ?? server, i18n.language)}
       actions={
         <Button variant="ghost" icon aria-label={t('views.tls.detail.close')} title={t('views.tls.detail.close')} onClick={onClose}>
           <X aria-hidden size={16} strokeWidth={1.75} />

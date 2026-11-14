@@ -8,7 +8,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { Flag } from '../../components/Flag';
 import { countryName } from '../../lib/countries';
 import { Skeleton } from '../../components/Skeleton';
-import { formatCount } from '../../lib/format';
+import { formatCount, labelled } from '../../lib/format';
 
 interface CountryListProps {
   stats: DnsStats | null;
@@ -54,7 +54,7 @@ export function CountryList({ stats, loading, error, onRetry }: CountryListProps
           key={r.key}
           flag={<Flag country={r.code} />}
           label={r.label}
-          title={`${r.label}: ${t('views.dns.charts.serverQueries', { count: r.servers, queries: formatCount(r.value) })}`}
+          title={labelled(r.label, t('views.dns.charts.serverQueries', { count: r.servers, queries: formatCount(r.value) }), i18n.language)}
           value={r.value}
           max={max}
         />
@@ -63,10 +63,11 @@ export function CountryList({ stats, loading, error, onRetry }: CountryListProps
         <Row
           flag={<span aria-hidden className="inline-block w-[1.333em] shrink-0" />}
           label={t('views.dns.charts.countryUnknown')}
-          title={`${t('views.dns.charts.countryUnknown')}: ${t('views.dns.charts.serverQueries', {
-            count: unknown.servers,
-            queries: formatCount(unknown.messages),
-          })}`}
+          title={labelled(
+            t('views.dns.charts.countryUnknown'),
+            t('views.dns.charts.serverQueries', { count: unknown.servers, queries: formatCount(unknown.messages) }),
+            i18n.language,
+          )}
           value={unknown.messages}
           max={max}
           muted

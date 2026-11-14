@@ -29,7 +29,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { StatCard } from '../../components/StatCard';
 import { sessionVersionMessage } from '../../lib/errors';
-import { formatBytes, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { formatBytes, formatCompact, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { SessionStateBadge } from '../sessions/SessionStateBadge';
 import { linktypeName } from './linktypes';
@@ -232,8 +232,6 @@ function SummaryBand({
   );
 }
 
-const compact = (lang: string) => new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 });
-
 function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boolean }) {
   const { t, i18n } = useTranslation();
   const small = !useMediaQuery(SM_QUERY);
@@ -261,11 +259,10 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
     const first = data?.start_us ?? 0;
     const last = data === undefined ? 0 : data.start_us + data.points * data.step_us;
     const oneDay = sameLocalDay(first, last);
-    const count = compact(lang);
     return {
       protocol: (p) => t(`views.overview.protocols.${p}`),
-      value: (v) => (metric === 'bytes' ? formatBytes(v, lang) : formatCount(v)),
-      axis: (v) => (metric === 'bytes' ? formatBytes(v, lang, true) : count.format(v)),
+      value: (v) => (metric === 'bytes' ? formatBytes(v, lang) : formatCount(v, lang)),
+      axis: (v) => (metric === 'bytes' ? formatBytes(v, lang, true) : formatCompact(v, lang)),
       bucket: (ms) =>
         t('views.overview.traffic.bucket', {
           time: formatTimestamp(ms * 1000, !oneDay),

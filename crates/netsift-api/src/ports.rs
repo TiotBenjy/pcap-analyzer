@@ -46,7 +46,7 @@ pub enum PortTransport {
 }
 
 impl PortTransport {
-    fn of(proto: u8) -> Self {
+    pub(crate) fn of(proto: u8) -> Self {
         if proto == 17 { Self::Udp } else { Self::Tcp }
     }
 }

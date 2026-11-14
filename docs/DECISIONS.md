@@ -493,3 +493,93 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - les tables lues par la vue ne peuvent plus être renommées sans recréer la vue (SQLite réécrit les vues
     lors d'un `ALTER TABLE ... RENAME`) ; une migration qui supprime une de ces tables doit aussi supprimer
     ou recréer la vue.
+
+## ADR-018 — Graphe Network : graphe borné, replié en fin d'import, disposition en Web Worker
+
+- Contexte : P3.9. Une session peut compter des milliers d'hôtes ; sigma.js (WebGL) reste fluide jusqu'à
+  quelques milliers de nœuds, mais le graphe devient illisible bien avant (défaut principal de la
+  référence) ; la disposition ForceAtlas2 bloque le fil principal si elle y tourne ; la CSP desktop
+  (`script-src 'self'`, ADR-006) et le prototype gelé de Tauri contraignent les dépendances. Une
+  première version repliait le graphe à la lecture depuis `conversations` (trois à quatre parcours par
+  requête) : environ 1 s par requête à 50 000 conversations et 17 s à 500 000, mesurés en revue
+  (SQLite 3.50, cache chaud), loin de la cible de 300 ms. Même le seul cumul des octets par adresse
+  coûte environ 1 s à 500 000 conversations.
+- Décision :
+  - **matérialisation en fin d'import** : l'étape `network` (`SESSION_FINALIZERS`, ADR-014) replie
+    `conversations`, `hosts` et `host_traffic` dans les tables de `0900_network.sql`. Les arêtes y sont repliées par (nœud client, nœud serveur, groupes de protocoles en masque de bits,
+    catégories des deux extrémités, IPv6) : une requête lit quelques milliers de lignes (table
+    `network_edges`, index pour le reste) et finit le repli en mémoire. Résultat déterministe (égalités
+    départagées par l'adresse), idempotent, indépendant de l'ordre d'arrivée ; une session mise à niveau
+    rejoue l'étape à l'ouverture (ADR-013) ;
+  - **mémoire de l'étape bornée quel que soit le nombre d'hôtes** : un scan ou un flood à sources
+    usurpées peut amener des millions d'adresses, et un import tourne avec `temp_store = MEMORY` (un tri
+    ou un `GROUP BY` SQLite garderait alors toutes les lignes en mémoire). L'état par hôte vit donc dans
+    `network_hosts`, sur disque, et aucune instruction ne trie ni ne groupe une table d'hôtes ou de
+    conversations : (1) lecture de `conversations` dans l'ordre de stockage, octets et groupes cumulés
+    par adresse dans la table de travail `network_ends` (un upsert par extrémité), puis fusion avec
+    `hosts`, les deux lus dans l'ordre des adresses par index, un hôte à la fois en mémoire, inséré dans
+    l'ordre de la clé primaire ; (2) une passe dans l'ordre des rangs (index `network_hosts_bytes`) à état constant
+    (compteur par groupe et par pays), qui ne met à jour que les hôtes relus par le graphe (hôtes à clé,
+    30 premiers de chaque pays) ; (3) une passe sur `conversations`, extrémités trouvées par clé
+    primaire, repli dans des tables de hachage indexées par clés de nœud (hôtes à clé, pays, « autres »,
+    hôtes dépliables) ; (4) comptage des hôtes par clé de nœud sur un simple parcours. Tests : identité
+    avec une implémentation de référence en mémoire sur une session aléatoire pleine d'égalités,
+    idempotence, indépendance à l'ordre d'arrivée, plans de requête sans tri, tailles des tables en
+    mémoire identiques à 1 000 et 10 000 adresses usurpées. Coût : un passage par SQLite par extrémité
+    et par hôte, plus lent que l'agrégation en mémoire de la première version (3,8 s à 500 000
+    conversations, mesurés sur une base en mémoire), mais le pic de mémoire de l'étape reste de
+    quelques Mio à 650 000 hôtes ;
+  - **hôtes à clé** : un hôte garde son adresse comme clé s'il est parmi les 150 plus volumineux, ou
+    parmi les 150 plus volumineux ayant l'un des groupes de protocoles. Les N premiers hôtes ayant du
+    trafic qui passe un filtre protocole sont donc toujours à clé (un hôte dans les N premiers d'un
+    filtre l'est aussi dans chacun de ses groupes). Les autres hôtes publics géolocalisés sont repliés
+    par pays, le reste dans « autres » ;
+  - **bornes** : en mode hôtes, les `limit` premiers hôtes (40 par défaut, 10 à 150) qui passent les
+    filtres, classés par octets toutes conversations confondues, ont leur nœud, les autres hôtes publics
+    forment un nœud par pays (15 au plus, les plus gros), le reste un nœud « autres ». Un pays déplié
+    (`expand`) ajoute ses 30 plus gros hôtes (table `network_expand`, leur trafic retiré du nœud pays).
+    En mode pays : un nœud par pays, plus « LAN et local » et « pays inconnu ». Au plus 400 arêtes non
+    orientées, les plus volumineuses ; les orphelins (hôtes sans trafic retenu par le filtre protocole)
+    sont comptés, et 30 au plus sont listés sur demande ;
+  - **filtre protocole** : une conversation est retenue si elle porte une étiquette d'un des groupes
+    choisis (DNS, HTTP, HTTPS = `tls`, SSH, FTP, Telnet, RDP, SMB = `smb` + `netbios`, TCP, UDP,
+    Autres) ; ses octets comptent en entier, `conversations` ne les ventilant pas par protocole (l'UI
+    le signale). Le filtre de catégorie garde les arêtes dont les deux extrémités passent ;
+  - **disposition** : ForceAtlas2 de `graphology-layout-forceatlas2`, itérations fixes (150 à 600 selon
+    la taille), départ déterministe (cercle par rang), puis figée. Elle tourne dans un worker module
+    servi par l'origine de l'application (`new Worker(new URL('./layout.worker.ts', import.meta.url))`),
+    pas dans le worker `blob:` fourni par la bibliothèque, que `script-src 'self'` refuse ; repli sur le
+    fil principal si le worker manque, échoue ou ne répond pas en 5 s (graphe borné, quelques dizaines
+    de ms) ;
+  - **repli sans WebGL** : la vue teste un contexte WebGL ; sans lui (webview sans accélération), et
+    sous 768 px, elle liste les liens classés par octets au lieu d'un canevas vide ;
+  - sigma reste en 3.0.2 (`docs/STACK_VERSIONS.md`) ; la 4.0, publiée fin octobre 2026, change d'API et
+    fera l'objet d'une montée de version dédiée. Les nœuds sont des disques colorés par catégorie
+    d'adresse : la forme par catégorie (`NodeShape` de la palette) demande des programmes WebGL
+    sigma dédiés, reportés. L'export PNG/SVG de la spec est reporté.
+- Mesures (test `network::tests::timings`, build release, base sur disque avec les réglages d'un import
+  (WAL, cache de 64 Mio, `temp_store = MEMORY`), session synthétique : 500 hôtes LAN, 20 pays,
+  7 combinaisons de protocoles, 40 % d'adresses publiques distinctes) :
+
+  | Conversations | Hôtes | Étape de fin d'import | Pic mémoire de l'étape | Graphe par défaut | HTTPS | Dépliage + orphelins | Pays | Détail d'hôte |
+  |---|---|---|---|---|---|---|---|---|
+  | 50 000 | 17 000 | 0,4 s | + 4 Mio | 21 ms | 6 ms | 21 ms | 2 ms | 1 ms |
+  | 500 000 | 162 000 | 5,7 s | + 4 Mio | 35 ms | 9 ms | 30 ms | 2 ms | 7 ms |
+  | 2 000 000 | 648 000 | 33 s | + 3 Mio | 32 ms | 11 ms | 35 ms | 3 ms | 37 ms |
+
+  À 2 000 000 conversations, l'étape se partage entre les hôtes (17 s), le repli (14 s) et les rangs
+  (2 s) : les lectures par clé débordent du cache de pages.
+
+  Avant : environ 1 s (50 000) et 17 s (500 000) par requête par défaut.
+- Conséquences : les requêtes du graphe ne dépendent plus du nombre de conversations mais du nombre de
+  clés repliées (`network_edges` : environ 21 000 lignes à 500 000 conversations) ; l'import paie
+  l'étape une fois, dans sa phase `finishing` (environ 11 µs par conversation à 500 000, 16 µs à
+  2 000 000). Les nombres d'hôtes par
+  nœud ne tiennent pas compte du filtre de catégorie au-delà des deux extrémités d'une arête (un hôte
+  dont toutes les conversations sont écartées par ce filtre n'est ni dessiné ni orphelin) ; les
+  étiquettes de protocole d'un nœud pays dont on a déplié des hôtes peuvent garder celles de ces hôtes.
+  Une requête abandonnée par l'UI n'interrompt pas son calcul côté serveur (borné à quelques dizaines
+  de ms). Les rôles serveur d'un hôte (`roles`, ADR-017) sont lus à la requête dans la vue
+  `server_roles`, pour les seuls hôtes dessinés (au plus 210) ou détaillés ; leur coût sur une grosse
+  session est à mesurer avec celui de la vue (P4.2). Ils s'affichent en badges dans le panneau de
+  détail ; la forme « serveur » du nœud reste reportée avec les formes par catégorie.

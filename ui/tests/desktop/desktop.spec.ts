@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ScanResponse } from '../../src/api/types/ScanResponse';
@@ -8,7 +9,8 @@ import type { ScanResponse } from '../../src/api/types/ScanResponse';
 //   - `Object.freeze(Object.prototype)`: `freezePrototype: true` in tauri.conf.json; tauri 2 runs
 //     its scripts/freeze_prototype.js first in the init script, and freezes nothing else;
 //   - `window.__TAURI_INTERNALS__`, whose `invoke` answers the commands the UI uses
-//     (`get_api_endpoint`, `set_ui_language`, `plugin:dialog|open`).
+//     (`get_api_endpoint`, `set_ui_language`, `plugin:dialog|open`);
+//   - the CSP of the window (tauri.conf.json), served as a response header of the page.
 // So the desktop-only code paths (Tauri bridge, native picker) and the lazily loaded chart chunk
 // run under the constraints of the AppImage. Projects: `desktop-webkit` (WebKit, the engine of
 // WebKitGTK and of the macOS webview) and `desktop-chromium` (close to WebView2 on Windows; its
@@ -26,6 +28,29 @@ interface DemoSession {
 const PICKED_FILE = '/captures/desktop-smoke.pcapng';
 /** Same folder as the view captures of tests/visual. */
 const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.artifacts/screens');
+
+/** CSP of the desktop window (apps/desktop/tauri.conf.json), as one header value. */
+function desktopCsp(): string {
+  const conf = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../apps/desktop/tauri.conf.json'), 'utf8')) as {
+    app: { security: { csp: Record<string, string> } };
+  };
+  return Object.entries(conf.app.security.csp)
+    .map(([directive, value]) => `${directive} ${value}`)
+    .join('; ');
+}
+
+/**
+ * Serves the page under the desktop CSP, so that a blocked resource (worker, style, font, image)
+ * shows up as a console error. The API stays reachable: the preview runs on 127.0.0.1.
+ */
+async function enforceDesktopCsp(page: Page): Promise<void> {
+  const csp = desktopCsp();
+  await page.route(/\/(index\.html)?(\?.*)?$/, async (route) => {
+    if (route.request().resourceType() !== 'document') return route.fallback();
+    const res = await route.fetch();
+    return route.fulfill({ response: res, headers: { ...res.headers(), 'content-security-policy': csp } });
+  });
+}
 
 async function demoSession(page: Page): Promise<DemoSession> {
   const res = await page.request.get('/api/v1/sessions?limit=1000');
@@ -107,10 +132,11 @@ async function expectHealthy(page: Page, errors: string[], when: string, ready: 
   expect(errors, `errors in the page (${when})`).toEqual([]);
 }
 
-test('desktop smoke: native import dialog, session overview and sources', async ({ page }) => {
+test('desktop smoke: native import dialog, session overview, sources and network', async ({ page }) => {
   const errors = watchErrors(page);
   const session = await demoSession(page);
   await emulateTauri(page);
+  await enforceDesktopCsp(page);
   // The demo API is read-only: report a writable server so the import buttons are enabled (the
   // wizard stops before starting the import).
   await page.route('**/api/v1/server-info', async (route) => {
@@ -161,11 +187,36 @@ test('desktop smoke: native import dialog, session overview and sources', async 
   await expectHealthy(page, errors, 'sources', page.getByRole('table', { name: 'Chunks of the session' }));
   await expect(page.getByRole('img', { name: /^Coverage timeline/ })).toBeVisible();
 
+  // Network: graphology, the layout worker and sigma (WebGL) under the frozen prototype.
+  await page.getByRole('link', { name: 'Network' }).first().click();
+  const canvas = page.getByTestId('network-canvas');
+  const list = page.getByRole('list', { name: 'Links ranked by bytes' });
+  await expectHealthy(page, errors, 'network', canvas.or(list));
+  if ((await canvas.count()) > 0) {
+    await expect(canvas, 'sigma renderer started').toHaveAttribute('data-ready', 'true');
+    await expect(canvas.locator('canvas').first()).toBeVisible();
+  } else {
+    await expect(page.getByText('WebGL is unavailable', { exact: false })).toBeVisible();
+  }
+  expect(errors, 'errors in the page (network)').toEqual([]);
+  await page.screenshot({ path: `${OUT_DIR}/network-desktop-${test.info().project.name}.png` });
+
   // The desktop bridge was used, not the web fallback.
   const commands = await page.evaluate(
     () => (window as unknown as { __TAURI_INTERNALS__: { calls: string[] } }).__TAURI_INTERNALS__.calls,
   );
   expect(commands).toEqual(expect.arrayContaining(['get_api_endpoint', 'set_ui_language', 'plugin:dialog|open']));
+
+  // Last (the refusal is logged as a console error): the desktop CSP was in force all along, an
+  // inline script is refused.
+  const inline = await page.evaluate(() => {
+    const script = document.createElement('script');
+    script.textContent = 'document.documentElement.dataset.inlineRan = "true";';
+    document.head.append(script);
+    script.remove();
+    return document.documentElement.dataset.inlineRan ?? 'blocked';
+  });
+  expect(inline, 'desktop CSP applied (no inline script)').toBe('blocked');
 });
 
 test('desktop smoke: a failing view shows the NetSift error screen', async ({ page }, testInfo) => {

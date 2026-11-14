@@ -10,8 +10,11 @@ Visualiser les hôtes et leurs communications, filtrables par protocole, pour co
 
 Noeuds = hôtes (`hosts`), arêtes = conversations (`flows` agrégés) avec protocoles applicatifs et volumes.
 Classification et pays via `netsift-geo`.
-API : `/network/graph?protocols=&include_orphans=&resolve_dns=&aggregate_country=` -> `{ nodes, edges }`
-déjà **bornés et agrégés** côté serveur (voir ci-dessous) ; `/network/node/{ip}` pour le panneau de détail.
+API : `/network/graph?mode=hosts|countries&protocols=&category=&ipv6=&include_orphans=&limit=&expand=`
+-> `{ nodes, edges, ... }` déjà **bornés et agrégés** côté serveur (voir ci-dessous et ADR-018 : tables
+repliées en fin d'import par l'étape `network`, migration `0900_network.sql`) ;
+`/network/node/{ip}` pour le panneau de détail. La résolution des noms est un réglage d'affichage de l'UI
+(les noms accompagnent chaque nœud).
 
 ## Rendu (sigma.js + graphology)
 
@@ -30,11 +33,11 @@ déjà **bornés et agrégés** côté serveur (voir ci-dessous) ; `/network/nod
 
 Bascules de protocole avec compteurs : DNS, HTTP, HTTPS, SSH, FTP, Telnet, RDP, SMB, TCP, UDP, Autres ;
 Tout activer / Tout désactiver ; Masquer les orphelins ; Résoudre les noms DNS ; Afficher IPv6 ;
-Exporter (PNG/SVG) ; recherche IP ou nom. Sous 768 px, les bascules passent dans un menu « Filtres ».
+Exporter (PNG/SVG, **reporté** : pas encore livré) ; recherche IP ou nom. Sous 768 px, les bascules passent dans un menu « Filtres ».
 
 ## Panneau de détail (clic sur un nœud)
 
-IP, MAC(s), noms (DNS/NBNS/DHCP), catégorie, pays, ports ouverts, protocoles, octets entrants/sortants,
+IP, MAC(s), noms (DNS/NBNS/DHCP), catégorie, pays, rôles serveur (vue Servers, ADR-017), ports ouverts, protocoles, octets entrants/sortants,
 nb de pairs, premier/dernier vu ; liens vers les autres onglets filtrés sur cet hôte.
 
 ## Critères d'acceptation

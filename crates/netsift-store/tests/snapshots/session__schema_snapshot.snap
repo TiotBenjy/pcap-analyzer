@@ -1,5 +1,6 @@
 ---
 source: crates/netsift-store/tests/session.rs
+assertion_line: 140
 expression: schema
 ---
 -- table anomalies
@@ -90,6 +91,41 @@ CREATE INDEX conversations_last_ts ON conversations (last_ts);
 
 -- index conversations_packets
 CREATE INDEX conversations_packets ON conversations (packets_total);
+
+-- table credentials
+CREATE TABLE credentials (
+    fingerprint   TEXT PRIMARY KEY,                -- lower-case hex SHA-256 (stable entry id)
+    protocol      TEXT NOT NULL,                   -- smb / http / ftp / smtp / pop3 / imap / ldap / snmp
+    kind          TEXT NOT NULL,                   -- ntlmv1 / ntlmv2 / ntlm / http-basic / http-form / ftp / mail / ldap / snmp
+    secret_state  TEXT NOT NULL,                   -- plaintext / recoverable / metadata-only
+    flow_id       INTEGER,                         -- flows.id of the earliest observation
+    client_ip     TEXT,
+    client_port   INTEGER,
+    server_ip     TEXT,
+    server_port   INTEGER,
+    username      TEXT,
+    domain        TEXT,
+    workstation   TEXT,
+    secret        TEXT,                            -- plain-text secret (sensitive)
+    hashcat_mode  INTEGER,                         -- 5500 / 5600 / 16400...
+    hashcat_line  TEXT,                            -- offline-recovery line (sensitive)
+    details       TEXT NOT NULL DEFAULT '[]',      -- JSON array of [key, value] pairs (non-secret)
+    seen_count    INTEGER NOT NULL DEFAULT 1,
+    first_ts      INTEGER NOT NULL,
+    last_ts       INTEGER NOT NULL
+) WITHOUT ROWID;
+
+-- index credentials_first_ts
+CREATE INDEX credentials_first_ts ON credentials (first_ts, fingerprint);
+
+-- index credentials_hashcat
+CREATE INDEX credentials_hashcat ON credentials (hashcat_mode) WHERE hashcat_mode IS NOT NULL;
+
+-- index credentials_protocol
+CREATE INDEX credentials_protocol ON credentials (protocol, first_ts);
+
+-- index credentials_state
+CREATE INDEX credentials_state ON credentials (secret_state, first_ts);
 
 -- table dhcp_messages
 CREATE TABLE dhcp_messages (

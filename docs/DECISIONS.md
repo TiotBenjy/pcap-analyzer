@@ -583,3 +583,54 @@ acceptée : la remplacer par une nouvelle qui la référence.
   `server_roles`, pour les seuls hôtes dessinés (au plus 210) ou détaillés ; leur coût sur une grosse
   session est à mesurer avec celui de la vue (P4.2). Ils s'affichent en badges dans le panneau de
   détail ; la forme « serveur » du nœud reste reportée avec les formes par catégorie.
+
+## ADR-018 — Identifiants : table `credentials` repliée par empreinte, secrets servis à la demande
+
+- Contexte : P3.7 (Credentials). Depuis P3.5, `Record::Credential` est un contrat commun à tous les
+  émetteurs, abandonné par le moteur faute de table. Les secrets en clair (FTP, SMTP, HTTP Basic, SNMP...)
+  et le matériel récupérable hors ligne (NetNTLM, CRAM-MD5) sont les données les plus sensibles de
+  l'application ; certains se répètent à chaque paquet (community SNMP d'un poller, en-tête Basic de
+  chaque requête).
+- Décision :
+  - **émetteurs** : `smb` (NTLMSSP, P3.5), `http` (`Authorization` / `Proxy-Authorization` Basic,
+    NTLM / Negotiate apparié au CHALLENGE du `WWW-Authenticate` précédent de la connexion, formulaires
+    `application/x-www-form-urlencoded` et chaînes de requête ayant un champ de mot de passe) et le nouvel
+    analyseur `credentials` (FTP `USER`/`PASS`, SMTP `AUTH`, POP3 `USER`/`PASS`/`APOP`/`AUTH`, IMAP
+    `LOGIN`/`AUTHENTICATE` avec SASL PLAIN, LOGIN et CRAM-MD5, LDAP simple bind via `ldap-parser`, SNMP
+    v1/v2c via `snmp-parser`). Reconnaissance par port connu (les deux extrémités sont essayées pour une
+    connexion prise en cours de route). Une identification attend la réponse du serveur à la commande
+    qui l'a complétée pour noter `result = accepted | rejected` (sinon émise sans résultat en fin de
+    flux). Au plus 128 identifiants par flux ; lignes, messages BER et liaisons en attente bornés ;
+  - **stockage** : migration 0600, table `credentials` `WITHOUT ROWID`, clé `fingerprint` = SHA-256
+    (calculé par le moteur, champs préfixés par leur longueur) du protocole, du type, des IP client et
+    serveur, du port serveur, de l'identité (compte, domaine), du secret et de la ligne hashcat. Les
+    observations identiques sont **repliées** : `seen_count` additif, `first_ts`/`last_ts` min/max, et le
+    flux, le port client, la station et les détails de l'observation la plus ancienne (départage par
+    identifiant de flux puis détails), upsert commutatif donc indépendant des shards et du découpage. Les
+    détails non secrets sont un tableau JSON de paires `[clé, valeur]`. Aucune étape de fin d'import ;
+  - **API** : la liste (keyset `first_ts, fingerprint`, filtres `protocol`, `state`, `mode` en clauses
+    statiques indexées), les statistiques et les chemins agrégés client -> protocole -> serveur (top N
+    + « autres ») ne lisent **jamais** les colonnes `secret` et `hashcat_line`. Le secret d'une entrée
+    est servi par `GET /credentials/{fingerprint}` (dépliage d'une carte) ; l'export par
+    `GET /credentials/export?format=csv|hashcat` (sélection `ids=` ou filtres, 10 000 entrées au plus),
+    en pièce jointe `no-store` + `CSP: sandbox`. Un fichier hashcat ne contient qu'un mode (`mode=`
+    obligatoire), une ligne par entrée. En CSV, une cellule commençant par `=`, `+`, `-`, `@`, tabulation
+    ou retour chariot reçoit une apostrophe initiale (pas d'évaluation de formule dans un tableur) : la
+    valeur exacte reste disponible dans le détail et l'export hashcat. Routes en `GET` : elles marchent
+    sur un serveur `--read-only` ;
+  - **journaux** : `Credential`, `CredentialRow` et `CredentialSecret` ont un `Debug` qui masque secret et
+    ligne hashcat ; aucune route ni aucun analyseur ne journalise un identifiant. Un test d'intégration
+    (`netsift-engine/tests/credentials_logs.rs`) capture tout `tracing` (niveau TRACE) pendant un import
+    de tous les émetteurs et y cherche chaque secret stocké ;
+  - **UI** : `SecretValue` masqué par défaut ; l'export demande une confirmation et laisse un bandeau
+    « contient des données sensibles » tant que la vue est ouverte.
+- Conséquences :
+  - une entrée regroupe des observations de plusieurs flux : son `flow_id` et ses détails (verdict du
+    serveur, version SNMP, type de PDU) sont ceux de la première. Un second essai avec le même secret
+    refusé puis accepté reste une seule entrée avec le verdict du premier ;
+  - un SNMP `SetRequest` n'est pas distingué d'un `GetRequest` à communauté égale (même entrée, PDU de la
+    première observation) ;
+  - les formulaires JSON, HTTP Digest, Kerberos (AS-REQ pré-authentifié, mode 7500/18200), SASL NTLM / GSS
+    dans LDAP et SMTP, Telnet et les poignées de main Wi-Fi ne sont pas encore émis ; `handshakes` vaut 0 ;
+  - sessions mises à niveau (ADR-013) : la table créée à l'ouverture est vide, l'Overview affiche le module
+    « non analysé » et `GET /credentials/stats` répond `analyzed: false`.

@@ -48,6 +48,18 @@ NetSift ne réalise aucune récupération.
    état du secret (badge : clair = ambre, récupérable = neutre, métadonnées = gris). Carte dépliée : détail complet,
    `SecretValue` pour le secret, actions d'export.
 
+## API (ADR-018)
+
+- `GET /sessions/{id}/credentials` : liste paginée (keyset), filtres `protocol`, `state`, `mode` ; jamais de secret.
+- `GET /sessions/{id}/credentials/stats` : compteurs par état, par mode hashcat et par protocole, `analyzed`.
+- `GET /sessions/{id}/credentials/paths` : chemins client -> protocole -> serveur agrégés (top N + autres).
+- `GET /sessions/{id}/credentials/{fingerprint}` : détail avec secret et ligne hashcat (dépliage d'une carte).
+- `GET /sessions/{id}/credentials/export?format=csv|hashcat` : export en pièce jointe (sélection `ids=` ou
+  filtres ; hashcat : un mode par fichier).
+
+Les observations identiques (même protocole, type, client, serveur, identité et secret) sont repliées en une
+entrée avec un nombre d'observations.
+
 ## Critères d'acceptation
 
 - Fixtures : un FTP USER/PASS, un HTTP Basic, une community SNMP -> trois entrées, secrets masqués par défaut.

@@ -14,7 +14,8 @@ quelle que soit la quantité de données. Les captures de `docs/reference/` serv
    Pas de logos de marques (OS, éditeurs) : texte simple.
 3. **Rien ne se chevauche, rien ne déborde** : c'est vérifié automatiquement (voir « Tests visuels »).
 4. **Données d'abord** : chiffres alignés (`tabular-nums`), unités cohérentes (octets en IEC :
-   Kio/Mio/Gio en fr, KiB/MiB/GiB en en), dates ISO locales avec fuseau affiché dans l'en-tête de session.
+   Kio/Mio/Gio en fr, KiB/MiB/GiB en en), dates ISO locales avec fuseau affiché dans l'en-tête de session
+   (détail dans « Langues et formats »).
 5. **Ton** : libellés courts, factuels, sans point d'exclamation ni formule marketing.
 
 ## Jetons de design (Tailwind 4, `@theme`)
@@ -113,6 +114,43 @@ détails » (erreur, stack, motif de route sans identifiant de session, user age
 capture). La navigation reste utilisable autour. Une build release n'a pas de devtools : c'est le seul
 moyen de diagnostiquer un bug du desktop.
 
+## Langues et formats
+
+L'interface existe en anglais et en français ; la langue se change à chaud dans Paramètres (sans
+rechargement : vues montées, graphiques et données déjà en cache suivent). Toute chaîne visible passe
+par les dictionnaires `ui/src/i18n/` (clés identiques en `en` et `fr`, mêmes paramètres `{{…}}`).
+
+Tout formatage passe par `ui/src/lib/format.ts`, jamais par `Intl`, `toFixed` ou `toLocale*` dans
+une vue :
+
+| Donnée | Anglais | Français | Fonction |
+|---|---|---|---|
+| Nombre, compteur | `12,345` | `12 345` (espace fine insécable) | `formatCount`, `formatNumber` |
+| Compteur court (axes) | `12.4K` | `12,4 k` | `formatCompact` |
+| Taille | `1.5 KiB` | `1,5 Kio` (unités IEC, `o` pour l'octet) | `formatBytes`, `formatByteCount`, `formatRate` |
+| Pourcentage | `12.5%` | `12,5 %` | `formatPercent`, `formatShare` |
+| Date et heure de capture | `2026-11-08 14:03:12` | identique | `formatTimestamp`, `formatDate`, `formatPeriod` |
+| Date hors capture (base GeoIP) | `Nov 8, 2026` | `8 nov. 2026` | `formatLongDate` |
+| Durée | `2 d 03 h`, `12 min 05 s` | `2 j 03 h`, `12 min 05 s` | `formatDuration`, `formatLatency` |
+| Libellé : valeur | `Total: 3` | `Total : 3` | `labelled`, `colon` |
+
+- Heures : format ISO 24 h dans les deux langues, dans le fuseau local affiché à côté (« Heures en
+  Europe/Paris ») ; jamais de AM/PM ni de nom de mois pour un horodatage de paquet : une heure reste
+  non ambiguë et se compare d'une vue à l'autre.
+- Les nombres passés à `t()` sous un nom de quantité (`count`, `total`, `shown`, `n`, `max`…, liste
+  `QUANTITY_KEYS` de `ui/src/i18n/index.ts`) sont formatés selon la langue ; un identifiant (port,
+  numéro de séquence, mode hashcat, code de statut) garde ses chiffres bruts. Pluriels : suffixes
+  i18next `_one` / `_other`.
+- Typographie française : espace insécable avant `:` `;` `?` `!`, guillemets `« »` avec espaces
+  insécables, apostrophe droite `'` partout, points de suspension `…`. Vérifié par `i18n.test.ts`.
+- Terminologie : *host* = hôte, *flow* = flux, *capture* = capture, *chunk* = chunk, *credentials* =
+  identifiants, *handshake* = négociation (TLS) ou handshake (Wi-Fi, export hashcat), *first/last
+  seen* = première/dernière activité (hôtes, serveurs, conversations), *settings* = Paramètres.
+- Les tests `ui/src/i18n/` échouent sur un texte écrit en dur dans un composant (texte JSX, `title`,
+  `aria-label`, `placeholder`, noms des options de graphique, phrase dans une chaîne), sur une valeur
+  française identique à l'anglaise hors sigles, noms de protocoles et mots identiques listés, et sur
+  un deux-points collé à un libellé (`labelled()`).
+
 ## Accessibilité
 
 Navigation clavier complète, focus visible (`ring-2` accent), rôles ARIA sur bascules et onglets,
@@ -128,6 +166,11 @@ cibles tactiles ≥ 32 px, pas d'information portée uniquement par la couleur.
 3. échoue si deux éléments `text`/`tspan` d'un même graphique SVG ont des boîtes qui se recouvrent
    (tolérance 1 px), ou si un libellé sort de son conteneur ;
 4. échoue si un élément marqué `data-testid="truncatable"` n'a pas d'attribut `title`.
+
+Chaque vue est aussi capturée en français (`.artifacts/screens/fr/<vue>-<largeur>-light.png`, thème clair
+seulement : la longueur des textes ne dépend pas du thème) avec les mêmes vérifications : la vue est
+ouverte en anglais, la langue changée dans Paramètres sans rechargement, puis la vue rouverte par
+l'historique. `./x.sh shots <vue> en|fr` limite à une langue (défaut : les deux).
 
 L'agent `ui-reviewer` relit ensuite les captures produites.
 

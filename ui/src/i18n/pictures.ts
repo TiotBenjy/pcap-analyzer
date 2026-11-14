@@ -57,7 +57,7 @@ export const picturesEn = {
 };
 
 export const picturesFr: typeof picturesEn = {
-  subtitle: 'Images transférées en HTTP clair',
+  subtitle: 'Images transférées en HTTP non chiffré',
   loadError: "Les images n'ont pas pu être chargées",
   empty: 'Aucune image dans cette session',
   emptyText: 'Les images sont extraites des réponses HTTP. Le trafic chiffré (HTTPS) ne peut pas être inspecté.',
@@ -100,7 +100,7 @@ export const picturesFr: typeof picturesEn = {
     server: 'Serveur',
     client: 'Client',
     type: 'Type détecté',
-    declared: 'Type annoncé',
+    declared: 'Type déclaré',
     dimensions: 'Dimensions',
     size: 'Taille',
     occurrences: 'Téléchargements',

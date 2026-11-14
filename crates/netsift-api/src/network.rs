@@ -10,6 +10,7 @@
 //! clusters and one "other" node, at most 400 edges. Like the other analysis routes: 404 for an
 //! unknown session, 409 while importing or failed.
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -26,6 +27,7 @@ use crate::endpoint::{Endpoint, parse_categories};
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
 use crate::ports::PortTransport;
+use crate::servers::ServerRole;
 use crate::sessions::parse_id;
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -137,13 +139,17 @@ pub struct NetworkNode {
     pub packets: u64,
     /// Conversation labels (`dns`, `tls`, `tcp`...), sorted.
     pub protocols: Vec<String>,
-    /// Server role of a host (reserved for the Servers analyzer; `null` until then).
-    pub role: Option<String>,
+    /// Server roles of a host (Servers view, ADR-017), in display order; empty otherwise.
+    pub roles: Vec<ServerRole>,
 }
 
 impl NetworkNode {
-    fn of(n: store::GraphNode) -> Self {
+    fn of(n: store::GraphNode, roles: &mut HashMap<IpAddr, Vec<String>>) -> Self {
         let bytes = n.bytes();
+        let roles = match &n.key {
+            NodeKey::Host(ip) => server_roles(roles.remove(ip)),
+            _ => Vec::new(),
+        };
         let (kind, endpoint, country) = match n.key {
             NodeKey::Host(ip) => (
                 NetworkNodeKind::Host,
@@ -167,7 +173,7 @@ impl NetworkNode {
             bytes_received: n.bytes_received,
             packets: n.packets,
             protocols: n.protocols,
-            role: None,
+            roles,
         }
     }
 }
@@ -228,6 +234,18 @@ pub struct NetworkGraph {
     pub total_bytes: u64,
     /// Every protocol filter with its number of conversations (whole session).
     pub protocols: Vec<NetworkProtocolCount>,
+}
+
+/// Known roles of a host, in display order (labels of a newer schema are skipped).
+fn server_roles(labels: Option<Vec<String>>) -> Vec<ServerRole> {
+    let mut roles: Vec<ServerRole> = labels
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| ServerRole::parse(r))
+        .collect();
+    roles.sort_unstable();
+    roles.dedup();
+    roles
 }
 
 fn default_true() -> bool {
@@ -300,6 +318,15 @@ fn build_graph(
     let (_, session) = open_ready(state, id)?;
     let conn = session.conn();
     let g = store::graph(conn, &filter, &mode)?;
+    let hosts: Vec<IpAddr> = g
+        .nodes
+        .iter()
+        .filter_map(|n| match n.key {
+            NodeKey::Host(ip) => Some(ip),
+            _ => None,
+        })
+        .collect();
+    let mut roles = store::host_roles(conn, &hosts)?;
     let protocols = store::protocol_counts(conn)?
         .into_iter()
         .map(|(g, n)| NetworkProtocolCount {
@@ -309,7 +336,11 @@ fn build_graph(
         .collect();
     Ok(NetworkGraph {
         mode: q.mode,
-        nodes: g.nodes.into_iter().map(NetworkNode::of).collect(),
+        nodes: g
+            .nodes
+            .into_iter()
+            .map(|n| NetworkNode::of(n, &mut roles))
+            .collect(),
         edges: g.edges.into_iter().map(NetworkEdge::from).collect(),
         hosts: g.hosts,
         hosts_shown: g.hosts_shown,
@@ -374,8 +405,8 @@ pub struct NetworkNodeDetail {
     pub open_ports: Vec<NetworkPort>,
     /// The 10 peers with the most bytes.
     pub neighbors: Vec<NetworkNeighbor>,
-    /// Server role (reserved for the Servers analyzer; `null` until then).
-    pub role: Option<String>,
+    /// Server roles (Servers view, ADR-017), in display order.
+    pub roles: Vec<ServerRole>,
 }
 
 async fn node(
@@ -389,6 +420,7 @@ async fn node(
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
         let d = store::node_detail(session.conn(), ip)?.ok_or(ApiError::NotFound)?;
+        let roles = server_roles(store::host_roles(session.conn(), &[ip])?.remove(&ip));
         Ok(NetworkNodeDetail {
             endpoint: Endpoint::new(d.ip, d.info),
             macs: d.macs,
@@ -419,7 +451,7 @@ async fn node(
                     protocols: n.protocols,
                 })
                 .collect(),
-            role: None,
+            roles,
         })
     })
     .await

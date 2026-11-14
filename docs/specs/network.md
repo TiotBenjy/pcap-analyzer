@@ -37,7 +37,7 @@ Exporter (PNG/SVG, **reporté** : pas encore livré) ; recherche IP ou nom. Sous
 
 ## Panneau de détail (clic sur un nœud)
 
-IP, MAC(s), noms (DNS/NBNS/DHCP), catégorie, pays, ports ouverts, protocoles, octets entrants/sortants,
+IP, MAC(s), noms (DNS/NBNS/DHCP), catégorie, pays, rôles serveur (vue Servers, ADR-017), ports ouverts, protocoles, octets entrants/sortants,
 nb de pairs, premier/dernier vu ; liens vers les autres onglets filtrés sur cet hôte.
 
 ## Critères d'acceptation

@@ -495,6 +495,7 @@ export const fr: Dictionary = {
         last: 'Vu la dernière fois',
         protocols: 'Protocoles',
         ports: 'Ports ouverts',
+        role: 'Serveur {{role}}',
         neighbors: 'Principaux pairs',
         expand: 'Afficher ses hôtes',
         none: 'Aucun',

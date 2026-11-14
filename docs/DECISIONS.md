@@ -579,5 +579,7 @@ acceptée : la remplacer par une nouvelle qui la référence.
   dont toutes les conversations sont écartées par ce filtre n'est ni dessiné ni orphelin) ; les
   étiquettes de protocole d'un nœud pays dont on a déplié des hôtes peuvent garder celles de ces hôtes.
   Une requête abandonnée par l'UI n'interrompt pas son calcul côté serveur (borné à quelques dizaines
-  de ms). Le rôle « serveur » d'un nœud (`role`, P3.8) est prévu dans le contrat et reste `null` d'ici
-  là.
+  de ms). Les rôles serveur d'un hôte (`roles`, ADR-017) sont lus à la requête dans la vue
+  `server_roles`, pour les seuls hôtes dessinés (au plus 210) ou détaillés ; leur coût sur une grosse
+  session est à mesurer avec celui de la vue (P4.2). Ils s'affichent en badges dans le panneau de
+  détail ; la forme « serveur » du nœud reste reportée avec les formes par catégorie.

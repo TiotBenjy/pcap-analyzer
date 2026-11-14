@@ -47,12 +47,12 @@ function host(e: Endpoint, bytes: number): NetworkNode {
     bytes_received: bytes / 2,
     packets: 1,
     protocols: ['tcp'],
-    role: null,
+    roles: [],
   };
 }
 
 function group(id: string, kind: NetworkNode['kind'], bytes: number, country: string | null = null, hosts = 5): NetworkNode {
-  return { id, kind, endpoint: null, country, hosts, bytes, bytes_sent: 0, bytes_received: bytes, packets: 1, protocols: [], role: null };
+  return { id, kind, endpoint: null, country, hosts, bytes, bytes_sent: 0, bytes_received: bytes, packets: 1, protocols: [], roles: [] };
 }
 
 function edge(source: string, target: string, bytes: number): NetworkEdge {

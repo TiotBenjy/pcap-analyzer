@@ -268,6 +268,17 @@ Suivis de la vague 3.A :
   ancienne ; P4.2 : mesurer `host_roles` / `server_roles` à chaque requête de graphe (si > 300 ms, rôles au
   détail seulement ou matérialisés), ajouter `dns_messages` et le rejeu à l'ouverture au test `timings`,
   orphelins lus par masque de groupe ; `shots network` efface les captures `network-detail` (variante à part).
+- P3.7 (fusionnée le 2026-11-14, ADR-019 : table `credentials` repliée par empreinte SHA-256 interne, id public
+  aléatoire, secrets lus seulement au détail, export CSV/hashcat explicite et refusé au-delà de 10 000 entrées) :
+  non émis : formulaires JSON, HTTP Digest, Kerberos (7500/18200), SASL NTLM/GSS dans LDAP/SMTP, littéraux IMAP
+  `{n}`, APOP sans ligne hashcat (mode 20), Telnet et EAPOL (phase 5) ; reconnaissance par port connu seulement ;
+  entrée repliée = détails de la première observation (SNMP Set non distingué de Get) ; `SecretValue` affiche la
+  longueur du secret (« Hidden (6 characters) ») alors que la spec parle de points, à trancher ; badge
+  « Metadata only » jamais capturé (presque identique à « Recoverable ») ; pas de capture en français, ni d'état
+  vide ou « non analysé » ; colonne Source très large à 1920 px ; la vue HTTP garde les URI avec leur chaîne de
+  requête (`?password=`) dans `http_transactions` et son FTS (masquer ou assumer) ; test de logs limité à
+  l'import (pas les routes API) ; P4.1 : cibles de fuzz `LineFlow` (FTP/SMTP/POP3/IMAP), `BerStream` +
+  ldap-parser, `snmp::parse`, `http::auth` ; P4.2 : `paths()` (GROUP BY sur toute la table) sur 10 M paquets.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -279,11 +290,11 @@ Hors vague (demande utilisateur du 2026-11-08) :
       d'un fichier `.mmdb` ; validation avant remplacement atomique, rechargement à chaud. Seule exception
       à « aucun appel réseau sortant » (ADR-015).
 
-### Vague 3.B (dépend de 3.A)
+### Vague 3.B (dépend de 3.A) — terminée le 2026-11-14
 
 - [x] **P3.6** `feat/pictures` — Extraction d'objets HTTP (images), dédup SHA-256, miniatures Rust. Dép. P3.2.
       `specs/pictures.md`.
-- [~] **P3.7** `feat/credentials` — Agrégation + émetteurs : HTTP Basic/formulaires, FTP, POP3, IMAP,
+- [x] **P3.7** `feat/credentials` — Agrégation + émetteurs : HTTP Basic/formulaires, FTP, POP3, IMAP,
       SMTP AUTH, SNMP v1/v2c, LDAP simple bind, NTLM (depuis P3.5). Export hashcat. `specs/credentials.md`.
 - [x] **P3.8** `feat/servers` — Rôles DNS / DHCP / LDAP (+ NTP, Kerberos, SMB) avec preuves. `specs/servers.md`.
 - [x] **P3.9** `feat/network-map` — Graphe des communications (sigma.js), filtres protocoles, agrégation

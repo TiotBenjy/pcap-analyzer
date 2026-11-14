@@ -260,6 +260,14 @@ Suivis de la vague 3.A :
   non vérifié ; l'API lit l'original avant de prendre le jeton du sémaphore de décodage ; la copie d'URL
   copie la valeur nettoyée, pas la brute ; P4.2 : budget de rétention par shard (32 Mio) à rendre global,
   filtres SQL `?n IS NULL OR`, `LIKE`, `count(*)` ; P4.1 : cible de fuzz `thumbs::render`.
+- P3.9 (fusionnée le 2026-11-14, ADR-018 : graphe replié en fin d'import, mémoire bornée quel que soit le
+  nombre d'hôtes, plans épinglés par `INDEXED BY`) : étape lente au-delà de 2 M conversations (33 s, lectures par
+  clé hors cache de pages ; pistes : id entier par hôte, `mmap_size`) ; formes de nœud par catégorie et forme
+  « serveur » reportées (la spec les cite encore), export PNG/SVG reporté ; captures sans mode Countries, ni
+  nœud cluster, ni couleur Public ; rôles affichés même quand Servers est « non analysé » sur une session
+  ancienne ; P4.2 : mesurer `host_roles` / `server_roles` à chaque requête de graphe (si > 300 ms, rôles au
+  détail seulement ou matérialisés), ajouter `dns_messages` et le rejeu à l'ouverture au test `timings`,
+  orphelins lus par masque de groupe ; `shots network` efface les captures `network-detail` (variante à part).
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -278,7 +286,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
 - [~] **P3.7** `feat/credentials` — Agrégation + émetteurs : HTTP Basic/formulaires, FTP, POP3, IMAP,
       SMTP AUTH, SNMP v1/v2c, LDAP simple bind, NTLM (depuis P3.5). Export hashcat. `specs/credentials.md`.
 - [x] **P3.8** `feat/servers` — Rôles DNS / DHCP / LDAP (+ NTP, Kerberos, SMB) avec preuves. `specs/servers.md`.
-- [~] **P3.9** `feat/network-map` — Graphe des communications (sigma.js), filtres protocoles, agrégation
+- [x] **P3.9** `feat/network-map` — Graphe des communications (sigma.js), filtres protocoles, agrégation
       par pays. `specs/network.md`.
 
 ---

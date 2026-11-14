@@ -133,7 +133,8 @@ L'agent `ui-reviewer` relit ensuite les captures produites.
 
 `./x.sh shots` (quelle que soit la vue, ou seul avec `./x.sh shots desktop`) lance ensuite le test de
 fumée desktop `ui/tests/desktop` sous WebKit et Chromium : `Object.prototype` gelé comme le fait Tauri,
-faux `window.__TAURI_INTERNALS__`, puis dialogue d'import natif, Overview et Sources. Il échoue sur toute
+faux `window.__TAURI_INTERNALS__`, CSP de la fenêtre (`tauri.conf.json`) servie en en-tête, puis dialogue
+d'import natif, Overview, Sources et Network (worker de disposition, sigma en WebGL). Il échoue sur toute
 erreur de page ou de console et sur tout écran d'erreur de route. Le WebKit de Playwright et ses
 bibliothèques sont téléchargés une fois dans le volume de cache (`scripts/ct/webkit.sh`).
 

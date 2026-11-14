@@ -165,12 +165,14 @@ type ExpandKey = (u32, u32, bool, u32, Option<u32>, u16, u32, u32, bool);
 const ENDS_SQL: &str = "SELECT src_ip, dst_ip, bytes_fwd, bytes_rev, protocols FROM conversations";
 
 /// Step 1, merge: `hosts` with their traffic, and `network_ends`, both read in address order by
-/// index (`ORDER BY` is never sorted, see the tests).
+/// index (`ORDER BY` is never sorted, see the tests). The plans are pinned (`INDEXED BY`, `NOT
+/// INDEXED` = primary key order of a `WITHOUT ROWID` table): statistics written by `PRAGMA
+/// optimize` must not turn them into sorts.
 pub(super) const MERGE_SQL: [&str; 2] = [
     "SELECT h.ip, h.country, coalesce(h.category, ''), coalesce(t.bytes_sent, 0), \
-     coalesce(t.bytes_received, 0) FROM hosts h LEFT JOIN host_traffic t ON t.ip = h.ip \
-     ORDER BY h.ip",
-    "SELECT ip, bytes, mask FROM network_ends ORDER BY ip",
+     coalesce(t.bytes_received, 0) FROM hosts h INDEXED BY sqlite_autoindex_hosts_1 \
+     LEFT JOIN host_traffic t ON t.ip = h.ip ORDER BY h.ip",
+    "SELECT ip, bytes, mask FROM network_ends NOT INDEXED ORDER BY ip",
 ];
 
 /// A row of a stream of [`MERGE_SQL`], read ahead: (address, values).
@@ -288,8 +290,10 @@ pub(super) fn fill_hosts(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Rank order of step 2 (most bytes first, then address), read by index.
-pub(super) const RANK_SQL: &str = "SELECT ip, country, mask FROM network_hosts \
+/// Rank order of step 2 (most bytes first, then address), read by index (pinned, see
+/// [`MERGE_SQL`]).
+pub(super) const RANK_SQL: &str = "SELECT ip, country, mask \
+    FROM network_hosts INDEXED BY network_hosts_bytes \
     WHERE rank IS NOT NULL ORDER BY bytes DESC, ip";
 
 /// Step 2: keyed hosts, ranks and country ranks, in one pass in rank order (constant state);
@@ -353,7 +357,7 @@ pub(super) fn fold_sql() -> String {
         "SELECT c.bytes_fwd, c.bytes_rev, \
          CAST(min(c.packets_fwd + c.packets_rev, 9223372036854775807.0) AS INTEGER), \
          c.flows, c.protocols, {}, {} \
-         FROM conversations c CROSS JOIN network_hosts s ON s.ip = c.src_ip \
+         FROM conversations c NOT INDEXED CROSS JOIN network_hosts s ON s.ip = c.src_ip \
          CROSS JOIN network_hosts d ON d.ip = c.dst_ip",
         end("s"),
         end("d"),

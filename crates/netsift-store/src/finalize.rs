@@ -89,6 +89,7 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
             "network_expand",
             "network_host_counts",
             "network_protocols",
+            "network_ends",
         ],
         reads: &["conversations", "hosts", "host_traffic"],
         run: crate::network::finalize,

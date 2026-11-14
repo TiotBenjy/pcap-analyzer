@@ -14,7 +14,8 @@ import { renderApp, setViewportWide } from '../../test/renderApp';
 import { page, session } from '../../test/sessionFixtures';
 import { setupUser } from '../../test/user';
 import { barsOption, donutOption, escapeHtml, truncateLabel, withOther } from './dnsCharts';
-import { formatLatency, rcodeLabel, suffixLabel } from './dnsFormat';
+import { rcodeLabel, suffixLabel } from './dnsFormat';
+import { formatLatency } from '../../lib/format';
 import { worldMapHeight, stepOf } from '../../charts/worldMapOption';
 import { groupByCountry } from './serverMap';
 import i18n from '../../i18n';
@@ -316,7 +317,7 @@ describe('DNS charts and formats', () => {
       String,
     ) as { tooltip: { formatter: (p: unknown) => string }; legend: { data: string[] } };
     expect(option.legend.data).toEqual(['DNS', '<b>NBNS</b>']);
-    expect(option.tooltip.formatter({ name: '<b>NBNS</b>', value: 1 })).toBe('&#60;b&#62;NBNS&#60;/b&#62;: 1 (25\u00a0%)');
+    expect(option.tooltip.formatter({ name: '<b>NBNS</b>', value: 1 })).toBe('&#60;b&#62;NBNS&#60;/b&#62;: 1 (25%)');
   });
 
   it('builds bars, largest first, with truncated labels and an Other bar', () => {

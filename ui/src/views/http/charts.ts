@@ -2,6 +2,7 @@ import type { EChartsCoreOption } from 'echarts/core';
 import type { HttpCount } from '../../api/types/HttpCount';
 import { CATEGORICAL, OTHER_COLOR } from '../../charts/palette';
 import { CHART_HEIGHT } from '../../charts/sizes';
+import { formatShare, labelled } from '../../lib/format';
 import { statusClass } from './format';
 
 // Option builders of the HTTP charts (methods, status codes, content types). Labels come from
@@ -64,8 +65,9 @@ interface TooltipParam {
 const first = (p: unknown): TooltipParam => (Array.isArray(p) ? ((p[0] as TooltipParam | undefined) ?? {}) : (p as TooltipParam));
 
 function tooltipLine(marker: string, label: string, value: number, total: number, fmt: ChartFormat): string {
-  const pct = total > 0 ? ` <span style="opacity:.7">${((value / total) * 100).toFixed(1)}%</span>` : '';
-  return `${marker}${escapeHtml(label)}: <b>${escapeHtml(fmt.count(value))}</b>${pct}`;
+  const share = formatShare(value, total);
+  const pct = share === '' ? '' : ` <span style="opacity:.7">${escapeHtml(share)}</span>`;
+  return `${marker}${labelled(escapeHtml(label), `<b>${escapeHtml(fmt.count(value))}</b>`)}${pct}`;
 }
 
 export function barsHeight(n: number): number {

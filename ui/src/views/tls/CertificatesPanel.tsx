@@ -10,10 +10,9 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { FilterBar } from '../../components/FilterBar';
 import { Skeleton } from '../../components/Skeleton';
-import { formatCount } from '../../lib/format';
+import { formatCount, formatDate } from '../../lib/format';
 import { MonoValue } from './parts';
 import { CertificateBadges, CertificateCard, DownloadButtons } from './SessionDetail';
-import { formatDate } from './tlsFormat';
 
 /** Deduplicated certificates (by SHA-256) with the number of sessions using each. */
 export function CertificatesPanel({ sessionId, enabled, total }: { sessionId: string; enabled: boolean; total: number }) {

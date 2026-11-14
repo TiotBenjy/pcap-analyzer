@@ -12,7 +12,7 @@ import {
 } from '../../../app/importTracker';
 import { Button } from '../../../components/Button';
 import { ErrorNote } from '../../../components/ErrorNote';
-import { formatBytes, formatCount, formatDuration } from '../../../lib/format';
+import { formatBytes, formatCount, formatDuration, formatPercent } from '../../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
 import { SessionStateBadge } from '../SessionStateBadge';
 import { WizardDialog } from './WizardDialog';
@@ -24,7 +24,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
   const active = isActive(imp);
   const p = imp.progress;
   const fraction = imp.status === 'done' ? 1 : importFraction(p?.bytes_done ?? 0, p?.bytes_total ?? 0);
-  const percent = new Intl.NumberFormat(i18n.language, { style: 'percent', maximumFractionDigits: 0 }).format(fraction);
+  const percent = formatPercent(fraction, 0, i18n.language);
 
   const openSession = () => {
     const sessionId = imp.sessionId;

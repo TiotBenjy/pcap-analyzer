@@ -1,6 +1,7 @@
 import type { EChartsCoreOption } from 'echarts/core';
 import { CATEGORICAL, NEUTRAL, OTHER_COLOR } from '../../charts/palette';
 import { CHART_HEIGHT } from '../../charts/sizes';
+import { formatShare, labelled } from '../../lib/format';
 
 /** One slice or bar. */
 export interface ChartEntry {
@@ -24,13 +25,10 @@ interface ItemParam {
   percent?: number;
 }
 
-const pct = (value: number, total: number) => (total > 0 ? (100 * value) / total : 0);
-
 function tooltipLine(label: string, value: number, total: number, format: (n: number) => string): string {
-  const share = pct(value, total);
-  const shareText = share >= 10 || share === 0 ? share.toFixed(0) : share.toFixed(1);
+  const share = formatShare(value, total);
   // ECharts renders tooltips as HTML: escape the label (names come from the capture).
-  return `${escapeHtml(label)}: ${format(value)} (${shareText}\u00a0%)`;
+  return labelled(escapeHtml(label), share === '' ? format(value) : `${format(value)} (${share})`);
 }
 
 export function escapeHtml(s: string): string {

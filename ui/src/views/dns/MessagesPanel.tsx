@@ -9,8 +9,8 @@ import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { Skeleton } from '../../components/Skeleton';
-import { formatCount, formatTimestamp } from '../../lib/format';
-import { answerText, formatLatency, rcodeLabel, rcodeTone, suffixLabel } from './dnsFormat';
+import { formatCount, formatLatency, formatTimestamp } from '../../lib/format';
+import { answerText, rcodeLabel, rcodeTone, suffixLabel } from './dnsFormat';
 
 /** Answers listed per transaction before "n more". */
 const ANSWERS_SHOWN = 3;

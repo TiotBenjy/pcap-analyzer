@@ -2,7 +2,6 @@ import type { TFunction } from 'i18next';
 import type { BadgeTone } from '../../components/Badge';
 import type { DnsProtocol } from '../../api/types/DnsProtocol';
 import { colorFor } from '../../charts/palette';
-import i18n from '../../i18n';
 import type { en } from '../../i18n/en';
 
 /** Display name of a protocol. */
@@ -47,16 +46,6 @@ export function suffixLabel(t: TFunction, suffix: number): string {
   const hex = `<${suffix.toString(16).toUpperCase().padStart(2, '0')}>`;
   const key = SUFFIXES[suffix];
   return key === undefined ? hex : `${hex} ${t(`views.dns.suffix.${key}`)}`;
-}
-
-/** Response time in microseconds: `0.4 ms`, `12 ms`, `1.2 s`. */
-export function formatLatency(us: number, lang: string = i18n.language): string {
-  const ms = us / 1000;
-  if (ms >= 1000) {
-    return `${new Intl.NumberFormat(lang, { maximumFractionDigits: 1 }).format(ms / 1000)}\u00a0s`;
-  }
-  const digits = ms < 10 ? 1 : 0;
-  return `${new Intl.NumberFormat(lang, { maximumFractionDigits: digits }).format(ms)}\u00a0ms`;
 }
 
 /** Display name of an answer value: `NB` records list addresses, others are shown as they are. */

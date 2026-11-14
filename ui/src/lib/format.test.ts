@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { baseName, formatBytes, formatDuration, formatPeriod, formatSpan, formatTimestamp } from './format';
+import i18n from '../i18n';
+import {
+  baseName,
+  colon,
+  formatBytes,
+  formatCompact,
+  formatCount,
+  formatDate,
+  formatDuration,
+  formatLatency,
+  formatLongDate,
+  formatNumber,
+  formatPercent,
+  formatPeriod,
+  formatRate,
+  formatShare,
+  formatSpan,
+  formatTimestamp,
+  labelled,
+} from './format';
+
+// French groups digits with a narrow no-break space (U+202F); `%` takes a no-break space.
+const NNBSP = '\u202f';
 
 describe('formatBytes', () => {
   it('uses IEC units in English', () => {
@@ -44,5 +66,71 @@ describe('baseName', () => {
     expect(baseName('/captures/run1/')).toBe('run1');
     expect(baseName('C:\\caps\\a.pcap')).toBe('a.pcap');
     expect(baseName('file.pcap')).toBe('file.pcap');
+  });
+});
+
+describe('numbers', () => {
+  it('groups digits and writes decimals as the language does', () => {
+    expect(formatCount(1234567, 'en')).toBe('1,234,567');
+    expect(formatCount(1234567, 'fr')).toBe(`1${NNBSP}234${NNBSP}567`);
+    expect(formatNumber(1.25, 1, 'en')).toBe('1.3');
+    expect(formatNumber(1.25, 2, 'fr')).toBe('1,25');
+    expect(formatCompact(12_400, 'en')).toBe('12.4K');
+    expect(formatCompact(12_400, 'fr')).toBe('12,4\u00a0k');
+  });
+  it('formats percentages and shares', () => {
+    expect(formatPercent(0.125, 1, 'en')).toBe('12.5%');
+    expect(formatPercent(0.125, 1, 'fr')).toBe('12,5\u00a0%');
+    expect(formatShare(1, 4, 'en')).toBe('25%');
+    expect(formatShare(1, 40, 'fr')).toBe('2,5\u00a0%');
+    expect(formatShare(0, 40, 'en')).toBe('0%');
+    expect(formatShare(1, 0, 'en')).toBe('');
+  });
+  it('spaces the colon of a label for French', () => {
+    expect(colon('en')).toBe(':');
+    expect(labelled('Total', '3', 'en')).toBe('Total: 3');
+    expect(labelled('Total', '3', 'fr')).toBe('Total\u00a0: 3');
+  });
+  it('formats rates and latencies', () => {
+    expect(formatRate(1536, 'en')).toBe('1.5\u00a0KiB/s');
+    expect(formatRate(1536, 'fr')).toBe('1,5\u00a0Kio/s');
+    expect(formatLatency(420, 'fr')).toBe('0,4\u00a0ms');
+    expect(formatLatency(1_500_000, 'fr')).toBe('1,5\u00a0s');
+  });
+  it('follows the active language by default', async () => {
+    await i18n.changeLanguage('fr');
+    try {
+      expect(formatBytes(1536)).toBe('1,5\u00a0Kio');
+      expect(formatDuration(0.5)).toBe('0,5\u00a0s');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+    expect(formatBytes(1536)).toBe('1.5\u00a0KiB');
+  });
+});
+
+describe('dates', () => {
+  it('keeps ISO-like dates in every language, and writes metadata dates out', () => {
+    const us = new Date(2026, 10, 8, 9, 5, 0).getTime() * 1000;
+    expect(formatDate(us)).toBe('2026-11-08');
+    expect(formatTimestamp(us, false)).toBe('09:05:00');
+    const ms = Date.UTC(2026, 10, 8);
+    expect(formatLongDate(ms, true, 'en')).toBe('Nov 8, 2026');
+    expect(formatLongDate(ms, true, 'fr')).toBe('8 nov. 2026');
+    expect(formatLongDate(Number.NaN, true, 'en')).toBe('');
+  });
+});
+
+describe('interpolated quantities', () => {
+  it('formats counts for the language and keeps identifiers as they are', async () => {
+    await i18n.changeLanguage('fr');
+    try {
+      expect(i18n.t('views.import.files', { count: 12_345 })).toBe(`12${NNBSP}345 fichiers`);
+      expect(i18n.t('views.credentials.export.hashcat', { mode: 5600 })).toBe('Exporter hashcat 5600');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+    expect(i18n.t('views.import.files', { count: 12_345 })).toBe('12,345 files');
+    expect(i18n.t('views.import.files', { count: 1 })).toBe('1 file');
   });
 });

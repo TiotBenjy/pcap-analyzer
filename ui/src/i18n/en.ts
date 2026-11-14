@@ -1,5 +1,6 @@
 // English dictionary: the reference shape. Every key here must exist in fr.ts (checked by tests).
 // Rules: short, factual labels; no emoji, no decorative characters, no exclamation marks.
+import { credentialsEn } from './credentials';
 import { picturesEn } from './pictures';
 import { tlsEn } from './tls';
 
@@ -932,6 +933,7 @@ export const en = {
       back: 'Go to Captures',
     },
     // --- analysis views kept in their own module: one line each, sorted ---
+    credentials: credentialsEn,
     pictures: picturesEn,
     tls: tlsEn,
   },

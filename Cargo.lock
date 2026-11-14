@@ -2435,6 +2435,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
+name = "ldap-parser"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4dee1f4925a99fde2a970d303b0a93e9a426c0a6468aa58fdd5022c5fcbb08d6"
+dependencies = [
+ "asn1-rs",
+ "rusticata-macros",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2710,11 +2721,13 @@ dependencies = [
 name = "netsift-analyze"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "brotli",
  "brotli-decompressor",
  "flate2",
  "httparse",
  "insta",
+ "ldap-parser",
  "md-5",
  "netsift-dissect",
  "netsift-fixtures",
@@ -2722,6 +2735,7 @@ dependencies = [
  "netsift-geo",
  "sha1",
  "sha2 0.11.1",
+ "snmp-parser",
  "tls-parser",
  "x509-parser",
 ]
@@ -2830,6 +2844,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

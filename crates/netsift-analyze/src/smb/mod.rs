@@ -13,7 +13,7 @@ mod analyzer;
 mod browser;
 mod bytes;
 mod message;
-mod ntlmssp;
+pub(crate) mod ntlmssp;
 mod os;
 
 pub use analyzer::{SmbAnalyzer, SmbConfig};

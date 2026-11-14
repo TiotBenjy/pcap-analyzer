@@ -9,15 +9,18 @@ publish.workspace = true
 repository.workspace = true
 
 [dependencies]
+base64 = "0.23.1"
 brotli-decompressor = "6.3.0"
 flate2 = "1.1.11"
 httparse = "1.10.1"
+ldap-parser = "0.5.1"
 md-5 = "0.11.0"
 netsift-dissect.workspace = true
 netsift-flow.workspace = true
 netsift-geo.workspace = true
 sha1 = "0.11.0"
 sha2 = "0.11.1"
+snmp-parser = "0.11.0"
 tls-parser = "0.12.2"
 x509-parser = "0.18.1"
 

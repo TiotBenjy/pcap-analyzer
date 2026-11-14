@@ -3,6 +3,8 @@
 //! - [`scenario`]: deterministic scenario builder (Ethernet, IPv4/IPv6, UDP, TCP with
 //!   coherent sequence numbers) with DNS, HTTP (PNG body), TLS (self-signed certificate),
 //!   NBNS, SMB browser, SNMP and FTP exchanges; [`scenarios`]: ready-made hosts and scenarios.
+//! - [`credentials`]: SMTP AUTH, POP3, IMAP, LDAP simple bind, HTTP Basic and HTTP NTLM
+//!   exchanges (Credentials view).
 //! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
 //! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip.
 //! - [`split`]: chunk splitter by size, duration, packet count or explicit boundaries, with
@@ -27,6 +29,7 @@
 
 pub mod anomaly;
 pub mod craft;
+pub mod credentials;
 pub mod http_mix;
 pub mod images;
 pub mod packet;

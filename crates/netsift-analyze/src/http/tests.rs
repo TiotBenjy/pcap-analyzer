@@ -89,8 +89,10 @@ fn run_with(packets: &[Packet], config: HttpConfig, blobs: bool) -> Vec<HttpTran
     let mut txs: Vec<HttpTransaction> = h
         .records
         .into_iter()
-        .map(|r| match r {
-            Record::Http(t) => *t,
+        .filter_map(|r| match r {
+            Record::Http(t) => Some(*t),
+            // Credentials (Basic, forms) are tested with the other emitters (`credentials`).
+            Record::Credential(_) => None,
             other => panic!("unexpected record {other:?}"),
         })
         .collect();

@@ -14,7 +14,7 @@ import { ErrorNote } from '../../../components/ErrorNote';
 import { ErrorState } from '../../../components/ErrorState';
 import { describeError } from '../../../lib/errors';
 import { Skeleton } from '../../../components/Skeleton';
-import { baseName, formatBytes, formatTimestamp, sameLocalDay } from '../../../lib/format';
+import { baseName, colon, formatBytes, formatTimestamp, sameLocalDay } from '../../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
 import { WizardDialog } from './WizardDialog';
 
@@ -226,7 +226,7 @@ interface GroupOptionProps {
 }
 
 function GroupOption({ group, name, checked, onSelect }: GroupOptionProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // The scan does not read whole files: `last_ts_us` is the start of the last chunk (null for a
   // single file). Only the start is exact; the last file start is given as an indication.
   const since = group.first_ts_us === null ? '' : t('views.import.since', { start: formatTimestamp(group.first_ts_us) });
@@ -280,7 +280,7 @@ function GroupOption({ group, name, checked, onSelect }: GroupOptionProps) {
                     <span className="font-medium">{anomalyLabel(t, a.code)}</span>
                     <span className="text-muted">
                       {' '}
-                      ({anomalyWhere(t, a)}){detail === '' ? '' : `: ${detail}`}
+                      ({anomalyWhere(t, a)}){detail === '' ? '' : `${colon(i18n.language)} ${detail}`}
                     </span>
                   </li>
                 );

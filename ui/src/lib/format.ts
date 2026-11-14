@@ -107,6 +107,11 @@ export function formatBytes(bytes: number, lang: string = currentLanguage(), tri
   return `${num}${NBSP}${units[i] ?? units[0]}`;
 }
 
+/** Exact byte count with the byte unit (`98,765,432 B` / `98 765 432 o`), for tooltips. */
+export function formatByteCount(bytes: number, lang: string = currentLanguage()): string {
+  return `${formatCount(bytes, lang)}${NBSP}${isFrench(lang) ? BYTE_UNITS.fr[0] : BYTE_UNITS.en[0]}`;
+}
+
 /** Throughput in bytes per second (`12.5 MiB/s` / `12,5 Mio/s`). */
 export function formatRate(bytesPerSecond: number, lang: string = currentLanguage()): string {
   return `${formatBytes(bytesPerSecond, lang)}/s`;

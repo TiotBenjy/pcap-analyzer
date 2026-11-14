@@ -14,12 +14,22 @@ pub(crate) const MAX_IDENTITY: usize = 256;
 /// Longest secret kept, in characters.
 pub(crate) const MAX_SECRET: usize = 512;
 
-/// Splits a byte stream into lines (`\n`, optional `\r`), bounded by [`MAX_LINE`].
-#[derive(Debug, Default)]
+/// Splits a byte stream into lines (`\n`, optional `\r`), bounded by [`MAX_LINE`]. `Debug` shows
+/// the buffered length only, never the bytes (they may hold a password).
+#[derive(Default)]
 pub(crate) struct LineBuf {
     buf: Vec<u8>,
     /// The current line overflowed: its bytes are dropped up to the next `\n`.
     skipping: bool,
+}
+
+impl std::fmt::Debug for LineBuf {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LineBuf")
+            .field("buffered", &self.buf.len())
+            .field("skipping", &self.skipping)
+            .finish()
+    }
 }
 
 impl LineBuf {

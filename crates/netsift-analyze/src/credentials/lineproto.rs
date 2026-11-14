@@ -10,6 +10,8 @@
 //! its `result` (`accepted` / `rejected`); it is emitted without result at the end of the flow
 //! when no reply was seen.
 
+use std::fmt;
+
 use netsift_flow::{FlowId, FlowKey};
 
 use super::text::{MAX_IDENTITY, MAX_SECRET, base64, bounded, clip, split_word};
@@ -86,8 +88,7 @@ impl Mech {
     }
 }
 
-/// A SASL exchange in progress.
-#[derive(Debug)]
+/// A SASL exchange in progress. `Debug` shows the mechanism only.
 struct Sasl {
     mech: Mech,
     /// IMAP tag of the `AUTHENTICATE` command.
@@ -98,8 +99,7 @@ struct Sasl {
     challenge: Option<String>,
 }
 
-/// State of one connection.
-#[derive(Debug)]
+/// State of one connection. `Debug` shows no identity nor secret.
 pub(crate) struct LineFlow {
     proto: LineProto,
     id: FlowId,
@@ -110,6 +110,26 @@ pub(crate) struct LineFlow {
     /// Credential waiting for the server's reply, and the IMAP tag of its command.
     pending: Option<(Credential, Option<String>)>,
     emitted: usize,
+}
+
+impl fmt::Debug for Sasl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Sasl")
+            .field("mech", &self.mech)
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for LineFlow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LineFlow")
+            .field("proto", &self.proto)
+            .field("id", &self.id)
+            .field("sasl", &self.sasl)
+            .field("pending", &self.pending.is_some())
+            .field("emitted", &self.emitted)
+            .finish_non_exhaustive()
+    }
 }
 
 impl LineFlow {
@@ -147,11 +167,13 @@ impl LineFlow {
         let text = text.trim_end();
         if self.sasl.is_some() {
             if let Some(challenge) = self.challenge(text) {
+                // Only a well-formed base64 challenge goes into a hashcat line.
                 if let Some(sasl) = self.sasl.as_mut()
                     && sasl.mech == Mech::CramMd5
-                    && !challenge.is_empty()
+                    && challenge.len() <= MAX_SECRET
+                    && base64(challenge).is_some()
                 {
-                    sasl.challenge = Some(clip(challenge, MAX_SECRET));
+                    sasl.challenge = Some(challenge.to_owned());
                 }
                 return;
             }
@@ -344,12 +366,14 @@ impl LineFlow {
             }
             Mech::CramMd5 => {
                 // `user SP hex-digest`, keyed with the password over the challenge.
+                // Without the separator the response is malformed: no user name is taken from it
+                // (it would hold the digest).
                 let response = bounded(&decoded, MAX_IDENTITY + 64);
-                let user = response
-                    .rsplit_once(' ')
-                    .map_or(response.as_str(), |(u, _)| u);
+                let user = response.rsplit_once(' ').map(|(u, _)| u);
                 let mut cred = self.credential(ts, SecretState::Recoverable);
-                cred.username = Some(clip(user, MAX_IDENTITY)).filter(|u| !u.is_empty());
+                cred.username = user
+                    .map(|u| clip(u, MAX_IDENTITY))
+                    .filter(|u| !u.is_empty());
                 cred.details
                     .push(("mechanism".to_owned(), sasl.mech.label().to_owned()));
                 if let Some(challenge) = &sasl.challenge {

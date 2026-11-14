@@ -370,3 +370,93 @@ fn showcase_records() {
         }
     }
 }
+
+#[test]
+fn snmp_communities_per_flow_are_bounded() {
+    // A poller reusing one source port: one UDP flow, many requests.
+    let mut sc = Scenario::new();
+    for i in 0..(super::MAX_PER_FLOW + 30) {
+        sc.snmp_get(
+            hosts::workstation(),
+            hosts::router(),
+            &SnmpGet {
+                request_id: i32::try_from(i).unwrap(),
+                client_port: Some(50_161),
+                response: None,
+                ..SnmpGet::default()
+            },
+        );
+    }
+    assert_eq!(creds(&sc).len(), super::MAX_PER_FLOW);
+}
+
+/// SMTP `AUTH CRAM-MD5` with a raw challenge line and a raw client response line.
+fn cram_exchange(challenge: &str, response: &str) -> Vec<Credential> {
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(hosts::workstation(), mail_server(), &TcpOptions::new(587));
+    s.client_send(b"AUTH CRAM-MD5\r\n");
+    s.server_send(format!("334 {challenge}\r\n").as_bytes());
+    s.client_send(format!("{response}\r\n").as_bytes());
+    s.server_send(b"235 ok\r\n");
+    s.close();
+    creds(&sc)
+}
+
+#[test]
+fn cram_md5_needs_a_base64_challenge_for_its_hashcat_line() {
+    let response = fx::base64(b"carol 0123456789abcdef0123456789abcdef");
+    let ok = cram_exchange(&fx::base64(b"<1.2@mail>"), &response);
+    assert_eq!(ok.len(), 1);
+    assert_eq!(ok[0].hashcat_mode, Some(16400));
+    // A challenge that is not base64 ('$' would also break the hashcat fields).
+    let bad = cram_exchange("not$base64!", &response);
+    assert_eq!(bad.len(), 1);
+    assert_eq!(bad[0].hashcat_mode, None);
+    assert_eq!(bad[0].hashcat_line, None);
+    assert_eq!(bad[0].username.as_deref(), Some("carol"));
+}
+
+#[test]
+fn cram_md5_response_without_separator_gives_no_user() {
+    let digest = "0123456789abcdef0123456789abcdef";
+    let all = cram_exchange(&fx::base64(b"<1.2@mail>"), &fx::base64(digest.as_bytes()));
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].username, None);
+}
+
+/// Drives the credentials analyzer without ending the flows.
+struct Sink<'a>(&'a mut CredentialsAnalyzer, Vec<Record>);
+impl netsift_flow::FlowSink for Sink<'_> {
+    fn on_packet(&mut self, c: &netsift_flow::PacketCtx, p: &netsift_dissect::Decoded<'_>) {
+        self.0.on_packet(c, p, &mut self.1);
+    }
+    fn on_stream(&mut self, c: &netsift_flow::StreamCtx, d: netsift_flow::Direction, b: &[u8]) {
+        self.0.on_stream(c, d, b, &mut self.1);
+    }
+    fn on_flow_end(&mut self, c: &netsift_flow::FlowCtx) {
+        self.0.on_flow_end(c, &mut self.1);
+    }
+}
+
+#[test]
+fn analyzer_state_never_shows_buffered_secrets() {
+    // A password line still buffered (no newline yet) and a pending credential.
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        hosts::workstation(),
+        hosts::ftp_server(),
+        &TcpOptions::new(21),
+    );
+    s.client_send(b"USER bob\r\nPASS pending-secret\r\nPASS partial-secr");
+    let packets = sc.into_packets();
+    let mut table = netsift_flow::FlowTable::new(netsift_flow::FlowConfig::default());
+    let mut analyzer = CredentialsAnalyzer::new(&AnalyzerConfig::default());
+    let mut sink = Sink(&mut analyzer, Vec::new());
+    for (i, p) in packets.iter().enumerate() {
+        let wire = u32::try_from(p.data.len()).unwrap();
+        table.process(p.ts_ns, 0, i as u64, p.linktype, wire, &p.data, &mut sink);
+    }
+    let debug = format!("{analyzer:?} {:?}", analyzer.flows);
+    assert!(!debug.contains("secr"), "{debug}");
+    assert!(!debug.contains("bob"), "{debug}");
+}

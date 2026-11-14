@@ -7,6 +7,8 @@
 //! binds carry no password and are ignored. A stream that stops looking like LDAP (`StartTLS`,
 //! garbage) is abandoned.
 
+use std::fmt;
+
 use ldap_parser::FromBer as _;
 use ldap_parser::ldap::{AuthenticationChoice, LdapMessage, ProtocolOp};
 use netsift_flow::{FlowId, FlowKey};
@@ -18,15 +20,16 @@ use crate::record::{Credential, Record, SecretState};
 
 /// LDAP and Global Catalog ports.
 pub(crate) const PORTS: [u16; 2] = [389, 3268];
-/// Largest message buffered whole (binds are tiny; bigger messages are skipped unparsed).
-const MAX_MESSAGE: usize = 64 * 1024;
+/// Largest message buffered whole: a bind fits in well under 1 KiB; bigger messages (search
+/// results...) are skipped unparsed, without buffering.
+const MAX_MESSAGE: usize = 4 * 1024;
 /// Binds waiting for their response, per flow.
 const MAX_PENDING: usize = 8;
 /// `invalidCredentials` result code.
 const INVALID_CREDENTIALS: u32 = 49;
 
-/// Splits a byte stream into BER `SEQUENCE` messages.
-#[derive(Debug, Default)]
+/// Splits a byte stream into BER `SEQUENCE` messages. `Debug` shows lengths only.
+#[derive(Default)]
 struct BerStream {
     buf: Vec<u8>,
     /// Bytes of an oversized message still to skip.
@@ -60,6 +63,16 @@ fn message_len(buf: &[u8]) -> Result<Option<usize>, ()> {
         .iter()
         .fold(0usize, |acc, &b| (acc << 8) | usize::from(b));
     Ok(Some(2 + n + len))
+}
+
+impl fmt::Debug for BerStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BerStream")
+            .field("buffered", &self.buf.len())
+            .field("skip", &self.skip)
+            .field("broken", &self.broken)
+            .finish()
+    }
 }
 
 impl BerStream {
@@ -114,8 +127,7 @@ impl BerStream {
     }
 }
 
-/// State of one LDAP connection.
-#[derive(Debug)]
+/// State of one LDAP connection. `Debug` shows no DN nor password.
 pub(crate) struct LdapFlow {
     id: FlowId,
     key: FlowKey,
@@ -160,6 +172,18 @@ fn parse_server(msg: &[u8]) -> Option<(u32, u32)> {
     match m.protocol_op {
         ProtocolOp::BindResponse(resp) => Some((m.message_id.0, resp.result.result_code.0)),
         _ => None,
+    }
+}
+
+impl fmt::Debug for LdapFlow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LdapFlow")
+            .field("id", &self.id)
+            .field("client", &self.client)
+            .field("server", &self.server)
+            .field("pending", &self.pending.len())
+            .field("emitted", &self.emitted)
+            .finish_non_exhaustive()
     }
 }
 

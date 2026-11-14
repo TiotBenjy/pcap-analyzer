@@ -107,13 +107,15 @@ function HostDetail({ sessionId, node, resolveNames }: { sessionId: string; node
   if (endpoint === null) return null;
   const lang = i18n.language;
   const d = detail.data;
+  // The graph carries the roles of drawn hosts; the detail, once loaded, those of any host.
+  const roles = d?.roles ?? node.roles;
   return (
     <>
       <div className="flex min-w-0 flex-col gap-1">
         <Endpoint endpoint={endpoint} className="text-body font-medium" />
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge>{t(`addressCategories.${endpoint.category}`)}</Badge>
-          {node.roles.map((r) => (
+          {roles.map((r) => (
             <Badge key={r}>{t('views.network.panel.role', { role: t(`views.servers.roles.${r}`) })}</Badge>
           ))}
           {endpoint.country !== null && (

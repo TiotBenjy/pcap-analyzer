@@ -119,7 +119,7 @@ function detail(): NetworkNodeDetail {
     protocols: ['tcp', 'tls'],
     open_ports: [{ port: 443, transport: 'tcp', service: 'https' }],
     neighbors: [{ endpoint: ep('192.168.1.1', 'private', ['server.lan']), bytes_sent: 1_000, bytes_received: 5_000, protocols: ['tls'] }],
-    roles: [],
+    roles: ['http', 'smb'],
   };
 }
 
@@ -208,6 +208,8 @@ describe('Network view', () => {
     expect(within(panel).getByText('Public')).toBeInTheDocument();
     expect(within(panel).getByText('France')).toBeInTheDocument();
     expect(within(panel).getByText('HTTP server')).toBeInTheDocument();
+    // The roles of the loaded detail win over those of the graph.
+    expect(within(panel).getByText('SMB server')).toBeInTheDocument();
     expect(within(panel).getByRole('list', { name: 'Main peers' })).toHaveTextContent('server.lan');
     expect(panel).toHaveTextContent(HOSTILE);
     expect(container.querySelector('img[src="x"]')).toBeNull();

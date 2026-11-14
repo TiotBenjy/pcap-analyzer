@@ -7,6 +7,7 @@ import type { Settings } from 'sigma/settings';
 import { Button } from '../../components/Button';
 import type { Theme } from '../../theme/theme';
 import type { EdgeAttributes, NodeAttributes } from './graphModel';
+import { discHitsBox, type LabelBox } from './labelBox';
 
 /**
  * Canvas colors (WebGL needs concrete values, not CSS variables): the zinc scale of the theme
@@ -21,7 +22,7 @@ const THEME_COLORS = {
 /** Rendered size above which a node gets its label at rest (sizes are 4 to 18 px). */
 const LABEL_THRESHOLD = 14;
 
-type HoverData = PartialButFor<NodeDisplayData, 'x' | 'y' | 'size' | 'label' | 'color'>;
+type HoverData = PartialButFor<NodeDisplayData, 'x' | 'y' | 'size' | 'label' | 'color'> & { key?: string };
 type GraphSettings = Settings<NodeAttributes, EdgeAttributes>;
 
 /** Gap between a node and its label. */
@@ -37,15 +38,35 @@ function labelX(ctx: CanvasRenderingContext2D, x: number, size: number, width: n
   return right + width + 4 <= canvasWidth ? right : Math.max(4, x - size - LABEL_GAP - width);
 }
 
-/** Label at rest, kept inside the canvas. */
-function labelDrawer(colors: (typeof THEME_COLORS)[Theme]) {
+/**
+ * Label of a node: a halo in the surface color keeps it readable over edges and nodes. At rest
+ * (label not forced by a hover or a selection), a label that would cover another node moves to
+ * the other side of its node, or is left out when both sides are taken; the hover and the
+ * selection still show it.
+ */
+function labelDrawer(colors: (typeof THEME_COLORS)[Theme], covers: (key: string, box: LabelBox) => boolean) {
   return (ctx: CanvasRenderingContext2D, data: HoverData, settings: GraphSettings): void => {
     const label = data.label;
     if (label === null || label === '') return;
     const size = settings.labelSize;
     ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
+    const width = ctx.measureText(label).width;
+    const preferred = labelX(ctx, data.x, data.size, width);
+    let x: number | undefined = preferred;
+    const key = data.key;
+    if (data.forceLabel !== true && key !== undefined) {
+      const left = Math.max(4, data.x - data.size - LABEL_GAP - width);
+      const box = (at: number) => ({ left: at - 2, top: data.y - size / 2 - 2, width: width + 4, height: size + 4 });
+      x = [preferred, left].find((at) => !covers(key, box(at)));
+      if (x === undefined) return;
+    }
+    const y = data.y + size / 3;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = colors.surface;
+    ctx.strokeText(label, x, y);
     ctx.fillStyle = colors.label;
-    ctx.fillText(label, labelX(ctx, data.x, data.size, ctx.measureText(label).width), data.y + size / 3);
+    ctx.fillText(label, x, y);
   };
 }
 
@@ -112,6 +133,18 @@ export function SigmaGraph({ graph, theme, selected, focus, onSelect, onExpand, 
       const el = container.current;
       if (cancelled || el === null) return;
       const focusOf = () => hovered.current ?? selectedRef.current;
+      // Whether a label box covers another visible node (a few hundred nodes at most).
+      const covers = (key: string, box: LabelBox): boolean => {
+        const r = instance;
+        if (r === null) return false;
+        return graph.someNode((node) => {
+          if (node === key) return false;
+          const d = r.getNodeDisplayData(node);
+          if (d === undefined || d.hidden) return false;
+          const p = r.framedGraphToViewport(d);
+          return discHitsBox({ x: p.x, y: p.y, r: r.scaleSize(d.size) }, box);
+        });
+      };
       instance = new SigmaClass<NodeAttributes, EdgeAttributes>(graph, el, {
         allowInvalidContainer: true,
         zIndex: true,
@@ -123,7 +156,7 @@ export function SigmaGraph({ graph, theme, selected, focus, onSelect, onExpand, 
         labelGridCellSize: 120,
         labelRenderedSizeThreshold: LABEL_THRESHOLD,
         defaultEdgeColor: colors.edge,
-        defaultDrawNodeLabel: labelDrawer(colors),
+        defaultDrawNodeLabel: labelDrawer(colors, covers),
         defaultDrawNodeHover: hoverDrawer(colors),
         stagePadding: 32,
         minCameraRatio: 0.1,

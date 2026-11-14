@@ -545,16 +545,36 @@ fn host_counts(conn: &Connection, f: &Filter) -> Result<Vec<(String, String, u16
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
-/// Orphans (`?1` mask, `?2` categories, `?3` IPv6), most traffic first, `?4` at most.
-const ORPHANS_SQL: &str = "SELECT ip FROM network_hosts WHERE (mask & ?1) = 0 \
+/// Group masks without the filter groups (`?1`): the masks of the orphans.
+const ORPHAN_MASKS_SQL: &str =
+    "SELECT DISTINCT mask FROM network_host_counts WHERE (mask & ?1) = 0";
+
+/// The largest hosts of one group mask (`?1`), after the category (`?2`) and IPv6 (`?3`)
+/// filters, `?4` at most: a short range of `network_hosts_orphans`.
+const ORPHANS_SQL: &str = "SELECT ip, traffic FROM network_hosts WHERE mask = ?1 \
     AND (?2 IS NULL OR category IN (SELECT value FROM json_each(?2))) AND (?3 OR v6 = 0) \
     ORDER BY traffic DESC, ip DESC LIMIT ?4";
 
-/// The `list` orphans (hosts without matching traffic) with the most traffic overall.
+/// The `list` orphans (hosts without matching traffic) with the most traffic overall: the
+/// best of each orphan mask (a few dozen masks at most), merged.
 fn orphan_ips(conn: &Connection, f: &Filter, list: u32) -> Result<Vec<String>> {
+    let mut masks = conn.prepare_cached(ORPHAN_MASKS_SQL)?;
+    let masks: Vec<u16> = masks
+        .query_map([f.mask], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
     let mut stmt = conn.prepare_cached(ORPHANS_SQL)?;
-    let rows = stmt.query_map(params![f.mask, f.categories, f.ipv6, list], |r| r.get(0))?;
-    Ok(rows.collect::<rusqlite::Result<_>>()?)
+    let mut best: Vec<(u64, String)> = Vec::new();
+    for mask in masks {
+        let rows = stmt.query_map(params![mask, f.categories, f.ipv6, list], |r| {
+            Ok((r.get::<_, u64>(1)?, r.get::<_, String>(0)?))
+        })?;
+        for row in rows {
+            best.push(row?);
+        }
+    }
+    best.sort_by(|a, b| b.cmp(a));
+    best.truncate(usize::try_from(list).unwrap_or(usize::MAX));
+    Ok(best.into_iter().map(|(_, ip)| ip).collect())
 }
 
 /// A host of `network_hosts` (keyed hosts and expandable hosts).

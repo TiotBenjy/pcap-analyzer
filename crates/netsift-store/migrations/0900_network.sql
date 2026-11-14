@@ -15,15 +15,27 @@ CREATE TABLE network_hosts (
     mask     INTEGER NOT NULL,                      -- union of the groups of its conversations
     bytes    INTEGER NOT NULL,                      -- bytes of its conversations
     traffic  INTEGER NOT NULL,                      -- host_traffic sent + received (orphan order)
-    rank     INTEGER,                               -- 1 = most bytes; NULL without conversation
-    crank    INTEGER,                               -- rank within its country
+    rank     INTEGER,  -- 1 = most bytes (keyed hosts, hosts with crank); 0 for the other hosts
+                       -- with conversations; NULL without conversation
+    crank    INTEGER,  -- rank within its country, up to EXPAND_HOSTS (30), else NULL
     keyed    INTEGER NOT NULL CHECK (keyed IN (0, 1)),  -- node = 'h:<ip>'
     node     TEXT NOT NULL,
     cnode    TEXT NOT NULL
 ) WITHOUT ROWID;
 CREATE INDEX network_hosts_keyed ON network_hosts (rank) WHERE keyed = 1;
 CREATE INDEX network_hosts_crank ON network_hosts (country, crank) WHERE crank IS NOT NULL;
-CREATE INDEX network_hosts_traffic ON network_hosts (traffic, ip);
+-- Rank order of the step (read in order, never sorted).
+CREATE INDEX network_hosts_bytes ON network_hosts (bytes DESC, ip);
+-- Orphans: the largest hosts of each group mask (one short range per mask).
+CREATE INDEX network_hosts_orphans ON network_hosts (mask, traffic, ip);
+
+-- Scratch table of the step: bytes and groups of the conversations per address (emptied at the
+-- end of the step).
+CREATE TABLE network_ends (
+    ip    TEXT PRIMARY KEY NOT NULL,
+    bytes INTEGER NOT NULL,
+    mask  INTEGER NOT NULL
+) WITHOUT ROWID;
 
 -- Conversations folded per (client node, server node, groups, categories, IPv6).
 CREATE TABLE network_edges (

@@ -304,7 +304,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
 
 ## Phase 4 — Durcissement et version 0.1
 
-- [ ] **P4.1** `test/fuzzing` — cibles cargo-fuzz : lecteurs pcap/pcapng, dissect L2-L4, DNS, HTTP, TLS,
+- [~] **P4.1** `test/fuzzing` — cibles cargo-fuzz : lecteurs pcap/pcapng, dissect L2-L4, DNS, HTTP, TLS,
       NTLMSSP, SNMP ; corpus depuis les fixtures ; 0 crash sur 30 min par cible.
 - [ ] **P4.2** `perf/large-sessions` — Bench 5 Go (fixtures `--big`), profilage, index SQL, cibles d'ARCHITECTURE.
       Inclut (revue P2.4) : `resample` lit une ligne par seconde et par libellé (7 jours ≈ 6 M lignes,
@@ -314,7 +314,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       (`from_us`/`to_us`) avec le filtre global de phase 5.
 - [ ] **P4.3** `feat/export-pcap` — « Save PCAP » : export d'un flux, d'une plage temporelle ou de la session
       fusionnée (pcapng).
-- [ ] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
+- [~] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
 - [ ] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`.
 - [x] **P4.6** `ci/release-pipeline` — Releases GitHub publiées par la CI sur tag `vX.Y.Z` : notes
       générées depuis l'historique des commits (Conventional Commits), bundles Linux (AppImage, .deb, .rpm),

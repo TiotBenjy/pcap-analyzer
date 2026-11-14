@@ -36,6 +36,9 @@ pub mod connections;
 pub mod core;
 pub mod credentials;
 pub mod dns;
+#[cfg(any(test, feature = "fuzzing"))]
+#[doc(hidden)]
+pub mod fuzz;
 pub mod http;
 pub mod ports;
 pub mod record;

@@ -7,10 +7,12 @@
 //! - [`query`]: base read queries and keyset pagination;
 //! - [`traffic`]: overview queries (resampled time series, totals, row counts);
 //! - [`connections`], [`ports`]: tables and queries of the Connections and Open Ports views;
+//! - [`credentials`]: table and queries of the Credentials view (secrets read on demand only);
 //! - [`network`]: bounded communication graph of the Network view (read queries only).
 
 pub mod catalog;
 pub mod connections;
+pub mod credentials;
 pub mod dns;
 mod error;
 pub mod finalize;

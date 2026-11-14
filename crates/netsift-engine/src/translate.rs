@@ -17,6 +17,7 @@ use netsift_store::{
 use serde_json::{Value, json};
 
 // --- analyzers: one translation module each, sorted ---
+mod credentials;
 mod servers;
 mod tls;
 
@@ -31,10 +32,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
         Record::Flow(f) => StoreRecord::Flow(flow_row(&f)),
         // --- analyzers: one arm each, sorted alphabetically ---
         Record::Conversation(c) => StoreRecord::Conversation(conversation_row(&c)),
-        // In-memory contract only until the Credentials task (P3.7) designs its table: dropped
-        // here, never written nor logged. The SMB view keeps its non-secret metadata in
-        // `smb_sessions`.
-        Record::Credential(_) => return None,
+        Record::Credential(c) => StoreRecord::Credential(Box::new(credentials::credential_row(c))),
         Record::Dns(t) => StoreRecord::Dns(Box::new(dns_row(*t))),
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
         Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),

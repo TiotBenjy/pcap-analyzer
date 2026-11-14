@@ -3,7 +3,7 @@ import { ArrowRight, ChevronDown, Download, KeyRound, ShieldAlert, X } from 'luc
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCredential, useCredentialPaths, useCredentialStats, useCredentials } from '../../api/credentialQueries';
-import { type CredentialExport, type SecretState, downloadCredentials } from '../../api/credentials';
+import { type CredentialExport, MAX_EXPORT, type SecretState, downloadCredentials } from '../../api/credentials';
 import { useSession } from '../../api/sessionQueries';
 import type { CredentialEndpoint } from '../../api/types/CredentialEndpoint';
 import type { CredentialInfo } from '../../api/types/CredentialInfo';
@@ -230,9 +230,20 @@ function Loading() {
   );
 }
 
+/** Address and port (mono), then the first resolved name in grey, as in the other views. */
 function End({ end }: { end: CredentialEndpoint | null }) {
   if (end === null) return <span className="text-muted">-</span>;
-  return <Endpoint endpoint={end.endpoint} {...(end.port === null ? {} : { port: end.port })} />;
+  const name = end.endpoint.names[0];
+  return (
+    <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 align-middle">
+      <Endpoint endpoint={end.endpoint} showName={false} {...(end.port === null ? {} : { port: end.port })} />
+      {name !== undefined && (
+        <span data-testid="truncatable" title={name} className="min-w-0 shrink-[2] truncate text-meta text-muted">
+          {name}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** Aggregated client -> protocol -> server paths (readable list instead of a node graph). */
@@ -259,7 +270,10 @@ function PathsBlock({ query }: { query: Query<CredentialPaths> }) {
               </div>
               <div className="flex min-w-0 items-center justify-between gap-2">
                 <End end={p.server} />
-                <span className="num shrink-0 text-meta text-muted">{t('views.credentials.paths.entries', { count: p.entries })}</span>
+                <span className="flex shrink-0 flex-col items-end text-meta">
+                  <span className="num text-muted">{t('views.credentials.paths.entries', { count: p.entries })}</span>
+                  {p.plaintext > 0 && <span className="num text-warning">{t('views.credentials.paths.clear', { count: p.plaintext })}</span>}
+                </span>
               </div>
             </li>
           ))}
@@ -347,37 +361,81 @@ function Filters({
   onProtocol: (p: string) => void;
 }) {
   const { t } = useTranslation();
+  const wide = useMediaQuery(MD_QUERY);
   const protocolId = useId();
+  const stateId = useId();
   const options: { value: StateFilter; label: string }[] = [
     { value: 'all', label: t('views.credentials.filters.all') },
     { value: 'plaintext', label: t('views.credentials.state.plaintext') },
     { value: 'recoverable', label: t('views.credentials.state.recoverable') },
     { value: 'metadata-only', label: t('views.credentials.state.metadata-only') },
   ];
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2">
-      <div className="min-w-0 max-w-full">
-        <SegmentedControl hideLabel label={t('views.credentials.filters.state')} value={state} options={options} onChange={onState} />
+  const protocolSelect = (
+    <select
+      id={protocolId}
+      value={protocol}
+      onChange={(e) => {
+        onProtocol(e.target.value);
+      }}
+      className={SELECT_CLASS}
+    >
+      <option value="">{t('views.credentials.filters.anyProtocol')}</option>
+      {(stats?.protocols ?? []).map((p) => (
+        <option key={p.protocol} value={p.protocol}>
+          {`${protocolLabel(p.protocol)} (${formatCount(p.count)})`}
+        </option>
+      ))}
+    </select>
+  );
+  if (wide)
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="max-w-full min-w-0">
+          <SegmentedControl hideLabel label={t('views.credentials.filters.state')} value={state} options={options} onChange={onState} />
+        </div>
+        <label htmlFor={protocolId} className="sr-only">
+          {t('views.credentials.filters.protocol')}
+        </label>
+        {protocolSelect}
       </div>
-      <label htmlFor={protocolId} className="sr-only">
-        {t('views.credentials.filters.protocol')}
-      </label>
-      <select
-        id={protocolId}
-        value={protocol}
-        onChange={(e) => {
-          onProtocol(e.target.value);
-        }}
-        className={SELECT_CLASS}
-      >
-        <option value="">{t('views.credentials.filters.anyProtocol')}</option>
-        {(stats?.protocols ?? []).map((p) => (
-          <option key={p.protocol} value={p.protocol}>
-            {`${protocolLabel(p.protocol)} (${formatCount(p.count)})`}
-          </option>
-        ))}
-      </select>
-    </div>
+    );
+  // Below 768 px the filters move into a "Filters" disclosure menu, as in the HTTP view.
+  const active = Number(state !== 'all') + Number(protocol !== '');
+  return (
+    <details className="group relative" data-testid="credentials-filters-menu">
+      <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-surface px-3 text-body [&::-webkit-details-marker]:hidden">
+        {t('common.filters')}
+        <span className="num text-meta text-muted">{active}/2</span>
+        <ChevronDown aria-hidden size={16} strokeWidth={1.75} className="group-open:rotate-180" />
+      </summary>
+      <div className="absolute top-full left-0 z-20 mt-1 flex w-72 max-w-[calc(100vw-3rem)] flex-col gap-3 rounded-lg border border-line bg-surface p-3 shadow-xs">
+        <div className="flex flex-col gap-1">
+          <label htmlFor={stateId} className="text-meta text-muted">
+            {t('views.credentials.filters.state')}
+          </label>
+          <select
+            id={stateId}
+            value={state}
+            onChange={(e) => {
+              onState(e.target.value as StateFilter);
+            }}
+            className={SELECT_CLASS}
+          >
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={protocolId} className="text-meta text-muted">
+            {t('views.credentials.filters.protocol')}
+          </label>
+          {protocolSelect}
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -526,7 +584,7 @@ function CredentialCard({
         className="flex w-full min-w-0 flex-col gap-2 rounded-lg px-3 py-2.5 text-left hover:bg-subtle sm:px-4"
       >
         <span className="flex w-full min-w-0 items-center gap-2">
-          <Badge tone="accent">{protocolLabel(c.protocol)}</Badge>
+          <Badge>{protocolLabel(c.protocol)}</Badge>
           <span className="min-w-0 flex-1 truncate text-meta text-muted" data-testid="truncatable" title={kind}>
             {kind}
           </span>
@@ -708,8 +766,10 @@ function ExportDialog({
     setError(null);
     onClose();
   };
+  // An export is never truncated: above the server bound it is refused, so it is not offered.
+  const tooMany = pending !== null && pending.count > MAX_EXPORT;
   const confirm = () => {
-    if (pending === null) return;
+    if (pending === null || tooMany) return;
     setBusy(true);
     setError(null);
     downloadCredentials(sessionId, pending.request)
@@ -733,7 +793,7 @@ function ExportDialog({
           <Button data-autofocus onClick={close}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" disabled={busy} onClick={confirm}>
+          <Button variant="primary" disabled={busy || tooMany} onClick={confirm}>
             <Download aria-hidden size={16} strokeWidth={1.75} />
             {t('views.credentials.export.confirm')}
           </Button>
@@ -743,7 +803,15 @@ function ExportDialog({
       <div className="flex flex-col gap-3">
         <p className="flex items-start gap-2">
           <ShieldAlert aria-hidden size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
-          <span>{t('views.credentials.export.body', { count: pending?.count ?? 0 })}</span>
+          <span>
+            {tooMany
+              ? t('views.credentials.export.tooMany', {
+                  count: pending?.count ?? 0,
+                  n: formatCount(pending?.count ?? 0),
+                  max: formatCount(MAX_EXPORT),
+                })
+              : t('views.credentials.export.body', { count: pending?.count ?? 0, n: formatCount(pending?.count ?? 0) })}
+          </span>
         </p>
         {error !== null && <ErrorNote error={error} format={(message) => t('views.credentials.export.error', { message })} />}
       </div>

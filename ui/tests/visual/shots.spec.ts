@@ -18,6 +18,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
   credentials: async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
+  'credentials-export': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
   'credentials-open': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
   dns: async (page) => `/sessions/${await demoSessionId(page)}/dns`,
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
@@ -227,7 +228,7 @@ for (const [view, target] of views) {
           await page.waitForLoadState('networkidle');
           await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
         }
-        if ((view === 'credentials' || view === 'credentials-open') && !path.includes(NO_SESSION)) {
+        if (view.startsWith('credentials') && !path.includes(NO_SESSION)) {
           const list = page.getByRole('list', { name: 'Credentials' });
           await expect(list).toBeVisible();
           await expect(
@@ -239,6 +240,23 @@ for (const [view, target] of views) {
             await expect(page.getByText(/^Hidden \(\d+ characters?\)$/).first()).toBeVisible();
             await page.waitForLoadState('networkidle');
             await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+          }
+          if (view === 'credentials-export') {
+            // Confirmation dialog: checked and captured on its own, then the export runs and the
+            // sensitive-data banner is part of the main capture.
+            await page.getByRole('button', { name: 'Export CSV', exact: true }).first().click();
+            const dialog = page.getByRole('dialog', { name: 'Export sensitive data' });
+            await expect(dialog).toBeVisible();
+            const r = await inspectLayout(page);
+            expect(r.pageOverflow, 'horizontal page overflow (export dialog)').toBeNull();
+            expect(r.untitled, 'truncatable elements without title (export dialog)').toEqual([]);
+            await page.screenshot({ path: `${OUT_DIR}/credentials-export-dialog-${width}-${theme}.png` });
+            const download = page.waitForEvent('download');
+            await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+            const file = await download;
+            expect(file.suggestedFilename()).toMatch(/^credentials-.*\.csv$/);
+            await expect(page.getByText(/was exported\. It contains sensitive data\./)).toBeVisible();
+            await expect(dialog).toBeHidden();
           }
           // Fixture secrets of the demo session never appear in clear text.
           const text = await page.evaluate(() => document.body.innerText);

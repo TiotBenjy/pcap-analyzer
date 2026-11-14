@@ -24,9 +24,11 @@
 //! [`MessageView`]: connection, start line, headers and the **decoded body** (with its state).
 //! It fills the body figures of the record (sniffed MIME type, preview) and calls
 //! [`RecordSink::put_blob`] for the bodies selected by [`objects::selected`] (images, by
-//! content, in responses), whose digest appears in `http_transactions` (P3.6). Credentials (`Authorization: Basic`, login forms)
-//! are to be emitted from the same function as `Record::Credential` (P3.7).
+//! content, in responses), whose digest appears in `http_transactions` (P3.6). Credentials
+//! (`Authorization: Basic` / `NTLM`, login forms) are emitted by [`auth::inspect`] for the same
+//! view, as `Record::Credential` (P3.7).
 
+mod auth;
 mod body;
 pub mod inspect;
 mod message;
@@ -241,6 +243,8 @@ struct FlowState {
     resp: Phase,
     pending: VecDeque<Exchange>,
     next_seq: u32,
+    /// Authentication state (NTLM challenge awaiting its response), see [`auth`].
+    auth: auth::AuthState,
 }
 
 enum Finished {
@@ -260,6 +264,7 @@ impl FlowState {
             resp: Phase::Head(HeadBuf::default()),
             pending: VecDeque::new(),
             next_seq: 0,
+            auth: auth::AuthState::default(),
         }
     }
 
@@ -591,6 +596,7 @@ impl FlowState {
             body_complete: state == BodyState::Complete && done.fully_retained,
         };
         inspect::inspect_message(&view, &mut body, &sh.config, out);
+        auth::inspect(&view, &mut self.auth, out);
         let message = HttpMessage {
             ts_ns: msg.ts_ns,
             end_ts_ns: msg.end_ts_ns,

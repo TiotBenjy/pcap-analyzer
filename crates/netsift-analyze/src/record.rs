@@ -117,7 +117,7 @@ impl SecretState {
 
 /// A credential (or offline-recoverable material) seen in the capture.
 ///
-/// Stored in the `credentials` table (ADR-018), folded per identical credential (same protocol,
+/// Stored in the `credentials` table (ADR-019), folded per identical credential (same protocol,
 /// type, client, server, identity and secret). The SMB view keeps its own non-secret metadata in
 /// `smb_sessions`.
 ///

@@ -18,12 +18,22 @@ pub(crate) const TRAP_PORT: u16 = 162;
 /// Longest datagram parsed.
 const MAX_DATAGRAM: usize = 65_535;
 
-/// A community observed in one datagram.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A community observed in one datagram. `Debug` redacts the community.
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Community {
     pub version: &'static str,
     pub pdu: &'static str,
     pub value: String,
+}
+
+impl std::fmt::Debug for Community {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Community")
+            .field("version", &self.version)
+            .field("pdu", &self.pdu)
+            .field("value", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Parses an SNMP v1/v2c message and returns its community (`None`: not SNMP v1/v2c, empty

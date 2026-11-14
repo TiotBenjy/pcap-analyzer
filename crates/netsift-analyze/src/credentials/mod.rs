@@ -18,6 +18,7 @@ mod snmp;
 pub(crate) mod text;
 
 use std::collections::HashMap;
+use std::fmt;
 
 use netsift_dissect::Decoded;
 use netsift_flow::{Direction, FlowCtx, FlowId, FlowKey, PacketCtx, StreamCtx};
@@ -62,7 +63,6 @@ pub(crate) fn base_credential(
 }
 
 /// What a TCP flow is parsed as.
-#[derive(Debug)]
 enum Parser {
     Lines {
         flow: Box<LineFlow>,
@@ -72,6 +72,16 @@ enum Parser {
     Ldap(Box<LdapFlow>),
 }
 
+impl fmt::Debug for Parser {
+    /// The variant only: the line buffers may hold a password.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Lines { flow, .. } => f.debug_tuple("Lines").field(flow).finish(),
+            Self::Ldap(flow) => f.debug_tuple("Ldap").field(flow).finish(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct TcpFlow {
     /// The flow key's client is the real server (connection picked up in the middle).
@@ -79,10 +89,21 @@ struct TcpFlow {
     parser: Parser,
 }
 
-/// The `credentials` analyzer (one instance per shard).
-#[derive(Debug, Default)]
+/// The `credentials` analyzer (one instance per shard). `Debug` shows counts only.
+#[derive(Default)]
 pub struct CredentialsAnalyzer {
     flows: HashMap<FlowId, Option<TcpFlow>>,
+    /// Communities emitted per SNMP flow (bounded by [`MAX_PER_FLOW`]).
+    snmp: HashMap<FlowId, usize>,
+}
+
+impl fmt::Debug for CredentialsAnalyzer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CredentialsAnalyzer")
+            .field("tcp_flows", &self.flows.len())
+            .field("snmp_flows", &self.snmp.len())
+            .finish()
+    }
 }
 
 impl CredentialsAnalyzer {
@@ -143,10 +164,22 @@ impl Analyzer for CredentialsAnalyzer {
         let Some((client, server)) = snmp::orient((ip.src, sport), (ip.dst, dport)) else {
             return;
         };
+        // Datagrams outside a tracked flow are not counted, so not emitted either.
+        let Some(flow) = ctx.flow.map(|f| f.id) else {
+            return;
+        };
+        let emitted = self.snmp.entry(flow).or_insert(0);
+        if *emitted >= MAX_PER_FLOW {
+            return;
+        }
         if let Some(c) = snmp::parse(pkt.payload) {
-            let flow = ctx.flow.map(|f| f.id);
+            *emitted += 1;
             out.emit(Record::Credential(snmp::credential(
-                c, flow, client, server, ctx.ts_ns,
+                c,
+                Some(flow),
+                client,
+                server,
+                ctx.ts_ns,
             )));
         }
     }
@@ -196,12 +229,14 @@ impl Analyzer for CredentialsAnalyzer {
     }
 
     fn on_flow_end(&mut self, ctx: &FlowCtx, out: &mut dyn RecordSink) {
+        self.snmp.remove(&ctx.id);
         if let Some(Some(flow)) = self.flows.remove(&ctx.id) {
             end(flow, out);
         }
     }
 
     fn finish(&mut self, out: &mut dyn RecordSink) {
+        self.snmp.clear();
         let mut left: Vec<(FlowId, Option<TcpFlow>)> = self.flows.drain().collect();
         left.sort_unstable_by_key(|(id, _)| *id);
         for flow in left.into_iter().filter_map(|(_, f)| f) {

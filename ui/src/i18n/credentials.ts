@@ -167,7 +167,7 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
     title: 'Identifiants capturés',
     label: 'Identifiants',
     empty: 'Aucun identifiant dans cette capture',
-    emptyText: 'Les connexions en clair (FTP, mail, HTTP Basic, LDAP, SNMP) et les échanges NTLM apparaissent ici.',
+    emptyText: 'Les connexions en clair (FTP, messagerie, HTTP Basic, LDAP, SNMP) et les échanges NTLM apparaissent ici.',
     noMatch: 'Aucun identifiant ne correspond aux filtres',
   },
   filters: {
@@ -179,7 +179,7 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
   state: {
     plaintext: 'En clair',
     recoverable: 'Récupérable',
-    'metadata-only': 'Métadonnées',
+    'metadata-only': 'Métadonnées seules',
   },
   kind: {
     ntlmv1: 'NetNTLMv1',
@@ -188,9 +188,9 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
     'http-basic': 'Authentification Basic',
     'http-form': 'Formulaire de connexion',
     ftp: 'USER / PASS',
-    mail: 'Connexion mail',
+    mail: 'Connexion messagerie',
     ldap: 'Bind simple',
-    snmp: 'Community',
+    snmp: 'Communauté',
   },
   card: {
     from: 'De',
@@ -219,7 +219,7 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
     secret: 'Secret',
     hashcat: 'Ligne hashcat',
     mode: 'Mode hashcat',
-    noSecret: 'Seules des métadonnées ont été observées : aucun secret à récupérer.',
+    noSecret: 'Seules des métadonnées ont été observées\u00a0: aucun secret à récupérer.',
     secretLabel: 'le secret',
     hashcatLabel: 'la ligne hashcat',
   },
@@ -258,7 +258,7 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
     tooMany_one: "{{n}} entrée correspond, plus que les {{max}} qu'un export peut contenir. Affinez d'abord les filtres.",
     tooMany_other: "{{n}} entrées correspondent, plus que les {{max}} qu'un export peut contenir. Affinez d'abord les filtres.",
     confirm: 'Exporter',
-    error: "L'export a échoué : {{message}}",
+    error: "L'export a échoué\u00a0: {{message}}",
     banner: '{{name}} a été exporté. Il contient des données sensibles.',
     dismiss: 'Fermer',
   },

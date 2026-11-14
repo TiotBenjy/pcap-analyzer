@@ -21,6 +21,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
   network: async (page) => `/sessions/${await demoSessionId(page)}/network`,
+  'network-detail': async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   pictures: async (page) => `/sessions/${await demoSessionId(page)}/pictures`,
@@ -189,7 +190,7 @@ for (const [view, target] of views) {
               : page.getByRole('list', { name: 'Pairs of endpoints ranked by bytes' }),
           ).toBeVisible();
         }
-        if (view === 'network' && !path.includes(NO_SESSION)) {
+        if ((view === 'network' || view === 'network-detail') && !path.includes(NO_SESSION)) {
           await expect(page.getByTestId('network-summary')).toBeVisible();
           if (width >= 768) {
             // sigma (WebGL) draws the graph once the layout worker answered; without WebGL the
@@ -200,6 +201,15 @@ for (const [view, target] of views) {
           } else {
             await expect(page.getByRole('list', { name: 'Links ranked by bytes' })).toBeVisible();
           }
+        }
+        if (view === 'network-detail' && !path.includes(NO_SESSION)) {
+          // The file server found by the search: its detail panel and server role badges.
+          await page.getByRole('searchbox').fill('FILESRV01');
+          const panel = page.getByRole('complementary', { name: 'Node details' });
+          await expect(panel.getByText('SMB server')).toBeVisible();
+          await expect(panel.getByRole('list', { name: 'Main peers' })).toBeVisible();
+          await page.waitForLoadState('networkidle');
+          await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
         }
         if (view === 'open-ports' && !path.includes(NO_SESSION)) {
           await expect(page.getByRole('img', { name: /^Ports open on the most hosts/ })).toBeVisible();

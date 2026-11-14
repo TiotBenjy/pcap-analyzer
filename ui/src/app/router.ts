@@ -72,6 +72,7 @@ const sessionIndexRoute = createRoute({
 // an entry gets the shared placeholder module. Every module stays code-split.
 const SESSION_VIEWS: Partial<Record<string, () => Promise<{ default: ComponentType }>>> = {
   '/connections': () => import('../views/connections/ConnectionsView'),
+  '/credentials': () => import('../views/credentials/CredentialsView'),
   '/dns': () => import('../views/dns/DnsView'),
   '/http': () => import('../views/http/HttpView'),
   '/http-headers': () => import('../views/http/HttpHeadersView'),

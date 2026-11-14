@@ -10,7 +10,7 @@
 #   ./x.sh npm <args>            npm dans ui/
 #   ./x.sh ui <args>             raccourci : npm run <args> dans ui/
 #   ./x.sh dev                   backend + Vite (http://localhost:${NETSIFT_UI_PORT:-5173})
-#   ./x.sh shots [vue]           captures Playwright multi-largeurs (assertions UI)
+#   ./x.sh shots [vue] [langue]  captures Playwright multi-largeurs, en et fr (assertions UI)
 #   ./x.sh desktop               build Tauri Linux (AppImage + .deb) -> dist/
 #   ./x.sh desktop-win           build Windows via cargo-xwin (expérimental) -> dist/
 #   ./x.sh geoip                 télécharge la base GeoIP (DB-IP Lite) dans .data/geoip/

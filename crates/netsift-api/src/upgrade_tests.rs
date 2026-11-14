@@ -121,6 +121,10 @@ const BEFORE_0400: &str = "DROP INDEX flows_service; DROP TABLE conversations; \
 /// build that predates SMB.
 const BEFORE_0500: &str = "DROP VIEW smb_items; DROP TABLE smb_announces; \
     DROP TABLE smb_sessions; DELETE FROM schema_migrations WHERE version = 500;";
+/// Undoes migration 0600 (credentials): the session looks imported by a build that predates the
+/// Credentials view.
+const BEFORE_0600: &str =
+    "DROP TABLE credentials; DELETE FROM schema_migrations WHERE version = 600;";
 /// Undoes migration 0700 (objects) and its end-of-import step: the session looks imported by a
 /// build that predates the Pictures view.
 const BEFORE_0700: &str = "DROP VIEW pictures; DROP TABLE objects; \
@@ -204,6 +208,27 @@ async fn an_smb_view_added_on_upgrade_is_not_listed_as_run() {
     assert_eq!(status, StatusCode::OK, "{summary}");
     assert!(!env.outdated(&id), "migrated by the read");
     assert!(!module_ids(&summary).contains(&"smb"), "{summary}");
+}
+
+#[tokio::test]
+async fn credentials_added_on_upgrade_are_not_analyzed() {
+    // A session imported before P3.7: the module is absent (not run) and the stats answer
+    // `analyzed: false`.
+    let env = Env::new(false);
+    let id = env.import();
+    env.tamper(&id, BEFORE_0600);
+    assert!(env.outdated(&id));
+
+    let (status, _, summary) = env.get(&format!("/api/v1/sessions/{id}/summary")).await;
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert!(!env.outdated(&id), "migrated by the read");
+    assert!(!module_ids(&summary).contains(&"credentials"), "{summary}");
+    let (status, _, json) = env
+        .get(&format!("/api/v1/sessions/{id}/credentials/stats"))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(json["analyzed"], false);
+    assert_eq!(json["total"], 0);
 }
 
 #[tokio::test]

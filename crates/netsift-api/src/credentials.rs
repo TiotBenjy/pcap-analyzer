@@ -1,4 +1,4 @@
-//! Credentials view routes (ADR-018). The list, the statistics and the paths never carry a
+//! Credentials view routes (ADR-019). The list, the statistics and the paths never carry a
 //! secret; the secret and the hashcat line of an entry are served by its detail route, and in
 //! bulk by the export route, both on explicit user action. Nothing here is logged.
 //!
@@ -8,12 +8,14 @@
 //! | GET | `/sessions/{id}/credentials/stats` | [`CredentialStats`] |
 //! | GET | `/sessions/{id}/credentials/paths` | [`CredentialPaths`] |
 //! | GET | `/sessions/{id}/credentials/export` | CSV or hashcat file (attachment) |
-//! | GET | `/sessions/{id}/credentials/{fingerprint}` | [`CredentialDetail`] |
+//! | GET | `/sessions/{id}/credentials/{entry}` | [`CredentialDetail`] |
 //!
 //! Filters (list and export): `protocol=`, `state=` (`plaintext`, `recoverable`,
 //! `metadata-only`), `mode=` (hashcat mode). Export: `format=csv|hashcat` (hashcat needs
-//! `mode`), optional `ids=` (comma-separated fingerprints, at most [`MAX_IDS`]); without `ids`,
-//! every entry matching the filters (at most `netsift_store::credentials::MAX_EXPORT`).
+//! `mode`), optional `ids=` (comma-separated entry ids, at most [`MAX_IDS`]); without `ids`,
+//! every entry matching the filters. An export is never truncated: above
+//! `netsift_store::credentials::MAX_EXPORT` matching entries it is refused (400).
+//! Entry ids are random (they never derive from the secret, ADR-019).
 //! A session upgraded after its import is not analyzed (`analyzed: false`), ADR-013.
 
 use std::fmt::Write as _;
@@ -38,7 +40,7 @@ use crate::overview::open_ready;
 use crate::sessions::parse_id;
 use crate::{ApiError, AppState, blocking, convert};
 
-/// Most fingerprints accepted by one export (`ids=`).
+/// Most entry ids accepted by one export (`ids=`).
 pub const MAX_IDS: usize = 500;
 /// Most paths returned by `/credentials/paths` (default 12).
 const MAX_PATHS: u32 = 50;
@@ -50,7 +52,7 @@ pub(crate) fn routes() -> Router<Arc<AppState>> {
         .route("/sessions/{id}/credentials/stats", get(stats))
         .route("/sessions/{id}/credentials/paths", get(paths))
         .route("/sessions/{id}/credentials/export", get(export))
-        .route("/sessions/{id}/credentials/{fingerprint}", get(detail))
+        .route("/sessions/{id}/credentials/{entry}", get(detail))
 }
 
 /// One side of a credential exchange.
@@ -80,7 +82,7 @@ pub struct CredentialDetailItem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct CredentialInfo {
-    /// Stable identifier (hex SHA-256 of the identifying fields).
+    /// Entry identifier: 32 random hex digits, never derived from the secret.
     pub id: String,
     /// `smb`, `http`, `ftp`, `smtp`, `pop3`, `imap`, `ldap`, `snmp`.
     pub protocol: String,
@@ -107,7 +109,7 @@ pub struct CredentialInfo {
 
 fn info(e: CredentialEntry) -> CredentialInfo {
     CredentialInfo {
-        id: e.fingerprint,
+        id: e.id,
         protocol: e.protocol,
         kind: e.kind,
         secret_state: e.secret_state,
@@ -130,7 +132,7 @@ fn info(e: CredentialEntry) -> CredentialInfo {
     }
 }
 
-/// `GET /credentials/{fingerprint}`: one entry with its sensitive fields.
+/// `GET /credentials/{entry}`: one entry with its sensitive fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct CredentialDetail {
@@ -247,8 +249,9 @@ fn filter(
     })
 }
 
-fn is_fingerprint(s: &str) -> bool {
-    s.len() == 64
+/// An entry id: 32 lower-case hex digits.
+fn is_entry_id(s: &str) -> bool {
+    s.len() == 32
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
@@ -342,15 +345,15 @@ async fn paths(
 
 async fn detail(
     State(state): State<Arc<AppState>>,
-    UrlPath((id, fingerprint)): UrlPath<(String, String)>,
+    UrlPath((id, entry)): UrlPath<(String, String)>,
 ) -> Result<Json<CredentialDetail>, ApiError> {
     let id = parse_id(&id)?;
-    if !is_fingerprint(&fingerprint) {
+    if !is_entry_id(&entry) {
         return Err(ApiError::NotFound);
     }
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
-        let found = store::detail(session.conn(), &fingerprint)?.ok_or(ApiError::NotFound)?;
+        let found = store::detail(session.conn(), &entry)?.ok_or(ApiError::NotFound)?;
         Ok(secret_detail(found))
     })
     .await
@@ -400,12 +403,18 @@ async fn export(
     if ids.len() > MAX_IDS {
         return Err(ApiError::BadRequest(format!("at most {MAX_IDS} ids")));
     }
-    if !ids.iter().all(|i| is_fingerprint(i)) {
+    if !ids.iter().all(|i| is_entry_id(i)) {
         return Err(ApiError::BadRequest("invalid id".to_owned()));
     }
     let f = filter(query.protocol, query.state, query.mode)?;
     let (body, name) = blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
+        if ids.is_empty() && store::count(session.conn(), &f)? > u64::from(store::MAX_EXPORT) {
+            return Err(ApiError::BadRequest(format!(
+                "more than {} entries match: narrow the filters",
+                store::MAX_EXPORT
+            )));
+        }
         let rows = store::export(session.conn(), &f, &ids)?;
         let short = id.to_string().chars().take(8).collect::<String>();
         Ok(match format {

@@ -2,7 +2,7 @@
 import type { CredentialInfo } from "./CredentialInfo";
 
 /**
- * `GET /credentials/{fingerprint}`: one entry with its sensitive fields.
+ * `GET /credentials/{entry}`: one entry with its sensitive fields.
  */
 export type CredentialDetail = { info: CredentialInfo, 
 /**

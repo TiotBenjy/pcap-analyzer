@@ -7,7 +7,7 @@ import type { CredentialEndpoint } from "./CredentialEndpoint";
  */
 export type CredentialInfo = { 
 /**
- * Stable identifier (hex SHA-256 of the identifying fields).
+ * Entry identifier: 32 random hex digits, never derived from the secret.
  */
 id: string, 
 /**

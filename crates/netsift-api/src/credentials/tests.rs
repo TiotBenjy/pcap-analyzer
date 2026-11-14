@@ -115,7 +115,7 @@ async fn list_stats_and_paths_carry_no_secret() {
     assert_eq!(ftp["has_secret"], true);
     assert_eq!(ftp["server"]["port"], 21);
     assert_eq!(ftp["server"]["endpoint"]["ip"], "192.168.1.21");
-    assert_eq!(ftp["id"].as_str().unwrap().len(), 64);
+    assert_eq!(ftp["id"].as_str().unwrap().len(), 32);
     assert!(
         ftp["details"]
             .as_array()
@@ -187,9 +187,9 @@ async fn detail_serves_the_secret_on_demand() {
     );
     assert!(d["secret"].is_null());
 
-    let (status, _) = env.get(&format!("{base}/{}", "0".repeat(64))).await;
+    let (status, _) = env.get(&format!("{base}/{}", "0".repeat(32))).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _) = env.get(&format!("{base}/not-a-fingerprint")).await;
+    let (status, _) = env.get(&format!("{base}/not-an-id")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 

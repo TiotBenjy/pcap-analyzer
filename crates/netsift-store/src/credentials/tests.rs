@@ -12,6 +12,26 @@ fn db() -> Connection {
     conn
 }
 
+/// Public id of the entry folded under `fp`.
+fn id_of(conn: &Connection, fp: &str) -> String {
+    conn.query_row(
+        "SELECT id FROM credentials WHERE fingerprint = ?1",
+        [fp],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+/// Fingerprint of a public id (tests only: the queries never read it back).
+fn fp_of(conn: &Connection, id: &str) -> String {
+    conn.query_row(
+        "SELECT fingerprint FROM credentials WHERE id = ?1",
+        [id],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
 fn ip(last: u8) -> IpAddr {
     IpAddr::V4(Ipv4Addr::new(192, 168, 1, last))
 }
@@ -54,7 +74,15 @@ fn identical_credentials_fold_whatever_the_order() {
         }
         let page = page(&conn, &CredentialFilter::default(), &PageRequest::first(10)).unwrap();
         assert_eq!(page.items.len(), 1);
-        results.push(page.items[0].clone());
+        let mut e = page.items[0].clone();
+        let id = std::mem::take(&mut e.id);
+        // Random public id: 16 bytes in hex, never the fingerprint.
+        assert_eq!(id.len(), 32);
+        assert!(
+            id.bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        );
+        results.push(e);
     }
     assert!(results.windows(2).all(|w| w[0] == w[1]), "{results:?}");
     let e = &results[0];
@@ -76,7 +104,8 @@ fn lists_never_carry_secrets_but_detail_and_export_do() {
         .insert(&conn)
         .unwrap();
 
-    let d = detail(&conn, "p").unwrap().unwrap();
+    let (p, r) = (id_of(&conn, "p"), id_of(&conn, "r"));
+    let d = detail(&conn, &p).unwrap().unwrap();
     assert_eq!(d.secret.as_deref(), Some("secret-p"));
     let debug = format!("{d:?}");
     assert!(!debug.contains("secret-p"), "{debug}");
@@ -87,16 +116,11 @@ fn lists_never_carry_secrets_but_detail_and_export_do() {
     let only = export(
         &conn,
         &CredentialFilter::default(),
-        &[
-            "r".to_owned(),
-            "p".to_owned(),
-            "r".to_owned(),
-            "x".to_owned(),
-        ],
+        &[r.clone(), p.clone(), r.clone(), "x".to_owned()],
     )
     .unwrap();
-    let fps: Vec<_> = only.iter().map(|c| c.entry.fingerprint.as_str()).collect();
-    assert_eq!(fps, vec!["p", "r"]);
+    let ids: Vec<_> = only.iter().map(|c| c.entry.id.clone()).collect();
+    assert_eq!(ids, vec![p, r]);
     assert_eq!(only[1].hashcat_line.as_deref(), Some("line-r"));
 
     let mode = CredentialFilter {
@@ -154,7 +178,7 @@ fn filters_stats_and_paging() {
     let mut req = PageRequest::first(3);
     loop {
         let p = page(&conn, &CredentialFilter::default(), &req).unwrap();
-        seen.extend(p.items.into_iter().map(|e| e.fingerprint));
+        seen.extend(p.items.into_iter().map(|e| fp_of(&conn, &e.id)));
         match p.next_cursor {
             Some(c) => req.cursor = Some(c),
             None => break,

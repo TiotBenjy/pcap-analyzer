@@ -94,7 +94,8 @@ CREATE INDEX conversations_packets ON conversations (packets_total);
 
 -- table credentials
 CREATE TABLE credentials (
-    fingerprint   TEXT PRIMARY KEY,                -- lower-case hex SHA-256 (stable entry id)
+    fingerprint   TEXT PRIMARY KEY,                -- lower-case hex SHA-256 (folding key, internal)
+    id            TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))), -- public entry id
     protocol      TEXT NOT NULL,                   -- smb / http / ftp / smtp / pop3 / imap / ldap / snmp
     kind          TEXT NOT NULL,                   -- ntlmv1 / ntlmv2 / ntlm / http-basic / http-form / ftp / mail / ldap / snmp
     secret_state  TEXT NOT NULL,                   -- plaintext / recoverable / metadata-only
@@ -116,10 +117,13 @@ CREATE TABLE credentials (
 ) WITHOUT ROWID;
 
 -- index credentials_first_ts
-CREATE INDEX credentials_first_ts ON credentials (first_ts, fingerprint);
+CREATE INDEX credentials_first_ts ON credentials (first_ts, id);
 
 -- index credentials_hashcat
 CREATE INDEX credentials_hashcat ON credentials (hashcat_mode) WHERE hashcat_mode IS NOT NULL;
+
+-- index credentials_id
+CREATE UNIQUE INDEX credentials_id ON credentials (id);
 
 -- index credentials_protocol
 CREATE INDEX credentials_protocol ON credentials (protocol, first_ts);

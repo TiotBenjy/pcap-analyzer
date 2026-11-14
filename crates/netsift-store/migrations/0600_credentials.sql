@@ -1,4 +1,4 @@
--- Credentials (Credentials tab, ADR-018). Range 0600-0699 is reserved for creds (see schema.rs).
+-- Credentials (Credentials tab, ADR-019). Range 0600-0699 is reserved for creds (see schema.rs).
 -- Conventions: *_ts columns are i64 nanoseconds since the Unix epoch (UTC); IP addresses are
 -- canonical text.
 --
@@ -9,10 +9,15 @@
 -- seen_count adds up, first/last ts take min/max, and the flow, ports and details of the earliest
 -- observation win (ties broken on flow id), so the result does not depend on shard order.
 --
+-- `fingerprint` derives from the secret without a key: it never leaves the database (a dictionary
+-- would find a weak secret from it). Entries are named outside by `id`, random (16 bytes), set by
+-- the first insert and never updated.
+--
 -- `secret` and `hashcat_line` are sensitive: never logged, served only by the detail and export
 -- routes of the API, masked by default in the UI.
 CREATE TABLE credentials (
-    fingerprint   TEXT PRIMARY KEY,                -- lower-case hex SHA-256 (stable entry id)
+    fingerprint   TEXT PRIMARY KEY,                -- lower-case hex SHA-256 (folding key, internal)
+    id            TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))), -- public entry id
     protocol      TEXT NOT NULL,                   -- smb / http / ftp / smtp / pop3 / imap / ldap / snmp
     kind          TEXT NOT NULL,                   -- ntlmv1 / ntlmv2 / ntlm / http-basic / http-form / ftp / mail / ldap / snmp
     secret_state  TEXT NOT NULL,                   -- plaintext / recoverable / metadata-only
@@ -32,8 +37,9 @@ CREATE TABLE credentials (
     first_ts      INTEGER NOT NULL,
     last_ts       INTEGER NOT NULL
 ) WITHOUT ROWID;
--- Keyset order of the list (first seen, then fingerprint) and its filters.
-CREATE INDEX credentials_first_ts ON credentials (first_ts, fingerprint);
+CREATE UNIQUE INDEX credentials_id ON credentials (id);
+-- Keyset order of the list (first seen, then id) and its filters.
+CREATE INDEX credentials_first_ts ON credentials (first_ts, id);
 CREATE INDEX credentials_protocol ON credentials (protocol, first_ts);
 CREATE INDEX credentials_state ON credentials (secret_state, first_ts);
 CREATE INDEX credentials_hashcat ON credentials (hashcat_mode) WHERE hashcat_mode IS NOT NULL;

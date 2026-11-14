@@ -1,7 +1,8 @@
-//! Rows and read queries of the Credentials tab (`credentials`, migration 0600, ADR-018).
+//! Rows and read queries of the Credentials tab (`credentials`, migration 0600, ADR-019).
 //!
 //! The list queries ([`page`], [`stats`], [`paths`]) never read the secret columns: only
-//! [`detail`] and [`export`] do, for the API routes that serve them on demand.
+//! [`detail`] and [`export`] do, for the API routes that serve them on demand. Entries are named
+//! by their random `id`; the folding `fingerprint` (derived from the secret) is never read back.
 
 use std::fmt;
 use std::net::IpAddr;
@@ -45,7 +46,7 @@ impl fmt::Debug for CredentialRow {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redact = |o: &Option<String>| o.as_ref().map(|_| "<redacted>");
         f.debug_struct("CredentialRow")
-            .field("fingerprint", &self.fingerprint)
+            .field("fingerprint", &"<redacted>")
             .field("protocol", &self.protocol)
             .field("kind", &self.kind)
             .field("secret_state", &self.secret_state)
@@ -122,7 +123,8 @@ pub struct CredentialEnd {
 /// One list entry: everything but the secret and the hashcat line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CredentialEntry {
-    pub fingerprint: String,
+    /// Random public id (32 hex digits), never derived from the secret.
+    pub id: String,
     pub protocol: String,
     pub kind: String,
     pub secret_state: String,
@@ -164,7 +166,7 @@ impl fmt::Debug for CredentialSecret {
 const FROM: &str = "credentials c \
     LEFT JOIN hosts hc ON hc.ip = c.client_ip LEFT JOIN hosts hs ON hs.ip = c.server_ip";
 /// Columns read by [`entry`]; the secret columns are never part of it.
-const SELECT: &str = "c.fingerprint, c.protocol, c.kind, c.secret_state, c.flow_id, c.client_ip, \
+const SELECT: &str = "c.id, c.protocol, c.kind, c.secret_state, c.flow_id, c.client_ip, \
     c.client_port, c.server_ip, c.server_port, c.username, c.domain, c.workstation, \
     c.secret IS NOT NULL OR c.hashcat_line IS NOT NULL, c.hashcat_mode, c.details, c.seen_count, \
     c.first_ts, c.last_ts, hc.names, hc.category, hc.country, hs.names, hs.category, hs.country";
@@ -200,7 +202,7 @@ fn end(
 fn entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<CredentialEntry> {
     let details: String = r.get(14)?;
     Ok(CredentialEntry {
-        fingerprint: r.get(0)?,
+        id: r.get(0)?,
         protocol: r.get(1)?,
         kind: r.get(2)?,
         secret_state: r.get(3)?,
@@ -295,7 +297,7 @@ pub fn page(
         from: FROM,
         select: SELECT,
         sort: "c.first_ts",
-        tiebreak: "c.fingerprint",
+        tiebreak: "c.id",
         descending: false,
         filter: clause,
     };
@@ -315,28 +317,27 @@ pub fn count(conn: &Connection, filter: &CredentialFilter) -> Result<u64> {
     Ok(u64::try_from(n).unwrap_or(0))
 }
 
-/// One entry with its secret and hashcat line, by fingerprint.
-pub fn detail(conn: &Connection, fingerprint: &str) -> Result<Option<CredentialSecret>> {
-    let sql = format!("SELECT {SELECT}, {SELECT_SECRET} FROM {FROM} WHERE c.fingerprint = ?1");
-    Ok(conn
-        .query_row(&sql, [fingerprint], secret_entry)
-        .optional()?)
+/// One entry with its secret and hashcat line, by id.
+pub fn detail(conn: &Connection, id: &str) -> Result<Option<CredentialSecret>> {
+    let sql = format!("SELECT {SELECT}, {SELECT_SECRET} FROM {FROM} WHERE c.id = ?1");
+    Ok(conn.query_row(&sql, [id], secret_entry).optional()?)
 }
 
-/// Entries to export with their secrets: the given fingerprints (at most [`MAX_EXPORT`]), or
-/// every entry matching `filter` when `fingerprints` is empty; first seen first, bounded.
+/// Entries to export with their secrets: the given ids (at most [`MAX_EXPORT`]), or every entry
+/// matching `filter` when `ids` is empty; first seen first, bounded (the API refuses an export
+/// above [`MAX_EXPORT`] instead of truncating it).
 pub fn export(
     conn: &Connection,
     filter: &CredentialFilter,
-    fingerprints: &[String],
+    ids: &[String],
 ) -> Result<Vec<CredentialSecret>> {
     let mut out = Vec::new();
-    if fingerprints.is_empty() {
+    if ids.is_empty() {
         let (clause, values) = filter.sql();
         let where_clause = clause.map(|c| format!(" WHERE {c}")).unwrap_or_default();
         let sql = format!(
             "SELECT {SELECT}, {SELECT_SECRET} FROM {FROM}{where_clause} \
-             ORDER BY c.first_ts, c.fingerprint LIMIT {MAX_EXPORT}"
+             ORDER BY c.first_ts, c.id LIMIT {MAX_EXPORT}"
         );
         let params: Vec<&dyn ToSql> = values.iter().map(AsRef::as_ref).collect();
         let mut stmt = conn.prepare(&sql)?;
@@ -345,15 +346,13 @@ pub fn export(
             out.push(row?);
         }
     } else {
-        for fp in fingerprints.iter().take(MAX_EXPORT as usize) {
-            if let Some(c) = detail(conn, fp)? {
+        for id in ids.iter().take(MAX_EXPORT as usize) {
+            if let Some(c) = detail(conn, id)? {
                 out.push(c);
             }
         }
-        out.sort_by(|a, b| {
-            (a.entry.first_ts, &a.entry.fingerprint).cmp(&(b.entry.first_ts, &b.entry.fingerprint))
-        });
-        out.dedup_by(|a, b| a.entry.fingerprint == b.entry.fingerprint);
+        out.sort_by(|a, b| (a.entry.first_ts, &a.entry.id).cmp(&(b.entry.first_ts, &b.entry.id)));
+        out.dedup_by(|a, b| a.entry.id == b.entry.id);
     }
     Ok(out)
 }

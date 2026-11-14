@@ -1,5 +1,5 @@
 //! Translation of `Record::Credential` (every emitting analyzer) into `credentials` rows, with
-//! the fingerprint that folds identical credentials (ADR-018).
+//! the fingerprint that folds identical credentials (ADR-019).
 
 use netsift_analyze::Credential;
 use netsift_store::credentials::CredentialRow;

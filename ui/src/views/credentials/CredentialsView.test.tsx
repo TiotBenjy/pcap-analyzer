@@ -206,3 +206,36 @@ it('explains a session imported before the analysis', async () => {
   expect(await screen.findByText('Not analyzed')).toBeInTheDocument();
   expect(credApi.listCredentials).not.toHaveBeenCalled();
 });
+
+it('refuses an export above the server bound instead of truncating it', async () => {
+  vi.mocked(credApi.listCredentials).mockResolvedValue({ items: [cred()], next_cursor: 'next', total_estimate: 12_345 });
+  const user = setupUser();
+  renderApp(`/sessions/${ID}/credentials`);
+  await screen.findByRole('list', { name: 'Credentials' });
+  await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText(/12,345 entries match, more than the 10,000/)).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Export' })).toBeDisabled();
+});
+
+it('moves the filters into a menu on narrow screens and shows names next to addresses', async () => {
+  setViewportWide(false);
+  vi.mocked(credApi.listCredentials).mockResolvedValue(
+    page([cred({ server: { endpoint: { ...endpoint('192.168.1.20'), names: ['FILESRV01'] }, port: 445 } })]),
+  );
+  const user = setupUser();
+  renderApp(`/sessions/${ID}/credentials`);
+  const list = await screen.findByRole('list', { name: 'Credentials' });
+  expect(within(list).getByText('FILESRV01')).toBeInTheDocument();
+  expect(within(list).getByTitle(/192\.168\.1\.20:445/)).toBeInTheDocument();
+  expect(screen.queryByRole('radio', { name: 'Recoverable' })).not.toBeInTheDocument();
+  await user.click(screen.getByText('Filters'));
+  await user.selectOptions(screen.getByLabelText('Secret state'), 'recoverable');
+  await waitFor(() =>
+    expect(credApi.listCredentials).toHaveBeenLastCalledWith(
+      ID,
+      expect.objectContaining({ state: 'recoverable' }),
+      expect.anything(),
+    ),
+  );
+});

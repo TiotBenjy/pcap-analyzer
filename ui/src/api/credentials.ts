@@ -1,4 +1,4 @@
-// Typed client of the Credentials routes (crates/netsift-api/src/credentials.rs, ADR-018).
+// Typed client of the Credentials routes (crates/netsift-api/src/credentials.rs, ADR-019).
 // The list, stats and paths never carry a secret: the detail and the export do, on demand.
 
 import { apiFetch, apiGet } from './client';
@@ -31,6 +31,8 @@ export interface CredentialExport extends CredentialFilters {
 
 /** Most ids sent by one export (`MAX_IDS` of the API). */
 export const MAX_EXPORT_IDS = 500;
+/** Most entries of one export (`MAX_EXPORT` of the store): beyond, the API refuses it. */
+export const MAX_EXPORT = 10_000;
 
 const sessionPath = (id: string): `/${string}` => `/sessions/${encodeURIComponent(id)}/credentials`;
 
@@ -61,8 +63,12 @@ export function getCredential(id: string, entry: string, signal?: AbortSignal): 
   return apiGet(`${sessionPath(id)}/${encodeURIComponent(entry)}`, signal);
 }
 
+/** URL of an export. Never truncates a selection: more than `MAX_EXPORT_IDS` ids is an error. */
 export function exportPath(id: string, e: CredentialExport): `/${string}` {
-  const ids = e.ids === undefined ? undefined : e.ids.slice(0, MAX_EXPORT_IDS).join(',');
+  if (e.ids !== undefined && e.ids.length > MAX_EXPORT_IDS) {
+    throw new RangeError(`at most ${MAX_EXPORT_IDS} entries per selection`);
+  }
+  const ids = e.ids?.join(',');
   return `${sessionPath(id)}/export${query({ format: e.format, mode: e.mode, protocol: e.protocol, state: e.state, ids })}`;
 }
 

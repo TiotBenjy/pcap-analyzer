@@ -159,7 +159,9 @@ async fn the_default_graph_is_bounded_and_clustered() {
     assert_eq!(nodes[0]["id"], "h:192.168.1.1");
     assert_eq!(nodes[0]["kind"], "host");
     assert_eq!(nodes[0]["endpoint"]["category"], "private");
-    assert!(nodes[0]["role"].is_null());
+    // The server answers the DNS query: a DNS server (Servers view).
+    assert_eq!(nodes[0]["roles"], serde_json::json!(["dns"]));
+    assert_eq!(nodes[1]["roles"], serde_json::json!([]));
     let other = nodes.last().unwrap();
     assert_eq!(other["kind"], "other");
     assert!(other["endpoint"].is_null());
@@ -282,7 +284,9 @@ async fn node_detail_of_a_host() {
     assert_eq!(d["protocols"], serde_json::json!(["dns", "udp"]));
     assert_eq!(d["macs"], serde_json::json!(["02:00:5e:10:00:01"]));
     assert!(d["first_ts_us"].is_i64());
-    assert!(d["role"].is_null());
+    assert_eq!(d["roles"], serde_json::json!(["dns"]));
+    let client = env.ok(&format!("{base}/81.0.0.200")).await;
+    assert_eq!(client["roles"], serde_json::json!([]));
     let (status, _) = env.get(&format!("{base}/10.9.9.9")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _) = env.get(&format!("{base}/not-an-ip")).await;

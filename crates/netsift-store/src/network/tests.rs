@@ -1382,3 +1382,37 @@ fn the_step_matches_the_plain_reference_and_ignores_the_order() {
     build::run(&b).unwrap();
     assert_eq!(dump_tables(&b), tables);
 }
+
+#[test]
+fn host_roles_come_from_the_servers_view() {
+    let conn = db();
+    for (ip, port) in [
+        ("10.0.0.1", 53),
+        ("10.0.0.1", 389),
+        ("10.0.0.1", 88),
+        ("10.0.0.2", 445),
+    ] {
+        insert(
+            &conn,
+            StoreRecord::OpenPort(OpenPortRow {
+                ip: ip.parse().unwrap(),
+                transport: 6,
+                port,
+                evidence: "syn_ack".to_owned(),
+                service: None,
+                detected: None,
+                banner: None,
+                first_ts: 0,
+                last_ts: 0,
+            }),
+        );
+    }
+    let ips: Vec<IpAddr> = ["10.0.0.1", "10.0.0.3"]
+        .iter()
+        .map(|ip| ip.parse().unwrap())
+        .collect();
+    let roles = host_roles(&conn, &ips).unwrap();
+    assert_eq!(roles.len(), 1, "only the asked hosts having a role");
+    assert_eq!(roles[&ips[0]], ["dns", "kerberos", "ldap"]);
+    assert!(host_roles(&conn, &[]).unwrap().is_empty());
+}

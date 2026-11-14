@@ -113,6 +113,9 @@ function HostDetail({ sessionId, node, resolveNames }: { sessionId: string; node
         <Endpoint endpoint={endpoint} className="text-body font-medium" />
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge>{t(`addressCategories.${endpoint.category}`)}</Badge>
+          {node.roles.map((r) => (
+            <Badge key={r}>{t('views.network.panel.role', { role: t(`views.servers.roles.${r}`) })}</Badge>
+          ))}
           {endpoint.country !== null && (
             <span className="inline-flex items-center gap-1 text-muted">
               <Flag country={endpoint.country} />

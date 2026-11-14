@@ -75,7 +75,7 @@ impl ServerRole {
         }
     }
 
-    fn parse(s: &str) -> Option<Self> {
+    pub(crate) fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|r| r.as_str() == s)
     }
 }

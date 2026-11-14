@@ -495,6 +495,7 @@ export const en = {
         last: 'Last seen',
         protocols: 'Protocols',
         ports: 'Open ports',
+        role: '{{role}} server',
         neighbors: 'Main peers',
         expand: 'Show its hosts',
         none: 'None',

@@ -1081,6 +1081,32 @@ pub fn node_detail(conn: &Connection, ip: IpAddr) -> Result<Option<NodeDetail>> 
     Ok(Some(detail))
 }
 
+/// Server roles of hosts (`?1`, JSON array of addresses), from the `server_roles` view (ADR-017).
+const HOST_ROLES: &str = "SELECT DISTINCT ip, role FROM server_roles \
+    WHERE ip IN (SELECT value FROM json_each(?1)) ORDER BY ip, role";
+
+/// Server roles (`dns`, `dhcp`, `ldap`...) of some hosts, sorted; hosts without a role are
+/// absent. Derived at read time like the Servers view (ADR-017): call it for the few hosts of a
+/// graph or of a detail panel only.
+pub fn host_roles(conn: &Connection, ips: &[IpAddr]) -> Result<HashMap<IpAddr, Vec<String>>> {
+    let mut out: HashMap<IpAddr, Vec<String>> = HashMap::new();
+    if ips.is_empty() {
+        return Ok(out);
+    }
+    let list: Vec<String> = ips.iter().map(ToString::to_string).collect();
+    let mut stmt = conn.prepare_cached(HOST_ROLES)?;
+    let rows = stmt.query_map([serde_json::to_string(&list)?], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (ip, role) = row?;
+        if let Ok(ip) = ip.parse() {
+            out.entry(ip).or_default().push(role);
+        }
+    }
+    Ok(out)
+}
+
 mod build;
 
 #[cfg(test)]

@@ -47,7 +47,7 @@ function host(e: Endpoint, bytes: number): NetworkNode {
     bytes_received: bytes / 2,
     packets: 10,
     protocols: ['tcp', 'tls'],
-    role: null,
+    roles: [],
   };
 }
 
@@ -56,7 +56,7 @@ function graph(): NetworkGraph {
     mode: 'hosts',
     nodes: [
       host(ep('192.168.1.1', 'private', ['server.lan']), 10_000),
-      host(ep('81.2.3.4', 'public', [HOSTILE], 'FR'), 6_000),
+      { ...host(ep('81.2.3.4', 'public', [HOSTILE], 'FR'), 6_000), roles: ['http'] },
       {
         id: 'k:US',
         kind: 'cluster',
@@ -68,7 +68,7 @@ function graph(): NetworkGraph {
         bytes_received: 3_000,
         packets: 40,
         protocols: ['tls'],
-        role: null,
+        roles: [],
       },
     ],
     edges: [
@@ -119,7 +119,7 @@ function detail(): NetworkNodeDetail {
     protocols: ['tcp', 'tls'],
     open_ports: [{ port: 443, transport: 'tcp', service: 'https' }],
     neighbors: [{ endpoint: ep('192.168.1.1', 'private', ['server.lan']), bytes_sent: 1_000, bytes_received: 5_000, protocols: ['tls'] }],
-    role: null,
+    roles: [],
   };
 }
 
@@ -207,6 +207,7 @@ describe('Network view', () => {
     expect(rows[1]).not.toHaveAttribute('data-selected');
     expect(within(panel).getByText('Public')).toBeInTheDocument();
     expect(within(panel).getByText('France')).toBeInTheDocument();
+    expect(within(panel).getByText('HTTP server')).toBeInTheDocument();
     expect(within(panel).getByRole('list', { name: 'Main peers' })).toHaveTextContent('server.lan');
     expect(panel).toHaveTextContent(HOSTILE);
     expect(container.querySelector('img[src="x"]')).toBeNull();

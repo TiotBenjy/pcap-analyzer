@@ -2,6 +2,7 @@
 import type { Endpoint } from "./Endpoint";
 import type { NetworkNeighbor } from "./NetworkNeighbor";
 import type { NetworkPort } from "./NetworkPort";
+import type { ServerRole } from "./ServerRole";
 
 /**
  * `GET /sessions/{id}/network/node/{ip}`: what the session knows about one host.
@@ -24,6 +25,6 @@ open_ports: Array<NetworkPort>,
  */
 neighbors: Array<NetworkNeighbor>, 
 /**
- * Server role (reserved for the Servers analyzer; `null` until then).
+ * Server roles (Servers view, ADR-017), in display order.
  */
-role: string | null, };
+roles: Array<ServerRole>, };

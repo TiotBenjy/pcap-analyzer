@@ -1,0 +1,20 @@
+---
+source: crates/netsift-engine/tests/flow_identity.rs
+expression: tables
+---
+# flows (6 rows)
+0 192.168.1.10:50000 -> 203.0.113.80:80 1700000000000000000..1700000000000000000 fwd=6/453 rev=4/328 app=http tcp=closed
+10 192.168.1.10:50000 -> 203.0.113.80:80 1700000000000000000..1700000000000000000 fwd=6/454 rev=4/337 app=http tcp=closed
+20 192.168.1.10:49157 -> 192.168.1.20:445 1700000000001000000..1700000000001000000 fwd=10/1038 rev=8/776 app=smb tcp=closed
+38 192.168.1.10:49157 -> 192.168.1.20:445 1700000000001000000..1700000000001000000 fwd=10/1034 rev=8/776 app=smb tcp=closed
+56 192.168.1.10:50000 -> 203.0.113.80:443 1700000000002000000..1700000000002000000 fwd=6/526 rev=4/772 app=tls tcp=closed
+66 192.168.1.10:50000 -> 203.0.113.80:443 1700000000002000000..1700000000002000000 fwd=6/526 rev=4/772 app=tls tcp=closed
+# http_transactions (2 rows)
+0/0 GET /first 200 resp=3
+10/0 GET /second 200 resp=11
+# tls_sessions (2 rows)
+56 50000 one.example.test partial
+66 50000 two.example.test partial
+# smb_sessions (2 rows)
+20 49157 alice CORP authenticate
+38 49157 bob CORP authenticate

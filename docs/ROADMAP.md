@@ -267,7 +267,7 @@ Suivis de la vague 3.A :
   nœud cluster, ni couleur Public ; rôles affichés même quand Servers est « non analysé » sur une session
   ancienne ; P4.2 : mesurer `host_roles` / `server_roles` à chaque requête de graphe (si > 300 ms, rôles au
   détail seulement ou matérialisés), ajouter `dns_messages` et le rejeu à l'ouverture au test `timings`,
-  orphelins lus par masque de groupe ; `shots network` efface les captures `network-detail` (variante à part).
+  orphelins lus par masque de groupe ; `shots network` effaçait les captures `network-detail` (corrigé en P4.3 : `shots.sh` ne supprime plus que `<vue>-<chiffre>*`).
 - P3.7 (fusionnée le 2026-11-14, ADR-019 : table `credentials` repliée par empreinte SHA-256 interne, id public
   aléatoire, secrets lus seulement au détail, export CSV/hashcat explicite et refusé au-delà de 10 000 entrées) :
   non émis : formulaires JSON, HTTP Digest, Kerberos (7500/18200), SASL NTLM/GSS dans LDAP/SMTP, littéraux IMAP
@@ -301,6 +301,14 @@ Suivis de la vague 3.A :
   entre chunks qui se chevauchent, dépassement de `max_open`) ; phase 5 (ajout de chunks à une session) : le
   compteur de trames doit reprendre au nombre de paquets déjà importés, sinon les upserts fusionnent en silence ;
   l'id révèle la position du flux dans la capture.
+- P4.3 (fusionnée le 2026-11-15, ADR-021, `docs/specs/export-pcap.md`) : jobs d'export interrogés par polling (2 au
+  plus), fichiers dans `exports/` jamais purgés ni supprimables depuis l'UI ; deux flux de même 5-tuple aux fenêtres
+  qui se recouvrent sont exportés ensemble (sur une session lue hors ordre, aussi un flux antérieur) ; un fichier
+  unique est relu depuis le début même pour un flux tardif (pas d'index d'offsets, P4.2) ; fragments IP : clés
+  jamais expirées si le dernier fragment manque (4096 max), fragment arrivé avant le premier non inclus ; erreurs
+  ICMP liées au flux non incluses ; snaplen 0 hors première interface d'un chunk pcapng ; `ExportJob.path` absolu
+  exposé mais inutilisé par l'UI ; à vérifier sur un bundle : « Ouvrir le dossier » (plugin opener réel) et un
+  export de plusieurs Go (progression, annulation) ; la fermeture du desktop annule un export sans confirmation.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -334,7 +342,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       minute/heure écrite en fin d'import + `stats.bytes` dans `meta` (prévoir la mise à niveau des sessions
       existantes) ; mesurer l'affichage Overview (< 500 ms) côté UI ; zoom Overview avec refetch serveur
       (`from_us`/`to_us`) avec le filtre global de phase 5.
-- [~] **P4.3** `feat/export-pcap` — « Save PCAP » : export d'un flux, d'une plage temporelle ou de la session
+- [x] **P4.3** `feat/export-pcap` — « Save PCAP » : export d'un flux, d'une plage temporelle ou de la session
       fusionnée (pcapng).
 - [x] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
 - [ ] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`.

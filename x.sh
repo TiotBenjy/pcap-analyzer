@@ -377,29 +377,44 @@ case "$CMD" in
 
   check)
     # Gate identique à la CI. S'arrête à la première erreur.
+    # Une commande par ligne : sous `set -e`, l'échec d'une commande au milieu d'une chaîne `a && b`
+    # n'arrête pas le script (seule la dernière de la chaîne compte), d'où l'absence de `&&` ici.
     # shellcheck disable=SC2016 # script exécuté par bash dans le conteneur, pas développé ici
     run_in_q -- '
       set -e
-      echo "== version =="      && bash scripts/check-version.sh >/dev/null && bash scripts/tests/check-version.sh \
-        && bash scripts/tests/release.sh \
-        && { [ ! -f scripts/tests/cache.sh ] || bash scripts/tests/cache.sh; }
-      echo "== rustfmt =="      && cargo fmt --all --check
-      echo "== clippy =="       && cargo clippy --workspace --all-targets --all-features -- -D warnings
-      echo "== cargo-deny =="   && (cargo deny check || true)   # avertit sans bloquer au début du projet
-      echo "== tests Rust =="   && cargo nextest run --workspace
+      echo "== version =="
+      bash scripts/check-version.sh >/dev/null
+      bash scripts/tests/check-version.sh
+      bash scripts/tests/release.sh
+      if [ -f scripts/tests/cache.sh ]; then bash scripts/tests/cache.sh; fi
+      echo "== rustfmt =="
+      cargo fmt --all --check
+      echo "== clippy =="
+      cargo clippy --workspace --all-targets --all-features -- -D warnings
+      echo "== cargo-deny =="
+      cargo deny check || true   # avertit sans bloquer au début du projet
+      echo "== tests Rust =="
+      cargo nextest run --workspace
       # fuzz/ est hors workspace (nightly pour fuzzer) : format, typage de toutes ses cibles et tests
       # de sa bibliothèque sur la stable : un changement des API des crates ne le casse pas en silence.
-      echo "== fuzz/ =="        && cargo fmt --manifest-path fuzz/Cargo.toml --check \
-        && cargo check -q --locked --manifest-path fuzz/Cargo.toml --all-targets \
-        && cargo test -q --locked --manifest-path fuzz/Cargo.toml --lib
-      echo "== bindings TS =="  && cargo test -q -p netsift-api export_bindings >/dev/null \
-        && { ! git rev-parse --git-dir >/dev/null 2>&1 `# worktree : .git hors du montage` \
-             || git diff --quiet -- ui/src/api/types \
-             || echo "ATTENTION : bindings TS regeneres, a committer (ui/src/api/types)"; }
+      echo "== fuzz/ =="
+      cargo fmt --manifest-path fuzz/Cargo.toml --check
+      cargo check -q --locked --manifest-path fuzz/Cargo.toml --all-targets
+      cargo test -q --locked --manifest-path fuzz/Cargo.toml --lib
+      echo "== bindings TS =="
+      cargo test -q -p netsift-api export_bindings >/dev/null
+      # worktree : .git hors du montage, pas de diff possible
+      if git rev-parse --git-dir >/dev/null 2>&1 && ! git diff --quiet -- ui/src/api/types; then
+        echo "ATTENTION : bindings TS regeneres, a committer (ui/src/api/types)"
+      fi
       if [ -d ui ] && [ -f ui/package.json ]; then
-        echo "== UI : install ==" && (cd ui && npm ci || npm install)
-        echo "== UI : typecheck/lint ==" && (cd ui && npm run -s lint && npm run -s typecheck)
-        echo "== UI : tests unitaires ==" && (cd ui && npm run -s test -- --run)
+        echo "== UI : install =="
+        (cd ui && { npm ci || npm install; })
+        echo "== UI : typecheck/lint =="
+        (cd ui && npm run -s lint)
+        (cd ui && npm run -s typecheck)
+        echo "== UI : tests unitaires =="
+        (cd ui && npm run -s test -- --run)
       fi
       echo "OK"
     ' ;;

@@ -1,6 +1,5 @@
 ---
 source: crates/netsift-store/tests/session.rs
-assertion_line: 140
 expression: schema
 ---
 -- table anomalies
@@ -346,11 +345,6 @@ CREATE INDEX hosts_first_ts ON hosts (first_ts);
 -- index hosts_last_ts
 CREATE INDEX hosts_last_ts ON hosts (last_ts);
 
--- trigger http_headers_fts_insert
-CREATE TRIGGER http_headers_fts_insert AFTER INSERT ON http_headers BEGIN
-    INSERT INTO http_headers_fts (rowid, name, value) VALUES (new.id, new.name, new.value);
-END;
-
 -- table http_headers
 CREATE TABLE http_headers (
     id             INTEGER PRIMARY KEY,
@@ -385,12 +379,6 @@ CREATE TABLE 'http_headers_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
 
 -- table http_headers_fts_idx
 CREATE TABLE 'http_headers_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
-
--- trigger http_transactions_fts_insert
-CREATE TRIGGER http_transactions_fts_insert AFTER INSERT ON http_transactions BEGIN
-    INSERT INTO http_transactions_fts (rowid, host, uri, user_agent)
-    VALUES (new.id, new.host, new.uri, new.user_agent);
-END;
 
 -- table http_transactions
 CREATE TABLE http_transactions (
@@ -910,6 +898,24 @@ CREATE TABLE timeseries (
 
 -- index timeseries_proto
 CREATE INDEX timeseries_proto ON timeseries (proto, bucket_s);
+
+-- table timeseries_hour
+CREATE TABLE timeseries_hour (
+    bucket_s INTEGER NOT NULL,                      -- multiple of 3600
+    proto    TEXT NOT NULL,
+    bytes    INTEGER NOT NULL DEFAULT 0,
+    packets  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bucket_s, proto)
+) WITHOUT ROWID;
+
+-- table timeseries_minute
+CREATE TABLE timeseries_minute (
+    bucket_s INTEGER NOT NULL,                      -- multiple of 60, seconds since the epoch
+    proto    TEXT NOT NULL,
+    bytes    INTEGER NOT NULL DEFAULT 0,
+    packets  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bucket_s, proto)
+) WITHOUT ROWID;
 
 -- table tls_certificates
 CREATE TABLE tls_certificates (

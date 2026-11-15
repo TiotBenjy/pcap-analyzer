@@ -5,6 +5,12 @@
 //! a period and a number of points: [`BucketPlan::new`] picks a round bucket width (1 s, 2 s,
 //! 5 s, ... 1 h, 1 d...) aligned on the clock so that at most `max_points` buckets cover the
 //! period, then [`resample`] sums the rows of each bucket with one range scan of the primary key.
+//!
+//! At the end of the import, [`finalize`] folds the one-second rows into `timeseries_minute` and
+//! `timeseries_hour` (`0002_core_timeseries_rollup.sql`) and records the totals in `meta`: a plan
+//! whose bucket width is a multiple of a minute (or an hour) reads the coarser table, and the
+//! totals no longer sum the whole table. Until the step has run (session opened by a read-only
+//! server, failed step), both fall back to the one-second table.
 
 use rusqlite::{Connection, OptionalExtension};
 
@@ -94,6 +100,131 @@ pub fn traffic_bounds(conn: &Connection) -> Result<Option<(i64, i64)>> {
     Ok(first.zip(last))
 }
 
+/// `meta` keys of the time series totals (bytes and packets), written by [`finalize`] with the
+/// rollup tables; their presence means the rollups are complete.
+pub const TOTAL_BYTES_META: &str = "timeseries.total_bytes";
+pub const TOTAL_PACKETS_META: &str = "timeseries.total_packets";
+
+/// Rollup tables, finest first: (table, bucket width in seconds).
+const ROLLUPS: [(&str, i64); 2] = [("timeseries_minute", 60), ("timeseries_hour", 3_600)];
+
+/// Sums per bucket start and label of one rollup level, for the bucket being folded.
+struct Fold {
+    width: i64,
+    bucket: Option<i64>,
+    sums: std::collections::BTreeMap<String, (u64, u64)>,
+}
+
+impl Fold {
+    fn add(
+        &mut self,
+        insert: &mut rusqlite::CachedStatement<'_>,
+        bucket_s: i64,
+        proto: &str,
+        bytes: u64,
+        packets: u64,
+    ) -> Result<()> {
+        let bucket = bucket_s.div_euclid(self.width) * self.width;
+        if self.bucket != Some(bucket) {
+            self.flush(insert)?;
+            self.bucket = Some(bucket);
+        }
+        let e = self.sums.entry(proto.to_owned()).or_default();
+        e.0 = e.0.saturating_add(bytes);
+        e.1 = e.1.saturating_add(packets);
+        Ok(())
+    }
+
+    fn flush(&mut self, insert: &mut rusqlite::CachedStatement<'_>) -> Result<()> {
+        let Some(bucket) = self.bucket else {
+            return Ok(());
+        };
+        for (proto, (bytes, packets)) in std::mem::take(&mut self.sums) {
+            insert.execute(rusqlite::params![
+                bucket,
+                proto,
+                signed(bytes),
+                signed(packets)
+            ])?;
+        }
+        Ok(())
+    }
+}
+
+/// End-of-import step `timeseries` ([`crate::finalize::SESSION_FINALIZERS`]): rebuilds the
+/// minute and hour tables and the totals, in the transaction of the caller. Idempotent.
+///
+/// One scan of `timeseries` in key order (bucket, then label): bucket starts of every level
+/// only grow, so each level keeps the sums of its current bucket only (memory bounded by the
+/// number of labels) and inserts rows in key order.
+pub(crate) fn finalize(conn: &Connection) -> Result<()> {
+    for (table, _) in ROLLUPS {
+        conn.execute(&format!("DELETE FROM {table}"), [])?;
+    }
+    let mut minute = conn.prepare_cached(
+        "INSERT INTO timeseries_minute (bucket_s, proto, bytes, packets) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    let mut hour = conn.prepare_cached(
+        "INSERT INTO timeseries_hour (bucket_s, proto, bytes, packets) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    let mut folds = ROLLUPS.map(|(_, width)| Fold {
+        width,
+        bucket: None,
+        sums: std::collections::BTreeMap::new(),
+    });
+    let (mut total_bytes, mut total_packets) = (0u64, 0u64);
+    let mut read = conn.prepare(
+        "SELECT bucket_s, proto, bytes, packets FROM timeseries ORDER BY bucket_s, proto",
+    )?;
+    let mut rows = read.query([])?;
+    while let Some(row) = rows.next()? {
+        let bucket_s: i64 = row.get(0)?;
+        let proto = row.get_ref(1)?.as_str().map_err(rusqlite::Error::from)?;
+        let bytes = unsigned(row.get(2)?);
+        let packets = unsigned(row.get(3)?);
+        total_bytes = total_bytes.saturating_add(bytes);
+        total_packets = total_packets.saturating_add(packets);
+        let [m, h] = &mut folds;
+        m.add(&mut minute, bucket_s, proto, bytes, packets)?;
+        h.add(&mut hour, bucket_s, proto, bytes, packets)?;
+    }
+    let [m, h] = &mut folds;
+    m.flush(&mut minute)?;
+    h.flush(&mut hour)?;
+    for (key, value) in [
+        (TOTAL_BYTES_META, total_bytes),
+        (TOTAL_PACKETS_META, total_packets),
+    ] {
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![key, value.to_string()],
+        )?;
+    }
+    Ok(())
+}
+
+/// Totals recorded by [`finalize`], `None` before it has run.
+fn recorded_totals(conn: &Connection) -> Result<Option<(u64, u64)>> {
+    let read = |key: &str| -> Result<Option<u64>> {
+        Ok(crate::query::get_meta(conn, key)?.and_then(|v| v.parse().ok()))
+    };
+    Ok(read(TOTAL_BYTES_META)?.zip(read(TOTAL_PACKETS_META)?))
+}
+
+/// Table read for buckets of `step_s` seconds: the coarsest rollup whose width divides it
+/// (plans align their start on a multiple of the step), once the rollups are complete.
+fn source_table(conn: &Connection, step_s: i64) -> Result<&'static str> {
+    if recorded_totals(conn)?.is_none() {
+        return Ok("timeseries");
+    }
+    Ok(ROLLUPS
+        .iter()
+        .rev()
+        .find(|(_, width)| step_s % width == 0)
+        .map_or("timeseries", |(table, _)| *table))
+}
+
 /// Sums of one bucket and one protocol label.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrafficBucket {
@@ -107,12 +238,14 @@ pub struct TrafficBucket {
 /// Rows of `plan`, summed per bucket and protocol label (buckets without traffic are absent),
 /// ordered by bucket then label.
 ///
-/// One range scan of the primary key, summed in memory: grouping in SQL on the computed bucket
-/// would sort every row first. Memory is bounded by `points` x distinct labels.
+/// One range scan of the primary key of the coarsest table that can serve the plan (see
+/// [`finalize`]), summed in memory: grouping in SQL on the computed bucket would sort every row
+/// first. Memory is bounded by `points` x distinct labels.
 pub fn resample(conn: &Connection, plan: &BucketPlan) -> Result<Vec<TrafficBucket>> {
-    let mut stmt = conn.prepare_cached(
-        "SELECT bucket_s, proto, bytes, packets FROM timeseries WHERE bucket_s BETWEEN ?1 AND ?2",
-    )?;
+    let table = source_table(conn, plan.step_s)?;
+    let mut stmt = conn.prepare_cached(&format!(
+        "SELECT bucket_s, proto, bytes, packets FROM {table} WHERE bucket_s BETWEEN ?1 AND ?2"
+    ))?;
     let mut rows = stmt.query(rusqlite::params![plan.start_s, plan.end_s()])?;
     // Interned labels; sums per (bucket, label slot).
     let mut labels: Vec<String> = Vec::new();
@@ -150,8 +283,12 @@ pub fn resample(conn: &Connection, plan: &BucketPlan) -> Result<Vec<TrafficBucke
     Ok(out)
 }
 
-/// Total bytes and packets of the time series (on-wire lengths).
+/// Total bytes and packets of the time series (on-wire lengths): recorded at the end of the
+/// import ([`finalize`]), summed over the table before.
 pub fn traffic_totals(conn: &Connection) -> Result<(u64, u64)> {
+    if let Some(totals) = recorded_totals(conn)? {
+        return Ok(totals);
+    }
     let (bytes, packets): (Option<i64>, Option<i64>) =
         conn.query_row("SELECT sum(bytes), sum(packets) FROM timeseries", [], |r| {
             Ok((r.get(0)?, r.get(1)?))
@@ -207,6 +344,10 @@ pub fn count_rows(conn: &Connection, table: &'static str) -> Result<Option<u64>>
 
 fn unsigned(v: i64) -> u64 {
     u64::try_from(v).unwrap_or(0)
+}
+
+fn signed(v: u64) -> i64 {
+    i64::try_from(v).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]
@@ -332,5 +473,110 @@ mod tests {
         assert_eq!(count_rows(&conn, "flows").unwrap(), Some(0));
         assert!(count_rows(&conn, "chunks; DROP TABLE meta").is_err());
         assert!(count_rows(&conn, "").is_err());
+    }
+
+    /// Sparse random traffic over three days (several labels, empty stretches, hour and day
+    /// boundaries crossed).
+    fn random_series(conn: &Connection, start: i64) {
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let labels = ["dns", "tls", "http", "other_udp"];
+        let mut s = start;
+        while s < start + 3 * DAY {
+            for label in labels {
+                if next() % 3 == 0 {
+                    let bytes = i64::try_from(next() % 100_000).unwrap();
+                    insert(conn, s, label, bytes, bytes / 100 + 1);
+                }
+            }
+            s += i64::try_from(1 + next() % 90).unwrap();
+        }
+    }
+
+    #[test]
+    fn rollups_give_the_same_series_and_totals_as_the_seconds() {
+        for start in [1_700_000_123, 1_000] {
+            let conn = db();
+            random_series(&conn, start);
+            let (first, last) = traffic_bounds(&conn).unwrap().unwrap();
+            let totals = traffic_totals(&conn).unwrap();
+            let periods = [
+                (first, last),
+                (first + 4_000, first + 4_000 + 7_200),
+                (first + 37, last - 1_234),
+            ];
+            let mut before = Vec::new();
+            for (from, to) in periods {
+                for points in [1, 7, 60, 500, 2_000] {
+                    let plan = BucketPlan::new(from, to, points).unwrap();
+                    before.push((plan, resample(&conn, &plan).unwrap()));
+                }
+            }
+            // Read before the step: the one-second table.
+            assert_eq!(source_table(&conn, 3_600).unwrap(), "timeseries");
+
+            finalize(&conn).unwrap();
+            // Idempotent.
+            finalize(&conn).unwrap();
+            assert_eq!(source_table(&conn, 7_200).unwrap(), "timeseries_hour");
+            assert_eq!(source_table(&conn, 120).unwrap(), "timeseries_minute");
+            assert_eq!(source_table(&conn, 30).unwrap(), "timeseries");
+            assert_eq!(traffic_totals(&conn).unwrap(), totals);
+            let mut used = std::collections::BTreeSet::new();
+            for (plan, rows) in before {
+                used.insert(source_table(&conn, plan.step_s).unwrap());
+                assert_eq!(resample(&conn, &plan).unwrap(), rows, "{plan:?}");
+            }
+            assert_eq!(used.len(), 3, "every table is exercised: {used:?}");
+            // Minute rows hold the sums of their seconds.
+            let (minutes, sum): (i64, i64) = conn
+                .query_row(
+                    "SELECT count(*), sum(bytes) FROM timeseries_minute WHERE bucket_s % 60 = 0",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert!(minutes > 0);
+            assert_eq!(u64::try_from(sum).unwrap(), totals.0);
+        }
+    }
+
+    #[test]
+    fn rollup_reads_use_the_primary_key() {
+        let conn = db();
+        for table in ["timeseries_minute", "timeseries_hour"] {
+            let plan: Vec<String> = conn
+                .prepare(&format!(
+                    "EXPLAIN QUERY PLAN SELECT bucket_s, proto, bytes, packets FROM {table} \
+                     WHERE bucket_s BETWEEN 1 AND 2"
+                ))
+                .unwrap()
+                .query_map([], |r| r.get::<_, String>(3))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            let plan = plan.join(" | ");
+            assert!(
+                plan.contains("SEARCH") && plan.contains("PRIMARY KEY"),
+                "{plan}"
+            );
+            assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        }
+        let plan: Vec<String> = conn
+            .prepare(
+                "EXPLAIN QUERY PLAN SELECT bucket_s, proto, bytes, packets FROM timeseries \
+                 ORDER BY bucket_s, proto",
+            )
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(!plan.join(" ").contains("TEMP B-TREE"), "{plan:?}");
     }
 }

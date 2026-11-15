@@ -50,6 +50,15 @@ pub const MARKER_KEY: &str = "finalizers";
 /// A step goes after every step listed in its `after` (checked by a test); between
 /// independent steps, append at the end. The order is never alphabetical by construction.
 pub static SESSION_FINALIZERS: &[Finalizer] = &[
+    // --- core ---
+    Finalizer {
+        id: "timeseries",
+        version: 1,
+        after: &[],
+        fills: &["timeseries_minute", "timeseries_hour"],
+        reads: &["timeseries"],
+        run: crate::traffic::finalize,
+    },
     // --- analyzers: one line each, in execution order ---
     Finalizer {
         id: "dns",
@@ -77,6 +86,14 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         fills: &[],
         reads: &["http_transactions"],
         run: crate::objects::finalize,
+    },
+    Finalizer {
+        id: "http",
+        version: 1,
+        after: &[],
+        fills: &["http_transactions_fts", "http_headers_fts"],
+        reads: &["http_transactions", "http_headers"],
+        run: crate::http::finalize,
     },
     Finalizer {
         id: "network",

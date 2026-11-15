@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../api/client';
 import { useSession } from '../../api/sessionQueries';
 import { forgetSession, rememberSession } from '../../app/session';
+import { preloadChartRenderer } from '../../charts/loadRenderer';
 import { Card } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
@@ -26,6 +27,9 @@ export default function SessionLayout() {
     if (notFound) forgetSession(sessionId);
     else rememberSession(sessionId);
   }, [sessionId, notFound]);
+
+  // Most session views draw charts: their renderer is loaded once the session is shown.
+  useEffect(() => preloadChartRenderer(), []);
 
   if (notFound) {
     return (

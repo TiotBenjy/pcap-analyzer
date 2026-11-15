@@ -52,7 +52,7 @@ function mockStream() {
   return ctl;
 }
 
-const progress = (done: number): ImportEvent => ({
+const progress = (done: number): Extract<ImportEvent, { type: 'progress' }> => ({
   type: 'progress',
   bytes_done: done,
   bytes_total: 100,
@@ -63,6 +63,9 @@ const progress = (done: number): ImportEvent => ({
   rate_bps: 80 * 1024 * 1024,
   eta_s: 30,
   phase: 'reading',
+  step: null,
+  steps_done: 0,
+  steps_total: 0,
 });
 
 async function startTwoGroupImport() {
@@ -156,6 +159,27 @@ describe('Import wizard', () => {
     // Reopening shows the same live import: no second subscription to the event stream.
     expect(m.streamImportEvents).toHaveBeenCalledTimes(1);
     expect(within(reopened).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+    expect(within(reopened).getByRole('button', { name: 'Cancel import' })).toBeEnabled();
+
+    // End-of-import steps: the bar follows the steps, the label names the one running.
+    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'dns', steps_done: 2, steps_total: 8 });
+    expect(within(reopened).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
+    expect(within(reopened).getByText('Finalizing: pairing DNS answers')).toBeInTheDocument();
+    expect(within(reopened).getByText('Step 3 of 8')).toBeInTheDocument();
+    expect(within(reopened).queryByText('ring_00025_20261108.pcapng')).not.toBeInTheDocument();
+    expect(screen.getByTestId('import-indicator')).toHaveTextContent('Finalizing 3/8');
+    // The step label keeps its full text when cut; cancelling is over once reading is.
+    expect(within(reopened).getByText('Finalizing: pairing DNS answers')).toHaveAttribute(
+      'title',
+      'Finalizing: pairing DNS answers',
+    );
+    const cancel = within(reopened).getByRole('button', { name: 'Cancel import' });
+    expect(cancel).toBeDisabled();
+    expect(cancel).toHaveAttribute('title', 'Reading is over: the import can no longer be cancelled');
+    // A step unknown to this build gets the generic label.
+    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'future', steps_done: 7, steps_total: 8 });
+    expect(within(reopened).getByText('Finalizing the session')).toBeInTheDocument();
+    expect(within(reopened).getByText('Step 8 of 8')).toBeInTheDocument();
 
     stream.emit({ type: 'done', state: 'ready', packets: 9000, flows: 120, anomalies: 1, duration_s: 12 });
     stream.end();

@@ -170,7 +170,8 @@ mod tests {
                 .all(|(name, sql)| sql.starts_with("CREATE UNIQUE")
                     || name.starts_with("network_")
                     || name.starts_with("dns_pairs")
-                    || name.starts_with("server_")),
+                    || name.starts_with("server_")
+                    || name.starts_with("open_port_hosts")),
             "{during:?}"
         );
         finalize(conn).unwrap();

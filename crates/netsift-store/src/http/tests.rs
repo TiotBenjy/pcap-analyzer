@@ -559,3 +559,98 @@ fn active_filters_match_the_former_filter() {
     }
     assert!(checked > 60, "too few non-empty cases: {checked}");
 }
+
+#[test]
+fn pages_read_their_hosts_after_the_sort_with_the_same_rows() {
+    let conn = db();
+    fill(&conn);
+    // Hosts known for one end only, and a second client.
+    conn.execute_batch(
+        "INSERT INTO hosts (ip, names, category, country, first_ts, last_ts) VALUES
+             ('192.168.1.10', '[\"pc.lan\"]', 'private', NULL, 0, 1);
+         UPDATE http_transactions SET client_ip = '192.168.1.11' WHERE seq IN (1, 3);",
+    )
+    .unwrap();
+    let filters = [
+        HttpFilter::default(),
+        HttpFilter {
+            q: Some("test".to_owned()),
+            ..HttpFilter::default()
+        },
+        HttpFilter {
+            header_name: Some("host".to_owned()),
+            ..HttpFilter::default()
+        },
+    ];
+    for filter in &filters {
+        for (sort, expr) in [
+            (HttpSort::Time, "t.ts"),
+            (HttpSort::Size, "t.resp_body_len"),
+            (HttpSort::Status, "t.status_key"),
+        ] {
+            for descending in [false, true] {
+                let c = conditions(filter, true).unwrap();
+                let where_sql = c.sql();
+                // The former query: hosts joined before the sort.
+                let former = Keyset {
+                    from: ENTRY_FROM,
+                    select: ENTRY_COLUMNS,
+                    sort: expr,
+                    tiebreak: "t.id",
+                    descending,
+                    filter: where_sql.as_deref(),
+                };
+                let mut want = Vec::new();
+                let mut got = Vec::new();
+                let mut request = PageRequest::first(2);
+                loop {
+                    let page =
+                        keyset_page(&conn, &former, &c.params(), &request, HttpEntry::from_row)
+                            .unwrap();
+                    want.extend(page.items);
+                    match page.next_cursor {
+                        Some(cursor) => request.cursor = Some(cursor),
+                        None => break,
+                    }
+                }
+                let mut request = PageRequest::first(2);
+                loop {
+                    let page =
+                        transactions_page(&conn, filter, sort, descending, &request).unwrap();
+                    got.extend(page.items);
+                    match page.next_cursor {
+                        Some(cursor) => request.cursor = Some(cursor),
+                        None => break,
+                    }
+                }
+                assert_ne!(want.len(), 0);
+                assert_eq!(got, want, "{filter:?} {sort:?} {descending}");
+            }
+        }
+    }
+    // The rows of a page: one search per id, in `http_transactions` then `hosts`.
+    let mut stmt = conn
+        .prepare(&format!(
+            "EXPLAIN QUERY PLAN SELECT {ENTRY_COLUMNS} FROM json_each(?1) p \
+             JOIN http_transactions t ON t.id = p.value \
+             LEFT JOIN hosts hc ON hc.ip = t.client_ip LEFT JOIN hosts hs ON hs.ip = t.server_ip"
+        ))
+        .unwrap();
+    let plan = stmt
+        .query_map(["[3,1,2]"], |r| r.get::<_, String>(3))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        plan.contains("SEARCH t USING INTEGER PRIMARY KEY (rowid=?)"),
+        "{plan}"
+    );
+    assert!(
+        plan.lines()
+            .filter(|l| l.contains("SCAN"))
+            .all(|l| l.starts_with("SCAN p VIRTUAL TABLE")),
+        "{plan}"
+    );
+    assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+}

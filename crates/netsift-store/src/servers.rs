@@ -22,10 +22,10 @@ use crate::session::tables_added_after_import;
 pub const EVIDENCE_VIEW: &str = "server_evidence";
 
 /// Relations to read the roles from, `(evidence, roles)`: the tables filled by the step `servers`
-/// (version 2), or their source views while it has not run (a session served read-only before
-/// its steps, a failed step): slower, never empty by mistake (ADR-023).
+/// (since version 2), or their source views while it has not run (a session served read-only
+/// before its steps, a failed step): slower, never empty by mistake (ADR-023).
 pub fn role_relations(conn: &Connection) -> Result<(&'static str, &'static str)> {
-    Ok(if crate::finalize::step_done(conn, "servers")? {
+    Ok(if crate::finalize::step_done_since(conn, "servers", 2)? {
         ("server_evidence", "server_roles")
     } else {
         ("server_evidence_source", "server_roles_source")
@@ -279,7 +279,14 @@ fn materialize_roles(conn: &Connection) -> Result<()> {
              SELECT role, ip, kind, count, clients, first_ts, last_ts, example
              FROM server_evidence_source;
          DELETE FROM server_roles;
-         INSERT INTO server_roles (role, ip) SELECT role, ip FROM server_roles_source;",
+         INSERT INTO server_roles (role, ip) SELECT role, ip FROM server_roles_source;
+         DELETE FROM server_ranks;
+         INSERT INTO server_ranks (role, rank, ip, servers)
+             SELECT role,
+                    row_number() OVER (PARTITION BY role ORDER BY sum(count) DESC, ip),
+                    ip, count(*) OVER (PARTITION BY role)
+             FROM server_evidence WHERE role IS NOT NULL AND ip IS NOT NULL
+             GROUP BY role, ip;",
     )?;
     Ok(())
 }
@@ -355,8 +362,115 @@ pub struct RoleEvidence {
 /// never hides another one. Rows whose address does not parse (never written by NetSift) are
 /// skipped.
 pub fn evidence(conn: &Connection, q: &EvidenceQuery<'_>) -> Result<RoleEvidence> {
-    let categories = q.categories.map(serde_json::to_string).transpose()?;
     let limit = q.limit.clamp(1, MAX_SERVERS_PER_ROLE);
+    if q.categories.is_none() && crate::finalize::step_done(conn, "servers")? {
+        return ranked_evidence(conn, q.role, limit);
+    }
+    ranking_evidence(conn, q, limit)
+}
+
+/// Query of [`ranked_evidence`] over `server_ranks r` read with `ranks` (index choice), then
+/// the condition.
+fn ranked_sql(ranks: &str, condition: &str) -> String {
+    format!(
+        "SELECT e.role, e.ip, e.kind, e.count, e.clients, e.first_ts, e.last_ts, e.example,
+                h.names, h.category, h.country, r.servers, r.rank
+         FROM {ranks}
+         JOIN server_evidence e INDEXED BY server_evidence_role_ip
+              ON e.role = r.role AND e.ip = r.ip
+         LEFT JOIN hosts h ON h.ip = e.ip
+         WHERE {condition}"
+    )
+}
+
+/// [`evidence`] without category filter, from the ranks stored by the step `servers` (P4.8): the
+/// `limit` first ranks of every role by the rank index (of one role by primary key), their
+/// evidence by index, then sorted here (`limit` servers per role, a few rows each). No list of
+/// roles: a role added to the source views is read like the others.
+fn ranked_evidence(conn: &Connection, role: Option<&str>, limit: u32) -> Result<RoleEvidence> {
+    let mut stmt;
+    let mut query = if let Some(role) = role {
+        stmt = conn.prepare_cached(&ranked_sql(
+            "server_ranks r",
+            "r.role = ?1 AND r.rank <= ?2",
+        ))?;
+        stmt.query(params![role, limit])?
+    } else {
+        stmt = conn.prepare_cached(&ranked_sql(
+            "server_ranks r INDEXED BY server_ranks_rank",
+            "r.rank <= ?1",
+        ))?;
+        stmt.query(params![limit])?
+    };
+    let mut rows: Vec<(i64, Option<IpAddr>, u64, EvidenceEntry)> = Vec::new();
+    while let Some(r) = query.next()? {
+        let (ip, servers, entry) = evidence_row(r)?;
+        rows.push((r.get(12)?, ip, servers, entry));
+    }
+    // In the order of the ranking query: role, rank, then the evidence of each server.
+    rows.sort_by(|a, b| {
+        a.3.role
+            .cmp(&b.3.role)
+            .then(a.0.cmp(&b.0))
+            .then(b.3.count.cmp(&a.3.count))
+            .then_with(|| a.3.kind.cmp(&b.3.kind))
+            .then_with(|| a.3.example.cmp(&b.3.example))
+    });
+    Ok(collect_evidence(
+        rows.into_iter().map(|(_, ip, servers, e)| (ip, servers, e)),
+    ))
+}
+
+/// One row of the evidence queries: `(address, servers of the role, entry)`; the entry address is
+/// a placeholder, set from the first value by [`collect_evidence`].
+fn evidence_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<(Option<IpAddr>, u64, EvidenceEntry)> {
+    let ip: String = r.get(1)?;
+    Ok((
+        ip.parse::<IpAddr>().ok(),
+        unsigned(r.get(11)?).unwrap_or(0),
+        EvidenceEntry {
+            role: r.get(0)?,
+            ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            kind: r.get(2)?,
+            count: unsigned(r.get(3)?).unwrap_or(0),
+            clients: unsigned(r.get(4)?),
+            first_ts: r.get::<_, Option<i64>>(5)?.unwrap_or(0),
+            last_ts: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
+            example: r.get(7)?,
+            host: EndpointInfo {
+                names: json_strings(r.get(8)?, 8)?,
+                category: r.get(9)?,
+                country: r.get(10)?,
+            },
+        },
+    ))
+}
+
+/// Entries and totals from rows sorted by role (see [`RoleEvidence`]).
+fn collect_evidence(
+    rows: impl Iterator<Item = (Option<IpAddr>, u64, EvidenceEntry)>,
+) -> RoleEvidence {
+    let mut out = RoleEvidence::default();
+    for (ip, servers, mut entry) in rows {
+        if out
+            .totals
+            .last()
+            .is_none_or(|(role, _)| *role != entry.role)
+        {
+            out.totals.push((entry.role.clone(), servers));
+        }
+        if let Some(ip) = ip {
+            entry.ip = ip;
+            out.entries.push(entry);
+        }
+    }
+    out
+}
+
+/// [`evidence`] ranking the servers at read time: with a category filter, or before the step
+/// `servers` stored the ranks.
+fn ranking_evidence(conn: &Connection, q: &EvidenceQuery<'_>, limit: u32) -> Result<RoleEvidence> {
+    let categories = q.categories.map(serde_json::to_string).transpose()?;
     let (evidence_from, _) = role_relations(conn)?;
     let mut stmt = conn.prepare(&format!(
         "WITH e AS MATERIALIZED (
@@ -377,44 +491,10 @@ pub fn evidence(conn: &Connection, q: &EvidenceQuery<'_>) -> Result<RoleEvidence
          WHERE r.rank <= ?3
          ORDER BY e.role, r.rank, e.count DESC, e.kind, e.example"
     ))?;
-    let rows = stmt.query_map(params![q.role, categories, limit], |r| {
-        let ip: String = r.get(1)?;
-        Ok((
-            ip.parse::<IpAddr>().ok(),
-            unsigned(r.get(11)?).unwrap_or(0),
-            EvidenceEntry {
-                role: r.get(0)?,
-                ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-                kind: r.get(2)?,
-                count: unsigned(r.get(3)?).unwrap_or(0),
-                clients: unsigned(r.get(4)?),
-                first_ts: r.get::<_, Option<i64>>(5)?.unwrap_or(0),
-                last_ts: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
-                example: r.get(7)?,
-                host: EndpointInfo {
-                    names: json_strings(r.get(8)?, 8)?,
-                    category: r.get(9)?,
-                    country: r.get(10)?,
-                },
-            },
-        ))
-    })?;
-    let mut out = RoleEvidence::default();
-    for row in rows {
-        let (ip, servers, mut entry) = row?;
-        if out
-            .totals
-            .last()
-            .is_none_or(|(role, _)| *role != entry.role)
-        {
-            out.totals.push((entry.role.clone(), servers));
-        }
-        if let Some(ip) = ip {
-            entry.ip = ip;
-            out.entries.push(entry);
-        }
-    }
-    Ok(out)
+    let rows = stmt
+        .query_map(params![q.role, categories, limit], evidence_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(collect_evidence(rows.into_iter()))
 }
 
 #[cfg(test)]

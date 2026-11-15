@@ -505,7 +505,7 @@ fn cancelled_midway_keeps_what_was_read() {
 }
 
 #[test]
-fn progress_reports_reading_then_finishing_then_done() {
+fn progress_reports_reading_then_finishing_then_finalizing_then_done() {
     let tmp = TempDir::new().unwrap();
     let catalog = Catalog::open(tmp.path().join("data")).unwrap();
     let dir = tmp.path().join("chunks");
@@ -531,6 +531,29 @@ fn progress_reports_reading_then_finishing_then_done() {
     assert_eq!(done.chunks_total, files.len());
     let finishing = seen.iter().find(|p| p.phase == Phase::Finishing).unwrap();
     assert_eq!(finishing.packets, report.packets);
+    // Then the end-of-import steps, at least their end, just before `Done`.
+    let at = |phase| phases.iter().position(|p| *p == phase).unwrap();
+    assert!(at(Phase::Finishing) < at(Phase::Finalizing));
+    assert!(phases.iter().rposition(|p| *p == Phase::Finishing) < Some(at(Phase::Finalizing)));
+    let finalizing: Vec<&Progress> = seen
+        .iter()
+        .filter(|p| p.phase == Phase::Finalizing)
+        .collect();
+    for p in &finalizing {
+        let step = p.finalize.unwrap();
+        assert!(step.done <= step.total && step.total > 0, "{step:?}");
+        assert_eq!(p.packets, report.packets);
+        assert!(p.chunk.is_none());
+        assert!(p.eta().is_none());
+    }
+    let last = finalizing.last().unwrap().finalize.unwrap();
+    assert_eq!((last.done, last.step), (last.total, None));
+    assert_eq!(seen[seen.len() - 2].phase, Phase::Finalizing);
+    assert!(
+        seen.iter()
+            .filter(|p| p.phase != Phase::Finalizing)
+            .all(|p| p.finalize.is_none())
+    );
     // Monotonic counters.
     for w in seen.windows(2) {
         assert!(w[0].bytes_read <= w[1].bytes_read);

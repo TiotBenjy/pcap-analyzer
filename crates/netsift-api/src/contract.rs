@@ -191,8 +191,15 @@ pub struct ImportProgress {
     pub rate_bps: f64,
     /// Estimated remaining seconds, `null` when unknown.
     pub eta_s: Option<f64>,
-    /// `reading`, `finishing`.
+    /// `reading`, `finishing` (last rows written), `finalizing` (end-of-import steps).
     pub phase: String,
+    /// End-of-import step running (`finalizing` only): `indexes`, `timeseries`, `dns`,
+    /// `servers`, `objects`, `http`, `network`...; `null` otherwise and after the last step.
+    pub step: Option<String>,
+    /// End-of-import steps finished (`finalizing` only, else 0).
+    pub steps_done: u32,
+    /// End-of-import steps to run (`finalizing` only, else 0).
+    pub steps_total: u32,
 }
 
 /// Events of `GET /sessions/{id}/events`. The SSE event name is the `type` tag.

@@ -1,14 +1,18 @@
 import type { EChartsCoreOption } from 'echarts/core';
 import { BarChart3 } from 'lucide-react';
-import { lazy, type Ref, Suspense } from 'react';
+import { type ComponentProps, createElement, type Ref } from 'react';
 import type { ChartEvents, ChartHandle } from '../charts/EChartsRenderer';
+import { type ChartRenderer, loadedChartRenderer, useChartRendererReady } from '../charts/loadRenderer';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from './EmptyState';
 import { ErrorState } from './ErrorState';
 import { Skeleton } from './Skeleton';
 
-// ECharts is heavy: it is loaded on demand in its own chunk (see vite.config.ts manualChunks).
-const EChartsRenderer = lazy(() => import('../charts/EChartsRenderer'));
+/** The loaded renderer (rendered once `useChartRendererReady` is true). */
+function LoadedChartRenderer(props: ComponentProps<ChartRenderer>) {
+  const renderer = loadedChartRenderer();
+  return renderer === null ? null : createElement(renderer, props);
+}
 
 interface ChartProps {
   option: EChartsCoreOption;
@@ -44,6 +48,9 @@ export function Chart({
   handleRef,
 }: ChartProps) {
   const { t } = useTranslation();
+  // Loaded while the data is fetched (ECharts chunk, on demand).
+  // Only a chart with something to draw reports a failed load (error boundary).
+  const ready = useChartRendererReady(loading !== true && (error ?? null) === null && empty !== true);
   if (loading === true) return <Skeleton height={height} />;
   if (error !== undefined && error !== null) {
     return (
@@ -59,9 +66,8 @@ export function Chart({
       </div>
     );
   }
+  if (!ready) return <Skeleton height={height} />;
   return (
-    <Suspense fallback={<Skeleton height={height} />}>
-      <EChartsRenderer option={option} height={height} ariaLabel={ariaLabel} onEvents={onEvents} handleRef={handleRef} />
-    </Suspense>
+    <LoadedChartRenderer option={option} height={height} ariaLabel={ariaLabel} onEvents={onEvents} handleRef={handleRef} />
   );
 }

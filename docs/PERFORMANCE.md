@@ -1,6 +1,7 @@
 # Performance
 
-Mesures de la tâche P4.2 (`perf/large-sessions`) face aux cibles de `docs/ARCHITECTURE.md`
+Mesures des tâches P4.2 (`perf/large-sessions`) puis P4.8 (`perf/followups`, section
+« Suite P4.8 ») face aux cibles de `docs/ARCHITECTURE.md`
 (section « Performance » et règle « toute requête d'une vue < 300 ms sur 10 M paquets »).
 
 ## Outillage
@@ -34,7 +35,9 @@ BENCH_ONLY=dns ./x.sh bench queries   # une vue (nom de vue ou fragment de chemi
   et l'UI de production (`vite preview`) ; Playwright (`ui/tests/perf/overview.spec.ts`, projet `perf`)
   ouvre la vue Sources de la session dans un contexte neuf, clique sur « Overview » et chronomètre les
   réponses de `summary` et `timeseries`, puis le graphique dessiné et le résumé affiché (7 essais, clic
-  1 s après l'ouverture et clic immédiat).
+  1 s après l'ouverture et clic immédiat). Depuis P4.8, « dessiné » attend un tracé de série (chemin SVG
+  de plus de 2 000 caractères) : avant, cinq chemins quelconques suffisaient, et un graphique vide
+  (axes seuls) comptait comme dessiné.
 - **Plans** : `netsift bench sql --data-dir <dir> "<SQL>"...` donne la médiane et l'`EXPLAIN QUERY PLAN`
   d'instructions sur une session (lecture seule, `--pragma` pour essayer un réglage).
 - Rapports : `.artifacts/bench/ingest-4cpu.md`, `ingest-all.md`, `queries.md`, `ui-overview.md`.
@@ -205,32 +208,122 @@ réponses arrivaient en 225 ms. La cible de 500 ms n'est pas atteinte : les rép
 empilées de 500 points). Précharger le chunk ECharts à l'ouverture de la session a été essayé et
 retiré : moins de 30 ms de gain.
 
+## Suite P4.8 (2026-11-15, `perf/followups`)
+
+Même machine, même jeu (`captures/bench/mix-5G`, régénéré à l'identique : 8 894 735 paquets), mêmes
+commandes : `BENCH_FULL=0 ./x.sh bench ingest`, `./x.sh bench queries`, `./x.sh bench ui`. Avant :
+`918ea73` (fin de P4.2) ; après : `f13fc22`. Plans examinés avec `netsift bench sql`, rendu de l'Overview
+profilé par le profileur CPU de Chromium (CDP) et des repères posés dans la page.
+
+### Requêtes de vue
+
+Plus aucune requête au-dessus de 300 ms (4 avant). Toutes celles qui changent de plus de 10 ms :
+
+| Vue | Requête | Avant (ms) | Après (ms) | Correctif |
+|---|---|---|---|---|
+| servers | `/servers` | 588 | **7** | rang stocké (`server_ranks`) |
+| connections | `?category=public` | 478 | **4** | comptes stockés (`conversation_categories`), plan choisi par sélectivité |
+| open-ports | `?category=public` | 341 | **44** | ports par hôte stockés (`open_port_hosts`) |
+| open-ports | `/open-ports` (sans filtre) | 82 | 39 | idem |
+| http | `/http/transactions?q=news` | 337 | **132** | hôtes joints après le choix de la page |
+| connections | `/connections/stats` | 288 | 148 | un seul passage pour les deux sens |
+
+Correctifs, par effet mesuré :
+
+- **`/servers`** (`fdbf13f`) : la requête classait à chaque lecture toutes les lignes de `server_evidence`
+  (fonctions de fenêtre, index automatique sur la CTE). L'étape `servers` (version 3) stocke le rang de
+  chaque serveur dans son rôle et le nombre de serveurs du rôle (`server_ranks`, migration 0802) ; sans
+  filtre de catégorie, la vue lit les `limit` premiers rangs de tous les rôles par l'index des rangs, puis leurs
+  preuves par index. Avec un filtre de catégorie (les rangs changent), le classement à la lecture reste.
+- **`/connections?category=`** (`fdbf13f`) : le comptage sondait deux listes d'hôtes pour chacune des
+  677 000 conversations (330 ms), la page en construisait deux (140 ms). L'étape `connections` stocke le
+  nombre de conversations par paire de catégories de leurs extrémités (`conversation_categories`, 0402,
+  quelques dizaines de lignes) : le total d'un filtre de catégorie seul y est lu. Ces comptes choisissent
+  aussi le plan de la page : sondage de `hosts` par clé primaire dans l'ordre de tri quand les catégories
+  couvrent beaucoup de conversations (page en 0,3 ms pour `public`), recherche par index des conversations
+  de leurs hôtes sinon. Avec le plan unique d'avant, une catégorie rare (`multicast`) parcourait toute la
+  table pour une page vide (750 ms) ; avec le mauvais des deux nouveaux plans, 1,3 à 2,7 s.
+- **`/open-ports?category=`** (`fdbf13f`) : la page groupait tous les ports ouverts par hôte puis triait
+  (125 ms) et le comptage sondait la liste des hôtes de la catégorie (110 ms). L'étape `ports` stocke le
+  nombre de ports et la catégorie de chaque hôte (`open_port_hosts`, 0402) : la page parcourt l'index
+  `(ports, ip, category)` dans l'ordre et s'arrête à sa taille, le comptage lit l'index de catégorie. Le
+  reste (40 ms) compte les clients des ports de la page dans `flows`.
+- **`/http/transactions?q=`** (`8746c37`) : 12 000 transactions contiennent « news » ; la liste joignait
+  `hosts` pour les deux extrémités de chacune avant de trier (190 ms). La page est maintenant choisie sur
+  `http_transactions` seule, puis ses lignes sont lues avec leurs hôtes par identifiant. Restent le
+  comptage (56 ms, une recherche par clé primaire par correspondance) et le tri des correspondances.
+- **`/connections/stats`** (`4402b98`) : un seul `GROUP BY` sur `host_traffic` pour les deux sens.
+
+L'ouverture de la session importée avant ces changements (migrations 0402 et 0802, étapes `servers` v3,
+`connections` et `ports` rejouées, ADR-013 et ADR-014) a pris 2,6 s.
+
+### Fin d'import et progression
+
+| Mesure | Avant | Après |
+|---|---|---|
+| durée totale, 4 cœurs | 94,0 s | 93,8 s |
+| lecture + analyse | 49,8 s | 49,3 s |
+| fin d'import | 44,2 s, sans progression | 44,5 s, phase `finalizing` publiée |
+| étapes | index 18,8 s, DNS 12,0 s, FTS HTTP 7,8 s, réseau 2,7 s, servers 0,7 s, séries 0,4 s, objets 0,1 s | index 18,5 s, DNS 11,9 s, FTS HTTP 7,6 s, réseau 2,7 s, servers 0,9 s, connections 0,6 s, séries 0,4 s, ports 0,2 s, objets 0,1 s |
+| pic mémoire (VmHWM) | 377 Mio | 399 Mio |
+| taille de la session | 1 643 Mo | 1 651 Mo |
+
+Les trois étapes ajoutées coûtent 1 s en tout (rang des serveurs 0,2 s, comptes par catégorie 0,6 s,
+ports par hôte 0,2 s). La fin d'import publie maintenant sa progression (`0965af1`) : le writer note
+l'étape en cours et le nombre d'étapes faites (`FinalizeWatch`), le moteur les publie à chaque
+intervalle dans une phase `Phase::Finalizing` (et toujours une fois à leur fin), l'événement SSE porte
+`phase = finalizing`, `step`, `steps_done` et `steps_total`, et l'assistant d'import comme l'indicateur
+de l'en-tête affichent l'étape et « Étape n sur N » (en et fr). La durée des étapes n'a pas été réduite
+(voir les suivis).
+
+### Affichage de l'Overview (Chromium sans GPU, conteneur)
+
+Avec le critère « tracé de série dessiné » (le critère de P4.2 donnait le même jour 623 et 632 ms avant) :
+
+| Affichage de l'Overview | Avant (`918ea73`) | Chargement hors React | Après (`f13fc22`) |
+|---|---|---|---|
+| clic 1 s après l'ouverture : réponses | 142 | 136 | 134 |
+| clic 1 s après l'ouverture : graphique dessiné, résumé affiché | 635 | 325 | **298** |
+| clic immédiat : réponses | 158 | 179 | 155 |
+| clic immédiat : graphique dessiné, résumé affiché | 645 | 370 | **319** |
+
+(médianes en ms de 7 essais ; p95 après : 316 et 330 ms). Ce que le profil a montré : sur les 480 ms
+passées dans le navigateur, environ 240 ms d'attente sans calcul, puis 130 ms de `setOption` d'ECharts,
+30 ms de redimensionnement, le reste dans React et dans les requêtes de Playwright.
+
+- **Attente** (`f13fc22`) : le moteur de rendu ECharts était un composant `React.lazy` monté à l'arrivée
+  des données ; il suspendait alors, et React ne révèle un contenu suspendu qu'au moins 300 ms après
+  l'apparition de son repli (« fallback throttling »). Le moteur est maintenant chargé hors de React, au
+  repos dès qu'une session s'ouvre et au montage d'un graphique (en parallèle de ses données), puis rendu
+  directement : 635 → 325 ms.
+- **Rendu** (`f13fc22`) : la première notification du `ResizeObserver`, à la même taille, redessinait
+  toutes les séries ; les valeurs par défaut du thème étaient dessinées seules avant l'option (désormais
+  `lazyUpdate`) ; le côté de la légende est lu sur l'élément à la création : 325 → 298 ms.
+- Essayés et écartés : moins de points (250 au lieu de 500 : `setOption` inchangé, son coût est fixe sur
+  un premier rendu à froid) ; un `dataset` ECharts commun aux séries à la place d'un tableau de points
+  par série (plus rapide de 35 ms, mais les séries n'étaient plus tracées : l'ancien critère du banc le
+  comptait pourtant comme dessiné, d'où le critère plus strict).
+
+Le renderer SVG est gardé, l'aspect est inchangé (`./x.sh shots` en `en` et `fr`, relues).
+
 ## Suivis restants (chiffres de la dernière mesure)
 
-1. **Affichage de l'Overview : 616 ms** (cible 500 ms), dont environ 480 ms de rendu côté navigateur à
-   profiler (nombre de points, séries vides, rendu SVG d'ECharts, travail React) ; mesure à refaire
-   dans WebKitGTK (desktop).
-2. **Fin d'import : 44 s** sans progression : index secondaires 19 s (environ 90 index), DNS 11,5 s
-   (appariement des requêtes de groupe, `dns_pairs`, reconstruction trigram, noms d'hôtes), FTS HTTP
-   7,7 s (1,3 M en-têtes) ; une phase `finishing` détaillée dans `Progress` reste à faire (ADR-014).
-3. **Writer pendant la lecture : 43 s d'insertions + 7 s de commits** pour 5 Go : `tls_sessions`
-   (plusieurs tables par session), `conversations` (upsert avec union JSON des protocoles), `hosts`
-   (0,58 M upserts pour 79 k hôtes, 0,99 M sur 20 shards : agrégats vidés plus rarement ou fusionnés
-   entre shards avant le writer).
-4. **`/servers` : 571 ms** : la requête des preuves classe toutes les lignes de `server_evidence` par
-   rôle (fonctions de fenêtre, jointure `e`/`r` sans index) ; rang à précalculer pour le cas sans filtre
-   de catégorie, ou index temporaire.
-5. **`/connections?category=public` : 483 ms** et **`/open-ports?category=public` : 343 ms** : le
-   comptage parcourt les 677 k conversations (ou les 337 k ports) avec deux sondes par ligne ; comptes
-   par paire de catégories précalculés, ou total estimé au-delà d'un seuil (`total_estimate`).
-6. **`/http/transactions?q=news` : 343 ms** (212 avant) : le plan part maintenant de l'index trigram
-   reconstruit, puis trie les 12 k correspondances ; à comparer avec un parcours par date et sonde
-   (`+t.id IN`), et `PRAGMA mmap_size` sur les connexions de lecture (chaque requête ouvre une connexion
-   à cache vide ; risque de `SIGBUS` si le fichier change de taille sous l'application).
-7. Requêtes entre 150 et 300 ms : `/connections/stats` 286, `/connections?from=` 269, `/dns/messages?q=ab`
-   268 (recherche de moins de trois caractères par `LIKE`), `/dns/stats` 265 (compteurs par parcours de
-   `dns_messages`), `/open-ports/stats?category=public` 293, `/connections?protocol=dns` 194,
-   `/http/headers?q=curl` 200, `/tls/stats` 174, `/http/stats` 172.
-8. Non traités, sans mesure qui les justifie : double décodage (décodeur puis table de flux : 2,8 s de
+1. **Fin d'import : 44,5 s**, publiée mais pas réduite : index secondaires 18,5 s (environ 90 index, un
+   tri chacun), DNS 11,9 s (appariement des requêtes de groupe, `dns_pairs`, reconstruction trigram, noms
+   d'hôtes ; à découper avec un chronométrage par sous-étape), FTS HTTP 7,6 s (1,3 M en-têtes), réseau
+   2,7 s. Pistes : supprimer les index qu'aucune requête n'utilise, construire les index d'une table en
+   un parcours (non disponible dans SQLite), ne reconstruire que l'index trigram utile.
+2. **Writer pendant la lecture : 41 s d'insertions + 5 s de commits** : `tls_sessions` 7,4 s,
+   `conversations` 7,2 s (upsert avec union JSON des protocoles), `http_transactions` 6,3 s, `hosts` 5,9 s
+   (0,58 M upserts pour 79 k hôtes). Non traité dans P4.8.
+3. Requêtes entre 150 et 300 ms : `/open-ports/stats?category=public` 289 (comptes par (catégorie,
+   transport, port) à stocker), `/dns/messages?q=ab` 258 (recherche de moins de trois caractères par
+   `LIKE`), `/dns/stats` 251 (compteurs par parcours de `dns_messages`), `/connections?from=` 247 (sous-chaîne
+   d'adresse ou de nom : parcours), `/http/headers?q=curl` 199, `/connections?protocol=dns` 181,
+   `/open-ports?q=ssh` 181, `/tls/stats` 173, `/http/stats` 170.
+4. Affichage de l'Overview : 298 ms dans Chromium sans GPU (cible 500 ms atteinte) ; `setOption` à froid
+   (environ 90 ms, indépendant du nombre de points) reste le plus gros poste ; mesure à refaire dans
+   WebKitGTK (desktop).
+5. Non traités, sans mesure qui les justifie : double décodage (décodeur puis table de flux : 2,8 s de
    CPU pour tout l'import, 3 %), index d'offsets pour l'export d'un fichier unique, percentiles de
-   latence DNS par `OFFSET` (partie des 265 ms de `/dns/stats`), `paths()` des identifiants (58 ms).
+   latence DNS par `OFFSET` (partie des 251 ms de `/dns/stats`), `paths()` des identifiants (58 ms).

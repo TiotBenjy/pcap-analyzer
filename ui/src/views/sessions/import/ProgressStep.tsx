@@ -1,17 +1,21 @@
 import { useNavigate } from '@tanstack/react-router';
 import { CircleAlert, CircleCheck, TriangleAlert, Unplug } from 'lucide-react';
 import type { ReactNode } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import {
   cancelTrackedImport,
   closeImportWizard,
-  importFraction,
   isActive,
+  isFinalizing,
+  progressFraction,
+  stepNumber,
   type TrackedImport,
   trackImport,
 } from '../../../app/importTracker';
 import { Button } from '../../../components/Button';
 import { ErrorNote } from '../../../components/ErrorNote';
+import { en } from '../../../i18n/en';
 import { colon, formatCount, formatDuration, formatPercent, formatRate } from '../../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
 import { SessionStateBadge } from '../SessionStateBadge';
@@ -23,8 +27,23 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
   const navigate = useNavigate();
   const active = isActive(imp);
   const p = imp.progress;
-  const fraction = imp.status === 'done' ? 1 : importFraction(p?.bytes_done ?? 0, p?.bytes_total ?? 0);
-  const percent = formatPercent(fraction, 0, i18n.language);
+  const fraction = imp.status === 'done' ? 1 : progressFraction(p);
+  const finalizing = active && p !== null && isFinalizing(p);
+  const percent =
+    finalizing && p !== null
+      ? t('views.import.stepOf', { n: stepNumber(p), total: p.steps_total })
+      : formatPercent(fraction, 0, i18n.language);
+
+  // Once reading is over, nothing listens to the cancel request any more: the import ends.
+  const readingOver = p !== null && (p.phase === 'finishing' || p.phase === 'finalizing');
+  const label =
+    p === null
+      ? t('views.import.waiting')
+      : finalizing
+        ? stepLabel(t, p.step)
+        : readingOver
+          ? t('views.import.finishing')
+          : t('views.import.chunk', { n: Math.min(p.chunk_index + 1, p.chunk_count), total: p.chunk_count });
 
   const openSession = () => {
     const sessionId = imp.sessionId;
@@ -39,7 +58,8 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
         <Button onClick={closeImportWizard}>{t('views.import.hide')}</Button>
         <Button
           variant="danger"
-          disabled={imp.status === 'cancelling'}
+          disabled={imp.status === 'cancelling' || readingOver}
+          {...(readingOver ? { title: t('views.import.cancelUnavailable') } : {})}
           onClick={() => {
             void cancelTrackedImport();
           }}
@@ -82,12 +102,8 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
 
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex min-w-0 items-center justify-between gap-2 text-meta text-muted">
-            <span className="min-w-0 truncate">
-              {p === null
-                ? t('views.import.waiting')
-                : p.phase === 'finishing'
-                  ? t('views.import.finishing')
-                  : t('views.import.chunk', { n: Math.min(p.chunk_index + 1, p.chunk_count), total: p.chunk_count })}
+            <span data-testid="truncatable" title={label} className="min-w-0 truncate">
+              {label}
             </span>
             <span className="num shrink-0">{percent}</span>
           </div>
@@ -101,7 +117,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
           >
             <div className="h-full rounded-full bg-accent" style={{ width: `${fraction * 100}%` }} />
           </div>
-          {p !== null && p.chunk_name !== '' && (
+          {p !== null && p.chunk_name !== '' && !finalizing && (
             <span data-testid="truncatable" title={p.chunk_name} className="truncate font-mono text-meta text-muted">
               {p.chunk_name}
             </span>
@@ -154,6 +170,15 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
       </div>
     </WizardDialog>
   );
+}
+
+type StepKey = keyof (typeof en)['views']['import']['steps'];
+
+/** Label of an end-of-import step; unknown ids (a newer backend) get the generic label. */
+function stepLabel(t: TFunction, step: string | null): string {
+  return step !== null && Object.hasOwn(en.views.import.steps, step)
+    ? t('views.import.finalizingStep', { step: t(`views.import.steps.${step as StepKey}`) })
+    : t('views.import.finalizing');
 }
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {

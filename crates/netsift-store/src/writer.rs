@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError, sync_channel};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -115,11 +116,28 @@ impl StoreSender {
     }
 }
 
+/// Progress of the end-of-import steps run by the writer once its last record is written
+/// (ADR-014), readable from another thread while [`StoreWriter::finish`] blocks.
+#[derive(Debug, Clone, Default)]
+pub struct FinalizeWatch(Arc<Mutex<Option<crate::finalize::StepProgress>>>);
+
+impl FinalizeWatch {
+    /// Latest progress; `None` until the steps start.
+    pub fn get(&self) -> Option<crate::finalize::StepProgress> {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn set(&self, progress: crate::finalize::StepProgress) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(progress);
+    }
+}
+
 /// Owner of the writer thread.
 #[derive(Debug)]
 pub struct StoreWriter {
     sender: StoreSender,
     handle: JoinHandle<Result<WriterStats>>,
+    watch: FinalizeWatch,
 }
 
 impl StoreWriter {
@@ -127,14 +145,22 @@ impl StoreWriter {
     pub fn spawn(session: Session, config: WriterConfig) -> Result<Self> {
         let conn = session.into_conn();
         let (tx, rx) = sync_channel(config.channel_capacity.max(1));
+        let watch = FinalizeWatch::default();
+        let published = watch.clone();
         let handle = std::thread::Builder::new()
             .name("netsift-store-writer".into())
-            .spawn(move || run(conn, &rx, config))
+            .spawn(move || run(conn, &rx, config, &published))
             .map_err(|e| StoreError::io("<writer thread>", e))?;
         Ok(Self {
             sender: StoreSender { tx },
             handle,
+            watch,
         })
+    }
+
+    /// Progress of the end-of-import steps, published by the writer thread while they run.
+    pub fn finalize_watch(&self) -> FinalizeWatch {
+        self.watch.clone()
     }
 
     /// A new producer handle.
@@ -226,7 +252,12 @@ impl Batch<'_> {
 /// Prepared statements kept per connection: core tables plus every analyzer's upserts.
 const STATEMENT_CACHE: usize = 128;
 
-fn run(conn: Connection, rx: &Receiver<Msg>, config: WriterConfig) -> Result<WriterStats> {
+fn run(
+    conn: Connection,
+    rx: &Receiver<Msg>,
+    config: WriterConfig,
+    watch: &FinalizeWatch,
+) -> Result<WriterStats> {
     conn.set_prepared_statement_cache_capacity(STATEMENT_CACHE);
     let mut batch = Batch {
         conn: &conn,
@@ -250,12 +281,13 @@ fn run(conn: Connection, rx: &Receiver<Msg>, config: WriterConfig) -> Result<Wri
     conn.pragma_update(None, "threads", 4)?;
     // A failed end-of-import step does not fail the import (ADR-014): it is reported in the
     // statistics, its marker stays absent and the next opening of the session runs it again.
-    batch.stats.finalize = crate::finalize::run_finalizers(&conn).unwrap_or_else(|e| {
-        crate::finalize::FinalizeReport {
-            failed: vec![("finalizers", e.to_string())],
-            ..crate::finalize::FinalizeReport::default()
-        }
-    });
+    batch.stats.finalize =
+        crate::finalize::run_finalizers_with_progress(&conn, &mut |p| watch.set(p)).unwrap_or_else(
+            |e| crate::finalize::FinalizeReport {
+                failed: vec![("finalizers", e.to_string())],
+                ..crate::finalize::FinalizeReport::default()
+            },
+        );
     // Planner statistics for the read side, then fold the WAL back into the main file
     // (best effort: concurrent readers may prevent a full checkpoint).
     conn.execute_batch("PRAGMA optimize")?;

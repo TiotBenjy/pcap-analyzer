@@ -10,8 +10,9 @@
 //! tries again.
 //!
 //! Cost: each step is set-based SQL over its own tables (the DNS one is linear in the
-//! transactions, plus one indexed lookup per group query). No progress is reported while they
-//! run: the import stays in its `finishing` phase until they end.
+//! transactions, plus one indexed lookup per group query). [`run_finalizers_with_progress`]
+//! reports the step running and the number of steps done: the writer publishes it, and the
+//! import reports a `finalizing` phase while the steps run (P4.8).
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -79,11 +80,11 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     },
     Finalizer {
         id: "servers",
-        // 2: materializes the roles (0801).
-        version: 2,
+        // 2: materializes the roles (0801). 3: ranks the servers of each role (0802).
+        version: 3,
         // After `dns`: when a host reaches MAX_HOST_NAMES, DNS names are kept first, always.
         after: &["indexes", "dns"],
-        fills: &["server_evidence", "server_roles"],
+        fills: &["server_evidence", "server_roles", "server_ranks"],
         reads: &["dhcp_messages"],
         run: crate::servers::finalize,
     },
@@ -123,7 +124,36 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         reads: &["conversations", "hosts", "host_traffic"],
         run: crate::network::finalize,
     },
+    Finalizer {
+        id: "connections",
+        version: 1,
+        // Reads by primary key only; after `indexes` because the category filter it serves
+        // looks rare categories up in `conversations_dst_ip` (deferred).
+        after: &["indexes"],
+        fills: &["conversation_categories"],
+        reads: &["conversations", "hosts"],
+        run: crate::connections::finalize,
+    },
+    Finalizer {
+        id: "ports",
+        version: 1,
+        after: &[],
+        fills: &["open_port_hosts"],
+        reads: &["open_ports", "hosts"],
+        run: crate::ports::finalize,
+    },
 ];
+
+/// Progress of [`run_finalizers_with_progress`], reported before each step and once at the end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StepProgress {
+    /// Steps finished (run, failed or skipped) out of `total`.
+    pub done: usize,
+    /// Steps that were pending when the run started.
+    pub total: usize,
+    /// Identifier of the step running ([`Finalizer::id`]); `None` once every step is finished.
+    pub step: Option<&'static str>,
+}
 
 /// Outcome of [`run_finalizers`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -169,6 +199,16 @@ pub fn step_done(conn: &Connection, id: &str) -> Result<bool> {
     Ok(finalizers_done(conn)?.contains(&step.marker()))
 }
 
+/// True when step `id` is recorded as done in version `version` or a later one: for the readers
+/// of a table that a later version of the step still fills the same way (the roles of `servers`
+/// since version 2), so that a session waiting for the replay of a newer version keeps reading it.
+pub fn step_done_since(conn: &Connection, id: &str, version: u32) -> Result<bool> {
+    Ok(finalizers_done(conn)?.iter().any(|m| {
+        m.split_once(':')
+            .is_some_and(|(step, v)| step == id && v.parse::<u32>().is_ok_and(|v| v >= version))
+    }))
+}
+
 /// True when every registered step is recorded as done.
 pub fn finalizers_complete(conn: &Connection) -> Result<bool> {
     let done = finalizers_done(conn)?;
@@ -182,12 +222,27 @@ pub fn finalizers_complete(conn: &Connection) -> Result<bool> {
 /// reported in the result; only an error outside the steps (reading `meta`) is returned.
 /// Requires a writable connection outside any transaction.
 pub fn run_finalizers(conn: &Connection) -> Result<FinalizeReport> {
-    run_with(conn, SESSION_FINALIZERS)
+    run_with(conn, SESSION_FINALIZERS, &mut |_| {})
 }
 
-pub(crate) fn run_with(conn: &Connection, steps: &[Finalizer]) -> Result<FinalizeReport> {
+/// [`run_finalizers`], calling `progress` before each pending step and once after the last one
+/// (`step` = `None`, `done` = `total`).
+pub fn run_finalizers_with_progress(
+    conn: &Connection,
+    progress: &mut dyn FnMut(StepProgress),
+) -> Result<FinalizeReport> {
+    run_with(conn, SESSION_FINALIZERS, progress)
+}
+
+pub(crate) fn run_with(
+    conn: &Connection,
+    steps: &[Finalizer],
+    progress: &mut dyn FnMut(StepProgress),
+) -> Result<FinalizeReport> {
     let mut done = finalizers_done(conn)?;
     let mut report = FinalizeReport::default();
+    let total = steps.iter().filter(|s| !done.contains(&s.marker())).count();
+    let mut finished = 0;
     for step in steps {
         let marker = step.marker();
         if done.contains(&marker) {
@@ -200,8 +255,14 @@ pub(crate) fn run_with(conn: &Connection, steps: &[Finalizer]) -> Result<Finaliz
         });
         if !ready {
             report.skipped.push(step.id);
+            finished += 1;
             continue;
         }
+        progress(StepProgress {
+            done: finished,
+            total,
+            step: Some(step.id),
+        });
         // Older versions of the same step are replaced by the new marker.
         let mut next: Vec<String> = done
             .iter()
@@ -219,7 +280,13 @@ pub(crate) fn run_with(conn: &Connection, steps: &[Finalizer]) -> Result<Finaliz
             }
             Err(e) => report.failed.push((step.id, e.to_string())),
         }
+        finished += 1;
     }
+    progress(StepProgress {
+        done: finished,
+        total,
+        step: None,
+    });
     Ok(report)
 }
 
@@ -376,8 +443,19 @@ mod tests {
                 run: ok,
             },
         ];
-        let report = run_with(conn, &steps).unwrap();
+        let mut seen = Vec::new();
+        let report = run_with(conn, &steps, &mut |p| seen.push(p)).unwrap();
         assert_eq!(report.ran, vec!["first"]);
+        // Progress: before each step run, skipped steps counted as finished, then the end.
+        let p = |done, step| StepProgress {
+            done,
+            total: 3,
+            step,
+        };
+        assert_eq!(
+            seen,
+            vec![p(0, Some("first")), p(1, Some("broken")), p(3, None)]
+        );
         assert_eq!(report.failed.len(), 1);
         assert_eq!(report.failed[0].0, "broken");
         assert_eq!(report.skipped, vec!["dependent"]);
@@ -393,8 +471,12 @@ mod tests {
             },
             steps[2],
         ];
-        let report = run_with(conn, &fixed).unwrap();
+        let mut seen = Vec::new();
+        let report = run_with(conn, &fixed, &mut |p| seen.push(p)).unwrap();
         assert_eq!(report.ran, vec!["broken", "dependent"]);
+        // Only the pending steps count.
+        assert_eq!(seen.first().map(|p| (p.done, p.total)), Some((0, 2)));
+        assert_eq!(seen.last().map(|p| (p.done, p.step)), Some((2, None)));
         assert_eq!(meta(conn, "ok.count").as_deref(), Some("3"));
         assert_eq!(
             meta(conn, MARKER_KEY).as_deref(),
@@ -440,6 +522,61 @@ mod tests {
     }
 
     #[test]
+    fn a_step_is_done_since_a_version_when_any_later_version_is_recorded() {
+        let (_dir, session) = session();
+        let conn = session.conn();
+        let set = |markers: &str| {
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?1, ?2) \
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![MARKER_KEY, markers],
+            )
+            .unwrap();
+        };
+        assert!(!step_done_since(conn, "servers", 2).unwrap(), "no marker");
+        set("dns:1,servers:2,objects:1");
+        assert!(step_done_since(conn, "servers", 2).unwrap());
+        assert!(step_done_since(conn, "servers", 1).unwrap());
+        assert!(!step_done_since(conn, "servers", 3).unwrap());
+        assert!(
+            !step_done(conn, "servers").unwrap(),
+            "the current version is 3"
+        );
+        set("servers:10");
+        assert!(
+            step_done_since(conn, "servers", 3).unwrap(),
+            "compared as numbers"
+        );
+        // Another step with the same prefix, a malformed version: not this step.
+        set("servers_extra:5,servers:x,servers");
+        assert!(!step_done_since(conn, "servers", 1).unwrap());
+        assert!(!step_done_since(conn, "nope", 0).unwrap());
+    }
+
+    #[test]
+    fn the_writer_publishes_the_progress_of_its_steps() {
+        use crate::writer::{StoreWriter, WriterConfig};
+        let dir = tempfile::tempdir().unwrap();
+        let writer = StoreWriter::spawn(
+            Session::open(dir.path(), OpenMode::Import).unwrap(),
+            WriterConfig::default(),
+        )
+        .unwrap();
+        let watch = writer.finalize_watch();
+        assert_eq!(watch.get(), None, "nothing before the end of the records");
+        writer.finish().unwrap();
+        let n = SESSION_FINALIZERS.len();
+        assert_eq!(
+            watch.get(),
+            Some(StepProgress {
+                done: n,
+                total: n,
+                step: None
+            })
+        );
+    }
+
+    #[test]
     fn a_new_version_replays_the_step() {
         let (_dir, session) = session();
         let conn = session.conn();
@@ -451,12 +588,12 @@ mod tests {
             reads: &[],
             run: ok,
         }];
-        run_with(conn, &v1).unwrap();
+        run_with(conn, &v1, &mut |_| {}).unwrap();
         let v2 = [Finalizer {
             version: 2,
             ..v1[0]
         }];
-        assert_eq!(run_with(conn, &v2).unwrap().ran, vec!["step"]);
+        assert_eq!(run_with(conn, &v2, &mut |_| {}).unwrap().ran, vec!["step"]);
         assert_eq!(meta(conn, MARKER_KEY).as_deref(), Some("step:2"));
     }
 }

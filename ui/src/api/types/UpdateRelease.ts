@@ -6,6 +6,17 @@ import type { UpdateInstaller } from "./UpdateInstaller";
  */
 export type UpdateRelease = { version: string, 
 /**
+ * Release name on GitHub as plain text (control, bidirectional formatting and invisible
+ * characters dropped, one line, at most 120 characters): `NetSift vX.Y.Z` or
+ * `NetSift vX.Y.Z — <title>`.
+ */
+name: string | null, 
+/**
+ * Short summary of the release: the part of `name` after the version, or the whole name
+ * when it was edited by hand without that prefix; none for the default name.
+ */
+title: string | null, 
+/**
  * Release notes as plain text (never to be rendered as HTML or Markdown), cut past 8 000
  * characters.
  */

@@ -1081,3 +1081,34 @@ acceptée : la remplacer par une nouvelle qui la référence.
     installé dans un vrai bundle et les noms d'assets de Tauri (`_amd64`, `.x86_64`, `_x64-setup.exe`,
     `_x64_en-US.msi`, `_universal.dmg`) ;
   - les tests utilisent un serveur HTTP local.
+
+## ADR-028 — Titre de release : message du tag, nom de la release, bandeau de mise à jour
+
+- Contexte : retour de l'utilisateur sur le bandeau de mise à jour d'ADR-027 (0.1.0 voyant 0.1.1) :
+  l'extrait de deux lignes des notes git-cliff (entrées de commit, lien de comparaison, mentions
+  d'installation) n'apprend rien. Il veut un titre de release, affiché à la place de cet extrait.
+  ADR-027 reste valable pour tout le reste (vérification, notes en texte brut dans le dialogue,
+  téléchargement).
+- Décision :
+  - **source** : `scripts/release.sh X.Y.Z --title "…"` ; le titre est le corps du message du tag
+    annoté (`NetSift vX.Y.Z`, ligne vide, titre ; `--cleanup=whitespace` pour garder un `#` initial).
+    Une ligne d'UTF-8, 80 caractères au plus, sans caractère de contrôle (C0, DEL, C1, séparateurs
+    U+2028-U+2029), invisible (U+180E, U+200B, U+2060-U+2064, U+FEFF) ni de mise en forme
+    bidirectionnelle (dont U+061C) ; refusé avant toute action. Le tag est déjà le document signé de la
+    version : pas de fichier en plus dans le dépôt, et le titre ne peut pas diverger du tag poussé ;
+  - **nom de la release** : `release.yml` (job `create`) récupère l'objet tag (`git fetch --force`,
+    actions/checkout ne laisse qu'une référence légère pour un événement de tag) et nomme la release
+    `NetSift vX.Y.Z — titre`, `NetSift vX.Y.Z` sans titre (`scripts/ci/release-name.sh`, testé par
+    `scripts/tests/release.sh`). Titre invalide ou tag léger : nom par défaut et avertissement,
+    jamais d'échec de la publication (objet tag non récupéré ou script en échec compris) ;
+  - **application** : `UpdateRelease` expose `name` (texte brut, une ligne, 120 caractères au plus ;
+    ces caractères y sont retirés, comme dans les notes) et `title` : ce qui suit la version
+    dans `NetSift vX.Y.Z <séparateur> titre`, le nom entier s'il a été écrit à la main sans ce
+    préfixe, rien pour le nom par défaut ou le seul tag. L'application lit le nom de la release, pas
+    le tag : un titre corrigé dans l'interface GitHub (« Edit release ») s'affiche à la vérification
+    suivante, y compris pour les releases publiées avant cette ADR. Le bandeau montre la version puis
+    le titre, sans extrait des notes ; « Paramètres > À propos » montre aussi le titre ; les notes
+    complètes restent dans le dialogue « Notes de version ». Texte brut partout, jamais de HTML.
+- Conséquences : une release sans titre affiche seulement la version ; le titre fait partie de la
+  publication (à choisir avec l'accord de l'utilisateur, comme le numéro de version). Le message du
+  tag n'est jamais modifié après coup (tag publié) : seul le nom de la release peut l'être.

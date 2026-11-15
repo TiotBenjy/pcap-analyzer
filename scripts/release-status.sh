@@ -128,6 +128,7 @@ fi
 api "/releases/tags/$tag"
 if [[ "$API_STATUS" == 200 ]]; then
   jq -r '"Release : \(if .draft then "brouillon" else "publiée" end)\(if .prerelease then ", prerelease" else "" end)  \(.html_url)"' "$TMP/body"
+  jq -r '"  nom   : \(.name // "")"' "$TMP/body"
   jq -e '.draft | not' "$TMP/body" >/dev/null || status=1
   jq -r '.assets[] | "  fichier : \(.name) (\(.size) octets)"' "$TMP/body"
   mapfile -t assets < <(jq -r '.assets[].name' "$TMP/body")

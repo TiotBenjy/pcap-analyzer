@@ -7,10 +7,14 @@ import type { UpdateState } from '../api/types/UpdateState';
 
 export const DEB = 'NetSift_0.2.0_amd64.deb';
 export const APPIMAGE = 'NetSift_0.2.0_amd64.AppImage';
+/** Release name of `release.yml` with a title (markup that must stay text). */
+const RELEASE_NAME = 'NetSift v0.2.0 — <b>Faster</b> imports';
 
 export function release(extra: Partial<UpdateRelease> = {}): UpdateRelease {
   return {
     version: '0.2.0',
+    name: RELEASE_NAME,
+    title: '<b>Faster</b> imports',
     notes: '## Fixes\n\n- <b>Faster</b> import\n- Second line',
     notes_truncated: false,
     html_url: 'https://github.com/TiotBenjy/pcap-analyzer/releases/tag/v0.2.0',

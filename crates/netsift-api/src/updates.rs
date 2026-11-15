@@ -116,6 +116,13 @@ pub enum UpdateCheckStatus {
 #[ts(export)]
 pub struct UpdateRelease {
     pub version: String,
+    /// Release name on GitHub as plain text (control, bidirectional formatting and invisible
+    /// characters dropped, one line, at most 120 characters): `NetSift vX.Y.Z` or
+    /// `NetSift vX.Y.Z — <title>`.
+    pub name: Option<String>,
+    /// Short summary of the release: the part of `name` after the version, or the whole name
+    /// when it was edited by hand without that prefix; none for the default name.
+    pub title: Option<String>,
     /// Release notes as plain text (never to be rendered as HTML or Markdown), cut past 8 000
     /// characters.
     pub notes: String,
@@ -376,6 +383,10 @@ fn evaluate(
     let prefix = source.download_prefix();
     let installers = release::installers(&release.assets, platform, &prefix);
     let (notes, notes_truncated) = release::plain_notes(release.body.as_deref());
+    let name = release::plain_name(release.name.as_deref());
+    let title = name
+        .as_deref()
+        .and_then(|n| release::release_title(n, &release.tag_name));
     checked.sums_url = release
         .assets
         .iter()
@@ -385,6 +396,8 @@ fn evaluate(
     checked.info.status = UpdateCheckStatus::Available;
     checked.info.release = Some(UpdateRelease {
         version: version.to_string(),
+        name,
+        title,
         notes,
         notes_truncated,
         html_url: release

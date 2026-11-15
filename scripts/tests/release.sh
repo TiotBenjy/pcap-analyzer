@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for scripts/release.sh (sourced, main is not run): SemVer ordering, release kind (bump or
 # publication of the current version), GitHub remote parsing, workspace version rewrite, argument
-# validation, the guards of a rerun (release already merged on main, tag on origin), and the
+# validation, release titles (validation, tag message written and printed, release name read back
+# by release.yml), the guards of a rerun (release already merged on main, tag on origin), and the
 # version bump itself (apply_version) on a throwaway repository: Cargo.lock,
 # fuzz/Cargo.lock and the UI lockfile follow the new version. That last part needs cargo and npm
 # (gate container, CI runners) and is skipped without them; it never touches this repository.
@@ -68,9 +69,55 @@ check "rejects non-SemVer" not quiet bash "$ROOT/scripts/release.sh" 1.2 --dry-r
 check "rejects unknown option" not quiet bash "$ROOT/scripts/release.sh" 1.2.3 --force
 check "--no-push no longer exists" not quiet bash "$ROOT/scripts/release.sh" 1.2.3 --no-push
 check "rejects missing version" not quiet bash "$ROOT/scripts/release.sh" --dry-run
+check "--title needs a value" not quiet bash "$ROOT/scripts/release.sh" 1.2.3 --dry-run --title
+# Refused before the preconditions (which fail anyway in a worktree): the message is the title's.
+# shellcheck disable=SC2329 # invoked by check
+title_refused() {
+  local out
+  out="$(bash "$ROOT/scripts/release.sh" 1.2.3 --dry-run --title "$1" 2>&1)" && return 1
+  [[ "$out" == "release: --title : "* ]]
+}
+check "rejects a multi-line title" title_refused $'Faster\nimports'
+check "rejects a blank title" title_refused '   '
+check "rejects a too long title" title_refused "$(printf 'x%.0s' {1..81})"
+
+# --- Release titles ---------------------------------------------------------------------
+# shellcheck disable=SC2329 # invoked by check
+title_ok() { test -z "$(release_title_error "$1")"; }
+check "plain title" title_ok "Faster imports, DNS server map"
+check "accented title, dashes and quotes" title_ok "Import plus rapide — carte « DNS » l'été"
+check "title starting with #" title_ok "#42 fixed"
+check "80 characters (multibyte)" title_ok "$(printf 'é%.0s' {1..80})"
+check "81 characters (multibyte)" not title_ok "$(printf 'é%.0s' {1..81})"
+check "empty title" not title_ok ""
+check "line feed" not title_ok $'a\nb'
+check "carriage return" not title_ok $'a\rb'
+check "tab" not title_ok $'a\tb'
+check "escape" not title_ok $'a\e[31mb'
+check "DEL" not title_ok $'a\x7fb'
+check "C1 control (NEL)" not title_ok $'a\xc2\x85b'
+check "right-to-left override" not title_ok $'a\xe2\x80\xaeb'
+check "right-to-left mark" not title_ok $'a\xe2\x80\x8fb'
+check "first strong isolate" not title_ok $'a\xe2\x81\xa8b'
+check "invalid UTF-8" not title_ok $'a\xffb'
+check "line separator U+2028" not title_ok $'a\xe2\x80\xa8b'
+check "paragraph separator U+2029" not title_ok $'a\xe2\x80\xa9b'
+check "Arabic letter mark U+061C" not title_ok $'a\xd8\x9cb'
+check "zero-width space U+200B" not title_ok $'a\xe2\x80\x8bb'
+check "byte order mark U+FEFF" not title_ok $'\xef\xbb\xbfab'
+check "word joiner U+2060" not title_ok $'a\xe2\x81\xa0b'
+check "Mongolian vowel separator U+180E" not title_ok $'a\xe1\xa0\x8eb'
+check "zero-width joiner U+200D is kept" title_ok $'a\xe2\x80\x8db'
+check "en dash U+2013 and ellipsis U+2026 are kept" title_ok "a – b…"
+check "trim" test "$(trim $'  \t -n title  ')" = "-n title"
+check "shell_quote round trip" test "$(eval "printf '%s' $(shell_quote "It's \"fast\" \$HOME \\ \`x\`")")" = "It's \"fast\" \$HOME \\ \`x\`"
+check "tag command without title" test "$(tag_command /r v1.0.0 main)" = "git -C '/r' tag -a --cleanup=whitespace v1.0.0 -m \"NetSift v1.0.0\" main"
+check "tag command with title" test "$(tag_command /r v1.0.0 abc "It's fast")" = \
+  "git -C '/r' tag -a --cleanup=whitespace v1.0.0 -m \"NetSift v1.0.0\" -m 'It'\\''s fast' abc"
 
 # --- Rerun after a partial failure: release already merged, tag on origin ---------------
-GITREPO="$TMP/git"
+# A space and a quote in the path: the printed commands quote it.
+GITREPO="$TMP/git repo's"
 gc() { git -C "$GITREPO" -c user.name=t -c user.email=t@example.invalid "$@"; }
 git init -q -b main "$GITREPO"
 gc commit -q --allow-empty -m "feat: start"
@@ -85,6 +132,38 @@ gc commit -q --allow-empty -m "chore(release): v0.2.0"
 check "release commit without merge commit" test "$(release_merged "$GITREPO" 0.2.0)" = "$(gc rev-parse main)"
 gc commit -q --allow-empty -m "chore(release): v0.3.0-rc.1"
 check "a prerelease is not its release" test -z "$(release_merged "$GITREPO" 0.3.0)"
+
+# Tag message written by release.sh (printed recovery command, run as is), name read back by
+# release.yml (scripts/ci/release-name.sh).
+tagged() { # <tag> <title or empty> : runs the printed command in GITREPO
+  (export GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
+   eval "$(tag_command "$GITREPO" "$1" main "$2")") >/dev/null 2>&1
+}
+name_of() { (cd "$GITREPO" && bash "$ROOT/scripts/ci/release-name.sh" "$1" 2>/dev/null); }
+HOSTILE="It's \"fast\" \$HOME — #1 \\ \`x\`"
+tagged v9.0.0 "Faster imports"
+check "release name with title" test "$(name_of v9.0.0)" = "NetSift v9.0.0 — Faster imports"
+check "tag message: subject, blank line, title" test \
+  "$(gc for-each-ref --format='%(contents)' refs/tags/v9.0.0)" = $'NetSift v9.0.0\n\nFaster imports'
+tagged v9.0.1 ""
+check "release name without title" test "$(name_of v9.0.1)" = "NetSift v9.0.1"
+tagged v9.0.2 "$HOSTILE"
+check "title with quotes, \$, # and backslash survives the printed command" \
+  test "$(name_of v9.0.2)" = "NetSift v9.0.2 — $HOSTILE"
+tagged v9.0.5 "#42 fixed"
+check "title starting with # survives the tag message" test "$(name_of v9.0.5)" = "NetSift v9.0.5 — #42 fixed"
+gc tag -a -m "NetSift v9.0.3" -m "$(printf 'x%.0s' {1..81})" v9.0.3 main
+check "invalid title in the tag: default name" test "$(name_of v9.0.3)" = "NetSift v9.0.3"
+gc commit -q --allow-empty -m "feat: subject" -m "Body that is not a title"
+gc tag v9.0.4 main
+check "lightweight tag: no title from the commit message" test "$(name_of v9.0.4)" = "NetSift v9.0.4"
+check "missing tag fails" not quiet name_of v9.9.9
+warnings_of() { (cd "$GITREPO" && bash "$ROOT/scripts/ci/release-name.sh" "$1" 2>&1 >/dev/null); }
+check "invalid title in the tag: a workflow warning" test "$(warnings_of v9.0.3)" \
+  = "::warning::titre du tag v9.0.3 ignoré : titre trop long (81 caractères, 80 au plus)"
+check "lightweight tag: a workflow warning" test "$(warnings_of v9.0.4)" \
+  = "::warning::v9.0.4 est un tag léger : release sans titre"
+check "valid title: no warning" test -z "$(warnings_of v9.0.0)"
 
 git init -q --bare "$TMP/origin.git"
 gc remote add origin "$TMP/origin.git"

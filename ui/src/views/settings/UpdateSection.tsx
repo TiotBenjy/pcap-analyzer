@@ -8,8 +8,8 @@ import { DownloadStatus, ReleaseNotesDialog, ReleasePageLink } from '../../updat
 import { useCheckUpdates, useUpdates } from '../../updates/queries';
 
 // Settings > About: "Check for updates" (request made by the backend, ADR-025), result inline,
-// and for a newer release its notes and the download of the installer (desktop) or the release
-// page (web dev mode).
+// and for a newer release its title, its notes and the download of the installer (desktop) or
+// the release page (web dev mode).
 
 interface UpdateSectionProps {
   readOnly: boolean;
@@ -65,6 +65,11 @@ export function UpdateSection({ readOnly }: UpdateSectionProps) {
         </Button>
         {status}
       </div>
+      {release !== null && release.title !== null && (
+        <p className="break-words text-muted [overflow-wrap:anywhere]" data-testid="update-title">
+          {release.title}
+        </p>
+      )}
       {release !== null && <ReleaseActions release={release} canDownload={updates.data?.can_download ?? false} />}
       {readOnly && <p className="break-words text-meta text-muted">{t('views.updates.readOnly')}</p>}
       <p className="break-words text-meta text-muted">{t('views.updates.checkHost')}</p>

@@ -74,37 +74,3 @@ export function useInstallerDownload(canDownload: boolean): InstallerDownload {
     error,
   };
 }
-
-/** One entry of the notes without its Markdown: list marker, emphasis, code marks, links. */
-function plainEntry(line: string): string {
-  return (
-    line
-      .replace(/^[-*+]\s+/, '')
-      // Commit links of git-cliff: ([abc1234](https://...)).
-      .replace(/\(\[[0-9a-f]{7,40}\]\([^)]*\)\)/gi, '')
-      // Other links: their text.
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-      .replace(/[*`]/g, '')
-      // Underscores used as emphasis, not inside words (x86_64).
-      .replace(/(^|[^\p{L}\p{N}])_+/gu, '$1')
-      .replace(/_+(?=[^\p{L}\p{N}]|$)/gu, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-  );
-}
-
-/**
- * Two-line excerpt of the notes (release notes of git-cliff, Markdown): headings and tables
- * skipped, Markdown marks dropped, entries joined with "; ", cut at `max` characters. Still
- * plain text.
- */
-export function notesExcerpt(notes: string, max = 240): string {
-  const flat = notes
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '' && !line.startsWith('#') && !line.startsWith('|'))
-    .map(plainEntry)
-    .filter((entry) => entry !== '')
-    .join('; ');
-  return flat.length <= max ? flat : `${flat.slice(0, max).trimEnd()}…`;
-}

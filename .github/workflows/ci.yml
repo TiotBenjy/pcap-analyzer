@@ -44,7 +44,8 @@ jobs:
           shellcheck -x scripts/check-version.sh scripts/release.sh scripts/release-status.sh \
             scripts/tests/check-version.sh scripts/tests/release.sh scripts/ct/cliff.sh \
             scripts/lib/cache.sh scripts/ct/cache.sh scripts/tests/cache.sh x.sh scripts/wt.sh \
-            scripts/ct/fuzz.sh scripts/ci/fuzz.sh scripts/ct/bench.sh scripts/ct/licenses.sh
+            scripts/ct/fuzz.sh scripts/ci/fuzz.sh scripts/ct/bench.sh scripts/ct/licenses.sh \
+            scripts/ci/release-name.sh
 
   rust:
     name: Rust (fmt, clippy, tests, bindings)

@@ -37,7 +37,7 @@ pub mod writer;
 pub use catalog::{Catalog, SessionInfo, SessionState};
 pub use connections::{ConversationRow, HostTrafficRow};
 pub use error::{Result, StoreError};
-pub use finalize::{FinalizeReport, run_finalizers};
+pub use finalize::{FinalizeReport, StepProgress, run_finalizers};
 pub use id::SessionId;
 pub use ports::OpenPortRow;
 pub use query::{Keyset, Page, PageRequest, keyset_page};
@@ -47,7 +47,7 @@ pub use records::{
 };
 pub use session::{OpenMode, Session, Upgrade};
 pub use smb::{SmbAnnounceEntry, SmbAnnounceRow, SmbSessionEntry, SmbSessionRow};
-pub use writer::{StoreSender, StoreWriter, WriterConfig, WriterStats};
+pub use writer::{FinalizeWatch, StoreSender, StoreWriter, WriterConfig, WriterStats};
 
 /// Crate name, used by smoke tests and diagnostics.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");

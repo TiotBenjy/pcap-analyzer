@@ -10,8 +10,9 @@
 //! tries again.
 //!
 //! Cost: each step is set-based SQL over its own tables (the DNS one is linear in the
-//! transactions, plus one indexed lookup per group query). No progress is reported while they
-//! run: the import stays in its `finishing` phase until they end.
+//! transactions, plus one indexed lookup per group query). [`run_finalizers_with_progress`]
+//! reports the step running and the number of steps done: the writer publishes it, and the
+//! import reports a `finalizing` phase while the steps run (P4.8).
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -125,6 +126,17 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     },
 ];
 
+/// Progress of [`run_finalizers_with_progress`], reported before each step and once at the end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StepProgress {
+    /// Steps finished (run, failed or skipped) out of `total`.
+    pub done: usize,
+    /// Steps that were pending when the run started.
+    pub total: usize,
+    /// Identifier of the step running ([`Finalizer::id`]); `None` once every step is finished.
+    pub step: Option<&'static str>,
+}
+
 /// Outcome of [`run_finalizers`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FinalizeReport {
@@ -182,12 +194,27 @@ pub fn finalizers_complete(conn: &Connection) -> Result<bool> {
 /// reported in the result; only an error outside the steps (reading `meta`) is returned.
 /// Requires a writable connection outside any transaction.
 pub fn run_finalizers(conn: &Connection) -> Result<FinalizeReport> {
-    run_with(conn, SESSION_FINALIZERS)
+    run_with(conn, SESSION_FINALIZERS, &mut |_| {})
 }
 
-pub(crate) fn run_with(conn: &Connection, steps: &[Finalizer]) -> Result<FinalizeReport> {
+/// [`run_finalizers`], calling `progress` before each pending step and once after the last one
+/// (`step` = `None`, `done` = `total`).
+pub fn run_finalizers_with_progress(
+    conn: &Connection,
+    progress: &mut dyn FnMut(StepProgress),
+) -> Result<FinalizeReport> {
+    run_with(conn, SESSION_FINALIZERS, progress)
+}
+
+pub(crate) fn run_with(
+    conn: &Connection,
+    steps: &[Finalizer],
+    progress: &mut dyn FnMut(StepProgress),
+) -> Result<FinalizeReport> {
     let mut done = finalizers_done(conn)?;
     let mut report = FinalizeReport::default();
+    let total = steps.iter().filter(|s| !done.contains(&s.marker())).count();
+    let mut finished = 0;
     for step in steps {
         let marker = step.marker();
         if done.contains(&marker) {
@@ -200,8 +227,14 @@ pub(crate) fn run_with(conn: &Connection, steps: &[Finalizer]) -> Result<Finaliz
         });
         if !ready {
             report.skipped.push(step.id);
+            finished += 1;
             continue;
         }
+        progress(StepProgress {
+            done: finished,
+            total,
+            step: Some(step.id),
+        });
         // Older versions of the same step are replaced by the new marker.
         let mut next: Vec<String> = done
             .iter()
@@ -219,7 +252,13 @@ pub(crate) fn run_with(conn: &Connection, steps: &[Finalizer]) -> Result<Finaliz
             }
             Err(e) => report.failed.push((step.id, e.to_string())),
         }
+        finished += 1;
     }
+    progress(StepProgress {
+        done: finished,
+        total,
+        step: None,
+    });
     Ok(report)
 }
 
@@ -376,8 +415,19 @@ mod tests {
                 run: ok,
             },
         ];
-        let report = run_with(conn, &steps).unwrap();
+        let mut seen = Vec::new();
+        let report = run_with(conn, &steps, &mut |p| seen.push(p)).unwrap();
         assert_eq!(report.ran, vec!["first"]);
+        // Progress: before each step run, skipped steps counted as finished, then the end.
+        let p = |done, step| StepProgress {
+            done,
+            total: 3,
+            step,
+        };
+        assert_eq!(
+            seen,
+            vec![p(0, Some("first")), p(1, Some("broken")), p(3, None)]
+        );
         assert_eq!(report.failed.len(), 1);
         assert_eq!(report.failed[0].0, "broken");
         assert_eq!(report.skipped, vec!["dependent"]);
@@ -393,8 +443,12 @@ mod tests {
             },
             steps[2],
         ];
-        let report = run_with(conn, &fixed).unwrap();
+        let mut seen = Vec::new();
+        let report = run_with(conn, &fixed, &mut |p| seen.push(p)).unwrap();
         assert_eq!(report.ran, vec!["broken", "dependent"]);
+        // Only the pending steps count.
+        assert_eq!(seen.first().map(|p| (p.done, p.total)), Some((0, 2)));
+        assert_eq!(seen.last().map(|p| (p.done, p.step)), Some((2, None)));
         assert_eq!(meta(conn, "ok.count").as_deref(), Some("3"));
         assert_eq!(
             meta(conn, MARKER_KEY).as_deref(),
@@ -440,6 +494,29 @@ mod tests {
     }
 
     #[test]
+    fn the_writer_publishes_the_progress_of_its_steps() {
+        use crate::writer::{StoreWriter, WriterConfig};
+        let dir = tempfile::tempdir().unwrap();
+        let writer = StoreWriter::spawn(
+            Session::open(dir.path(), OpenMode::Import).unwrap(),
+            WriterConfig::default(),
+        )
+        .unwrap();
+        let watch = writer.finalize_watch();
+        assert_eq!(watch.get(), None, "nothing before the end of the records");
+        writer.finish().unwrap();
+        let n = SESSION_FINALIZERS.len();
+        assert_eq!(
+            watch.get(),
+            Some(StepProgress {
+                done: n,
+                total: n,
+                step: None
+            })
+        );
+    }
+
+    #[test]
     fn a_new_version_replays_the_step() {
         let (_dir, session) = session();
         let conn = session.conn();
@@ -451,12 +528,12 @@ mod tests {
             reads: &[],
             run: ok,
         }];
-        run_with(conn, &v1).unwrap();
+        run_with(conn, &v1, &mut |_| {}).unwrap();
         let v2 = [Finalizer {
             version: 2,
             ..v1[0]
         }];
-        assert_eq!(run_with(conn, &v2).unwrap().ran, vec!["step"]);
+        assert_eq!(run_with(conn, &v2, &mut |_| {}).unwrap().ran, vec!["step"]);
         assert_eq!(meta(conn, MARKER_KEY).as_deref(), Some("step:2"));
     }
 }

@@ -1,6 +1,6 @@
 import { CircleAlert, CircleCheck, LoaderCircle, Unplug } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { importFraction, isActive, reopenImportProgress, useImportState } from '../app/importTracker';
+import { importFraction, isActive, isFinalizing, reopenImportProgress, stepNumber, useImportState } from '../app/importTracker';
 import { cn } from '../lib/cn';
 import { formatPercent, labelled } from '../lib/format';
 
@@ -20,7 +20,11 @@ export function ImportIndicator() {
   const percent = formatPercent(fraction, 0, i18n.language);
   let text: string = t('views.import.indicatorDone');
   let Icon = CircleCheck;
-  if (active) {
+  const progress = current.progress;
+  if (active && progress !== null && isFinalizing(progress)) {
+    text = t('views.import.indicatorFinalizing', { n: stepNumber(progress), total: progress.steps_total });
+    Icon = LoaderCircle;
+  } else if (active) {
     text = t('views.import.indicator', { percent });
     Icon = LoaderCircle;
   } else if (lost) {

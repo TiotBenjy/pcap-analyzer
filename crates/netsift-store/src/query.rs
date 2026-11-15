@@ -50,16 +50,78 @@ pub struct Page<T> {
     pub next_cursor: Option<String>,
 }
 
+/// A `WHERE` condition made of the active filters only, each a constant SQL fragment with
+/// plain `?` placeholders, and their values in order.
+///
+/// `?n IS NULL OR col = ?n` style conditions are evaluated row by row: SQLite cannot use the
+/// index of a filter that may be off, so a rare value scans the whole table (P4.2). Leaving the
+/// inactive filters out lets the planner pick the index of the active ones.
+#[derive(Debug, Default)]
+pub struct Conditions {
+    sql: Vec<std::borrow::Cow<'static, str>>,
+    params: Vec<Value>,
+}
+
+impl Conditions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a condition; `params` fill its `?` placeholders in order.
+    pub fn push(&mut self, fragment: &'static str, params: impl IntoIterator<Item = Value>) {
+        self.sql.push(fragment.into());
+        self.params.extend(params);
+    }
+
+    /// Adds `prefix (inner conditions) suffix`, when `inner` holds at least one condition (a
+    /// sub-query filtered by its own active filters).
+    pub fn push_group(&mut self, prefix: &'static str, inner: Self, suffix: &'static str) {
+        if let Some(sql) = inner.sql() {
+            self.sql.push(format!("{prefix}{sql}{suffix}").into());
+            self.params.extend(inner.params);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.sql.is_empty()
+    }
+
+    /// The conditions joined by `AND`, `None` when there is none.
+    pub fn sql(&self) -> Option<String> {
+        if self.sql.is_empty() {
+            return None;
+        }
+        Some(
+            self.sql
+                .iter()
+                .map(|c| format!("({c})"))
+                .collect::<Vec<_>>()
+                .join(" AND "),
+        )
+    }
+
+    /// Values of the placeholders, in order.
+    pub fn params(&self) -> Vec<&dyn ToSql> {
+        self.params.iter().map(|v| v as &dyn ToSql).collect()
+    }
+}
+
+/// Text value of an optional string (`NULL` when absent).
+pub fn text(v: Option<&str>) -> Value {
+    v.map_or(Value::Null, |s| Value::Text(s.to_owned()))
+}
+
 /// Description of a keyset-paginated query.
 ///
-/// Every SQL fragment is a `&'static str` (a constant, or chosen from a whitelist by the
-/// caller): raw user input cannot reach the SQL text, user values go through `params`. The sort expression and the tie-breaker must be
+/// Every SQL fragment is a constant (or chosen from a whitelist by the caller), the filter
+/// being made of constant fragments ([`Conditions`]): raw user input cannot reach the SQL text,
+/// user values go through `params`. The sort expression and the tie-breaker must be
 /// non-NULL (wrap nullable columns in `coalesce`), and the tie-breaker must be unique, or
 /// rows would be skipped or repeated. Filters use plain `?` placeholders.
 #[derive(Debug, Clone, Copy)]
-pub struct Keyset {
+pub struct Keyset<'a> {
     /// `FROM` clause body (table or join).
-    pub from: &'static str,
+    pub from: &'a str,
     /// Selected columns, read by the row mapper from index 0.
     pub select: &'static str,
     /// Sort expression.
@@ -69,13 +131,13 @@ pub struct Keyset {
     /// Descending order when true.
     pub descending: bool,
     /// Optional `WHERE` condition.
-    pub filter: Option<&'static str>,
+    pub filter: Option<&'a str>,
 }
 
 /// Runs one page of a keyset query.
 pub fn keyset_page<T>(
     conn: &Connection,
-    query: &Keyset,
+    query: &Keyset<'_>,
     params: &[&dyn ToSql],
     request: &PageRequest,
     mut map: impl FnMut(&Row<'_>) -> rusqlite::Result<T>,

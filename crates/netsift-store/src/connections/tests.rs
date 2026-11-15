@@ -234,6 +234,151 @@ fn filters_combine() {
     );
 }
 
+/// The filter before P4.2 (`?n IS NULL OR`, conditions on the joined hosts): the reference of
+/// [`active_filters_match_the_former_filter`].
+const FORMER_FILTER: &str = "\
+    (?1 IS NULL OR instr(c.src_ip, ?1) > 0 OR instr(lower(coalesce(hs.names, '')), ?1) > 0) \
+    AND (?2 IS NULL OR instr(c.dst_ip, ?2) > 0 OR instr(lower(coalesce(hd.names, '')), ?2) > 0) \
+    AND (?3 IS NULL OR EXISTS (SELECT 1 FROM json_each(c.protocols) WHERE value = ?3)) \
+    AND (?4 IS NULL OR hs.category IN (SELECT value FROM json_each(?4)) \
+         OR hd.category IN (SELECT value FROM json_each(?4)))";
+
+#[test]
+#[allow(clippy::too_many_lines)] // Data, then every combination of filters.
+fn active_filters_match_the_former_filter() {
+    let conn = db();
+    // 40 addresses, a quarter of them unknown to `hosts`, names on some, two categories.
+    let ip = |i: u64| {
+        if i.is_multiple_of(5) {
+            format!("2001:db8::{i:x}")
+        } else {
+            format!("10.{}.0.{}", i % 3, i)
+        }
+    };
+    for i in 0..40_u64 {
+        if i % 4 == 3 {
+            continue;
+        }
+        let names: Vec<String> = if i % 2 == 0 {
+            vec![format!("Srv{i}.Example.test")]
+        } else {
+            Vec::new()
+        };
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        let category = if i % 3 == 0 { "public" } else { "private" };
+        insert(
+            &conn,
+            StoreRecord::Host(host(&ip(i), category, None, &names)),
+        );
+    }
+    let labels = ["dns", "http", "tls", "udp"];
+    let mut seed = 7_u64;
+    for n in 0..300_u64 {
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        let (a, b) = ((seed >> 33) % 40, (seed >> 13) % 40);
+        if a == b {
+            continue;
+        }
+        let protocols: Vec<&str> = labels
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| (seed >> (k + 3)) & 1 == 1)
+            .map(|(_, l)| *l)
+            .collect();
+        insert(
+            &conn,
+            StoreRecord::Conversation(conv(&ip(a), &ip(b), n * 7 % 1000, n, &protocols)),
+        );
+    }
+    let texts = [
+        None,
+        Some("10.1"),
+        Some("srv1"),
+        Some("EXAMPLE"),
+        Some("::"),
+        Some("zz"),
+    ];
+    let protocols = [None, Some("dns"), Some("udp"), Some("nope")];
+    let categories = [
+        None,
+        Some(vec!["public".to_owned()]),
+        Some(vec!["private".to_owned()]),
+    ];
+    let mut checked = 0;
+    for from in texts {
+        for to in [None, Some("10.2"), Some("srv")] {
+            for protocol in protocols {
+                for cats in &categories {
+                    let filter = ConversationFilter {
+                        from: from.map(str::to_owned),
+                        to: to.map(str::to_owned),
+                        protocol: protocol.map(str::to_owned),
+                        categories: cats.clone(),
+                    };
+                    let mut got: Vec<i64> = all(&conn, &filter, 7).iter().map(|e| e.id).collect();
+                    got.sort_unstable();
+                    let params = (
+                        text_filter(filter.from.as_ref()),
+                        text_filter(filter.to.as_ref()),
+                        filter.protocol.clone(),
+                        json_list(filter.categories.as_deref()).unwrap(),
+                    );
+                    let mut want: Vec<i64> = conn
+                        .prepare(&format!(
+                            "SELECT c.id FROM {CONVERSATION_FROM} WHERE {FORMER_FILTER} ORDER BY c.id"
+                        ))
+                        .unwrap()
+                        .query_map(
+                            params![params.0, params.1, params.2, params.3],
+                            |r| r.get(0),
+                        )
+                        .unwrap()
+                        .map(Result::unwrap)
+                        .collect();
+                    want.sort_unstable();
+                    assert_eq!(got, want, "{filter:?}");
+                    assert_eq!(
+                        count_conversations(&conn, &filter).unwrap(),
+                        u64::try_from(want.len()).unwrap(),
+                        "{filter:?}"
+                    );
+                    checked += usize::from(!want.is_empty());
+                }
+            }
+        }
+    }
+    assert!(checked > 50, "too few non-empty cases: {checked}");
+}
+
+#[test]
+fn filtered_count_needs_no_join() {
+    let conn = db();
+    thirty(&conn);
+    let filter = ConversationFilter {
+        from: Some("host".into()),
+        categories: Some(vec!["public".into()]),
+        ..ConversationFilter::default()
+    };
+    let c = conditions(&filter).unwrap();
+    let sql = format!(
+        "SELECT count(*) FROM conversations c WHERE {}",
+        c.sql().unwrap()
+    );
+    let plan: Vec<String> = conn
+        .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+        .unwrap()
+        .query_map(c.params().as_slice(), |r| r.get::<_, String>(3))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    // Hosts are read by the sub-queries only (one pass each), never joined per conversation.
+    assert!(
+        plan.iter().all(|l| !l.contains("hs") && !l.contains("hd")),
+        "{plan:?}"
+    );
+    assert_eq!(count_conversations(&conn, &filter).unwrap(), 15);
+}
+
 #[test]
 fn top_n_matches_the_sql_sort_with_and_without_dns() {
     let conn = db();

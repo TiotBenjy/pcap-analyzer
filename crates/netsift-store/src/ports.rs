@@ -8,11 +8,12 @@
 
 use std::net::IpAddr;
 
-use rusqlite::{Connection, ToSql, params};
+use rusqlite::types::Value;
+use rusqlite::{Connection, params};
 
 use crate::connections::EndpointInfo;
 use crate::error::Result;
-use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::query::{Conditions, Keyset, Page, PageRequest, keyset_page};
 use crate::records::conversion;
 
 /// Longest banner stored, in bytes (longer ones are cut on a character boundary).
@@ -97,61 +98,66 @@ pub struct PortFilter {
     pub text: Option<String>,
 }
 
-/// Port-level condition on `o` (`open_ports`) and `h` (`hosts`), numbered parameters `?1..?4`.
-macro_rules! port_condition {
-    () => {
-        "(?1 IS NULL OR h.category IN (SELECT value FROM json_each(?1))) \
-         AND (?2 IS NULL OR o.port = ?2) \
-         AND (?3 IS NULL OR o.service = ?3 OR o.detected = ?3) \
-         AND (?4 IS NULL OR instr(o.ip, ?4) > 0 OR instr(lower(coalesce(h.names, '')), ?4) > 0 \
-              OR instr(coalesce(o.service, ''), ?4) > 0 OR instr(coalesce(o.detected, ''), ?4) > 0 \
-              OR CAST(o.port AS TEXT) = ?4)"
-    };
-}
-
-const PORT_CONDITION: &str = port_condition!();
-
-struct FilterParams {
-    categories: Option<String>,
-    port: Option<u16>,
-    service: Option<String>,
-    text: Option<String>,
-}
-
-impl FilterParams {
-    fn new(filter: &PortFilter) -> Result<Self> {
-        Ok(Self {
-            categories: filter
-                .categories
-                .as_ref()
-                .map(serde_json::to_string)
-                .transpose()?,
-            port: filter.port,
-            service: filter
-                .service
-                .as_ref()
-                .map(|s| s.trim().to_lowercase())
-                .filter(|s| !s.is_empty()),
-            text: filter
-                .text
-                .as_ref()
-                .map(|s| s.trim().to_lowercase())
-                .filter(|s| !s.is_empty()),
-        })
+/// The active filters of [`PortFilter`], on `o` (`open_ports`) only (P4.2): host categories
+/// and names are looked up in `hosts` once per query, by sub-query, so no query joins `hosts`
+/// for its condition and the inactive filters cost nothing.
+fn conditions(filter: &PortFilter) -> Result<Conditions> {
+    let mut c = Conditions::new();
+    if let Some(categories) = filter
+        .categories
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?
+    {
+        c.push(
+            "o.ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?)))",
+            [Value::Text(categories)],
+        );
     }
-
-    fn params(&self) -> [&dyn ToSql; 4] {
-        [&self.categories, &self.port, &self.service, &self.text]
+    if let Some(port) = filter.port {
+        c.push("o.port = ?", [Value::Integer(i64::from(port))]);
     }
+    if let Some(service) = filter
+        .service
+        .as_ref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+    {
+        c.push(
+            "o.service = ? OR o.detected = ?",
+            [Value::Text(service.clone()), Value::Text(service)],
+        );
+    }
+    if let Some(text) = filter
+        .text
+        .as_ref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+    {
+        c.push(
+            "instr(o.ip, ?) > 0 \
+             OR o.ip IN (SELECT ip FROM hosts WHERE instr(lower(names), ?) > 0) \
+             OR instr(coalesce(o.service, ''), ?) > 0 OR instr(coalesce(o.detected, ''), ?) > 0 \
+             OR CAST(o.port AS TEXT) = ?",
+            [0, 1, 2, 3, 4].map(|_| Value::Text(text.clone())),
+        );
+    }
+    Ok(c)
 }
 
-/// Hosts with open ports matching the filter, as a sub-query `g (ip, ports)`.
-const HOSTS_FROM: &str = concat!(
-    "(SELECT o.ip AS ip, count(*) AS ports FROM open_ports o LEFT JOIN hosts h ON h.ip = o.ip \
-     WHERE ",
-    port_condition!(),
-    " GROUP BY o.ip) g"
-);
+/// ` WHERE <conditions>`, or nothing.
+fn where_clause(c: &Conditions) -> String {
+    c.sql().map_or_else(String::new, |w| format!(" WHERE {w}"))
+}
+
+/// Hosts with open ports matching the filter, as a sub-query `g (ip, ports)` (grouped in the
+/// order of the primary key of `open_ports`, without sort).
+fn hosts_from(c: &Conditions) -> String {
+    format!(
+        "(SELECT o.ip AS ip, count(*) AS ports FROM open_ports o{} GROUP BY o.ip) g",
+        where_clause(c)
+    )
+}
 
 /// An open port with its number of distinct clients.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,16 +194,17 @@ pub fn hosts_page(
     filter: &PortFilter,
     request: &PageRequest,
 ) -> Result<Page<HostPorts>> {
-    let fp = FilterParams::new(filter)?;
+    let cond = conditions(filter)?;
+    let from = hosts_from(&cond);
     let query = Keyset {
-        from: HOSTS_FROM,
+        from: &from,
         select: "g.ip",
         sort: "g.ports",
         tiebreak: "g.ip",
         descending: true,
         filter: None,
     };
-    let page = keyset_page(conn, &query, &fp.params(), request, |r| {
+    let page = keyset_page(conn, &query, &cond.params(), request, |r| {
         r.get::<_, String>(0)
     })?;
     if page.items.is_empty() {
@@ -235,18 +242,24 @@ pub fn hosts_page(
         }
     }
 
+    let mut ports_of = Conditions::new();
+    ports_of.push(
+        "o.ip IN (SELECT value FROM json_each(?))",
+        [Value::Text(ips.clone())],
+    );
     let sql = format!(
         "SELECT o.ip, o.transport, o.port, o.evidence, o.service, o.detected, o.banner, \
          o.first_ts, o.last_ts, \
          (SELECT count(DISTINCT f.src_ip) FROM flows f \
           WHERE f.dst_ip = o.ip AND f.dst_port = o.port AND f.transport = o.transport) \
-         FROM open_ports o LEFT JOIN hosts h ON h.ip = o.ip \
-         WHERE {PORT_CONDITION} AND o.ip IN (SELECT value FROM json_each(?5)) \
-         ORDER BY o.ip, o.transport, o.port"
+         FROM open_ports o WHERE {}{} ORDER BY o.ip, o.transport, o.port",
+        ports_of.sql().unwrap_or_default(),
+        cond.sql().map_or_else(String::new, |w| format!(" AND {w}")),
     );
     let mut stmt = conn.prepare(&sql)?;
-    let [a, b, c, d] = fp.params();
-    let mut rows = stmt.query(params![a, b, c, d, ips])?;
+    let mut all = ports_of.params();
+    all.extend(cond.params());
+    let mut rows = stmt.query(all.as_slice())?;
     while let Some(r) = rows.next()? {
         let raw: String = r.get(0)?;
         let addr = ip(&raw, 0)?;
@@ -276,10 +289,13 @@ pub fn hosts_page(
 
 /// Number of hosts with open ports matching the filter.
 pub fn count_hosts(conn: &Connection, filter: &PortFilter) -> Result<u64> {
-    let fp = FilterParams::new(filter)?;
+    let cond = conditions(filter)?;
     let n: i64 = conn.query_row(
-        &format!("SELECT count(*) FROM {HOSTS_FROM}"),
-        fp.params().as_slice(),
+        &format!(
+            "SELECT count(DISTINCT o.ip) FROM open_ports o{}",
+            where_clause(&cond)
+        ),
+        cond.params().as_slice(),
         |r| r.get(0),
     )?;
     Ok(u64::try_from(n).unwrap_or(0))
@@ -304,36 +320,36 @@ pub fn port_stats(
     filter: &PortFilter,
     limit: u32,
 ) -> Result<(Vec<PortStat>, u64, u64)> {
-    let fp = FilterParams::new(filter)?;
-    let [a, b, c, d] = fp.params();
+    let cond = conditions(filter)?;
     let sql = format!(
         "SELECT o.transport, o.port, min(o.service), min(o.detected), count(*) AS hosts \
-         FROM open_ports o LEFT JOIN hosts h ON h.ip = o.ip WHERE {PORT_CONDITION} \
-         GROUP BY o.transport, o.port ORDER BY hosts DESC, o.port, o.transport LIMIT ?5"
+         FROM open_ports o{} \
+         GROUP BY o.transport, o.port ORDER BY hosts DESC, o.port, o.transport LIMIT ?",
+        where_clause(&cond)
     );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(
-        params![a, b, c, d, i64::from(limit.min(MAX_PORT_STATS))],
-        |r| {
-            Ok(PortStat {
-                transport: r.get(0)?,
-                port: r.get(1)?,
-                service: r.get(2)?,
-                detected: r.get(3)?,
-                hosts: r.get(4)?,
-            })
-        },
-    )?;
+    let limit_value = i64::from(limit.min(MAX_PORT_STATS));
+    let mut stats_params = cond.params();
+    stats_params.push(&limit_value);
+    let rows = stmt.query_map(stats_params.as_slice(), |r| {
+        Ok(PortStat {
+            transport: r.get(0)?,
+            port: r.get(1)?,
+            service: r.get(2)?,
+            detected: r.get(3)?,
+            hosts: r.get(4)?,
+        })
+    })?;
     let mut top = Vec::new();
     for row in rows {
         top.push(row?);
     }
     let (distinct, total): (i64, i64) = conn.query_row(
         &format!(
-            "SELECT count(DISTINCT o.transport * 65536 + o.port), count(*) FROM open_ports o \
-             LEFT JOIN hosts h ON h.ip = o.ip WHERE {PORT_CONDITION}"
+            "SELECT count(DISTINCT o.transport * 65536 + o.port), count(*) FROM open_ports o{}",
+            where_clause(&cond)
         ),
-        params![a, b, c, d],
+        cond.params().as_slice(),
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
     Ok((

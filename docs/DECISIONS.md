@@ -939,3 +939,54 @@ acceptée : la remplacer par une nouvelle qui la référence.
   fichiers (le gate le signale) ; le gate fait un `cargo fetch` (réseau) et environ 25 s de
   cargo-about ; une nouvelle version de `ring` exige de relire et réépingler sa clarification dans
   `about.toml` ; la liste npm est un sur-ensemble de ce que Vite garde après tree-shaking.
+
+## ADR-025 — Sorties réseau sur option : vérifications DB-IP et releases GitHub
+
+- Contexte : P4.11, socle de P4.9 (proposer la base GeoIP au démarrage) et P4.10 (nouvelle version
+  depuis les releases GitHub), demandées par l'utilisateur le 2026-11-15. L'application s'interdit
+  tout appel réseau sortant ; ADR-015 n'admet que le téléchargement de la base GeoIP sur clic. Les
+  deux fonctionnalités ont besoin de requêtes de plus, dont certaines au démarrage. ADR-015 reste
+  valable tel quel pour le téléchargement de la base ; cette ADR ajoute deux exceptions, et seulement
+  celles-ci.
+- Décision :
+  - **exception DB-IP** : au démarrage, une requête (`HEAD`) vers `download.db-ip.com` vérifie si une
+    base plus récente est publiée, **uniquement si l'utilisateur a activé** « Rechercher une nouvelle
+    base GeoIP au démarrage » (désactivé par défaut). Le téléchargement reste celui d'ADR-015, sur clic ;
+  - **exception releases GitHub du dépôt** : la dernière release publiée est lue sur `api.github.com`
+    (JSON borné) au démarrage si l'utilisateur a activé « Rechercher les mises à jour au démarrage »
+    (désactivé par défaut), ou sur clic du bouton « Rechercher une mise à jour ». Le téléchargement
+    d'un artefact (et de `SHA256SUMS.txt`) se fait **seulement sur clic**, vers le chemin choisi par
+    l'utilisateur dans le dialogue natif d'enregistrement, depuis `github.com` et l'hôte de stockage
+    des assets vers lequel il redirige (`release-assets.githubusercontent.com`,
+    `objects.githubusercontent.com`) ; jamais d'installation automatique (ADR-011) ;
+  - **points communs** :
+    - requêtes faites par l'API Rust, jamais par la webview : CSP (ADR-006) et capabilities inchangées ;
+    - un seul client, `netsift-api/src/outbound.rs` (utilisé aussi par ADR-015) : HTTPS seulement sur
+      le port par défaut, sans identifiants dans l'URL, hôtes en **liste blanche passée par l'appelant**
+      et revérifiée à chaque redirection (au plus 3), délais de connexion, de lecture et total, taille
+      maximale par requête vérifiée pendant la lecture, téléchargement vers `<cible>.part` avec SHA-256
+      calculé à la volée puis renommage atomique, `.part` supprimé sur erreur ou annulation ; mode HTTP
+      local réservé aux tests (absent des builds) ;
+    - **aucune donnée utilisateur envoyée** : `User-Agent: NetSift/<version>`, ni cookie, ni
+      identifiant, ni information sur les captures ; jamais de corps de réponse dans les logs ni dans
+      les erreurs ;
+    - **échecs silencieux au démarrage** : un échec réseau ne produit aucun bandeau d'erreur, au plus
+      une ligne de log ; une action sur clic rapporte son échec ;
+  - **réglages côté serveur** : `<données>/settings.json` (`online.geoip_check`, `online.update_check`,
+    `dismissed_notices`), lu au démarrage de l'API, valeurs par défaut sûres (tout désactivé), fichier
+    absent ou invalide = valeurs par défaut avec un avertissement, écriture atomique ; routes
+    `GET /settings`, `PUT /settings` (champs absents inchangés), `PUT /settings/notices/{id}`, refusées
+    en `--read-only`. Le serveur décide seul des vérifications au démarrage (`online::STARTUP_CHECKS`,
+    jamais sur un serveur en lecture seule) : desktop et mode web dev se comportent pareil. Thème et
+    langue restent dans le stockage de la webview ;
+  - **bandeaux** : les résultats s'affichent dans des bandeaux discrets sous l'en-tête (au plus deux
+    à la fois), masquables jusqu'à ce que leur clé change (mois de la base, version proposée) ;
+    le masquage est enregistré dans `settings.json`.
+- Conséquences :
+  - l'application reste entièrement hors ligne tant que l'utilisateur n'active rien et ne clique sur
+    rien ; les hôtes contactés sont affichés à côté de chaque réglage ;
+  - ajouter un hôte ou une requête exige une nouvelle ADR ; une fonctionnalité en ligne s'enregistre par
+    une ligne dans `online::STARTUP_CHECKS` (Rust), `NOTICE_PROVIDERS` (bandeau) et `ONLINE_EXTENSIONS`
+    (Paramètres > En ligne), et son propre dictionnaire i18n ;
+  - les tests utilisent un serveur HTTP local ; les requêtes réelles vers DB-IP et GitHub restent
+    vérifiées à la main.

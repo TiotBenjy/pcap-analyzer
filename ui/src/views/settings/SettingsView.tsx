@@ -12,6 +12,7 @@ import { type ThemePref, useTheme } from '../../theme/theme';
 import { GeoipSection } from './GeoipSection';
 import { ThirdPartyLicensesDialog } from './licenses/ThirdPartyLicenses';
 import { OnlineCard } from './online/OnlineCard';
+import { UpdateSection } from './UpdateSection';
 
 /** Shown as text only: the application never opens external URLs (no network, opener limited to exports/). */
 const REPOSITORY_URL = 'https://github.com/TiotBenjy/pcap-analyzer';
@@ -74,6 +75,11 @@ function AboutCard() {
         <dt className="text-muted">{t('views.settings.version')}</dt>
         <dd className="num min-w-0" data-testid="app-version">
           {APP_VERSION}
+        </dd>
+        {/* Full width below 640 px, like the GeoIP row: buttons and status need the room. */}
+        <dt className="col-span-2 self-start text-muted sm:col-span-1">{t('views.updates.label')}</dt>
+        <dd className="col-span-2 min-w-0 sm:col-span-1">
+          <UpdateSection readOnly={info.data?.read_only ?? true} />
         </dd>
         <dt className="text-muted">{t('views.settings.license')}</dt>
         <dd className="min-w-0 break-words" data-testid="app-license">

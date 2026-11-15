@@ -1,5 +1,6 @@
 import { GeoipNotice } from './geoip';
 import type { NoticeProvider } from './types';
+import { UpdateNotice } from './UpdateNotice';
 
 /** Banners shown at most at once under the header; the others wait for a dismissal. */
 export const MAX_NOTICES = 2;
@@ -10,4 +11,5 @@ export const MAX_NOTICES = 2;
  */
 export const NOTICE_PROVIDERS: readonly NoticeProvider[] = [
   { id: 'geoip', Component: GeoipNotice },
+  { id: 'update', Component: UpdateNotice },
 ];

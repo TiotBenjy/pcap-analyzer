@@ -45,7 +45,7 @@ Intel Core Ultra 7 155H (6 cœurs P avec hyperthreading, 8 cœurs E, 2 cœurs LP
 30 Gio de RAM, NVMe WD SN810, Fedora 43 (noyau 7.2), conteneur Podman, Rust 1.99.1, build
 `release` (LTO thin). `taskset -c 0-3` donne 4 threads logiques sur 3 cœurs P (0, 1-2 et 3).
 
-## Mesures initiales (2026-11-15, `b4d217f`)
+## Mesures initiales (2026-11-15, `03efb56`)
 
 ### Import de 5 Go sur 4 cœurs
 
@@ -116,21 +116,21 @@ Effet mesuré à chaque étape sur le même jeu (import sur 4 cœurs) :
 
 | Étape | Commits | Import 5 Go | Effet principal |
 |---|---|---|---|
-| départ | `b4d217f` | 577,7 s | writer 94 %, `hosts` 172 s, HTTP 96 s, commits 175 s |
-| instruction d'hôte jamais préparée de nouveau ; agrégats vidés toutes les heures ; index FTS HTTP en fin d'import ; séries cumulées | `1c77ec3`, `f6e9193`, `edf3e65` | 269,4 s | `hosts` 172 → 10,5 s (1,28 M → 0,58 M lignes), HTTP 96 → 24 s, commits 175 → 104 s |
-| réglages du writer (cache 256 Mio, WAL 128 Mio, transactions 200 000 lignes ou 1 s) | `dd79d28` | 190,7 s | commits 104 → 45 s (466 → 117 transactions) |
-| index secondaires construits en fin d'import (étape `indexes`) | `dd79d28` | 95,8 s | insertions 118 → 43 s, commits 45 → 7 s ; +20 s d'index en fin d'import |
+| départ | `03efb56` | 577,7 s | writer 94 %, `hosts` 172 s, HTTP 96 s, commits 175 s |
+| instruction d'hôte jamais préparée de nouveau ; agrégats vidés toutes les heures ; index FTS HTTP en fin d'import ; séries cumulées | `f46c1c4`, `901ad77`, `3a9ce12` | 269,4 s | `hosts` 172 → 10,5 s (1,28 M → 0,58 M lignes), HTTP 96 → 24 s, commits 175 → 104 s |
+| réglages du writer (cache 256 Mio, WAL 128 Mio, transactions 200 000 lignes ou 1 s) | `823145d` | 190,7 s | commits 104 → 45 s (466 → 117 transactions) |
+| index secondaires construits en fin d'import (étape `indexes`) | `823145d` | 95,8 s | insertions 118 → 43 s, commits 45 → 7 s ; +20 s d'index en fin d'import |
 
 Vues (session de 8,9 M paquets) :
 
-- résumé : totaux lus dans `meta` (`edf3e65`), rôles de serveurs matérialisés (`84b8755`) : 405 → 22 ms ;
-- série temporelle : tables par minute et par heure (`edf3e65`), bornes lues aux deux bouts de la clé
-  (`2ac3185`) : 276 → 91 → 39 ms ;
-- filtres : seules les conditions actives sont composées (`7ad3467`), sous-requêtes sur `hosts` au lieu
+- résumé : totaux lus dans `meta` (`3a9ce12`), rôles de serveurs matérialisés (`0d8604c`) : 405 → 22 ms ;
+- série temporelle : tables par minute et par heure (`3a9ce12`), bornes lues aux deux bouts de la clé
+  (`470acfb`) : 276 → 91 → 39 ms ;
+- filtres : seules les conditions actives sont composées (`f72f94f`), sous-requêtes sur `hosts` au lieu
   de jointures, en-têtes HTTP par `EXISTS` corrélé, codes HTTP sur leur colonne indexée ;
-- agrégats : index couvrants TLS et comptages par index (`2ac3185`), statuts HTTP par `status_key`.
+- agrégats : index couvrants TLS et comptages par index (`470acfb`), statuts HTTP par `status_key`.
 
-## Mesures après corrections (2026-11-15, `c9fcab1`)
+## Mesures après corrections (2026-11-15, `fa6ae6f`)
 
 ### Import
 
@@ -143,6 +143,12 @@ Vues (session de 8,9 M paquets) :
 | pic mémoire (VmHWM), 4 cœurs | 172 Mio | 375 Mio | < 1,5 Gio |
 | tous les cœurs (20 shards) | non mesuré à 5 Go | 101,4 s, 93 Mo/s en lecture, 438 Mio | |
 | taille de la session | 1 675 Mo | 1 643 Mo | |
+
+Disque et mémoire hors du pic résident : la construction des index en fin d'import écrit dans le WAL
+environ la taille des index (le WAL est replié dans la base à la fin de l'import), et leurs tris
+passent par des fichiers temporaires (`temp_store = FILE`) ; prévoir quelques centaines de Mo de plus
+que la session sur 5 Go. Deux imports simultanés (`max_imports` = 2) ont chacun leur cache de pages
+de 256 Mio.
 
 Le writer reste le goulot (95 % d'occupation, shards à 32 %). Pendant la lecture, ses insertions
 prennent 43 s (`tls_sessions` 7,3 s, `conversations` 7,2 s, `http_transactions` 6,2 s, `hosts` 6,0 s,

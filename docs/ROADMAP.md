@@ -279,6 +279,16 @@ Suivis de la vague 3.A :
   requête (`?password=`) dans `http_transactions` et son FTS (masquer ou assumer) ; test de logs limité à
   l'import (pas les routes API) ; P4.1 : cibles de fuzz `LineFlow` (FTP/SMTP/POP3/IMAP), `BerStream` +
   ldap-parser, `snmp::parse`, `http::auth` ; P4.2 : `paths()` (GROUP BY sur toute la table) sur 10 M paquets.
+- P4.4 (fusionnée le 2026-11-15, conventions dans `docs/UI_GUIDELINES.md` « Langues et formats » : IEC Kio/Mio
+  en fr, heures ISO 24 h dans les deux langues, `_many` français généré depuis `_other`) : les `reason`
+  d'anomalies `read_error`/`skipped_record` viennent du moteur en anglais (`netsift-engine/src/translate.rs`)
+  -> codes stables côté API traduits par l'UI ; `limit` des anomalies non groupé ; `Intl.DisplayNames` recréé à
+  chaque appel (`lib/countries.ts`) ; dépendance circulaire `i18n/index.ts` <-> `lib/format.ts` (aucun `t()` à
+  l'évaluation) ; `hardcoded.test.ts` : faux négatifs connus (un mot dans `{'…'}`, phrases en minuscules,
+  `label:` hors JSX) ; espaces insécables littérales dans `OverviewView.tsx` et `ProgressStep.tsx` ; captures
+  fr en thème clair seulement ; `shots` deux fois plus long (en + fr par défaut) ; fixture Overview avec une
+  période fausse (ns passées pour des µs). Défauts communs aux deux langues : IP/port tronqués dans les chemins
+  Credentials à 768, placeholder TLS coupé à 375, badge « Auto-signé » coupé à 1280.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -314,7 +324,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       (`from_us`/`to_us`) avec le filtre global de phase 5.
 - [ ] **P4.3** `feat/export-pcap` — « Save PCAP » : export d'un flux, d'une plage temporelle ou de la session
       fusionnée (pcapng).
-- [~] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
+- [x] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
 - [ ] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`.
 - [ ] **P4.7** `fix/flow-id-collision` — `FlowId::derive(key, first_ts)` (`netsift-flow/src/api.rs`) donne le même
       id à deux flux successifs de même 5-tuple et même premier horodatage (flux fermé puis nouveau SYN, éviction

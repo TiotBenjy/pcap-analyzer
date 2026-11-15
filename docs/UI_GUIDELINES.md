@@ -139,8 +139,12 @@ une vue :
   non ambiguë et se compare d'une vue à l'autre.
 - Les nombres passés à `t()` sous un nom de quantité (`count`, `total`, `shown`, `n`, `max`…, liste
   `QUANTITY_KEYS` de `ui/src/i18n/index.ts`) sont formatés selon la langue ; un identifiant (port,
-  numéro de séquence, mode hashcat, code de statut) garde ses chiffres bruts. Pluriels : suffixes
-  i18next `_one` / `_other`.
+  numéro de séquence, mode hashcat, code de statut) garde ses chiffres bruts. Le formateur des
+  quantités remplace celui d'i18next : pas de spécificateur `{{x, number}}` dans les dictionnaires.
+- Pluriels : les dictionnaires écrivent les suffixes i18next `_one` / `_other`. Le français a aussi
+  une catégorie CLDR `many` (à partir d'un million) : `withManyForms` (`ui/src/i18n/index.ts`) ajoute
+  au chargement `_many` = `_other` pour chaque clé française, sans quoi i18next retomberait sur
+  l'anglais. Un texte qui contient un nombre variable passe toujours par un pluriel.
 - Typographie française : espace insécable avant `:` `;` `?` `!`, guillemets `« »` avec espaces
   insécables, apostrophe droite `'` partout, points de suspension `…`. Vérifié par `i18n.test.ts`.
 - Terminologie : *host* = hôte, *flow* = flux, *capture* = capture, *chunk* = chunk, *credentials* =

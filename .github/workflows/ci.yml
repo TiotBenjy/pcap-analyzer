@@ -130,3 +130,44 @@ jobs:
           path: .artifacts/screens
           if-no-files-found: ignore
           retention-days: 14
+
+  fuzz:
+    name: Fuzz (60 s par cible)
+    # Facultatif : sur main et à la demande seulement, pour ne pas allonger la validation des
+    # branches. Campagne courte de régression ; les campagnes longues se lancent en local
+    # (./x.sh fuzz all 1800, docs/FUZZING.md).
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      # Versions épinglées dans scripts/ct/fuzz.sh (source unique).
+      - name: Versions de la nightly et de cargo-fuzz
+        id: pins
+        run: |
+          echo "nightly=$(sed -n 's/^NIGHTLY="\(.*\)"$/\1/p' scripts/ct/fuzz.sh)" >> "$GITHUB_OUTPUT"
+          echo "cargo_fuzz=$(sed -n 's/^CARGO_FUZZ_VERSION="\(.*\)"$/\1/p' scripts/ct/fuzz.sh)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.pins.outputs.nightly }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fuzz
+          workspaces: fuzz -> ../target
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz@${{ steps.pins.outputs.cargo_fuzz }}
+      - name: Graines, compilation et campagne (toutes les cibles, 60 s chacune)
+        run: |
+          bash scripts/ci/fuzz.sh corpus
+          bash scripts/ci/fuzz.sh all 60
+      - name: Publier les entrées qui plantent et les journaux
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz
+          path: |
+            fuzz/artifacts
+            .artifacts/fuzz
+          if-no-files-found: ignore
+          retention-days: 14

@@ -14,7 +14,7 @@
 #   ./x.sh desktop               build Tauri Linux (AppImage + .deb) -> dist/
 #   ./x.sh desktop-win           build Windows via cargo-xwin (expérimental) -> dist/
 #   ./x.sh geoip                 télécharge la base GeoIP (DB-IP Lite) dans .data/geoip/
-#   ./x.sh bench [all|gen|ingest|queries]
+#   ./x.sh bench [all|gen|ingest|queries|ui]
 #                                mesures de performance (docs/PERFORMANCE.md, 5 Go synthétiques)
 #   ./x.sh cliff [args]          git-cliff épinglé (CHANGELOG, notes de release ; cliff.toml)
 #   ./x.sh fuzz [cible|all|build|corpus] [durée]

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use anyhow::{Context as _, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 
+use netsift_fixtures::mix::{MixGen, MixOptions};
 use netsift_fixtures::scenario::Scenario;
 use netsift_fixtures::scenarios::Kind;
 use netsift_fixtures::split::{ChunkSink, Naming, SplitBy, SplitOptions};
@@ -23,6 +24,33 @@ struct Cli {
 enum Command {
     /// Generate a synthetic capture, optionally split into chunks.
     Gen(GenArgs),
+    /// Generate a large mixed-traffic chunk set (benchmarks, docs/PERFORMANCE.md).
+    Big(BigArgs),
+}
+
+#[derive(Debug, clap::Args)]
+struct BigArgs {
+    /// Output directory (created if needed).
+    #[arg(long)]
+    out: PathBuf,
+    /// Frame bytes to generate (k/M/G suffixes, powers of 1000).
+    #[arg(long, default_value = "5G", value_parser = parse_bytes)]
+    size: u64,
+    /// Chunk size (dumpcap naming), same suffixes.
+    #[arg(long, default_value = "500M", value_parser = parse_bytes)]
+    chunk: u64,
+    /// Time covered by the capture, in hours.
+    #[arg(long, default_value_t = 168)]
+    hours: u32,
+    /// LAN workstations.
+    #[arg(long, default_value_t = 1_000)]
+    lan_hosts: u32,
+    /// Public servers.
+    #[arg(long, default_value_t = 200_000)]
+    public_hosts: u32,
+    /// Generator seed.
+    #[arg(long, default_value_t = netsift_fixtures::scenario::DEFAULT_SEED)]
+    seed: u64,
 }
 
 #[derive(Debug, clap::Args)]
@@ -85,21 +113,23 @@ fn parse_kind(s: &str) -> Result<Kind, String> {
     })
 }
 
+fn parse_bytes(value: &str) -> Result<u64, String> {
+    let (digits, factor) = match value.chars().last() {
+        Some('k' | 'K') => (&value[..value.len() - 1], 1_000),
+        Some('M') => (&value[..value.len() - 1], 1_000_000),
+        Some('G') => (&value[..value.len() - 1], 1_000_000_000),
+        _ => (value, 1),
+    };
+    let n: u64 = digits.parse().map_err(|e| format!("invalid size: {e}"))?;
+    Ok(n.saturating_mul(factor).max(1))
+}
+
 fn parse_split(s: &str) -> Result<SplitBy, String> {
     let (key, value) = s
         .split_once('=')
         .ok_or_else(|| "expected size=N, duration=S or packets=N".to_owned())?;
     match key {
-        "size" => {
-            let (digits, factor) = match value.chars().last() {
-                Some('k' | 'K') => (&value[..value.len() - 1], 1_000),
-                Some('M') => (&value[..value.len() - 1], 1_000_000),
-                Some('G') => (&value[..value.len() - 1], 1_000_000_000),
-                _ => (value, 1),
-            };
-            let n: u64 = digits.parse().map_err(|e| format!("invalid size: {e}"))?;
-            Ok(SplitBy::Size(n.saturating_mul(factor).max(1)))
-        }
+        "size" => parse_bytes(value).map(SplitBy::Size),
         "duration" => {
             let secs: f64 = value
                 .parse()
@@ -123,10 +153,42 @@ fn parse_split(s: &str) -> Result<SplitBy, String> {
 }
 
 fn main() -> Result<()> {
-    let Cli {
-        command: Command::Gen(args),
-    } = Cli::parse();
-    gen_capture(&args)
+    match Cli::parse().command {
+        Command::Gen(args) => gen_capture(&args),
+        Command::Big(args) => gen_big(&args),
+    }
+}
+
+fn gen_big(args: &BigArgs) -> Result<()> {
+    let opts = SplitOptions::new(SplitBy::Size(args.chunk), Naming::Dumpcap)
+        .with_prefix("mix")
+        .with_encoding(Encoding::pcapng());
+    let mut sink = ChunkSink::new(&args.out, &opts, &[Interface::ethernet()])
+        .with_context(|| format!("cannot create {}", args.out.display()))?;
+    let mut generator = MixGen::new(MixOptions {
+        seed: args.seed,
+        span_ns: i64::from(args.hours.max(1)) * 3_600 * NS_PER_SEC,
+        target_bytes: args.size,
+        lan_hosts: args.lan_hosts.max(1),
+        public_hosts: args.public_hosts.max(1),
+        ..MixOptions::default()
+    });
+    let mut packets = 0u64;
+    while let Some(window) = generator.next_window() {
+        for p in &window {
+            sink.push(p)?;
+        }
+        packets += window.len() as u64;
+    }
+    let paths = sink.finish()?;
+    writeln!(
+        std::io::stdout().lock(),
+        "{packets} packets, {} frame bytes, {} file(s) in {}",
+        generator.produced_bytes(),
+        paths.len(),
+        args.out.display()
+    )?;
+    Ok(())
 }
 
 fn gen_capture(args: &GenArgs) -> Result<()> {

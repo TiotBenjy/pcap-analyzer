@@ -14,12 +14,15 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+axum = { workspace = true, optional = true }
 clap.workspace = true
 netsift-api.workspace = true
 netsift-engine.workspace = true
 netsift-fixtures = { workspace = true, optional = true }
 netsift-store.workspace = true
+serde_json = { workspace = true, optional = true }
 tokio.workspace = true
+tower = { workspace = true, optional = true }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
@@ -33,3 +36,5 @@ tempfile = "3.27.0"
 [features]
 # `netsift demo-session`: synthetic demo data for screenshots and previews (never in releases).
 demo = ["dep:netsift-fixtures"]
+# `netsift bench`: ingestion and query measurements of docs/PERFORMANCE.md (never in releases).
+bench = ["dep:axum", "dep:serde_json", "dep:tower"]

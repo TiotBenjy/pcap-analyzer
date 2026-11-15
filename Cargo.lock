@@ -2785,13 +2785,16 @@ name = "netsift-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "netsift-api",
  "netsift-engine",
  "netsift-fixtures",
  "netsift-store",
+ "serde_json",
  "tempfile",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

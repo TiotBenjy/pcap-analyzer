@@ -29,8 +29,8 @@ pub struct WriterConfig {
 impl Default for WriterConfig {
     fn default() -> Self {
         Self {
-            batch_rows: 50_000,
-            flush_interval: Duration::from_millis(250),
+            batch_rows: 200_000,
+            flush_interval: Duration::from_secs(1),
             channel_capacity: 4096,
         }
     }
@@ -244,6 +244,10 @@ fn run(conn: Connection, rx: &Receiver<Msg>, config: WriterConfig) -> Result<Wri
         let _ = conn.execute_batch("ROLLBACK");
     }
     result?;
+    // The steps sort large tables (index builds, ADR-023): temporary data goes to files rather
+    // than memory, sorted by a few worker threads.
+    conn.pragma_update(None, "temp_store", "FILE")?;
+    conn.pragma_update(None, "threads", 4)?;
     // A failed end-of-import step does not fail the import (ADR-014): it is reported in the
     // statistics, its marker stays absent and the next opening of the session runs it again.
     batch.stats.finalize = crate::finalize::run_finalizers(&conn).unwrap_or_else(|e| {

@@ -52,6 +52,15 @@ pub const MARKER_KEY: &str = "finalizers";
 pub static SESSION_FINALIZERS: &[Finalizer] = &[
     // --- core ---
     Finalizer {
+        // First: the secondary indexes dropped by the import (ADR-023), read by the steps below.
+        id: "indexes",
+        version: 1,
+        after: &[],
+        fills: &[],
+        reads: &[],
+        run: crate::deferred::finalize,
+    },
+    Finalizer {
         id: "timeseries",
         version: 1,
         after: &[],
@@ -63,7 +72,7 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     Finalizer {
         id: "dns",
         version: 1,
-        after: &[],
+        after: &["indexes"],
         fills: &["dns_pairs", "dns_fts"],
         reads: &["dns_messages"],
         run: crate::dns::finalize,
@@ -72,7 +81,7 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         id: "servers",
         version: 1,
         // After `dns`: when a host reaches MAX_HOST_NAMES, DNS names are kept first, always.
-        after: &["dns"],
+        after: &["indexes", "dns"],
         fills: &[],
         reads: &["dhcp_messages"],
         run: crate::servers::finalize,
@@ -80,7 +89,7 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     Finalizer {
         id: "objects",
         version: 1,
-        after: &[],
+        after: &["indexes"],
         // Nothing to unlist: a session imported before P3.6 never stored bodies, so its
         // `objects` stays "not analyzed" (ADR-013) rather than empty.
         fills: &[],
@@ -98,7 +107,7 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     Finalizer {
         id: "network",
         version: 1,
-        after: &[],
+        after: &["indexes"],
         fills: &[
             "network_hosts",
             "network_edges",
@@ -389,11 +398,12 @@ mod tests {
             WriterConfig::default(),
         )
         .unwrap();
-        // Another connection breaks the DNS step before the end of the import.
+        // Another connection breaks the DNS step before the end of the import (its search
+        // index: the tables keep their name, so the deferred indexes can be built).
         let other = Session::open(dir.path(), OpenMode::ReadWrite).unwrap();
         other
             .conn()
-            .execute_batch("ALTER TABLE dns_pairs RENAME TO dns_pairs_away")
+            .execute_batch("ALTER TABLE dns_fts RENAME TO dns_fts_away")
             .unwrap();
         let stats = writer.finish().unwrap();
         assert!(!stats.finalize.ran.contains(&"dns"));
@@ -404,7 +414,7 @@ mod tests {
         // Repaired: the next opening runs the missing step.
         other
             .conn()
-            .execute_batch("ALTER TABLE dns_pairs_away RENAME TO dns_pairs")
+            .execute_batch("ALTER TABLE dns_fts_away RENAME TO dns_fts")
             .unwrap();
         // The steps that come after `dns` were postponed with it.
         let after_dns: Vec<&str> = SESSION_FINALIZERS

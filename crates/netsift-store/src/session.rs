@@ -80,9 +80,14 @@ impl Session {
                 };
                 conn.pragma_update(None, "synchronous", sync)?;
                 if mode == OpenMode::Import {
-                    // Negative value = KiB: 64 MiB of page cache for the writer.
-                    conn.pragma_update(None, "cache_size", -65_536)?;
+                    // Negative value = KiB: 256 MiB of page cache for the writer, so that the
+                    // indexes being filled stay in memory (P4.2: 64 MiB made the 5 GB benchmark
+                    // read index pages back from the file at every insert).
+                    conn.pragma_update(None, "cache_size", -262_144)?;
                     conn.pragma_update(None, "temp_store", "MEMORY")?;
+                    // Checkpoint the WAL every 128 MiB instead of 8 MiB: a page modified by
+                    // several transactions is copied back to the database file once.
+                    conn.pragma_update(None, "wal_autocheckpoint", 16_384)?;
                 }
                 migrate_session(&mut conn, &SESSION_SCHEMA)?;
                 if mode == OpenMode::Import {
@@ -94,6 +99,8 @@ impl Session {
                         "DELETE FROM meta WHERE key = ?1",
                         [TABLES_ADDED_AFTER_IMPORT],
                     )?;
+                    // Secondary indexes are built at the end (step `indexes`, ADR-023).
+                    crate::deferred::defer(&conn)?;
                 }
                 conn
             }

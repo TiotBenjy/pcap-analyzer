@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Mesures de docs/PERFORMANCE.md, dans le conteneur : `./x.sh bench [all|gen|ingest|queries] [options]`.
+# Mesures de docs/PERFORMANCE.md, dans le conteneur : `./x.sh bench [all|gen|ingest|queries|ui]`.
 #
 #   gen      génère le jeu de chunks synthétiques (netsift-fixtures big) s'il manque
 #   ingest   importe le jeu sur 4 cœurs (taskset, 2 shards = cœurs - 2), puis sur tous les cœurs
 #   queries  chronomètre chaque endpoint de vue sur la session importée sur 4 cœurs
-#   all      les trois (défaut)
+#   ui       mesure l'affichage de l'Overview dans Chromium (Playwright) sur cette session
+#   all      gen, ingest, queries puis ui (défaut)
 #
 # Variables : BENCH_SIZE (défaut 5G), BENCH_CHUNK (500M), BENCH_HOURS (168), BENCH_CPUS (0-3),
 # BENCH_SHARDS (2), BENCH_REPEAT (9), BENCH_ONLY (filtre de queries), BENCH_FULL=0 (saute
@@ -65,11 +66,36 @@ queries() {
     | tee "$OUT/queries.md"
 }
 
+ui() {
+  [[ -d "$OUT/data-4cpu" ]] || { echo "bench: pas de session, lancer d'abord ./x.sh bench ingest" >&2; exit 1; }
+  local port="${NETSIFT_API_PORT:-7999}" token_file
+  token_file="$(mktemp)"
+  head -c 32 /dev/urandom | base64 | tr -d '/+=' > "$token_file"
+  echo ">> Affichage de l'Overview (Chromium, API release sur le port $port)"
+  "$BIN/netsift" serve --bind "127.0.0.1:$port" --token-file "$token_file" \
+    --data-dir "$OUT/data-4cpu" --read-only &
+  local api=$!
+  # shellcheck disable=SC2064 # valeurs figées à la pose du piège
+  trap "kill $api 2>/dev/null || true; rm -f '$token_file'" EXIT
+  for _ in $(seq 1 60); do
+    curl -fsS "http://127.0.0.1:$port/api/v1/health" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+  (
+    cd ui
+    [[ -d node_modules ]] || npm ci
+    npm run -s build
+    NETSIFT_API_URL="http://127.0.0.1:$port" NETSIFT_API_TOKEN="$(cat "$token_file")" \
+      npx playwright test --project=perf
+  )
+}
+
 case "$STEP" in
   gen) build; gen ;;
   ingest) build; gen; ingest ;;
   queries) build; queries ;;
-  all) build; gen; ingest; queries ;;
-  *) echo "bench: étape inconnue : $STEP (all, gen, ingest, queries)" >&2; exit 2 ;;
+  ui) build; ui ;;
+  all) build; gen; ingest; queries; ui ;;
+  *) echo "bench: étape inconnue : $STEP (all, gen, ingest, queries, ui)" >&2; exit 2 ;;
 esac
 echo ">> Rapports dans $OUT/"

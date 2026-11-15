@@ -31,6 +31,26 @@ pub enum BenchCommand {
     Ingest(IngestArgs),
     /// Time the view endpoints of the API on a session.
     Queries(QueriesArgs),
+    /// Time SQL statements on a session (read-only) and print their query plans.
+    Sql(SqlArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct SqlArgs {
+    /// Data directory holding the session.
+    #[arg(long)]
+    pub data_dir: PathBuf,
+    /// Session id (default: the most recent session).
+    #[arg(long)]
+    pub session: Option<String>,
+    /// Timed runs per statement.
+    #[arg(long, default_value_t = 5)]
+    pub repeat: usize,
+    /// Pragmas run first (`mmap_size=268435456`...).
+    #[arg(long = "pragma")]
+    pub pragmas: Vec<String>,
+    /// Statements (no parameters).
+    pub sql: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -72,7 +92,60 @@ pub fn run(command: &BenchCommand, out: &mut dyn Write) -> Result<()> {
                 .build()?;
             runtime.block_on(bench_queries(args, out))
         }
+        BenchCommand::Sql(args) => bench_sql(args, out),
     }
+}
+
+fn session_dir(data_dir: &Path, session: Option<&str>) -> Result<PathBuf> {
+    let sessions = data_dir.join("sessions");
+    if let Some(id) = session {
+        return Ok(sessions.join(id));
+    }
+    // ULIDs sort by creation time: the last one is the most recent.
+    let mut ids: Vec<PathBuf> = std::fs::read_dir(&sessions)
+        .with_context(|| format!("cannot list {}", sessions.display()))?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    ids.sort();
+    ids.pop().context("no session in the data directory")
+}
+
+fn bench_sql(args: &SqlArgs, out: &mut dyn Write) -> Result<()> {
+    let dir = session_dir(&args.data_dir, args.session.as_deref())?;
+    let session = netsift_store::Session::open(&dir, netsift_store::OpenMode::ReadOnly)?;
+    let conn = session.conn();
+    for pragma in &args.pragmas {
+        conn.execute_batch(&format!("PRAGMA {pragma}"))?;
+    }
+    for sql in &args.sql {
+        let mut times = Vec::new();
+        let mut rows = 0usize;
+        for _ in 0..=args.repeat.max(1) {
+            let t = Instant::now();
+            let mut stmt = conn.prepare(sql)?;
+            let mut q = stmt.query([])?;
+            rows = 0;
+            while q.next()?.is_some() {
+                rows += 1;
+            }
+            times.push(t.elapsed());
+        }
+        times.remove(0);
+        times.sort();
+        writeln!(
+            out,
+            "{} ms (median of {}, {rows} rows): {sql}",
+            ms(percentile(&times, 0.5)),
+            times.len()
+        )?;
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))?;
+        let plan = stmt.query_map([], |r| r.get::<_, String>(3))?;
+        for line in plan {
+            writeln!(out, "    {}", line?)?;
+        }
+    }
+    Ok(())
 }
 
 // --- ingest -------------------------------------------------------------------------------
@@ -464,6 +537,9 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
         app: netsift_api::router(config),
         base: "/api/v1".to_owned(),
     };
+    // First opening of the session (list, then details): migrations and pending end-of-import
+    // steps of an older session run here (ADR-013, ADR-014).
+    let t = Instant::now();
     let session = if let Some(s) = &args.session {
         s.clone()
     } else {
@@ -478,8 +554,6 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
             .to_owned()
     };
     api.base = format!("/api/v1/sessions/{session}");
-    // First opening: migrations and pending end-of-import steps (ADR-013, ADR-014), timed.
-    let t = Instant::now();
     let (status, _) = api.get("").await?;
     writeln!(
         out,

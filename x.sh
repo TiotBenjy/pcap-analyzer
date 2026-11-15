@@ -15,7 +15,8 @@
 #   ./x.sh desktop-win           build Windows via cargo-xwin (expérimental) -> dist/
 #   ./x.sh geoip                 télécharge la base GeoIP (DB-IP Lite) dans .data/geoip/
 #   ./x.sh cliff [args]          git-cliff épinglé (CHANGELOG, notes de release ; cliff.toml)
-#   ./x.sh fuzz [cible] [durée]  cargo-fuzz (nightly dans le conteneur)
+#   ./x.sh fuzz [cible|all|build|corpus] [durée]
+#                                cargo-fuzz (nightly dans le conteneur, docs/FUZZING.md)
 #   ./x.sh shell                 shell interactif dans le conteneur
 #   ./x.sh run <cmd...>          commande brute dans le conteneur
 #   ./x.sh clean [--dry-run] [--all [--yes]] [--images]

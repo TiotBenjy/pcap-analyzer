@@ -185,6 +185,12 @@ pub struct FlowConfig {
     /// Maximum out-of-order bytes buffered per direction of a TCP flow, counting a fixed
     /// overhead per buffered piece.
     pub max_stream_buffer: usize,
+    /// Maximum out-of-order bytes buffered by all the TCP flows of a table together (same
+    /// accounting as [`Self::max_stream_buffer`]); the engine divides its global bound by the
+    /// number of shards, keeping at least [`Self::max_stream_buffer`] per table. A stream may only
+    /// buffer what the others leave: past it, its holes are given up (delivered as gaps) like when
+    /// its own bound is reached.
+    pub max_buffered_bytes: usize,
     /// Fragments of an incomplete datagram are dropped after this delay.
     pub defrag_timeout_ns: i64,
     /// Total bytes held by pending fragments **per table** (plus fixed overheads); the engine
@@ -201,6 +207,7 @@ impl Default for FlowConfig {
             other_timeout_ns: 60 * S,
             max_flows: 2_000_000,
             max_stream_buffer: 16 * 1024 * 1024,
+            max_buffered_bytes: 256 * 1024 * 1024,
             defrag_timeout_ns: 30 * S,
             max_defrag_bytes: 64 * 1024 * 1024,
         }
@@ -286,5 +293,6 @@ mod tests {
         assert_eq!(c.udp_timeout_ns, 60_000_000_000);
         assert_eq!(c.max_flows, 2_000_000);
         assert_eq!(c.max_stream_buffer, 16 * 1024 * 1024);
+        assert!(c.max_buffered_bytes >= c.max_stream_buffer);
     }
 }

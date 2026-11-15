@@ -117,6 +117,9 @@ fn refuses_a_foreign_database() {
 fn schema_snapshot() {
     let tmp = tempfile::tempdir().unwrap();
     let session = Session::open(tmp.path(), OpenMode::Import).unwrap();
+    // Schema of a finished import: the end-of-import steps build the deferred indexes again
+    // (ADR-023).
+    netsift_store::run_finalizers(session.conn()).unwrap();
     let mut stmt = session
         .conn()
         .prepare(

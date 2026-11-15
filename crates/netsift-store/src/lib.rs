@@ -13,6 +13,7 @@
 pub mod catalog;
 pub mod connections;
 pub mod credentials;
+pub mod deferred;
 pub mod dns;
 mod error;
 pub mod finalize;

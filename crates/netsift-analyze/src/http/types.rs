@@ -10,11 +10,11 @@ pub struct HttpConfig {
     /// Largest decoded body (after de-chunking and content decoding) of one message, in bytes:
     /// decoding stops there and the body is marked `truncated` (`docs/specs/http.md`: 64 MiB).
     pub max_body_bytes: u64,
-    /// Decoded body bytes kept in memory by one analyzer instance (one shard) at a time, all
-    /// messages together. Past it, bodies are still decoded and counted but not kept (no
-    /// object, no preview beyond what was kept). The bound is **per shard**: the engine runs
-    /// one instance per shard, so the total is this value times the number of shards (a
-    /// budget shared by every shard is a follow-up of task P4.2). Only a response that may
+    /// Decoded body bytes kept in memory at a time, all messages together. Past it, bodies are
+    /// still decoded and counted but not kept (no object, no preview beyond what was kept).
+    /// One analyzer instance applies it as is; the engine, which runs one instance per shard,
+    /// gives each shard its share (P4.2), so the total does not depend on the number of shards
+    /// and the result only depends on it when the budget runs out. Only a response that may
     /// become an object is kept beyond its preview: requests, `206` responses and bodies
     /// announced larger than [`Self::object_max_bytes`] keep the preview only, and a body
     /// whose first 512 decoded bytes have no image signature falls back to its preview, giving
@@ -41,12 +41,14 @@ pub struct HttpConfig {
     /// Requests waiting for their response, per connection (pipelining). Past it, the oldest
     /// one is emitted without response.
     pub max_pending: usize,
-    /// Content decoders (gzip, deflate, brotli) alive at a time per shard. Past it, new
-    /// compressed bodies are counted but not decoded (`not_decoded`).
+    /// Content decoders (gzip, deflate, brotli) alive at a time (shared by the shards like
+    /// [`Self::max_retained_bytes`], at least one per shard). Past it, new compressed bodies are
+    /// counted but not decoded (`not_decoded`).
     pub max_decoders: usize,
-    /// Brotli decoders alive at a time per shard, within `max_decoders`: the window of one
-    /// stream may take 16 MiB (`WBITS` 24) as soon as its header is read, before any output,
-    /// so the ratio check cannot protect against many idle streams.
+    /// Brotli decoders alive at a time, within `max_decoders` (shared by the shards, at least
+    /// one per shard): the window of one stream may take 16 MiB (`WBITS` 24) as soon as its
+    /// header is read, before any output, so the ratio check cannot protect against many idle
+    /// streams.
     pub max_brotli_decoders: usize,
     /// Size of the text preview kept for textual bodies, in bytes.
     pub preview_bytes: usize,
@@ -59,14 +61,14 @@ impl Default for HttpConfig {
     fn default() -> Self {
         Self {
             max_body_bytes: 64 * 1024 * 1024,
-            max_retained_bytes: 32 * 1024 * 1024,
+            max_retained_bytes: 128 * 1024 * 1024,
             store_bodies: true,
             object_min_bytes: 32,
             object_max_bytes: 16 * 1024 * 1024,
             max_decompression_ratio: 250,
             max_pending: 64,
-            max_decoders: 64,
-            max_brotli_decoders: 4,
+            max_decoders: 256,
+            max_brotli_decoders: 8,
             preview_bytes: 4096,
         }
     }

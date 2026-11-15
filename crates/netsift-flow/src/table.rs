@@ -213,6 +213,11 @@ impl TcpConn {
         }
     }
 
+    /// Memory accounted for the buffered data of both directions.
+    fn cost(&self) -> usize {
+        self.to_server.cost().saturating_add(self.to_client.cost())
+    }
+
     fn stream_mut(&mut self, dir: Direction) -> &mut Stream {
         match dir {
             Direction::ToServer => &mut self.to_server,
@@ -323,6 +328,8 @@ pub struct FlowTable {
     /// Packet time of the next expiry sweep.
     next_sweep: i64,
     defrag: Defragmenter,
+    /// Out-of-order bytes buffered by every TCP stream of the table (`Stream::cost`).
+    buffered: usize,
 }
 
 impl FlowTable {
@@ -336,6 +343,7 @@ impl FlowTable {
             now: i64::MIN,
             next_sweep: i64::MIN,
             defrag: Defragmenter::new(config.max_defrag_bytes, config.defrag_timeout_ns),
+            buffered: 0,
         }
     }
 
@@ -434,6 +442,11 @@ impl FlowTable {
         self.defrag.clear();
     }
 
+    /// Out-of-order bytes buffered by the TCP streams of the table (memory reporting, tests).
+    pub fn buffered_bytes(&self) -> usize {
+        self.buffered
+    }
+
     /// Number of flows currently tracked (for progress and memory reporting).
     pub fn active_flows(&self) -> usize {
         self.flows.len()
@@ -495,6 +508,7 @@ impl FlowTable {
                 chunk_id: flow.last_chunk,
                 frame: flow.last_frame,
             };
+            self.buffered = self.buffered.saturating_sub(conn.cost());
             flush_streams(conn, at, flow.id, flow.key, sink);
             if conn.finished() {
                 end = EndReason::Closed;
@@ -691,8 +705,14 @@ impl FlowTable {
                 payload: pkt.payload,
                 len: announced_tcp.unwrap_or(0),
             };
-            conn.stream_mut(dir)
-                .segment(&seg, self.config.max_stream_buffer, &mut |gap, data| {
+            // A stream may only buffer what the other streams of the table leave.
+            let stream = conn.stream_mut(dir);
+            let others = self.buffered.saturating_sub(stream.cost());
+            let room = self.config.max_buffered_bytes.saturating_sub(others);
+            stream.segment(
+                &seg,
+                self.config.max_stream_buffer.min(room),
+                &mut |gap, data| {
                     let ctx = StreamCtx {
                         ts_ns,
                         chunk_id: at.chunk_id,
@@ -702,9 +722,12 @@ impl FlowTable {
                         gap_before: gap,
                     };
                     sink.on_stream(&ctx, dir, data);
-                });
+                },
+            );
+            self.buffered = others.saturating_add(stream.cost());
         }
         if conn.finished() {
+            self.buffered = self.buffered.saturating_sub(conn.cost());
             flush_streams(conn, at, id, key, sink);
         }
     }

@@ -55,7 +55,9 @@ impl Default for PortsConfig {
     fn default() -> Self {
         Self {
             max_pending: 16_384,
-            flush_interval_ns: 60 * 1_000_000_000,
+            // One hour of packet time: memory is bounded by `max_pending`; a short interval only
+            // multiplied the rows of sparse captures (one per host and minute, P4.2).
+            flush_interval_ns: 3_600 * 1_000_000_000,
             max_tracked_flows: 1 << 20,
         }
     }

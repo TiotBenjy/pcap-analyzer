@@ -1081,10 +1081,6 @@ pub fn node_detail(conn: &Connection, ip: IpAddr) -> Result<Option<NodeDetail>> 
     Ok(Some(detail))
 }
 
-/// Server roles of hosts (`?1`, JSON array of addresses), from the `server_roles` view (ADR-017).
-const HOST_ROLES: &str = "SELECT DISTINCT ip, role FROM server_roles \
-    WHERE ip IN (SELECT value FROM json_each(?1)) ORDER BY ip, role";
-
 /// Server roles (`dns`, `dhcp`, `ldap`...) of some hosts, sorted; hosts without a role are
 /// absent. Derived at read time like the Servers view (ADR-017): call it for the few hosts of a
 /// graph or of a detail panel only.
@@ -1094,7 +1090,13 @@ pub fn host_roles(conn: &Connection, ips: &[IpAddr]) -> Result<HashMap<IpAddr, V
         return Ok(out);
     }
     let list: Vec<String> = ips.iter().map(ToString::to_string).collect();
-    let mut stmt = conn.prepare_cached(HOST_ROLES)?;
+    // The `server_roles` table (ADR-017, materialized by the step `servers`, 0801), or its source
+    // view while the step has not run.
+    let (_, roles) = crate::servers::role_relations(conn)?;
+    let mut stmt = conn.prepare_cached(&format!(
+        "SELECT DISTINCT ip, role FROM {roles} \
+         WHERE ip IN (SELECT value FROM json_each(?1)) ORDER BY ip, role"
+    ))?;
     let rows = stmt.query_map([serde_json::to_string(&list)?], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
     })?;

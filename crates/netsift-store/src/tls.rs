@@ -630,9 +630,15 @@ fn unsigned(v: i64) -> u64 {
 pub fn stats(conn: &Connection, limits: StatsLimits) -> Result<TlsStatsRows> {
     let (sessions, weak, issues, encrypted, with_suite): (i64, i64, i64, i64, i64) = conn
         .query_row(
-            "SELECT count(*), coalesce(sum(cipher_weak IS NOT NULL), 0), \
-             coalesce(sum(cert_issues != 0), 0), coalesce(sum(cert_status = 'encrypted'), 0), \
-             coalesce(sum(cipher_suite IS NOT NULL), 0) FROM tls_sessions",
+            // One count per (partial or covering) index rather than a scan of the rows (P4.2). No
+            // `INDEXED BY`: an index may be missing (deferred, ADR-023), the plan is checked by
+            // `stats_queries_read_indexes_only`.
+            "SELECT (SELECT count(*) FROM tls_sessions), \
+             (SELECT count(*) FROM tls_sessions WHERE cipher_weak IS NOT NULL), \
+             (SELECT coalesce(sum(cert_issues != 0), 0) \
+              FROM tls_sessions), \
+             (SELECT count(*) FROM tls_sessions WHERE cert_status = 'encrypted'), \
+             (SELECT count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL)",
             [],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
         )?;

@@ -25,7 +25,7 @@ use serde_json::json;
 
 use crate::connections::EndpointInfo;
 use crate::error::Result;
-use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::query::{Conditions, Keyset, Page, PageRequest, keyset_page};
 use crate::records::{MAX_HOST_NAMES, conversion};
 
 /// Response window of the end-of-import pairing (same as the analyzer's default).
@@ -534,7 +534,9 @@ impl DnsFilter {
         s
     }
 
-    fn search(&self) -> Search {
+    /// Without the search index (`fts_ready` false: step `dns` not run, ADR-023), every search
+    /// uses `LIKE`.
+    fn search(&self, fts_ready: bool) -> Search {
         let Some(q) = self
             .search
             .as_deref()
@@ -543,7 +545,7 @@ impl DnsFilter {
         else {
             return Search::None;
         };
-        if q.chars().count() >= 3 {
+        if fts_ready && q.chars().count() >= 3 {
             // A quoted FTS5 string: any character is literal inside.
             Search::Fts(format!("\"{}\"", q.replace('"', "\"\"")))
         } else {
@@ -569,25 +571,68 @@ macro_rules! like_cond {
     };
 }
 
-/// Builds the positional parameters: filters first, in the order of the SQL text.
-fn filter_params(filter: &DnsFilter, pair: Option<i64>) -> (Vec<Value>, Search) {
-    let mut params = Vec::new();
-    if let Some(p) = pair {
-        params.push(Value::Integer(p));
+/// Protocols stored in `dns_messages` (its `CHECK` constraint): selecting them all filters
+/// nothing.
+const ALL_PROTOCOLS: [&str; 4] = ["dns", "mdns", "llmnr", "nbns"];
+
+impl DnsFilter {
+    /// False when every stored protocol is selected (no condition needed).
+    fn filters_protocols(&self) -> bool {
+        !ALL_PROTOCOLS
+            .iter()
+            .all(|p| self.protocols.iter().any(|q| q == p))
     }
-    params.push(Value::Text(filter.protocol_list()));
-    params.push(Value::Integer(i64::from(filter.errors_only)));
-    let search = filter.search();
-    match &search {
+}
+
+/// Adds the search condition on `dns_messages m`.
+fn push_search(c: &mut Conditions, search: &Search) {
+    match search {
         Search::None => {}
-        Search::Fts(q) => params.push(Value::Text(q.clone())),
-        Search::Like(q) => {
-            for _ in 0..4 {
-                params.push(Value::Text(q.clone()));
-            }
-        }
+        Search::Fts(q) => c.push(fts_cond!(), [Value::Text(q.clone())]),
+        Search::Like(q) => c.push(like_cond!(), [0, 1, 2, 3].map(|_| Value::Text(q.clone()))),
     }
-    (params, search)
+}
+
+/// The active filters of the message list only (P4.2): with every protocol and no other
+/// filter, the count reads the table without evaluating anything per row.
+fn message_conditions(filter: &DnsFilter, pair: Option<i64>, fts_ready: bool) -> Conditions {
+    let mut c = Conditions::new();
+    if let Some(p) = pair {
+        c.push("m.pair_id = ?", [Value::Integer(p)]);
+    }
+    if filter.filters_protocols() {
+        c.push(
+            "instr(?, ',' || m.proto || ',') > 0",
+            [Value::Text(filter.protocol_list())],
+        );
+    }
+    if filter.errors_only {
+        c.push("m.is_error = 1", []);
+    }
+    push_search(&mut c, &filter.search(fts_ready));
+    c
+}
+
+/// Same for the pair list: the search applies to the messages of a pair.
+fn pair_conditions(filter: &DnsFilter, fts_ready: bool) -> Conditions {
+    let mut c = Conditions::new();
+    if filter.filters_protocols() {
+        c.push(
+            "instr(?, ',' || p.proto || ',') > 0",
+            [Value::Text(filter.protocol_list())],
+        );
+    }
+    if filter.errors_only {
+        c.push("p.errors > 0", []);
+    }
+    let mut search = Conditions::new();
+    push_search(&mut search, &filter.search(fts_ready));
+    c.push_group(
+        "p.id IN (SELECT m.pair_id FROM dns_messages m WHERE ",
+        search,
+        ")",
+    );
+    c
 }
 
 /// Pair of the grouped table, with what `hosts` knows of both ends.
@@ -625,26 +670,6 @@ const PAIR_SELECT: &str = "p.id, p.proto, p.client_ip, p.server_ip, p.messages, 
     p.names, p.top_names, p.first_ts, p.last_ts, hc.country, hc.category, hc.names, \
     hs.country, hs.category, hs.names";
 
-macro_rules! pair_filter {
-    ($search:expr) => {
-        concat!(
-            "instr(?, ',' || p.proto || ',') > 0 AND (? = 0 OR p.errors > 0)",
-            $search
-        )
-    };
-}
-const PAIR_FILTER: &str = pair_filter!("");
-const PAIR_FILTER_FTS: &str = pair_filter!(concat!(
-    " AND p.id IN (SELECT m.pair_id FROM dns_messages m WHERE ",
-    fts_cond!(),
-    ")"
-));
-const PAIR_FILTER_LIKE: &str = pair_filter!(concat!(
-    " AND p.id IN (SELECT m.pair_id FROM dns_messages m WHERE ",
-    like_cond!(),
-    ")"
-));
-
 fn pair_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<DnsPairRow> {
     Ok(DnsPairRow {
         id: r.get(0)?,
@@ -676,32 +701,28 @@ pub fn pairs_page(
     filter: &DnsFilter,
     request: &PageRequest,
 ) -> Result<(Page<DnsPairRow>, u64)> {
-    let (params, search) = filter_params(filter, None);
-    let cond: &'static str = match search {
-        Search::None => PAIR_FILTER,
-        Search::Fts(_) => PAIR_FILTER_FTS,
-        Search::Like(_) => PAIR_FILTER_LIKE,
-    };
+    let cond = pair_conditions(filter, crate::finalize::step_done(conn, "dns")?);
+    let where_sql = cond.sql();
     let query = Keyset {
         from: PAIR_FROM,
         select: PAIR_SELECT,
         sort: "p.messages",
         tiebreak: "p.id",
         descending: true,
-        filter: Some(cond),
+        filter: where_sql.as_deref(),
     };
-    let refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
+    let refs = cond.params();
     let page = keyset_page(conn, &query, &refs, request, pair_row)?;
-    let total = count(conn, "dns_pairs p", cond, &refs)?;
+    let total = count(conn, "dns_pairs p", where_sql.as_deref(), &refs)?;
     Ok((page, total))
 }
 
-fn count(conn: &Connection, from: &str, cond: &str, params: &[&dyn ToSql]) -> Result<u64> {
-    let n: i64 = conn.query_row(
-        &format!("SELECT count(*) FROM {from} WHERE {cond}"),
-        params,
-        |r| r.get(0),
-    )?;
+fn count(conn: &Connection, from: &str, cond: Option<&str>, params: &[&dyn ToSql]) -> Result<u64> {
+    let sql = match cond {
+        Some(cond) => format!("SELECT count(*) FROM {from} WHERE {cond}"),
+        None => format!("SELECT count(*) FROM {from}"),
+    };
+    let n: i64 = conn.query_row(&sql, params, |r| r.get(0))?;
     Ok(u(n))
 }
 
@@ -765,22 +786,6 @@ fn message_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<DnsMessageRow> {
     })
 }
 
-macro_rules! message_filter {
-    ($pair:expr, $search:expr) => {
-        concat!(
-            $pair,
-            "instr(?, ',' || m.proto || ',') > 0 AND (? = 0 OR m.is_error = 1)",
-            $search
-        )
-    };
-}
-const MSG_ALL: &str = message_filter!("", "");
-const MSG_ALL_FTS: &str = message_filter!("", concat!(" AND ", fts_cond!()));
-const MSG_ALL_LIKE: &str = message_filter!("", concat!(" AND ", like_cond!()));
-const MSG_PAIR: &str = message_filter!("m.pair_id = ? AND ", "");
-const MSG_PAIR_FTS: &str = message_filter!("m.pair_id = ? AND ", concat!(" AND ", fts_cond!()));
-const MSG_PAIR_LIKE: &str = message_filter!("m.pair_id = ? AND ", concat!(" AND ", like_cond!()));
-
 /// One page of transactions in time order (of one pair when `pair` is set), and the number
 /// of transactions matching the filter.
 pub fn messages_page(
@@ -789,26 +794,19 @@ pub fn messages_page(
     filter: &DnsFilter,
     request: &PageRequest,
 ) -> Result<(Page<DnsMessageRow>, u64)> {
-    let (params, search) = filter_params(filter, pair);
-    let cond: &'static str = match (pair.is_some(), search) {
-        (false, Search::None) => MSG_ALL,
-        (false, Search::Fts(_)) => MSG_ALL_FTS,
-        (false, Search::Like(_)) => MSG_ALL_LIKE,
-        (true, Search::None) => MSG_PAIR,
-        (true, Search::Fts(_)) => MSG_PAIR_FTS,
-        (true, Search::Like(_)) => MSG_PAIR_LIKE,
-    };
+    let cond = message_conditions(filter, pair, crate::finalize::step_done(conn, "dns")?);
+    let where_sql = cond.sql();
     let query = Keyset {
         from: "dns_messages m",
         select: MESSAGE_SELECT,
         sort: "m.ts",
         tiebreak: "m.id",
         descending: false,
-        filter: Some(cond),
+        filter: where_sql.as_deref(),
     };
-    let refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
+    let refs = cond.params();
     let page = keyset_page(conn, &query, &refs, request, message_row)?;
-    let total = count(conn, "dns_messages m", cond, &refs)?;
+    let total = count(conn, "dns_messages m", where_sql.as_deref(), &refs)?;
     Ok((page, total))
 }
 

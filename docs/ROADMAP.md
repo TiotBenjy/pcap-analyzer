@@ -291,11 +291,16 @@ Suivis de la vague 3.A :
   Credentials à 768, placeholder TLS coupé à 375, badge « Auto-signé » coupé à 1280.
 - P4.1 (fusionnée le 2026-11-15, ADR-020, `docs/FUZZING.md`) : 17 cibles, 30 min chacune sans crash ; le gate
   vérifie `fuzz/` (fmt, check `--locked`, tests de la lib) ; job CI `fuzz` (60 s par cible, `main` et à la
-  demande) jamais encore passé sur GitHub ; `scripts/release.sh` met à jour `fuzz/Cargo.lock` au changement de
+  demande), vert au premier passage sur GitHub ; `scripts/release.sh` met à jour `fuzz/Cargo.lock` au changement de
   version, non testé par une vraie release (le `--dry-run` ne l'exerce pas : à surveiller en P4.5) ; campagnes
   `analyzers`/`pipeline` courtes (200 à 360 exécutions/s), à prolonger ; actions tierces de `ci.yml` épinglées
   par tag et non par SHA (contrairement à `release.yml`). Piège : `./x.sh -C <worktree> check` exécute le `x.sh`
   de la racine ; une branche qui modifie le gate doit le tester avec le `x.sh` du worktree.
+- P4.7 (fusionnée le 2026-11-15, ADR-022) : l'id d'un flux est l'index global de la trame qui l'a créé (plus de
+  hachage, plus de collision) ; il change si l'ordre délivré change (sous-ensemble de chunks, égalités d'horodatage
+  entre chunks qui se chevauchent, dépassement de `max_open`) ; phase 5 (ajout de chunks à une session) : le
+  compteur de trames doit reprendre au nombre de paquets déjà importés, sinon les upserts fusionnent en silence ;
+  l'id révèle la position du flux dans la capture.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -333,7 +338,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       fusionnée (pcapng).
 - [x] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
 - [ ] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`.
-- [~] **P4.7** `fix/flow-id-collision` — `FlowId::derive(key, first_ts)` (`netsift-flow/src/api.rs`) donne le même
+- [x] **P4.7** `fix/flow-id-collision` — `FlowId::derive(key, first_ts)` (`netsift-flow/src/api.rs`) donne le même
       id à deux flux successifs de même 5-tuple et même premier horodatage (flux fermé puis nouveau SYN, éviction
       LRU, capture à horodatages constants ou hostile) : `flows` fusionne les compteurs par max (octets perdus),
       `http_transactions` rejette le second flux (`UNIQUE (flow_id, seq)`), TLS l'ignore (`DO NOTHING`), SMB

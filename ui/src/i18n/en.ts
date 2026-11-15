@@ -1,6 +1,7 @@
 // English dictionary: the reference shape. Every key here must exist in fr.ts (checked by tests).
 // Rules: short, factual labels; no emoji, no decorative characters, no exclamation marks.
 import { credentialsEn } from './credentials';
+import { exportsEn } from './exports';
 import { picturesEn } from './pictures';
 import { tlsEn } from './tls';
 
@@ -935,6 +936,7 @@ export const en = {
     },
     // --- analysis views kept in their own module: one line each, sorted ---
     credentials: credentialsEn,
+    exportPcap: exportsEn,
     pictures: picturesEn,
     tls: tlsEn,
   },
@@ -979,6 +981,9 @@ export const en = {
     notFound: 'Not found: it may have been deleted',
     conflict: 'Conflict with an operation in progress',
     tooManyImports: 'Too many imports running; wait for one of them to finish.',
+    tooManyExports: 'Too many exports running; wait for one of them to finish.',
+    exportSourceMissing: 'A capture file of the session is missing or unreadable: put it back where it was imported from.',
+    exportSourceModified: 'A capture file of the session changed since the import: the export would not match the analysis.',
     sessionTooNew: 'This session was created by a newer version of NetSift. Update the application to open it.',
     sessionUpgradeFailed:
       'This session could not be upgraded to this version. Check that the data folder is writable, or import the capture again.',

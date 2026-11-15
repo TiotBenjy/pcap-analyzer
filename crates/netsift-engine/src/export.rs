@@ -23,6 +23,10 @@
 //! its last fragment, the first fragments of a flow can precede `first_ts`: fragments are
 //! accepted up to [`FRAGMENT_SLACK_NS`] before it. Not included: fragments that arrive before
 //! their first fragment, and ICMP errors about the flow (they belong to an ICMP flow).
+//!
+//! The flow is found by its 5-tuple and time span, never by recomputing its id. Limit: two
+//! successive flows with the same 5-tuple whose spans overlap (port reused at once, identical
+//! timestamps) cannot be told apart: exporting either gives the packets of both.
 
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};

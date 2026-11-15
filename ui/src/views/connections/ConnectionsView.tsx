@@ -1,6 +1,6 @@
 import { getRouteApi } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Cable, Globe2, Search } from 'lucide-react';
+import { Cable, Globe2, ListTree, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConnectionStats, useConnectionTop, useConversations } from '../../api/connectionQueries';
@@ -11,6 +11,7 @@ import type { ConversationInfo } from '../../api/types/ConversationInfo';
 import type { CountrySide } from '../../api/types/CountrySide';
 import { ADDRESS_CATEGORIES, ADDRESS_CATEGORY_ORDER, OTHER_COLOR } from '../../charts/palette';
 import { Badge } from '../../components/Badge';
+import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
 import { Endpoint } from '../../components/Endpoint';
@@ -24,6 +25,7 @@ import { Toggle } from '../../components/Toggle';
 import { formatBytes, formatCount, formatDuration, formatPercent, formatTimestamp } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { ChordDiagram, type ChordNodeView } from './ChordDiagram';
+import { FlowsDialog } from './FlowsDialog';
 import { countryName } from '../../lib/countries';
 import { rankedPairs, truncateLabel } from './chordLayout';
 import { LoadMore } from './LoadMore';
@@ -332,6 +334,7 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
   const total = list.data?.pages[0]?.total_estimate ?? null;
   const lang = i18n.language;
+  const [selected, setSelected] = useState<ConversationInfo | null>(null);
 
   const columns = useMemo<ColumnDef<ConversationInfo>[]>(
     () => [
@@ -414,6 +417,29 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
         size: 160,
         cell: ({ row }) => <span className="num">{formatTimestamp(row.original.last_ts_us)}</span>,
       },
+      {
+        id: 'actions',
+        header: () => <span className="sr-only">{t('views.exportPcap.flows.title')}</span>,
+        size: 96,
+        cell: ({ row }) => {
+          const c = row.original;
+          const label = t('views.exportPcap.flows.actionLabel', { from: c.src.names[0] ?? c.src.ip, to: c.dst.names[0] ?? c.dst.ip });
+          return (
+            <Button
+              variant="ghost"
+              className="h-7 px-2"
+              aria-label={label}
+              title={label}
+              onClick={() => {
+                setSelected(c);
+              }}
+            >
+              <ListTree aria-hidden size={16} strokeWidth={1.75} />
+              {t('views.exportPcap.flows.action')}
+            </Button>
+          );
+        },
+      },
     ],
     [t, lang],
   );
@@ -468,6 +494,13 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
           />
         </>
       )}
+      <FlowsDialog
+        sessionId={sessionId}
+        conversation={selected}
+        onClose={() => {
+          setSelected(null);
+        }}
+      />
     </Card>
   );
 }

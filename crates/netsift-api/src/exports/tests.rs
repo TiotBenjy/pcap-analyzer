@@ -259,7 +259,11 @@ async fn invalid_requests_are_problems_and_the_name_is_never_the_clients() {
     for (body, status, kind) in [
         (json!({ "scope": "everything" }), StatusCode::BAD_REQUEST, "bad-request"),
         (json!({ "scope": "flow", "flow_id": "abc" }), StatusCode::BAD_REQUEST, "bad-request"),
-        (json!({ "scope": "flow", "flow_id": "12345" }), StatusCode::NOT_FOUND, "not-found"),
+        (
+            json!({ "scope": "flow", "flow_id": i64::MAX.to_string() }),
+            StatusCode::NOT_FOUND,
+            "not-found",
+        ),
         (
             json!({ "scope": "range", "from_us": 10, "to_us": 5 }),
             StatusCode::BAD_REQUEST,

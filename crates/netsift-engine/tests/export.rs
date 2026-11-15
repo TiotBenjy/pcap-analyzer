@@ -200,8 +200,10 @@ fn flow_export_keeps_both_directions_and_nothing_else() {
     assert_eq!(data, t.flow_frag);
     assert!(data.len() >= 3);
 
-    let err = plan_export(&session, &ExportSelection::Flow { id: 42 }).unwrap_err();
-    assert!(matches!(err, ExportError::FlowNotFound(42)), "{err}");
+    // No session reaches i64::MAX flows or frames: never an existing id.
+    let missing = u64::try_from(i64::MAX).unwrap();
+    let err = plan_export(&session, &ExportSelection::Flow { id: missing }).unwrap_err();
+    assert!(matches!(err, ExportError::FlowNotFound(id) if id == missing), "{err}");
 }
 
 #[test]

@@ -19,6 +19,7 @@ import {
   formatSpan,
   formatTimestamp,
   labelled,
+  parseTimestamp,
 } from './format';
 
 // French groups digits with a narrow no-break space (U+202F); `%` takes a no-break space.
@@ -144,5 +145,28 @@ describe('interpolated quantities', () => {
     }
     expect(i18n.t('views.import.files', { count: 12_345 })).toBe('12,345 files');
     expect(i18n.t('views.import.files', { count: 1 })).toBe('1 file');
+  });
+});
+
+describe('parseTimestamp', () => {
+  it('reads back what formatTimestamp writes, in local time', () => {
+    const us = new Date(2026, 10, 8, 14, 3, 12).getTime() * 1000;
+    expect(parseTimestamp(formatTimestamp(us))).toBe(us);
+    expect(parseTimestamp('2026-11-08T14:03:12')).toBe(us);
+    expect(parseTimestamp(' 2026-11-08 14:03:12 ')).toBe(us);
+  });
+
+  it('keeps fractions and makes a range end inclusive to the second', () => {
+    const us = new Date(2026, 10, 8, 14, 3, 12).getTime() * 1000;
+    expect(parseTimestamp('2026-11-08 14:03:12.5')).toBe(us + 500_000);
+    expect(parseTimestamp('2026-11-08 14:03:12.000001')).toBe(us + 1);
+    expect(parseTimestamp('2026-11-08 14:03:12', true)).toBe(us + 999_999);
+    expect(parseTimestamp('2026-11-08 14:03:12.25', true)).toBe(us + 250_000);
+  });
+
+  it('rejects anything else', () => {
+    for (const bad of ['', '2026-11-08', '14:03:12', '2026-02-30 10:00:00', '2026-11-08 25:00:00', '2026-11-08 14:03:12.1234567', 'abc']) {
+      expect(parseTimestamp(bad)).toBeNull();
+    }
   });
 });

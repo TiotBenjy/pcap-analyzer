@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as connectionsApi from '../../api/connections';
+import * as exportsApi from '../../api/exports';
 import * as api from '../../api/sessions';
 import type { ConnectionMatrix } from '../../api/types/ConnectionMatrix';
 import type { ConnectionStats } from '../../api/types/ConnectionStats';
@@ -16,6 +17,12 @@ vi.mock('../../api/connections', async (importOriginal) => ({
   getConnectionStats: vi.fn(),
   getConnectionTop: vi.fn(),
   listConversations: vi.fn(),
+}));
+vi.mock('../../api/exports', async (importOriginal) => ({
+  ...(await importOriginal<typeof exportsApi>()),
+  listConversationFlows: vi.fn(),
+  listExports: vi.fn(),
+  startPcapExport: vi.fn(),
 }));
 
 const ID = '01JC0FFEE0000000000000000A';
@@ -183,5 +190,68 @@ describe('Connections view', () => {
     expect(await screen.findByText('Import in progress')).toBeInTheDocument();
     expect(connectionsApi.getConnectionStats).not.toHaveBeenCalled();
     expect(connectionsApi.listConversations).not.toHaveBeenCalled();
+  });
+
+  it('lists the flows of a conversation and saves one as PCAP', async () => {
+    const user = setupUser();
+    const flow = {
+      id: '42',
+      transport: 6,
+      src_port: 40000,
+      dst_port: 443,
+      app_proto: 'tls',
+      tcp_state: 'closed',
+      bytes_fwd: 1000,
+      bytes_rev: 2048,
+      packets_total: 12,
+      first_ts_us: T0,
+      last_ts_us: T0 + 5_000_000,
+      duration_us: 5_000_000,
+    };
+    vi.mocked(exportsApi.listConversationFlows).mockResolvedValue({
+      items: [flow, { ...flow, id: '43', transport: 1, src_port: 0, dst_port: 0, app_proto: null }],
+      next_cursor: null,
+      total_estimate: null,
+    });
+    vi.mocked(exportsApi.listExports).mockResolvedValue([]);
+    const running = {
+      id: '01JC0FFEE0000000000000JOB1',
+      session_id: ID,
+      scope: 'flow',
+      from_us: null,
+      to_us: null,
+      flow_id: '42',
+      state: 'running',
+      file_name: 'netsift-01jc0ffe-flow-42-00000job1.pcapng',
+      folder: '/data/exports',
+      path: null,
+      packets: 0,
+      bytes_written: 0,
+      bytes_read: 0,
+      bytes_total: 100,
+      error: null,
+      created_at_us: 0,
+    } satisfies Awaited<ReturnType<typeof exportsApi.startPcapExport>>;
+    vi.mocked(exportsApi.startPcapExport).mockResolvedValue(running);
+    renderApp(`/sessions/${ID}/connections`);
+    await user.click(await screen.findByRole('button', { name: 'Flows from 192.168.1.3 to cdn.example.test' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Flows' });
+    const list = await within(dialog).findByRole('list', { name: 'Flows of the conversation' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent('TCP');
+    expect(items[0]).toHaveTextContent('Port 40000 to 443');
+    expect(items[0]).toHaveTextContent('3.0 KiB');
+    expect(items[0]).toHaveTextContent('12 packets');
+    expect(items[1]).toHaveTextContent('ICMP');
+    expect(items[1]).toHaveTextContent('No ports');
+    expect(exportsApi.listConversationFlows).toHaveBeenCalledWith(ID, '3', null, expect.anything());
+
+    vi.mocked(exportsApi.listExports).mockResolvedValue([
+      { ...running, state: 'done', packets: 12, bytes_written: 999 },
+    ]);
+    await user.click(within(items[0] as HTMLElement).getByRole('button', { name: /^Save this flow as PCAP: TCP Port 40000 to 443/ }));
+    expect(exportsApi.startPcapExport).toHaveBeenCalledWith(ID, { scope: 'flow', flow_id: '42' });
+    expect(await within(dialog).findByText('Saved: 12 packets, 999 B')).toBeInTheDocument();
   });
 });

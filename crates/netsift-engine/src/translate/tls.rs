@@ -91,7 +91,7 @@ fn cipher_name(c: &CipherInfo) -> CipherNameRow {
 /// Row of one TLS session.
 pub(super) fn session_row(s: TlsSession) -> TlsSessionRow {
     TlsSessionRow {
-        // Flow ids are non-negative by construction (`FlowId::derive`).
+        // Flow ids are non-negative by construction (`FlowId::from_first_frame`).
         id: s.flow.0.unsigned_abs(),
         ts: s.ts_ns,
         client_ip: s.client.ip,

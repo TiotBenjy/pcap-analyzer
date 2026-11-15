@@ -325,7 +325,7 @@ mod tests {
             },
         };
         FlowCtx {
-            id: FlowId::derive(&key, ts),
+            id: FlowId::from_first_frame(u64::try_from(ts).unwrap()),
             key,
             first_ts_ns: ts,
             last_ts_ns: ts + 10,

@@ -7,7 +7,8 @@
 //!   packet, and the connection is `Midstream`. Other protocols: the sender of the first
 //!   packet. Ports are 0 for protocols without ports (ICMP, ...).
 //! - **Identity.** A flow is found by protocol + unordered endpoint pair; its id is
-//!   [`FlowId::derive`] of the oriented key and the time of its first packet.
+//!   [`FlowId::from_first_frame`] of the frame that created it, unique as long as the caller
+//!   gives every frame a distinct global index (see [`FlowTable::process`]).
 //! - **New flow on the same tuple.** A packet idle for longer than its timeout starts a new
 //!   flow (the old one ends with `Timeout`). A SYN (without ACK) starts a new flow when the
 //!   previous connection was closed or reset, when the flow was picked up midstream (no
@@ -343,7 +344,8 @@ impl FlowTable {
     }
 
     /// Processes one captured frame. `frame` is its global index (see [`PacketCtx::frame`]),
-    /// `wire_len` its original length on the wire. Frames must be passed in non-decreasing time order per shard (the engine guarantees it;
+    /// distinct for every call (it becomes the [`FlowId`] of the flow the frame creates, if
+    /// any), `wire_len` its original length on the wire. Frames must be passed in non-decreasing time order per shard (the engine guarantees it;
     /// small backward steps must be tolerated, never panic).
     // Frame metadata passed flat: called once per packet on the hot path (agreed signature).
     #[allow(clippy::too_many_arguments)]
@@ -549,7 +551,7 @@ impl FlowTable {
     fn create(
         &mut self,
         canon: Canon,
-        ts_ns: i64,
+        at: At,
         src: Endpoint,
         dst: Endpoint,
         tcp: Option<&TcpInfo>,
@@ -584,11 +586,11 @@ impl FlowTable {
         let serial = self.serial;
         self.serial = self.serial.wrapping_add(1);
         let flow = Flow {
-            id: FlowId::derive(&key, ts_ns),
+            id: FlowId::from_first_frame(at.frame),
             key,
             serial,
-            first_ts: ts_ns,
-            last_ts: ts_ns,
+            first_ts: at.ts_ns,
+            last_ts: at.ts_ns,
             last_chunk: 0,
             last_frame: 0,
             to_server: DirStats::default(),
@@ -633,7 +635,7 @@ impl FlowTable {
         let ts_ns = at.ts_ns;
         self.retire_stale(&canon, ts_ns, src, tcp.as_ref(), sink);
         if !self.flows.contains_key(&canon) {
-            self.create(canon, ts_ns, src, dst, tcp.as_ref(), sink);
+            self.create(canon, at, src, dst, tcp.as_ref(), sink);
         }
         let Some(flow) = self.flows.get_mut(&canon) else {
             report_unflowed(at, wire_len, pkt, sink);

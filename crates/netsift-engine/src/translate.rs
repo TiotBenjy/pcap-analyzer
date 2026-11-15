@@ -49,7 +49,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
 fn dns_row(t: netsift_analyze::dns::DnsTransaction) -> netsift_store::dns::DnsRow {
     netsift_store::dns::DnsRow {
         ts: t.ts_ns,
-        // Flow ids are non-negative by construction (`FlowId::derive`).
+        // Flow ids are non-negative by construction (`FlowId::from_first_frame`).
         flow_id: t.flow.map(|f| f.0),
         transport: t.transport,
         proto: t.proto.as_str().to_owned(),
@@ -203,7 +203,7 @@ pub fn tcp_state_label(state: TcpState) -> &'static str {
 fn flow_row(f: &FlowSummary) -> FlowRow {
     let c = &f.flow;
     FlowRow {
-        // Flow ids are non-negative by construction (`FlowId::derive`).
+        // Flow ids are non-negative by construction (`FlowId::from_first_frame`).
         id: c.id.0.unsigned_abs(),
         transport: c.key.proto,
         src_ip: c.key.client.ip,
@@ -288,7 +288,7 @@ fn http_row(t: HttpTransaction) -> HttpRow {
         .or_else(|| t.response.as_ref().map(|r| r.minor_version))
         .map(|minor| format!("HTTP/1.{minor}"));
     HttpRow {
-        // Flow ids are non-negative by construction (`FlowId::derive`).
+        // Flow ids are non-negative by construction (`FlowId::from_first_frame`).
         flow_id: t.flow.0.unsigned_abs(),
         seq: t.seq,
         client_ip: t.client.ip,
@@ -476,7 +476,7 @@ mod tests {
             },
         };
         let flow = FlowCtx {
-            id: FlowId::derive(&key, 7),
+            id: FlowId::from_first_frame(7),
             key,
             first_ts_ns: 7,
             last_ts_ns: 9,

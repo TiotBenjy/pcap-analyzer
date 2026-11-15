@@ -262,7 +262,10 @@ async fn session_detail_with_hellos_and_chain() {
     assert_eq!(d["server_hello"]["selected_version"], 772);
     assert_eq!(d["certificates"], serde_json::json!([]));
 
-    assert_eq!(env.status("/tls/sessions/42").await, StatusCode::NOT_FOUND);
+    assert_eq!(
+        env.status("/tls/sessions/9223372036854775807").await,
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(env.status("/tls/sessions/x").await, StatusCode::NOT_FOUND);
 }
 

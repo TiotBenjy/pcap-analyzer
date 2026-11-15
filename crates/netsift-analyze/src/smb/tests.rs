@@ -102,7 +102,7 @@ impl Direct {
         Self {
             analyzer: SmbAnalyzer::new(&AnalyzerConfig::default()),
             key,
-            id: FlowId::derive(&key, 1),
+            id: FlowId::from_first_frame(1),
             out: Vec::new(),
         }
     }

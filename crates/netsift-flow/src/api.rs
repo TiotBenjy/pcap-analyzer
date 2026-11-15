@@ -187,8 +187,9 @@ pub struct FlowConfig {
     pub max_stream_buffer: usize,
     /// Maximum out-of-order bytes buffered by all the TCP flows of a table together (same
     /// accounting as [`Self::max_stream_buffer`]); the engine divides its global bound by the
-    /// number of shards. A stream may only buffer what the others leave: past it, its holes are
-    /// given up (delivered as gaps) like when its own bound is reached.
+    /// number of shards, keeping at least [`Self::max_stream_buffer`] per table. A stream may only
+    /// buffer what the others leave: past it, its holes are given up (delivered as gaps) like when
+    /// its own bound is reached.
     pub max_buffered_bytes: usize,
     /// Fragments of an incomplete datagram are dropped after this delay.
     pub defrag_timeout_ns: i64,

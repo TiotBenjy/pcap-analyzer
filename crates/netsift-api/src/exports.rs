@@ -286,7 +286,10 @@ fn selection(request: &ExportRequest) -> Result<ExportSelection, ApiError> {
 /// `[a-z0-9-]` before the extension (no client text, no traversal).
 fn file_name(session: &SessionId, request: &ExportRequest, job: &str) -> String {
     let session = session.as_str().get(..8).unwrap_or_default().to_lowercase();
-    let job = job.get(job.len().saturating_sub(8)..).unwrap_or_default().to_lowercase();
+    let job = job
+        .get(job.len().saturating_sub(8)..)
+        .unwrap_or_default()
+        .to_lowercase();
     let scope = match request {
         ExportRequest::Session => "session".to_owned(),
         ExportRequest::Range { .. } => "range".to_owned(),
@@ -471,11 +474,7 @@ async fn file(
     let file = tokio::fs::File::open(&job.dest)
         .await
         .map_err(|_| ApiError::NotFound)?;
-    let len = file
-        .metadata()
-        .await
-        .map_err(|_| ApiError::NotFound)?
-        .len();
+    let len = file.metadata().await.map_err(|_| ApiError::NotFound)?.len();
     Ok(attachment(stream(file), len, &snapshot.file_name))
 }
 

@@ -63,7 +63,10 @@ fn round_trip_keeps_order_timestamps_lengths_and_link_types() {
     for (p, r) in packets.iter().zip(&read) {
         assert_eq!(r.ts_ns, p.ts_ns);
         assert_eq!(r.linktype, p.linktype);
-        assert_eq!(r.orig_len, p.orig_len.max(u32::try_from(p.data.len()).unwrap()));
+        assert_eq!(
+            r.orig_len,
+            p.orig_len.max(u32::try_from(p.data.len()).unwrap())
+        );
         assert_eq!(r.data.as_ref(), p.data.as_slice());
     }
 }

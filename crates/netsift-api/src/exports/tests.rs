@@ -85,7 +85,10 @@ impl Env {
         if status.is_client_error() || status.is_server_error() {
             assert_eq!(headers[header::CONTENT_TYPE], "application/problem+json");
         }
-        (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
     }
 
     /// Imports demo traffic split in chunks; returns the session id and the chunk files.
@@ -110,12 +113,18 @@ impl Env {
     /// Starts an export and waits for its end.
     async fn export(&self, session: &str, body: &Value) -> Value {
         let (status, job) = self
-            .call("POST", &format!("/api/v1/sessions/{session}/exports/pcap"), body)
+            .call(
+                "POST",
+                &format!("/api/v1/sessions/{session}/exports/pcap"),
+                body,
+            )
             .await;
         assert_eq!(status, StatusCode::ACCEPTED, "{job}");
         let id = job["id"].as_str().unwrap().to_owned();
         for _ in 0..1500 {
-            let (status, job) = self.call("GET", &format!("/api/v1/exports/{id}"), &Value::Null).await;
+            let (status, job) = self
+                .call("GET", &format!("/api/v1/exports/{id}"), &Value::Null)
+                .await;
             assert_eq!(status, StatusCode::OK);
             if job["state"] != "running" {
                 return job;
@@ -191,18 +200,29 @@ async fn session_export_writes_the_file_and_serves_it_as_an_attachment() {
     );
     assert_eq!(headers[header::CONTENT_SECURITY_POLICY], "sandbox");
     assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
-    assert_eq!(headers[header::CONTENT_LENGTH], on_disk.len().to_string().as_str());
+    assert_eq!(
+        headers[header::CONTENT_LENGTH],
+        on_disk.len().to_string().as_str()
+    );
     assert_eq!(body, on_disk);
 
     let (status, list) = env
-        .call("GET", &format!("/api/v1/sessions/{session}/exports"), &Value::Null)
+        .call(
+            "GET",
+            &format!("/api/v1/sessions/{session}/exports"),
+            &Value::Null,
+        )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(list[0]["id"], id);
 
     // Cancelling a finished export changes nothing.
     let (status, again) = env
-        .call("POST", &format!("/api/v1/exports/{id}/cancel"), &Value::Null)
+        .call(
+            "POST",
+            &format!("/api/v1/exports/{id}/cancel"),
+            &Value::Null,
+        )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(again["state"], "done");
@@ -213,7 +233,11 @@ async fn flow_and_range_exports_from_the_connections_listing() {
     let env = Env::new(false);
     let (session, _) = env.import();
     let (_, conversations) = env
-        .call("GET", &format!("/api/v1/sessions/{session}/connections"), &Value::Null)
+        .call(
+            "GET",
+            &format!("/api/v1/sessions/{session}/connections"),
+            &Value::Null,
+        )
         .await;
     let conversation = conversations["items"][0]["id"].as_str().unwrap();
     let (status, flows) = env
@@ -234,9 +258,15 @@ async fn flow_and_range_exports_from_the_connections_listing() {
     assert!(is_server_name(job["file_name"].as_str().unwrap(), "flow-"));
     assert_eq!(job["flow_id"], flow_id);
 
-    let (from, to) = (flow["first_ts_us"].as_i64().unwrap(), flow["last_ts_us"].as_i64().unwrap());
+    let (from, to) = (
+        flow["first_ts_us"].as_i64().unwrap(),
+        flow["last_ts_us"].as_i64().unwrap(),
+    );
     let job = env
-        .export(&session, &json!({ "scope": "range", "from_us": from, "to_us": to }))
+        .export(
+            &session,
+            &json!({ "scope": "range", "from_us": from, "to_us": to }),
+        )
         .await;
     assert_eq!(job["state"], "done", "{job}");
     assert!(job["packets"].as_u64().unwrap() >= flow["packets_total"].as_u64().unwrap());
@@ -257,8 +287,16 @@ async fn invalid_requests_are_problems_and_the_name_is_never_the_clients() {
     let (session, _) = env.import();
     let start = format!("/api/v1/sessions/{session}/exports/pcap");
     for (body, status, kind) in [
-        (json!({ "scope": "everything" }), StatusCode::BAD_REQUEST, "bad-request"),
-        (json!({ "scope": "flow", "flow_id": "abc" }), StatusCode::BAD_REQUEST, "bad-request"),
+        (
+            json!({ "scope": "everything" }),
+            StatusCode::BAD_REQUEST,
+            "bad-request",
+        ),
+        (
+            json!({ "scope": "flow", "flow_id": "abc" }),
+            StatusCode::BAD_REQUEST,
+            "bad-request",
+        ),
         (
             json!({ "scope": "flow", "flow_id": i64::MAX.to_string() }),
             StatusCode::NOT_FOUND,
@@ -272,7 +310,11 @@ async fn invalid_requests_are_problems_and_the_name_is_never_the_clients() {
     ] {
         let (got, json) = env.call("POST", &start, &body).await;
         assert_eq!(got, status, "{body}: {json}");
-        assert_eq!(json["type"], format!("urn:netsift:problem:{kind}"), "{body}");
+        assert_eq!(
+            json["type"],
+            format!("urn:netsift:problem:{kind}"),
+            "{body}"
+        );
     }
     assert_eq!(files_in(&env.exports()), Vec::<String>::new());
 
@@ -316,7 +358,9 @@ async fn missing_or_modified_sources_are_409_without_a_file() {
     let last = files.last().unwrap();
     let saved = std::fs::read(last).unwrap();
     std::fs::remove_file(last).unwrap();
-    let (status, json) = env.call("POST", &start, &json!({ "scope": "session" })).await;
+    let (status, json) = env
+        .call("POST", &start, &json!({ "scope": "session" }))
+        .await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(json["type"], "urn:netsift:problem:export-source-missing");
     let name = last.file_name().unwrap().to_str().unwrap();
@@ -327,7 +371,9 @@ async fn missing_or_modified_sources_are_409_without_a_file() {
     let mut changed = saved;
     changed.push(0);
     std::fs::write(last, &changed).unwrap();
-    let (status, json) = env.call("POST", &start, &json!({ "scope": "session" })).await;
+    let (status, json) = env
+        .call("POST", &start, &json!({ "scope": "session" }))
+        .await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(json["type"], "urn:netsift:problem:export-source-modified");
     let left: Vec<String> = files_in(&env.exports());
@@ -348,7 +394,11 @@ async fn read_only_servers_refuse_exports() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(json["type"], "urn:netsift:problem:read-only");
     let (status, list) = env
-        .call("GET", &format!("/api/v1/sessions/{session}/exports"), &Value::Null)
+        .call(
+            "GET",
+            &format!("/api/v1/sessions/{session}/exports"),
+            &Value::Null,
+        )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(list, json!([]));

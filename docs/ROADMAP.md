@@ -403,13 +403,17 @@ Hors vague (demande utilisateur du 2026-11-08) :
       `AlreadyExists`, à traiter par P4.10, premier utilisateur de `download_to`) ; un champ mal typé de `settings.json`
       rejette tout le fichier (réglages remis à désactivé, sûr) ; `settings.json.tmp` à nom fixe ; retirer les
       `allow(dead_code)` d'`outbound.rs` / `online.rs` / `AppState::online` après P4.9 et P4.10.
-- [~] **P4.9** `feat/geoip-prompt` — Proposer la base GeoIP au démarrage. Vérification locale, sans réseau :
+- [x] **P4.9** `feat/geoip-prompt` — Proposer la base GeoIP au démarrage. Vérification locale, sans réseau :
       date de la base installée (métadonnées mmdb `build_epoch`) comparée au mois courant ; base absente ou antérieure
       au mois -> bandeau discret « Télécharger » / « Mettre à jour » (masquable jusqu'au mois suivant), qui lance le
       téléchargement existant (ADR-015). Réglage « Vérifier en ligne au démarrage », désactivé par défaut : activé, une
       requête HEAD vers l'URL DB-IP du mois confirme la disponibilité (échec réseau silencieux, aucun bandeau d'erreur) ;
       Exception DB-IP, client HTTP, réglages et bandeau fournis par P4.11 (dépendance). Demandé par l'utilisateur le
       2026-11-15, à livrer avant la publication de 0.1.0.
+      Fusionné le 2026-11-15 (ADR-026 : mois DB-IP enregistré au téléchargement dans `dbip-country-lite.month`,
+      masquage du mois par le serveur quand rien de plus récent). Suivis : la base du bundle n'a pas d'enregistrement de
+      mois (bandeau « Mettre à jour » possible une fois si DB-IP l'a générée la veille ; `scripts/ci/geoip.sh` pourrait
+      l'écrire) ; réponse réelle de DB-IP au `HEAD` non vérifiée à la main.
 - [~] **P4.10** `feat/update-check` — Nouvelle version depuis les releases GitHub du dépôt. Bouton « Rechercher une
       mise à jour » dans « À propos » et réglage « Vérifier les mises à jour au démarrage », désactivé par défaut ;
       requête faite par l'API Rust (jamais la webview) vers la dernière release publiée (`releases/latest`, URL du dépôt

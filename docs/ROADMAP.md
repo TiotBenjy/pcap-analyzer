@@ -435,10 +435,12 @@ Hors vague (demande utilisateur du 2026-11-08) :
       dialogue d'enregistrement et `downloadDir()` sur les trois systèmes. Suivis mineurs : lien de release coupé au
       trait d'union (`break-all` dans `ui/src/updates/parts.tsx`, mode web) ; `wait_imports` partage une seule borne
       `IMPORT_GRACE` entre imports et téléchargement.
-- [~] **P4.12** `feat/release-title` — Titre de release : `scripts/release.sh X.Y.Z --title "..."` (message du tag
+- [x] **P4.12** `feat/release-title` — Titre de release : `scripts/release.sh X.Y.Z --title "..."` (message du tag
       annoté), repris par `release.yml` dans le nom de la release GitHub ; le bandeau de mise à jour affiche ce titre
       au lieu d'un extrait du changelog (notes complètes derrière « Notes de version »). Demandé par l'utilisateur
       le 2026-11-15 après la publication de 0.1.1.
+      Fusionné le 2026-11-16 (ADR-028). Le job `create` de `release.yml` ne sera vérifié qu'à la prochaine release ;
+      shellcheck du nouveau `scripts/ci/release-name.sh` à vérifier dans `ci.yml` (désactivée pour l'instant).
 - [x] **P4.6** `ci/release-pipeline` — Releases GitHub publiées par la CI sur tag `vX.Y.Z` : notes
       générées depuis l'historique des commits (Conventional Commits), bundles Linux (AppImage, .deb, .rpm),
       Windows (NSIS .exe, MSI) et macOS (.dmg), sommes SHA-256 ; version unique (workspace, Tauri, UI)

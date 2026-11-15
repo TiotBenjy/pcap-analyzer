@@ -113,15 +113,28 @@ function PackageRow({ pkg, data }: { pkg: ThirdPartyPackage; data: ThirdPartyLic
   const id = `${pkg.source}:${pkg.name}@${pkg.version}`;
   return (
     <li className="flex min-w-0 flex-col gap-1 border-b border-line px-2 py-1.5 last:border-b-0" data-testid="license-package">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span data-testid="truncatable" title={pkg.name} className="min-w-0 truncate font-mono text-table">
-          {pkg.name}
-        </span>
-        <span className="font-mono text-meta text-muted">{pkg.version}</span>
-        <Badge>{pkg.source === 'cargo' ? t('views.settings.thirdParty.rust') : t('views.settings.thirdParty.npm')}</Badge>
+      {/* Identity on the left (name, then version and kind as one unit that wraps whole), button in
+          its own column: every row keeps the same rhythm whatever the width. */}
+      <div className="flex min-w-0 items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span data-testid="truncatable" title={pkg.name} className="min-w-0 truncate font-mono text-table">
+              {pkg.name}
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="font-mono text-meta text-muted">{pkg.version}</span>
+              <Badge>{pkg.source === 'cargo' ? t('views.settings.thirdParty.rust') : t('views.settings.thirdParty.npm')}</Badge>
+            </span>
+          </div>
+          {pkg.declared !== pkg.license && (
+            <span className="break-words text-meta text-muted">
+              {labelled(t('views.settings.thirdParty.declared'), pkg.declared)}
+            </span>
+          )}
+        </div>
         <Button
           variant="ghost"
-          className="ml-auto h-7 px-2 text-meta"
+          className="h-7 shrink-0 px-2 text-meta"
           aria-expanded={open}
           aria-controls={open ? id : undefined}
           onClick={() => {
@@ -131,9 +144,6 @@ function PackageRow({ pkg, data }: { pkg: ThirdPartyPackage; data: ThirdPartyLic
           {open ? t('views.settings.thirdParty.hideText') : t('views.settings.thirdParty.showText')}
         </Button>
       </div>
-      {pkg.declared !== pkg.license && (
-        <span className="break-words text-meta text-muted">{labelled(t('views.settings.thirdParty.declared'), pkg.declared)}</span>
-      )}
       {open && (
         <div id={id} className="flex min-w-0 flex-col gap-2 pt-1">
           {pkg.reference === true && <p className="text-meta text-muted">{t('views.settings.thirdParty.reference')}</p>}

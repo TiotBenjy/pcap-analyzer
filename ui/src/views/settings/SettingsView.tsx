@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { license as PROJECT_LICENSE, version as APP_VERSION } from '../../../package.json';
 import { useHealth, useServerInfo } from '../../api/queries';
@@ -68,7 +68,7 @@ function AboutCard() {
 
   return (
     <Card title={t('views.settings.about')}>
-      <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] items-center gap-x-4 gap-y-3">
+      <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] items-baseline gap-x-4 gap-y-3">
         <dt className="text-muted">{t('views.settings.version')}</dt>
         <dd className="num min-w-0" data-testid="app-version">
           {APP_VERSION}
@@ -78,8 +78,18 @@ function AboutCard() {
           {PROJECT_LICENSE}
         </dd>
         <dt className="text-muted">{t('views.settings.sourceCode')}</dt>
-        <dd className="min-w-0 break-all select-all" data-testid="app-repository">
-          {REPOSITORY_URL}
+        <dd className="min-w-0 break-words select-all" data-testid="app-repository">
+          {/* Break opportunities after each slash only: the address never splits inside a word. */}
+          {REPOSITORY_URL.split('/').map((part, i, parts) => (
+            <Fragment key={i}>
+              {part}
+              {i < parts.length - 1 && (
+                <>
+                  /<wbr />
+                </>
+              )}
+            </Fragment>
+          ))}
         </dd>
         <dt className="text-muted">{t('views.settings.backend')}</dt>
         <dd className="min-w-0" data-testid="backend-status">

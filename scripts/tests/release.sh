@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Tests for the pure helpers of scripts/release.sh (sourced, main is not run):
-# SemVer ordering, GitHub remote parsing, workspace version rewrite, argument validation.
+# Tests for scripts/release.sh (sourced, main is not run): SemVer ordering, release kind (bump or
+# publication of the current version), GitHub remote parsing, workspace version rewrite, argument
+# validation, the guards of a rerun (release already merged on main, tag on origin), and the
+# version bump itself (apply_version) on a throwaway repository: Cargo.lock,
+# fuzz/Cargo.lock and the UI lockfile follow the new version. That last part needs cargo and npm
+# (gate container, CI runners) and is skipped without them; it never touches this repository.
 #
 #   bash scripts/tests/release.sh
 set -euo pipefail
@@ -28,6 +32,12 @@ for ((i = 1; i < ${#chain[@]}; i++)); do
 done
 check "equal versions are not greater" not semver_gt 0.1.0 0.1.0
 check "equal prereleases are not greater" not semver_gt 1.0.0-rc.1 1.0.0-rc.1
+
+check "same version: publication of the current one" test "$(release_kind 0.1.0 0.1.0)" = same
+check "greater version: bump" test "$(release_kind 0.1.0 0.2.0)" = bump
+check "prerelease to release: bump" test "$(release_kind 0.2.0-rc.1 0.2.0)" = bump
+check "lower version refused" not quiet release_kind 0.2.0 0.1.0
+check "release below its prerelease refused" not quiet release_kind 0.2.0 0.2.0-rc.1
 
 check "ssh remote" test "$(github_slug git@github.com:TiotBenjy/pcap-analyzer.git)" = TiotBenjy/pcap-analyzer
 check "https remote" test "$(github_slug https://github.com/TiotBenjy/pcap-analyzer)" = TiotBenjy/pcap-analyzer
@@ -58,6 +68,117 @@ check "rejects non-SemVer" not quiet bash "$ROOT/scripts/release.sh" 1.2 --dry-r
 check "rejects unknown option" not quiet bash "$ROOT/scripts/release.sh" 1.2.3 --force
 check "--no-push no longer exists" not quiet bash "$ROOT/scripts/release.sh" 1.2.3 --no-push
 check "rejects missing version" not quiet bash "$ROOT/scripts/release.sh" --dry-run
+
+# --- Rerun after a partial failure: release already merged, tag on origin ---------------
+GITREPO="$TMP/git"
+gc() { git -C "$GITREPO" -c user.name=t -c user.email=t@example.invalid "$@"; }
+git init -q -b main "$GITREPO"
+gc commit -q --allow-empty -m "feat: start"
+check "no release merged yet" test -z "$(release_merged "$GITREPO" 0.1.0)"
+gc checkout -q -b chore/release-0.1.0
+gc commit -q --allow-empty -m "chore(release): v0.1.0"
+gc checkout -q main
+gc merge -q --no-ff -m "merge(chore/release-0.1.0): intégration" chore/release-0.1.0
+check "merged release: its merge commit" test "$(release_merged "$GITREPO" 0.1.0)" = "$(gc rev-parse main)"
+check "another version is not merged" test -z "$(release_merged "$GITREPO" 0.1.1)"
+gc commit -q --allow-empty -m "chore(release): v0.2.0"
+check "release commit without merge commit" test "$(release_merged "$GITREPO" 0.2.0)" = "$(gc rev-parse main)"
+gc commit -q --allow-empty -m "chore(release): v0.3.0-rc.1"
+check "a prerelease is not its release" test -z "$(release_merged "$GITREPO" 0.3.0)"
+
+git init -q --bare "$TMP/origin.git"
+gc remote add origin "$TMP/origin.git"
+check "tag absent from origin" test "$(remote_tag_state "$GITREPO" v0.1.0)" = absent
+gc tag v0.1.0 main
+gc push -q origin refs/tags/v0.1.0
+check "tag present on origin" test "$(remote_tag_state "$GITREPO" v0.1.0)" = present
+gc remote set-url origin "$TMP/missing.git"
+check "unreachable origin is an error" test "$(remote_tag_state "$GITREPO" v0.1.0)" = error
+
+# --- apply_version on a throwaway repository ------------------------------------------
+# Same layout as this repository: a workspace of netsift-* crates, fuzz/ outside it with its own
+# Cargo.lock and path dependencies on them, ui/ with package.json and package-lock.json.
+make_repo() { # <dir>
+  local d="$1"
+  mkdir -p "$d/crates/netsift-a/src" "$d/crates/netsift-b/src" "$d/fuzz/src" "$d/ui"
+  cat > "$d/Cargo.toml" <<'EOF'
+[workspace]
+resolver = "2"
+members = ["crates/netsift-a", "crates/netsift-b"]
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+EOF
+  printf '[package]\nname = "netsift-a"\nversion.workspace = true\nedition.workspace = true\n' \
+    > "$d/crates/netsift-a/Cargo.toml"
+  printf '[package]\nname = "netsift-b"\nversion.workspace = true\nedition.workspace = true\n\n[dependencies]\nnetsift-a = { path = "../netsift-a" }\n' \
+    > "$d/crates/netsift-b/Cargo.toml"
+  cat > "$d/fuzz/Cargo.toml" <<'EOF'
+[package]
+name = "netsift-fuzz"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+members = ["."]
+
+[dependencies]
+netsift-b = { path = "../crates/netsift-b" }
+EOF
+  touch "$d/crates/netsift-a/src/lib.rs" "$d/crates/netsift-b/src/lib.rs" "$d/fuzz/src/lib.rs"
+  printf '{\n  "name": "ui",\n  "version": "0.1.0",\n  "private": true\n}\n' > "$d/ui/package.json"
+  printf '{\n  "name": "ui",\n  "version": "0.1.0",\n  "lockfileVersion": 3,\n  "requires": true,\n  "packages": {\n    "": {\n      "name": "ui",\n      "version": "0.1.0"\n    }\n  }\n}\n' \
+    > "$d/ui/package-lock.json"
+  (cd "$d" && CARGO_NET_OFFLINE=true cargo generate-lockfile --quiet) || return 1
+  (cd "$d/fuzz" && CARGO_NET_OFFLINE=true cargo generate-lockfile --quiet) || return 1
+  git -C "$d" init -q
+  git -C "$d" add -A
+  git -C "$d" -c user.name=t -c user.email=t@example.invalid commit -q -m init
+}
+
+# Runner of apply_version: cargo at the root of the repository, npm in ui/, offline.
+# shellcheck disable=SC2329 # invoked by apply_version
+direct() {
+  local tool="$1"; shift
+  case "$tool" in
+    cargo) (cd "$REPO" && CARGO_NET_OFFLINE=true cargo "$@") ;;
+    npm)   (cd "$REPO/ui" && npm --offline --no-audit --no-fund "$@") ;;
+    *) return 1 ;;
+  esac
+}
+
+# Version of an internal crate in a Cargo.lock.
+locked() { awk -v n="$2" '$0 == "name = \"" n "\"" { getline; gsub(/version = |"/, ""); print; exit }' "$1"; }
+
+if command -v cargo >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  REPO="$TMP/repo"
+  if make_repo "$REPO" >/dev/null 2>&1; then
+    check "throwaway repository is consistent" quiet bash "$ROOT/scripts/check-version.sh" -C "$REPO" v0.1.0
+
+    apply_version "$REPO" 0.1.0 direct >/dev/null 2>&1
+    check "same version: nothing changes" test -z "$(git -C "$REPO" status --porcelain)"
+
+    apply_version "$REPO" 0.2.0 direct >/dev/null 2>&1
+    check "bump: check-version agrees with v0.2.0" quiet bash "$ROOT/scripts/check-version.sh" -C "$REPO" v0.2.0
+    check "bump: Cargo.lock follows" test "$(locked "$REPO/Cargo.lock" netsift-b)" = 0.2.0
+    check "bump: fuzz/Cargo.lock follows (netsift-a)" test "$(locked "$REPO/fuzz/Cargo.lock" netsift-a)" = 0.2.0
+    check "bump: fuzz/Cargo.lock follows (netsift-b)" test "$(locked "$REPO/fuzz/Cargo.lock" netsift-b)" = 0.2.0
+    check "bump: fuzz crate keeps its own version" test "$(locked "$REPO/fuzz/Cargo.lock" netsift-fuzz)" = 0.0.0
+    check "bump: fuzz/Cargo.lock passes --locked" \
+      quiet env CARGO_NET_OFFLINE=true cargo metadata --locked --format-version 1 --manifest-path "$REPO/fuzz/Cargo.toml"
+    check "bump: only the version files change" test \
+      "$(git -C "$REPO" status --porcelain | awk '{ print $2 }' | sort | tr '\n' ' ')" \
+      = "Cargo.lock Cargo.toml fuzz/Cargo.lock ui/package-lock.json ui/package.json "
+    check "bump: fuzz/Cargo.lock changes only the netsift-a and netsift-b versions" test \
+      "$(git -C "$REPO" diff -U0 -- fuzz/Cargo.lock | grep -c '^[-+]version')" = 4
+  else
+    failures=$((failures + 1)); echo "FAIL: throwaway repository (cargo generate-lockfile)" >&2
+  fi
+else
+  echo "release tests: cargo or npm missing, apply_version not exercised (run in the gate)"
+fi
 
 echo "release tests: $pass passed, $failures failed"
 [[ "$failures" -eq 0 ]]

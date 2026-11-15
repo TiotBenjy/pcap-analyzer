@@ -103,17 +103,28 @@ l'utilisateur pour ce numéro. Jamais de tag poussé à la main. Décision : ADR
 - Notes de release et `CHANGELOG.md` : générés par git-cliff (`cliff.toml`) à partir des messages
   Conventional Commits, groupés en Fonctionnalités, Corrections, Performances, Documentation,
   Build/CI, Tests, Autres. Les fusions `merge(...)`, `docs(roadmap)` et `chore(release)` sont exclues.
-  Un message de commit soigné est donc une ligne de notes de version.
+  Un message de commit soigné est donc une ligne de notes de version. Première version (aucun tag
+  précédent, `v0.1.0`) : seuls les groupes Fonctionnalités et Performances sont détaillés, le reste de
+  l'historique de développement est résumé en une phrase et les marqueurs de rupture (interfaces
+  internes figées pendant le développement) ne sont pas affichés.
+- Licences tierces : la liste embarquée (« À propos », `THIRD_PARTY_LICENSES` des bundles) est
+  vérifiée par le gate ; elle est donc à jour sur `main` au moment de la release (`docs/LICENSES.md`).
 
 ### Déroulé (`scripts/release.sh X.Y.Z`, sur l'hôte, depuis le checkout racine)
 
 Préconditions vérifiées avant toute modification : checkout racine sur `main`, propre ;
-`git fetch origin` fait et `main` égal à `origin/main` ; `X.Y.Z` SemVer et supérieur à la version
-actuelle ; tag `vX.Y.Z` absent en local et sur `origin` ; branche `chore/release-X.Y.Z` absente.
+`git fetch origin` fait et `main` égal à `origin/main` ; `X.Y.Z` SemVer, supérieur ou égal à la
+version actuelle ; tag `vX.Y.Z` absent en local et sur `origin` ; branche `chore/release-X.Y.Z` absente.
+
+`X.Y.Z` égal à la version actuelle publie la version déjà en place : c'est le cas de la première
+release, `0.1.0` étant la version du workspace depuis le début. Aucun fichier de version n'est alors
+modifié ; la branche de release ne contient que `CHANGELOG.md`.
 
 1. `scripts/wt.sh new chore/release-X.Y.Z`.
-2. Dans ce worktree : version de `Cargo.toml`, `./x.sh cargo update --workspace` (Cargo.lock,
-   crates internes seulement), `./x.sh npm version X.Y.Z --no-git-tag-version`,
+2. Dans ce worktree, si la version change (`apply_version`) : version de `Cargo.toml`,
+   `./x.sh cargo update --workspace` (Cargo.lock, crates internes seulement), `cargo metadata` sur
+   `fuzz/Cargo.toml` (son `Cargo.lock` suit la version des crates `netsift-*`, vérifié en `--locked`
+   par le gate), `./x.sh npm version X.Y.Z --no-git-tag-version`. Dans tous les cas :
    `scripts/check-version.sh vX.Y.Z`, puis `./x.sh cliff --tag vX.Y.Z --output CHANGELOG.md`.
    Commit `chore(release): vX.Y.Z` (ligne `Co-Authored-By` : variable `RELEASE_COAUTHOR`).
 3. `scripts/wt.sh merge chore/release-X.Y.Z --push --cleanup` : rebase, **gate complet**, fusion
@@ -123,15 +134,24 @@ actuelle ; tag `vX.Y.Z` absent en local et sur `origin` ; branche `chore/release
    Ce push déclenche `release.yml`.
 5. Affichage des URL (page Actions du workflow, page de la release) et de la commande de suivi.
 
-Option `--dry-run` : préconditions, versions qui seraient appliquées et notes de la release
-(git-cliff). Aucune écriture dans le dépôt (seules les références distantes sont rafraîchies par le
+Option `--dry-run` : préconditions, plan exact (version modifiée ou déjà en place, fichiers touchés,
+`CHANGELOG.md` créé ou régénéré, fusion, tag) et notes de la release (git-cliff). Aucune écriture dans le dépôt (seules les références distantes sont rafraîchies par le
 fetch). Il n'y a pas de mode « sans push » : pour tester le script de bout en bout, utiliser un clone
-jetable dont `origin` est un dépôt bare local.
+jetable dont `origin` est un dépôt bare local. `scripts/tests/release.sh` (gate et `ci.yml`) teste
+`apply_version` sur un dépôt temporaire : `Cargo.lock`, `fuzz/Cargo.lock` et le lockfile de l'UI
+suivent la nouvelle version, et rien d'autre ne change.
 
 En cas d'échec avant la fusion (étape 3), rien n'est poussé et le script supprime lui-même le worktree
 et la branche de release. Après la fusion locale (échec du push de `main` ou du tag), il affiche les
 commandes pour annuler la fusion locale ou pour terminer (tag). Rien n'est interactif (utilisable par
 un agent).
+
+Relance après un échec partiel : si `main` contient déjà la release (fusion
+`merge(chore/release-X.Y.Z)` ou commit `chore(release): vX.Y.Z`), le script refuse de fusionner une
+seconde fois et affiche les commandes de création et de push du tag ; si le tag existe en local
+seulement, il affiche `git push origin vX.Y.Z` ; s'il existe sur `origin`, la version est publiée et
+le script refuse. Dernier garde-fou : une branche de release sans aucun changement (`CHANGELOG.md`
+identique) n'est jamais commitée. Suivi dans tous les cas : `scripts/release-status.sh vX.Y.Z --wait`.
 
 ### Ce que fait la CI (`release.yml`)
 

@@ -48,7 +48,8 @@
     "category": "Utility",
     "shortDescription": "Forensic analysis of network captures",
     "longDescription": "Offline analysis of pcap and pcapng captures, including chunked capture sets.",
-    "copyright": "NetSift contributors",
+    "copyright": "Copyright 2026 TiotBenjy",
+    "publisher": "TiotBenjy",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -57,7 +58,10 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/geoip/": "geoip/"
+      "resources/geoip/": "geoip/",
+      "../../LICENSE": "licenses/LICENSE",
+      "../../NOTICE": "licenses/NOTICE",
+      "../../THIRD_PARTY_LICENSES": "licenses/THIRD_PARTY_LICENSES"
     },
     "homepage": "https://github.com/TiotBenjy/pcap-analyzer",
     "linux": {

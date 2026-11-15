@@ -17,6 +17,8 @@
 #   ./x.sh bench [all|gen|ingest|queries|ui]
 #                                mesures de performance (docs/PERFORMANCE.md, 5 Go synthétiques)
 #   ./x.sh cliff [args]          git-cliff épinglé (CHANGELOG, notes de release ; cliff.toml)
+#   ./x.sh licenses [--check]    licences tierces embarquées (cargo-about + npm) : régénère ou
+#                                vérifie la liste d'« À propos » et THIRD_PARTY_LICENSES
 #   ./x.sh fuzz [cible|all|build|corpus] [durée]
 #                                cargo-fuzz (nightly dans le conteneur, docs/FUZZING.md)
 #   ./x.sh shell                 shell interactif dans le conteneur
@@ -417,6 +419,8 @@ case "$CMD" in
         (cd ui && npm run -s typecheck)
         echo "== UI : tests unitaires =="
         (cd ui && npm run -s test -- --run)
+        echo "== licences tierces =="
+        bash scripts/ct/licenses.sh --check
       fi
       echo "OK"
     ' ;;
@@ -439,6 +443,7 @@ case "$CMD" in
   cliff)       mapfile -t gm < <(git_mount_args)
                run_in "${gm[@]}" -- "bash scripts/ct/cliff.sh $*" ;;
   fuzz)        run_in -- "bash scripts/ct/fuzz.sh $*" ;;
+  licenses)    run_in -- "bash scripts/ct/licenses.sh $*" ;;
   clean)       cmd_clean "$@" ;;
   slug)        slug ;;
 

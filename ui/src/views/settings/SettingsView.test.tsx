@@ -1,6 +1,6 @@
 import '../../i18n';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client';
 import type { GeoipInfo } from '../../api/types/GeoipInfo';
@@ -73,6 +73,30 @@ describe('SettingsView', () => {
     expect(attribution).toHaveTextContent('CC BY 4.0');
     expect(attribution).toHaveTextContent('https://creativecommons.org/licenses/by/4.0/');
     expect(document.querySelector('a')).toBeNull();
+  });
+
+  it('shows the version, the license and the repository as plain text', async () => {
+    await i18n.changeLanguage('en');
+    renderView();
+    expect(screen.getByTestId('app-version')).toHaveTextContent(/^\d+\.\d+\.\d+/);
+    expect(screen.getByTestId('app-license')).toHaveTextContent(/^Apache-2\.0$/);
+    expect(screen.getByTestId('app-repository')).toHaveTextContent('https://github.com/TiotBenjy/pcap-analyzer');
+    expect(screen.getByRole('button', { name: 'View licenses' })).toBeEnabled();
+    expect(document.querySelector('a')).toBeNull();
+  });
+
+  it('opens the third-party licenses on demand', async () => {
+    await i18n.changeLanguage('en');
+    const user = setupUser();
+    renderView();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'View licenses' }));
+    const dialog = screen.getByRole('dialog', { name: 'Third-party licenses' });
+    // The generated list (ui/src/views/settings/licenses/third-party-licenses.json).
+    expect(await within(dialog).findByTestId('licenses-count')).toHaveTextContent(/^([\d,]+) of \1 packages$/);
+    expect(within(dialog).getByRole('button', { name: /^MIT\s*[\d,]+ packages$/ })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('is translated in French', async () => {

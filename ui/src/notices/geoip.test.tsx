@@ -206,16 +206,26 @@ describe('GeoIP notice', () => {
     });
   });
 
-  it('says when nothing newer is published, and drops its button', async () => {
+  it('disappears when a download found nothing newer (dismissed by the server)', async () => {
     api.getGeoipStatus.mockResolvedValue(status());
-    api.downloadGeoip.mockResolvedValue(downloaded({ month: '2026-10', newer: false, dismissed: true }));
+    let finish: (result: GeoipDownload) => void = () => undefined;
+    api.downloadGeoip.mockReturnValue(
+      new Promise<GeoipDownload>((resolve) => {
+        finish = resolve;
+      }),
+    );
     renderArea();
     const banner = await screen.findByTestId('notice-geoip');
     await setupUser().click(within(banner).getByRole('button', { name: 'Update' }));
-    expect(await within(banner).findByRole('status')).toHaveTextContent(/^No newer database published yet\.$/);
-    expect(within(banner).queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
-    // Still closable; the server already dismissed it for the month.
-    expect(within(banner).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+    expect(api.getSettings).toHaveBeenCalledTimes(1);
+    // The server stored the dismissal for the month: the settings say so once read again.
+    api.getSettings.mockResolvedValue(settings({ geoip: '2026-11' }));
+    finish(downloaded({ month: '2026-10', newer: false, dismissed: true }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('notice-geoip')).not.toBeInTheDocument();
+    });
+    expect(api.getSettings).toHaveBeenCalledTimes(2);
+    expect(api.dismissNotice).not.toHaveBeenCalled();
   });
 
   it('shares a running download with Settings > About', async () => {

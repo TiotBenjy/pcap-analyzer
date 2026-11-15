@@ -1,5 +1,6 @@
 import { useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
 import { downloadGeoip, getGeoipStatus, getGeoipUpdate, importGeoip } from './geoip';
+import { settingsKeys } from './settingsQueries';
 import type { GeoipInfo } from './types/GeoipInfo';
 import type { ServerInfo } from './types/ServerInfo';
 
@@ -74,11 +75,19 @@ export function useGeoipUpdate() {
     onMutate: () => {
       queryClient.removeQueries({ queryKey: geoipKeys.update });
     },
-    onSuccess: ({ info }) => {
+    onSuccess: ({ info, dismissed }) => {
       queryClient.setQueryData<ServerInfo>(['server-info'], (old) => (old === undefined ? old : { ...old, geoip: info }));
       void queryClient.invalidateQueries({ queryKey: geoipKeys.status });
+      // The server dismissed the notice for the month: hide it everywhere.
+      if (dismissed) void queryClient.invalidateQueries({ queryKey: settingsKeys.all });
     },
   });
+  // Result of the latest update that succeeded, whichever place started it.
+  const results = useMutationState({
+    filters: { mutationKey: geoipKeys.run, status: 'success' },
+    select: (m) => m.state.data as GeoipUpdateResult | undefined,
+  });
+  const lastResult = results.at(-1);
   const running = useMutationState({
     filters: { mutationKey: geoipKeys.run, status: 'pending' },
     select: (m) => m.state.variables as GeoipUpdateRequest | undefined,
@@ -92,5 +101,5 @@ export function useGeoipUpdate() {
     refetchInterval: 500,
     staleTime: 0,
   });
-  return { mutation, busy, downloading, progress: progress.data };
+  return { mutation, busy, downloading, progress: progress.data, lastResult };
 }

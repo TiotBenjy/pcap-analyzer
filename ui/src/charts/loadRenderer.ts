@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type EChartsRenderer from './EChartsRenderer';
 
 // ECharts is heavy: it lives in its own chunk (vite.config.ts manualChunks), loaded on demand.
@@ -10,7 +10,9 @@ import type EChartsRenderer from './EChartsRenderer';
 export type ChartRenderer = typeof EChartsRenderer;
 
 let renderer: ChartRenderer | null = null;
-let failure: unknown = null;
+/** Loads started so far; a failure records the load it ended. */
+let attempts = 0;
+let failure: { error: unknown; attempt: number } | null = null;
 let loading: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
@@ -20,20 +22,27 @@ function notify(): void {
   });
 }
 
-/** Starts loading the chart renderer (idempotent; a failed load is retried on the next call). */
+/**
+ * Starts loading the chart renderer, unless it is loaded or loading. A failed load is not kept:
+ * the next call starts a new one (a chart remounted by its error boundary's retry calls it).
+ */
 export function loadChartRenderer(): Promise<void> {
-  loading ??= import('./EChartsRenderer').then(
-    (m) => {
-      renderer = m.default;
-      failure = null;
-      notify();
-    },
-    (e: unknown) => {
-      failure = e;
-      loading = null;
-      notify();
-    },
-  );
+  if (loading === null) {
+    attempts += 1;
+    const attempt = attempts;
+    loading = import('./EChartsRenderer').then(
+      (m) => {
+        renderer = m.default;
+        failure = null;
+        notify();
+      },
+      (error: unknown) => {
+        failure = { error, attempt };
+        loading = null;
+        notify();
+      },
+    );
+  }
   return loading;
 }
 
@@ -71,16 +80,19 @@ const ready = () => renderer !== null;
 const failed = () => failure;
 
 /**
- * True once the chart renderer is loaded (loading starts on mount). A failed load is thrown to
- * the nearest error boundary, as a failed lazy component would be.
+ * True once the chart renderer is loaded; loading starts on mount when it is not. When `needed`
+ * (the chart has something to draw), a load that failed after this component mounted is thrown to
+ * the nearest error boundary, as a failed lazy component would be; a failure older than the
+ * component is not: its mount starts a new load.
  */
-export function useChartRendererReady(): boolean {
+export function useChartRendererReady(needed: boolean): boolean {
   const loaded = useSyncExternalStore(subscribe, ready, ready);
   const error = useSyncExternalStore(subscribe, failed, failed);
+  const mountedAt = useRef(attempts);
   useEffect(() => {
     if (!loaded) void loadChartRenderer();
   }, [loaded]);
-  if (!loaded && error !== null) throw error;
+  if (needed && !loaded && error !== null && error.attempt > mountedAt.current) throw error.error;
   return loaded;
 }
 

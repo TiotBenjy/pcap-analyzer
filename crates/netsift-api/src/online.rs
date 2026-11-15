@@ -15,9 +15,6 @@
 //!   `Default` type in its module and reads it with `state.online.get::<MyState>()`, without
 //!   touching `AppState`.
 
-// The registry is empty until the first online feature registers a check.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -64,7 +61,10 @@ impl OnlineStates {
 }
 
 /// Registration point: one line per feature, sorted by id.
-pub(crate) const STARTUP_CHECKS: &[StartupCheck] = &[];
+#[rustfmt::skip]
+pub(crate) const STARTUP_CHECKS: &[StartupCheck] = &[
+    StartupCheck { id: "geoip", enabled: |o| o.geoip_check, run: crate::geoip::freshness::run },
+];
 
 /// Starts the enabled checks of [`STARTUP_CHECKS`] (call once, inside the server runtime).
 pub(crate) fn spawn_startup_checks(state: &Arc<AppState>) -> Vec<JoinHandle<()>> {

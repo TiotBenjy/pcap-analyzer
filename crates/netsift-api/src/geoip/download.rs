@@ -62,13 +62,18 @@ pub(crate) fn months(now: SystemTime) -> [(i64, u32); 2] {
     let secs = now
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
-    let (year, month) = year_month(secs.div_euclid(86_400));
+    let (year, month) = month_of(secs);
     let previous = if month == 1 {
         (year - 1, 12)
     } else {
         (year, month - 1)
     };
     [(year, month), previous]
+}
+
+/// Year and month (UTC) of a time in seconds since the Unix epoch.
+pub(crate) fn month_of(secs: i64) -> (i64, u32) {
+    year_month(secs.div_euclid(86_400))
 }
 
 /// Civil year and month of a day count since 1970-01-01 (proleptic Gregorian calendar,

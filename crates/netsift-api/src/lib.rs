@@ -126,7 +126,6 @@ pub(crate) struct AppState {
     /// Settings of `<data_dir>/settings.json`, read when the server is built.
     pub(crate) settings: settings::SettingsStore,
     /// States of the online features (ADR-025), one per type: `online.get::<T>()`.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) online: online::OnlineStates,
     shutdown: watch::Sender<bool>,
 }

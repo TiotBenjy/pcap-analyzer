@@ -8,8 +8,11 @@
 //!   started afterwards use it, a running import keeps the one it started with. A file replaced
 //!   behind the server's back is noticed by its size, modification time and (Unix) inode.
 //! - One update at a time; a refused file never replaces the current one (`netsift_geo::install`).
+//! - Freshness (`GET /geoip/status`, [`freshness`]): month of the database in use against the
+//!   current month, and the startup check of download.db-ip.com when the user enabled it.
 
 mod download;
+pub(crate) mod freshness;
 #[cfg(test)]
 mod tests;
 
@@ -36,6 +39,7 @@ pub(crate) fn routes() -> Router<Arc<AppState>> {
         .route("/geoip/download", post(download_latest))
         .route("/geoip/import", post(import_file))
         .route("/geoip/update", get(update_state))
+        .merge(freshness::routes())
 }
 
 /// Size, modification time and inode (0 where unknown) of a database file.

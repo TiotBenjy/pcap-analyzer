@@ -340,7 +340,20 @@ pub fn count_rows(conn: &Connection, table: &'static str) -> Result<Option<u64>>
     if !exists || tables_added_after_import(conn)?.contains(table) {
         return Ok(None);
     }
-    let n: i64 = conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
+    // A table filled by an end-of-import step is counted from its source while the step has
+    // not run (ADR-023).
+    let counted = match table {
+        "server_roles" | "server_evidence" => {
+            let (evidence, roles) = crate::servers::role_relations(conn)?;
+            if table == "server_roles" {
+                roles
+            } else {
+                evidence
+            }
+        }
+        other => other,
+    };
+    let n: i64 = conn.query_row(&format!("SELECT count(*) FROM {counted}"), [], |r| r.get(0))?;
     Ok(Some(unsigned(n)))
 }
 

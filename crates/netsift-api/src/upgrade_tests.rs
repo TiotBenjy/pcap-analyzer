@@ -369,3 +369,122 @@ fn a_busy_session_is_a_retryable_503() {
     let res = crate::ApiError::from(StoreError::UpgradeNeeded).into_response();
     assert_eq!(res.status(), StatusCode::CONFLICT);
 }
+
+/// What an import interrupted after its last record and before its end-of-import steps leaves:
+/// no step recorded, the secondary indexes dropped (except those of the tables the steps fill),
+/// the search indexes, materialized roles and traffic rollups empty (ADR-023).
+const BEFORE_STEPS: &str = "DELETE FROM meta WHERE key IN \
+    ('finalizers', 'timeseries.total_bytes', 'timeseries.total_packets'); \
+    INSERT INTO http_transactions_fts (http_transactions_fts) VALUES ('delete-all'); \
+    INSERT INTO http_headers_fts (http_headers_fts) VALUES ('delete-all'); \
+    INSERT INTO dns_fts (dns_fts) VALUES ('delete-all'); \
+    DELETE FROM server_evidence; DELETE FROM server_roles; \
+    DELETE FROM timeseries_minute; DELETE FROM timeseries_hour;";
+
+/// Removes every `id` key (session ids differ between the two imports).
+fn without_ids(mut v: Value) -> Value {
+    match &mut v {
+        Value::Object(map) => {
+            map.remove("id");
+            for value in map.values_mut() {
+                *value = without_ids(value.take());
+            }
+        }
+        Value::Array(items) => {
+            for value in items.iter_mut() {
+                *value = without_ids(value.take());
+            }
+        }
+        _ => {}
+    }
+    v
+}
+
+#[tokio::test]
+async fn an_import_without_its_steps_reads_the_same_data_read_only() {
+    // A read-only server never runs the pending steps: every view must read their sources.
+    let env = Env::new(true);
+    let mut packets = generate(Kind::Demo, 3, 1);
+    let start = packets.last().map_or(0, |p| p.ts_ns) + 1_000_000_000;
+    let mut sc = netsift_fixtures::Scenario::starting_at(start);
+    netsift_fixtures::servers::servers_showcase(&mut sc);
+    packets.extend(sc.into_packets());
+    let path = env.captures.join("demo.pcap");
+    std::fs::write(&path, encode(&packets, &Encoding::pcap()).unwrap()).unwrap();
+    let import = || {
+        let options = IngestOptions {
+            name: Some("demo".to_owned()),
+            shards: Some(1),
+            ..IngestOptions::default()
+        };
+        ingest(
+            &env.catalog(),
+            &path,
+            &options,
+            &CancelToken::new(),
+            &mut |_| {},
+        )
+        .unwrap()
+        .session
+    };
+    let finished = import();
+    let interrupted = import();
+    let session =
+        Session::open(env.catalog().session_dir(&interrupted), OpenMode::ReadWrite).unwrap();
+    let conn = session.conn();
+    conn.execute_batch(BEFORE_STEPS).unwrap();
+    let deferred: Vec<String> = conn
+        .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND sql NOT LIKE 'CREATE UNIQUE%' \
+             AND tbl_name NOT LIKE 'network\\_%' ESCAPE '\\' AND tbl_name NOT IN \
+             ('dns_pairs', 'server_evidence', 'server_roles')",
+        )
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert!(deferred.len() > 50);
+    for name in deferred {
+        conn.execute_batch(&format!("DROP INDEX \"{name}\""))
+            .unwrap();
+    }
+    drop(session);
+
+    for path in [
+        "summary",
+        "timeseries?points=500",
+        "tls/stats",
+        "tls/sessions?limit=100",
+        "servers",
+        "network/graph",
+        "network/node/192.168.1.1",
+        "http/stats",
+        "http/transactions?limit=100&q=example",
+        "http/headers?limit=100&q=nginx",
+        "dns/messages?limit=100&q=example",
+        "connections?limit=100&category=private",
+        "open-ports?limit=100",
+    ] {
+        let uri = |id: &SessionId| format!("/api/v1/sessions/{id}/{path}");
+        let (status, _, want) = env.get(&uri(&finished)).await;
+        assert_eq!(status, StatusCode::OK, "{path}: {want}");
+        let (status, _, got) = env.get(&uri(&interrupted)).await;
+        assert_eq!(status, StatusCode::OK, "{path}: {got}");
+        let (got, want) = (
+            serde_json::to_string_pretty(&without_ids(got)).unwrap(),
+            serde_json::to_string_pretty(&without_ids(want)).unwrap(),
+        );
+        let first_difference = got
+            .lines()
+            .zip(want.lines())
+            .enumerate()
+            .find(|(_, (a, b))| a != b)
+            .map(|(n, (a, b))| format!("line {n}: {a} | {b}"));
+        assert_eq!(got, want, "{path}: {first_difference:?}");
+    }
+    // Nothing was written: the steps are still pending.
+    let session =
+        Session::open(env.catalog().session_dir(&interrupted), OpenMode::ReadOnly).unwrap();
+    assert!(!netsift_store::finalize::finalizers_complete(session.conn()).unwrap());
+}

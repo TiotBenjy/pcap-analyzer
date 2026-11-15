@@ -379,7 +379,7 @@ fn stats_queries_read_indexes_only() {
     for sql in [
         "SELECT (SELECT count(*) FROM tls_sessions WHERE cipher_weak IS NOT NULL), \
          (SELECT coalesce(sum(cert_issues != 0), 0) \
-          FROM tls_sessions INDEXED BY tls_sessions_cert_status), \
+          FROM tls_sessions), \
          (SELECT count(*) FROM tls_sessions WHERE cert_status = 'encrypted'), \
          (SELECT count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL)",
         "SELECT cipher_suite, max(cipher_name), max(cipher_weak), count(*) AS n FROM tls_sessions \
@@ -393,4 +393,25 @@ fn stats_queries_read_indexes_only() {
             assert!(line.contains("COVERING INDEX"), "{sql}\n{p}");
         }
     }
+    // Without its secondary indexes (import interrupted before the step `indexes`), the same
+    // queries still run: no plan names an index.
+    let names: Vec<String> = conn
+        .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND sql NOT LIKE 'CREATE UNIQUE%'",
+        )
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    for name in names {
+        conn.execute_batch(&format!("DROP INDEX \"{name}\""))
+            .unwrap();
+    }
+    let limits = StatsLimits {
+        versions: 5,
+        suites: 5,
+        sni: 5,
+    };
+    assert_eq!(stats(&conn, limits).unwrap().sessions, 0);
 }

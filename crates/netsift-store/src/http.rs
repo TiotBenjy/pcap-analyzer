@@ -377,7 +377,9 @@ pub(crate) fn finalize(conn: &Connection) -> Result<()> {
 }
 
 /// A text search as (FTS5 phrase, LIKE pattern): one of them is used, depending on its length.
-fn search(q: Option<&str>) -> Result<(Option<String>, Option<String>)> {
+/// Without the search indexes (`fts_ready` false: step `http` not run, ADR-023), every search
+/// uses `LIKE`: slower, same matches.
+fn search(q: Option<&str>, fts_ready: bool) -> Result<(Option<String>, Option<String>)> {
     let Some(q) = q.map(str::trim).filter(|q| !q.is_empty()) else {
         return Ok((None, None));
     };
@@ -387,7 +389,7 @@ fn search(q: Option<&str>) -> Result<(Option<String>, Option<String>)> {
             reason: "search text too long",
         });
     }
-    if q.chars().count() >= MIN_FTS_CHARS {
+    if fts_ready && q.chars().count() >= MIN_FTS_CHARS {
         Ok((Some(format!("\"{}\"", q.replace('"', "\"\""))), None))
     } else {
         let escaped: String = q
@@ -407,9 +409,9 @@ fn json_list(list: Option<&Vec<String>>) -> Result<Option<String>> {
 
 /// The active filters of [`HttpFilter`] only, so that the planner can use their indexes (a
 /// condition with a parameter that may be NULL is evaluated row by row).
-fn conditions(filter: &HttpFilter) -> Result<Conditions> {
-    let (fts, like) = search(filter.q.as_deref())?;
-    let (hfts, hlike) = search(filter.header_q.as_deref())?;
+fn conditions(filter: &HttpFilter, fts_ready: bool) -> Result<Conditions> {
+    let (fts, like) = search(filter.q.as_deref(), fts_ready)?;
+    let (hfts, hlike) = search(filter.header_q.as_deref(), fts_ready)?;
     let mut c = Conditions::new();
     if let Some(methods) = json_list(filter.methods.as_ref())? {
         c.push(
@@ -492,7 +494,7 @@ pub fn transactions_page(
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<HttpEntry>> {
-    let conditions = conditions(filter)?;
+    let conditions = conditions(filter, crate::finalize::step_done(conn, "http")?)?;
     let where_sql = conditions.sql();
     let query = Keyset {
         from: ENTRY_FROM,
@@ -517,7 +519,7 @@ pub fn transactions_page(
 
 /// Number of transactions matching `filter`.
 pub fn count_transactions(conn: &Connection, filter: &HttpFilter) -> Result<u64> {
-    let conditions = conditions(filter)?;
+    let conditions = conditions(filter, crate::finalize::step_done(conn, "http")?)?;
     let sql = match conditions.sql() {
         Some(w) => format!("SELECT count(*) FROM http_transactions t WHERE {w}"),
         None => "SELECT count(*) FROM http_transactions t".to_owned(),

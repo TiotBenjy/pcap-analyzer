@@ -14,6 +14,10 @@
 //! To add a migration: create the SQL file, then add **one line** to [`SESSION_MIGRATIONS`]
 //! at its numeric position. Never edit or renumber a migration that has been merged into
 //! `main`: write a new one instead. The registry must stay strictly increasing (unit test).
+//!
+//! A migration that removes an index writes `DROP INDEX IF EXISTS`: an import interrupted before
+//! its end-of-import steps has its secondary indexes dropped (ADR-023, `deferred.rs`) until the
+//! step `indexes` creates them again.
 
 use crate::migrate::{Migration, MigrationSet};
 

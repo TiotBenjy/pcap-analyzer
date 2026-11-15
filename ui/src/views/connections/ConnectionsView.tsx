@@ -339,6 +339,29 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
   const columns = useMemo<ColumnDef<ConversationInfo>[]>(
     () => [
       {
+        id: 'actions',
+        header: () => <span className="sr-only">{t('views.exportPcap.flows.title')}</span>,
+        size: 44,
+        cell: ({ row }) => {
+          const c = row.original;
+          const label = t('views.exportPcap.flows.actionLabel', { from: c.src.names[0] ?? c.src.ip, to: c.dst.names[0] ?? c.dst.ip });
+          return (
+            <Button
+              variant="ghost"
+              icon
+              className="h-7 w-7"
+              aria-label={label}
+              title={label}
+              onClick={() => {
+                setSelected(c);
+              }}
+            >
+              <ListTree aria-hidden size={16} strokeWidth={1.75} />
+            </Button>
+          );
+        },
+      },
+      {
         id: 'from',
         header: t('views.connections.table.from'),
         size: 200,
@@ -416,29 +439,6 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
         header: t('views.connections.table.last'),
         size: 160,
         cell: ({ row }) => <span className="num">{formatTimestamp(row.original.last_ts_us)}</span>,
-      },
-      {
-        id: 'actions',
-        header: () => <span className="sr-only">{t('views.exportPcap.flows.title')}</span>,
-        size: 96,
-        cell: ({ row }) => {
-          const c = row.original;
-          const label = t('views.exportPcap.flows.actionLabel', { from: c.src.names[0] ?? c.src.ip, to: c.dst.names[0] ?? c.dst.ip });
-          return (
-            <Button
-              variant="ghost"
-              className="h-7 px-2"
-              aria-label={label}
-              title={label}
-              onClick={() => {
-                setSelected(c);
-              }}
-            >
-              <ListTree aria-hidden size={16} strokeWidth={1.75} />
-              {t('views.exportPcap.flows.action')}
-            </Button>
-          );
-        },
       },
     ],
     [t, lang],

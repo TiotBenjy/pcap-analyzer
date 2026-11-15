@@ -24,6 +24,7 @@ import { fr } from '../../src/i18n/fr';
 const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
+  'connections-flows': async (page) => `/sessions/${await demoSessionId(page)}/connections`,
   credentials: async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
   'credentials-export': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
   'credentials-open': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
@@ -34,6 +35,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'network-detail': async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
+  'overview-export': async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   pictures: async (page) => `/sessions/${await demoSessionId(page)}/pictures`,
   servers: async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   'servers-empty': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
@@ -290,6 +292,25 @@ for (const lang of LANGS) {
                 ? page.getByRole('img', { name: pattern(D.views.connections.chord.chartLabel) })
                 : page.getByRole('list', { name: D.views.connections.chord.listLabel }),
             ).toBeVisible();
+          }
+          if (view === 'overview-export' && !path.includes(NO_SESSION)) {
+            // Save PCAP dialog with the time range: left open for the capture (read-only server:
+            // the Save button stays disabled, nothing is written).
+            await page.getByRole('button', { name: D.views.exportPcap.action, exact: true }).click();
+            const dialog = page.getByRole('dialog', { name: D.views.exportPcap.dialog.title });
+            await expect(dialog).toBeVisible();
+            // The radio is visually hidden behind its label (segmented control): click the label.
+            await dialog.getByText(D.views.exportPcap.dialog.range, { exact: true }).click();
+            await expect(dialog.getByRole('radio', { name: D.views.exportPcap.dialog.range })).toBeChecked();
+            await expect(dialog.getByRole('textbox', { name: D.views.exportPcap.dialog.from })).toBeVisible();
+            await expect(dialog.getByRole('button', { name: D.views.exportPcap.dialog.start, exact: true })).toBeDisabled();
+          }
+          if (view === 'connections-flows' && !path.includes(NO_SESSION)) {
+            // Flows of the largest conversation, each with its Save PCAP action.
+            await page.getByRole('button', { name: pattern(D.views.exportPcap.flows.actionLabel) }).first().click();
+            const dialog = page.getByRole('dialog', { name: D.views.exportPcap.flows.title });
+            await expect(dialog.getByRole('list', { name: D.views.exportPcap.flows.listLabel })).toBeVisible();
+            await page.waitForLoadState('networkidle');
           }
           if ((view === 'network' || view === 'network-detail') && !path.includes(NO_SESSION)) {
             await expect(page.getByTestId('network-summary')).toBeVisible();

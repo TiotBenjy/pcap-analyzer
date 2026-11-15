@@ -289,6 +289,13 @@ Suivis de la vague 3.A :
   fr en thème clair seulement ; `shots` deux fois plus long (en + fr par défaut) ; fixture Overview avec une
   période fausse (ns passées pour des µs). Défauts communs aux deux langues : IP/port tronqués dans les chemins
   Credentials à 768, placeholder TLS coupé à 375, badge « Auto-signé » coupé à 1280.
+- P4.1 (fusionnée le 2026-11-15, ADR-020, `docs/FUZZING.md`) : 17 cibles, 30 min chacune sans crash ; le gate
+  vérifie `fuzz/` (fmt, check `--locked`, tests de la lib) ; job CI `fuzz` (60 s par cible, `main` et à la
+  demande) jamais encore passé sur GitHub ; `scripts/release.sh` met à jour `fuzz/Cargo.lock` au changement de
+  version, non testé par une vraie release (le `--dry-run` ne l'exerce pas : à surveiller en P4.5) ; campagnes
+  `analyzers`/`pipeline` courtes (200 à 360 exécutions/s), à prolonger ; actions tierces de `ci.yml` épinglées
+  par tag et non par SHA (contrairement à `release.yml`). Piège : `./x.sh -C <worktree> check` exécute le `x.sh`
+  de la racine ; une branche qui modifie le gate doit le tester avec le `x.sh` du worktree.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -314,7 +321,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
 
 ## Phase 4 — Durcissement et version 0.1
 
-- [~] **P4.1** `test/fuzzing` — cibles cargo-fuzz : lecteurs pcap/pcapng, dissect L2-L4, DNS, HTTP, TLS,
+- [x] **P4.1** `test/fuzzing` — cibles cargo-fuzz : lecteurs pcap/pcapng, dissect L2-L4, DNS, HTTP, TLS,
       NTLMSSP, SNMP ; corpus depuis les fixtures ; 0 crash sur 30 min par cible.
 - [ ] **P4.2** `perf/large-sessions` — Bench 5 Go (fixtures `--big`), profilage, index SQL, cibles d'ARCHITECTURE.
       Inclut (revue P2.4) : `resample` lit une ligne par seconde et par libellé (7 jours ≈ 6 M lignes,

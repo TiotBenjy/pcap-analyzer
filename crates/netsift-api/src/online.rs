@@ -64,6 +64,7 @@ impl OnlineStates {
 #[rustfmt::skip]
 pub(crate) const STARTUP_CHECKS: &[StartupCheck] = &[
     StartupCheck { id: "geoip", enabled: |o| o.geoip_check, run: crate::geoip::freshness::run },
+    StartupCheck { id: "update", enabled: |o| o.update_check, run: crate::updates::startup_check },
 ];
 
 /// Starts the enabled checks of [`STARTUP_CHECKS`] (call once, inside the server runtime).

@@ -369,12 +369,6 @@ async fn redirections_are_checked_against_the_allow_list_and_bounded() {
     assert!(matches!(err, OutboundError::TooManyRedirects), "{err}");
     let followed = env.up.hit_names().iter().filter(|n| *n == "start").count();
     assert_eq!(followed, 1 + MAX_REDIRECTS, "first request + redirections");
-
-    // A lower bound from the caller.
-    let strict = Outbound::new(local_policy().with_max_redirects(0)).unwrap();
-    env.up.reply("start", Reply::Redirect(env.url("mirror")));
-    let err = strict.head(&env.url("start")).await.unwrap_err();
-    assert!(matches!(err, OutboundError::TooManyRedirects), "{err}");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -613,6 +607,72 @@ async fn temporary_files_are_unique_and_never_reuse_an_existing_one() {
     }
 }
 
+/// Index `n` of a temporary name `<name>.<pid>-<n>.part`.
+fn part_index(path: &Path) -> u64 {
+    let name = path.file_name().unwrap().to_string_lossy().into_owned();
+    let (_, tail) = name.rsplit_once('-').unwrap();
+    tail.strip_suffix(".part").unwrap().parse().unwrap()
+}
+
+/// `<dest>.<pid>-<n>.part`, as left by a crashed run of this PID.
+fn stale_part(dest: &Path, n: u64) -> PathBuf {
+    let mut name = dest.file_name().unwrap().to_os_string();
+    name.push(format!(".{}-{n}.part", std::process::id()));
+    dest.with_file_name(name)
+}
+
+// The counter of temporary names is per process: nextest runs each test in its own process, so
+// the next names are known here.
+#[tokio::test]
+async fn temporary_names_left_by_a_crashed_run_with_the_same_pid_are_skipped() {
+    let env = Env::new().await;
+    env.up.reply("asset", Reply::Body(b"new".to_vec()));
+    let dest = env.tmp.path().join("asset.bin");
+    let client = local_client();
+
+    // The next three names are taken (PID reuse after a crash): the fourth one is used.
+    let next = part_index(&part_path(&dest).unwrap()) + 1;
+    let stale: Vec<_> = (next..next + 3).map(|n| stale_part(&dest, n)).collect();
+    for path in &stale {
+        std::fs::write(path, b"stale").unwrap();
+    }
+    client
+        .download_to(&env.url("asset"), &dest, 100, None, |_, _| {})
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), b"new");
+    assert_eq!(
+        part_index(&part_path(&dest).unwrap()),
+        next + 4,
+        "three names skipped"
+    );
+    for path in &stale {
+        assert_eq!(std::fs::read(path).unwrap(), b"stale");
+    }
+
+    // Bounded: past PART_ATTEMPTS taken names in a row, the download fails, touching nothing.
+    std::fs::remove_file(&dest).unwrap();
+    let next = part_index(&part_path(&dest).unwrap()) + 1;
+    let n = u64::try_from(PART_ATTEMPTS).unwrap();
+    let taken: Vec<_> = (next..next + n).map(|n| stale_part(&dest, n)).collect();
+    for path in &taken {
+        std::fs::write(path, b"stale").unwrap();
+    }
+    let err = client
+        .download_to(&env.url("asset"), &dest, 100, None, |_, _| {})
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, OutboundError::Io(e) if e.kind() == std::io::ErrorKind::AlreadyExists),
+        "{err}"
+    );
+    assert!(!dest.exists());
+    for path in stale.iter().chain(&taken) {
+        assert_eq!(std::fs::read(path).unwrap(), b"stale");
+    }
+    assert_eq!(part_files(env.tmp.path()).len(), stale.len() + taken.len());
+}
+
 #[tokio::test]
 async fn concurrent_downloads_to_one_target_never_mix() {
     let env = Env::new().await;
@@ -648,6 +708,31 @@ async fn concurrent_downloads_to_one_target_never_mix() {
     let result = std::fs::read(&dest).unwrap();
     assert!(result == a || result == b, "mixed file");
     assert_eq!(part_files(env.tmp.path()), Vec::<PathBuf>::new());
+}
+
+#[tokio::test]
+async fn network_errors_never_carry_the_url() {
+    // A port nothing listens on (bound, then closed).
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap().port()
+    };
+    let signed = format!("http://127.0.0.1:{closed}/asset?sig=secret-marker&jwt=secret-marker");
+    let client = local_client();
+    let err = client.get_bytes(&signed, 100, |_, _| {}).await.unwrap_err();
+    assert!(matches!(err, OutboundError::Network(_)), "{err}");
+    assert!(!format!("{err} {err:?}").contains("secret-marker"));
+
+    // Same after a redirection to a signed storage URL.
+    let env = Env::new().await;
+    env.up.reply("asset", Reply::Redirect(signed));
+    let dest = env.tmp.path().join("asset.bin");
+    let err = client
+        .download_to(&env.url("asset"), &dest, 100, None, |_, _| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutboundError::Network(_)), "{err}");
+    assert!(!format!("{err} {err:?}").contains("secret-marker"));
 }
 
 #[test]

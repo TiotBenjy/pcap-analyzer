@@ -3,7 +3,8 @@ import { useGeoipStatus, useGeoipUpdate } from '../api/geoipQueries';
 import { useServerInfo } from '../api/queries';
 import type { GeoipFreshness } from '../api/types/GeoipFreshness';
 import { GeoipUpdateFeedback } from '../components/GeoipUpdateFeedback';
-import { formatMonth, geoipUpdateErrorMessage } from '../lib/geoip';
+import { KeepTogether } from '../components/KeepTogether';
+import { DB_IP_HOST, formatMonth, geoipUpdateErrorMessage } from '../lib/geoip';
 import { NoticeSlot } from './NoticeSlot';
 import type { Notice, NoticeSlotProps } from './types';
 
@@ -58,7 +59,7 @@ export function GeoipNotice(slot: NoticeSlotProps) {
           success={mutation.isSuccess}
         />
       ) : (
-        t('views.geoipPrompt.host')
+        <KeepTogether text={t('views.geoipPrompt.host')} word={DB_IP_HOST} />
       ),
       actions: [
         {

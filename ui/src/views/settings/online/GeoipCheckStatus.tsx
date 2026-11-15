@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useGeoipStatus } from '../../../api/geoipQueries';
-import { formatMonth } from '../../../lib/geoip';
+import { KeepTogether } from '../../../components/KeepTogether';
+import { DB_IP_HOST, formatMonth } from '../../../lib/geoip';
 import type { OnlineExtensionProps } from './extensions';
 
 /**
@@ -45,7 +46,11 @@ export function GeoipCheckStatus({ enabled }: OnlineExtensionProps) {
           ? t('views.geoipPrompt.installedNone')
           : t('views.geoipPrompt.installed', { month: month(data.built_month) })}
       </span>
-      {check !== null && <span className="break-words">{check}</span>}
+      {check !== null && (
+        <span className="break-words">
+          <KeepTogether text={check} word={DB_IP_HOST} />
+        </span>
+      )}
     </div>
   );
 }

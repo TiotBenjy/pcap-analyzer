@@ -375,9 +375,12 @@ Hors vague (demande utilisateur du 2026-11-08) :
 - [x] **P4.3** `feat/export-pcap` — « Save PCAP » : export d'un flux, d'une plage temporelle ou de la session
       fusionnée (pcapng).
 - [x] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
-- [~] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`. Préparation
-      fusionnée le 2026-11-15 ; reste la publication (`scripts/release.sh 0.1.0`, accord de l'utilisateur), après
-      P4.11, P4.9 et P4.10.
+- [x] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`. Préparation
+      fusionnée le 2026-11-15. `v0.1.0` taguée le 2026-11-15 mais bundles Windows et macOS en échec (deux modules
+      `ServerMap.tsx` / `serverMap.ts` confondus par les systèmes de fichiers insensibles à la casse ; corrigé, test
+      `ui/scripts/case-collisions.test.ts`) : release `v0.1.0` publiée par l'utilisateur sans bundles (code source).
+      **`v0.1.1` publiée le 2026-11-15** avec tous les bundles (AppImage, .deb, .rpm, NSIS, MSI, .dmg universel,
+      `SHA256SUMS.txt`). À vérifier sur la prochaine release : la recherche de mise à jour de P4.10 depuis 0.1.1.
 - [x] **P4.7** `fix/flow-id-collision` — `FlowId::derive(key, first_ts)` (`netsift-flow/src/api.rs`) donne le même
       id à deux flux successifs de même 5-tuple et même premier horodatage (flux fermé puis nouveau SYN, éviction
       LRU, capture à horodatages constants ou hostile) : `flows` fusionne les compteurs par max (octets perdus),

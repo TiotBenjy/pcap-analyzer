@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type EChartsRenderer from './EChartsRenderer';
 
 // ECharts is heavy: it lives in its own chunk (vite.config.ts manualChunks), loaded on demand.
@@ -88,11 +88,11 @@ const failed = () => failure;
 export function useChartRendererReady(needed: boolean): boolean {
   const loaded = useSyncExternalStore(subscribe, ready, ready);
   const error = useSyncExternalStore(subscribe, failed, failed);
-  const mountedAt = useRef(attempts);
+  const [mountedAt] = useState(() => attempts);
   useEffect(() => {
     if (!loaded) void loadChartRenderer();
   }, [loaded]);
-  if (needed && !loaded && error !== null && error.attempt > mountedAt.current) throw error.error;
+  if (needed && !loaded && error !== null && error.attempt > mountedAt) throw error.error;
   return loaded;
 }
 

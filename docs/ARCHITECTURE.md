@@ -46,7 +46,7 @@ crates/
   netsift-fixtures/        générateur de pcaps synthétiques + découpeur en chunks (dev only)
 apps/desktop/              crate Tauri (tauri.conf.json, icônes, capabilities)
 ui/                        frontend React/Vite
-fuzz/                      cibles cargo-fuzz (nightly, hors workspace)
+fuzz/                      cibles cargo-fuzz (nightly, hors workspace ; docs/FUZZING.md)
 docker/                    image de dev/build
 scripts/                   wt.sh (worktrees), release.sh, scripts exécutés dans le conteneur
 docs/                      cette documentation
@@ -57,6 +57,8 @@ Dépendances autorisées entre crates (pas de cycle, pas de raccourci) :
 réexports d'`analyze`); `capture` <- `engine`; `store` <- `engine`, `api`; `geo` <- `analyze`, `api`;
 `engine` + `store` <- `api` <- `cli`, `desktop`; `engine` + `store` <- `cli` (`netsift ingest`); `fixtures` <- `cli`
 uniquement derrière la feature `demo` (`netsift demo-session`, jamais dans les builds de release).
+Le crate `fuzz/` (hors workspace) dépend de `analyze` (feature `fuzzing`), `capture`, `engine` et `geo`,
+et de `fixtures` pour son générateur de graines seulement.
 `dissect` ne dépend d'aucune autre crate interne.
 
 ## Modèle d'exécution du pipeline

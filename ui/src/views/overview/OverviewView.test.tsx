@@ -9,6 +9,7 @@ import * as api from '../../api/sessions';
 import type { OverviewSummary } from '../../api/types/OverviewSummary';
 import type { TrafficSeries } from '../../api/types/TrafficSeries';
 import type { Chart } from '../../components/Chart';
+import i18n from '../../i18n';
 import { renderApp, setViewportWide } from '../../test/renderApp';
 import { session } from '../../test/sessionFixtures';
 import { setupUser } from '../../test/user';
@@ -124,6 +125,37 @@ describe('Overview view', () => {
       'title',
       'Not analyzed in this session',
     );
+  });
+
+  it('switches to French without reloading: texts, numbers, sizes and the chart', async () => {
+    renderApp(`/sessions/${ID}/overview`);
+    const band = within(await screen.findByTestId('overview-summary'));
+    expect(await band.findByText('123,456')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(chart.props?.ariaLabel).toMatch(/^Traffic by protocol/);
+    });
+    await act(async () => {
+      await i18n.changeLanguage('fr');
+    });
+    try {
+      expect(await screen.findByRole('heading', { name: 'Trafic par protocole' })).toBeInTheDocument();
+      // Text matchers compare against whitespace-normalized text: no-break spaces read as spaces.
+      expect(band.getByText('123 456')).toBeInTheDocument();
+      expect(band.getByText('94,2 Mio')).toBeInTheDocument();
+      expect(band.getByText('2 anomalies')).toBeInTheDocument();
+      expect(band.getByText('Liaison : Ethernet')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Connexions' })).toBeInTheDocument();
+      expect(chart.props?.ariaLabel).toMatch(/^Trafic par protocole/);
+      // The option is rebuilt: axis values and tooltips follow the language.
+      const option = chart.props?.option as { yAxis: { axisLabel: { formatter: (v: number) => string } } };
+      expect(option.yAxis.axisLabel.formatter(2048)).toBe('2\u00a0Kio');
+      expect(screen.queryByText('Traffic by protocol')).toBeNull();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
+    expect(await band.findByText('123,456')).toBeInTheDocument();
   });
 
   it('stacks the selected protocols and toggles them with the selector, All and None', async () => {
@@ -322,7 +354,7 @@ describe('traffic chart option', () => {
     );
     expect(html.indexOf('TLS')).toBeLessThan(html.indexOf('DNS'));
     expect(html).not.toContain('HTTP');
-    expect(html).toContain('75.0 %');
+    expect(html).toContain('75%');
     expect(html).toContain('400 B');
     expect(tooltipHtml([{ seriesName: '<b>', value: [0, 1] }], FORMAT)).toContain('&lt;b&gt;');
   });

@@ -22,7 +22,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
-import { formatCount, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { formatCount, formatPercent, formatTimestamp, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { useTheme } from '../../theme/theme';
 import { CertificatesPanel } from './CertificatesPanel';
@@ -166,14 +166,13 @@ function StatBand({ stats }: { stats: TlsStats }) {
 function useChartFormat(): TlsChartFormat {
   const { t, i18n } = useTranslation();
   return useMemo(() => {
-    const pct = new Intl.NumberFormat(i18n.language, { style: 'percent', maximumFractionDigits: 1 });
     return {
       version: (v) => versionLabel(v) ?? t('views.tls.charts.noServerHello'),
-      share: (count, total) => t('views.tls.charts.share', { count, pct: pct.format(total === 0 ? 0 : count / total) }),
+      share: (count, total) => t('views.tls.charts.share', { count, pct: formatPercent(total === 0 ? 0 : count / total, 1, i18n.language) }),
       other: t('common.other'),
       sessions: (count) => t('views.tls.charts.sessions', { count }),
       weak: (w) => (isWeakness(w) ? t(`views.tls.weak.${w}`) : t('views.tls.weak.other')),
-      count: (n) => formatCount(n),
+      count: (n) => formatCount(n, i18n.language),
     };
   }, [t, i18n.language]);
 }

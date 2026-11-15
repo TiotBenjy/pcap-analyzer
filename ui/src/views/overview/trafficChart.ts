@@ -3,6 +3,7 @@ import type { ProtocolSeries } from '../../api/types/ProtocolSeries';
 import type { TrafficProtocol } from '../../api/types/TrafficProtocol';
 import type { TrafficSeries } from '../../api/types/TrafficSeries';
 import { colorFor } from '../../charts/palette';
+import { formatShare } from '../../lib/format';
 
 // ECharts option of the Overview "Traffic by protocol" chart (pure: unit-tested without ECharts).
 
@@ -113,7 +114,7 @@ export function tooltipHtml(params: readonly TooltipParam[], format: TrafficForm
   const first = params[0];
   const ms = Array.isArray(first?.value) ? Number(first.value[0]) : Number(first?.axisValue);
   const total = rows.reduce((sum, r) => sum + r.value, 0);
-  const pct = (v: number) => (total > 0 ? `${((v / total) * 100).toFixed(v === total ? 0 : 1)}\u00a0%` : '');
+  const pct = (v: number) => escapeHtml(formatShare(v, total));
   const line = (left: string, right: string, extra = '') =>
     `<div style="display:flex;gap:12px;justify-content:space-between;align-items:center"><span>${left}</span>` +
     `<span style="font-variant-numeric:tabular-nums">${right}${extra}</span></div>`;

@@ -160,5 +160,6 @@ export default function EChartsRenderer({ option, height, ariaLabel, onEvents, h
     };
   }, [onEvents]);
 
-  return <div ref={ref} role="img" aria-label={ariaLabel} style={{ height }} className="w-full min-w-0" />;
+  // `data-chart`: the visual tests wait for its SVG before a capture.
+  return <div ref={ref} role="img" aria-label={ariaLabel} data-chart style={{ height }} className="w-full min-w-0" />;
 }

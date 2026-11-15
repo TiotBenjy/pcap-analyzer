@@ -17,7 +17,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { FilterBar } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
-import { formatCount, formatTimestamp } from '../../lib/format';
+import { formatCount, formatTimestamp, labelled } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { LoadMore } from '../connections/LoadMore';
 import { isViewable } from '../connections/session';
@@ -120,7 +120,10 @@ function PortsChartCard({
   const stats = useOpenPortStats(sessionId, categories, enabled);
   const data = stats.data;
   const option = useMemo(
-    () => (data === undefined ? {} : buildPortsOption(data, { hosts: (n) => t('views.openPorts.chart.hosts', { count: n }) })),
+    () =>
+      data === undefined
+        ? {}
+        : buildPortsOption(data, { hosts: (n) => t('views.openPorts.chart.hosts', { count: n }), count: (n) => formatCount(n) }),
     [data, t],
   );
   const others = data === undefined ? 0 : Math.max(0, Number(data.distinct_ports) - data.top.length);
@@ -179,7 +182,7 @@ function Banners({ host }: { host: HostOpenPorts }) {
   const [first, ...rest] = banners;
   if (first === undefined) return <span className="text-muted">{t('views.openPorts.table.noBanner')}</span>;
   const line = (p: OpenPortInfo) => (
-    <span data-testid="truncatable" title={`${portLabel(p)}: ${p.banner ?? ''}`} className="block truncate font-mono text-meta">
+    <span data-testid="truncatable" title={labelled(portLabel(p), p.banner ?? '')} className="block truncate font-mono text-meta">
       {p.banner}
     </span>
   );

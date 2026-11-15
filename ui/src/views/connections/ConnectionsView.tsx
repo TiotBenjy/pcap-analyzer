@@ -21,7 +21,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { Toggle } from '../../components/Toggle';
-import { formatBytes, formatCount, formatDuration, formatTimestamp } from '../../lib/format';
+import { formatBytes, formatCount, formatDuration, formatPercent, formatTimestamp } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { ChordDiagram, type ChordNodeView } from './ChordDiagram';
 import { countryName } from '../../lib/countries';
@@ -115,8 +115,7 @@ function CountryList({ side, label }: { side: CountrySide; label: string }) {
   if (side.total_bytes === 0) return <EmptyState icon={Globe2} title={t('views.connections.countries.empty')} />;
   const top = side.countries.slice(0, TOP_COUNTRIES);
   const share = (bytes: number) => (side.total_bytes > 0 ? bytes / side.total_bytes : 0);
-  const pct = (bytes: number) =>
-    new Intl.NumberFormat(i18n.language, { style: 'percent', maximumFractionDigits: 1 }).format(share(bytes));
+  const pct = (bytes: number) => formatPercent(share(bytes), 1, i18n.language);
   const groups = [
     { key: 'unknown', label: t('views.connections.countries.unknown'), group: side.unknown },
     { key: 'local', label: t('views.connections.countries.local'), group: side.local },

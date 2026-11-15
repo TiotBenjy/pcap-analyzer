@@ -221,7 +221,7 @@ export function buildMatrixOption(stats: TlsStats, fmt: TlsChartFormat, dark: bo
       {
         type: 'heatmap',
         data,
-        label: { show: true, fontSize: 11 },
+        label: { show: true, fontSize: 11, formatter: (p: { value: [number, number, number] }) => fmt.count(p.value[2]) },
         itemStyle: { borderColor: 'transparent', borderWidth: 2 },
       },
     ],

@@ -105,7 +105,7 @@ describe('Connections view', () => {
 
   it('lists the top countries with the hosts without country apart', async () => {
     renderApp(`/sessions/${ID}/connections`);
-    const sources = await screen.findByRole('list', { name: 'Countries of Download sources' });
+    const sources = await screen.findByRole('list', { name: 'Country list: Download sources' });
     const items = within(sources).getAllByRole('listitem');
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent('France');

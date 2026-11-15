@@ -15,7 +15,7 @@ import { Dialog } from '../../components/Dialog';
 import { ErrorState } from '../../components/ErrorState';
 import { cn } from '../../lib/cn';
 import { describeError } from '../../lib/errors';
-import { formatBytes } from '../../lib/format';
+import { formatBytes, formatLongDate } from '../../lib/format';
 import { nativePicker, pickFile } from '../sessions/import/pickers';
 
 // Country database: state, update by download (done by the backend, ADR-015) or from a file,
@@ -37,9 +37,6 @@ function updateErrorMessage(t: TFunction, error: unknown): string {
   }
   return describeError(t, error).message;
 }
-
-const dateFormat = (lang: string, utc: boolean) =>
-  new Intl.DateTimeFormat(lang, utc ? { dateStyle: 'medium', timeZone: 'UTC' } : { dateStyle: 'medium' });
 
 interface GeoipSectionProps {
   info: ServerInfo | undefined;
@@ -190,7 +187,7 @@ function GeoipStatus({ geoip }: { geoip: GeoipInfo }) {
         ? t('views.settings.geoip.availableUndated')
         : t('views.settings.geoip.available', {
             // Build date of the database in UTC: the publisher's calendar, not local time.
-            date: dateFormat(i18n.language, true).format(new Date(geoip.built_at_us / 1000)),
+            date: formatLongDate(geoip.built_at_us / 1000, true, i18n.language),
           });
   } else if (geoip.status === 'invalid') {
     tone = 'text-danger';
@@ -218,7 +215,7 @@ function GeoipDetails({ geoip }: { geoip: GeoipInfo }) {
         ? t('views.settings.geoip.sourceUserUndated', { size })
         : t('views.settings.geoip.sourceUser', {
             size,
-            date: dateFormat(i18n.language, false).format(new Date(geoip.installed_at_us / 1000)),
+            date: formatLongDate(geoip.installed_at_us / 1000, false, i18n.language),
           });
   return (
     <span className="break-words text-meta text-muted" data-testid="geoip-source" data-source={geoip.source}>

@@ -74,7 +74,8 @@ et de `fixtures` pour son générateur de graines seulement.
   session n'a que ses index uniques : les index secondaires sont notés puis supprimés à l'ouverture.
   Après le dernier enregistrement, il exécute les étapes de fin d'import
   (`SESSION_FINALIZERS` : index secondaires, appariements entre shards, tables dérivées et agrégats,
-  index FTS), marquées dans `meta` et rejouées à l'ouverture si elles manquent (ADR-014, ADR-023).
+  index FTS), marquées dans `meta` et rejouées à l'ouverture si elles manquent (ADR-014, ADR-023) ;
+  pendant un import, la progression les publie dans une phase `finalizing` (étape en cours, étapes faites).
 - Annulation : `CancellationToken` partagé ; progression : octets lus / octets totaux de tous les chunks.
 - Le temps « courant » est celui des paquets, jamais l'horloge murale (timeouts de flux, expiration).
 

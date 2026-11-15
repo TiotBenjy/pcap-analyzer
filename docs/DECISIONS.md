@@ -344,9 +344,12 @@ acceptée : la remplacer par une nouvelle qui la référence.
     déjà vus (sans évincer les noms d'autres sources).
 - Conséquences :
   - coût : SQL ensembliste sur les tables de l'analyseur (DNS : linéaire en transactions, plus une
-    recherche indexée par requête de groupe) ; aucune progression n'est publiée pendant ces étapes,
-    l'import reste dans sa phase `finishing` jusqu'à leur fin (une phase dédiée dans `Progress` changerait
-    le contrat des événements d'import : non fait) ;
+    recherche indexée par requête de groupe) ; pendant ces étapes, le writer publie l'étape en cours et le
+    nombre d'étapes faites (`FinalizeWatch`), et l'import est dans une phase dédiée, `Phase::Finalizing`
+    (P4.8) : l'événement SSE `progress` porte `phase = finalizing`, `step`, `steps_done` et `steps_total`,
+    publié à chaque intervalle de progression et toujours une fois à la fin des étapes (même brèves) ;
+    l'assistant d'import et l'indicateur de l'en-tête les affichent. Les étapes rejouées à l'ouverture
+    d'une session (ADR-013) ne publient rien (aucun import en cours) ;
   - tant que le marqueur est incomplet, les vues de l'analyseur peuvent montrer des requêtes de groupe
     non appariées ; les tests d'acceptation comparent 1, 3 et 7 shards, fichier unique et chunks.
 
@@ -846,7 +849,14 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - **agrégats matérialisés** : `timeseries_minute` et `timeseries_hour` plus les totaux dans `meta`
     (0002, étape `timeseries` ; `resample` lit la table la plus grossière dont la largeur divise celle
     du pas, repli sur la table à la seconde tant que l'étape n'a pas tourné) ; rôles de serveurs
-    (0801, ADR-017 mis à jour) ;
+    (0801, ADR-017 mis à jour). P4.8 ajoute, sur le même modèle : rang de chaque serveur dans son rôle
+    (`server_ranks`, 0802, étape `servers` version 3 ; vue Servers sans filtre de catégorie), conversations
+    par paire de catégories de leurs extrémités (`conversation_categories`, 0402, étape `connections`) et
+    ports ouverts par hôte avec sa catégorie (`open_port_hosts`, 0402, étape `ports`). Les comptes par
+    catégorie servent aussi à choisir le plan du filtre de catégorie de Connections : sondage de `hosts`
+    par clé primaire dans l'ordre de tri quand les catégories couvrent beaucoup de conversations, recherche
+    par index des conversations de leurs hôtes sinon (la page la plus coûteuse de chaque plan reste sous
+    1 ms sur le banc, contre 0,7 à 2,7 s avec le mauvais) ;
   - **filtres actifs seulement** (`query::Conditions`) : une condition `?n IS NULL OR col = ?n` est
     évaluée ligne à ligne et SQLite ne peut pas utiliser l'index d'un filtre peut-être inactif ; les
     listes HTTP, DNS, Connections et Open Ports ne composent plus que les fragments constants des
@@ -864,8 +874,8 @@ acceptée : la remplacer par une nouvelle qui la référence.
 - Conséquences :
   - import de 5 Go sur 4 cœurs en 95 s au lieu de 578 (56 Mo/s au total, 104 Mo/s pendant la lecture),
     mémoire résidente de 375 Mio (440 Mio sur 20 shards, cache de pages compris) ; la phase
-    `finishing` dure environ 44 s, dont 19 s d'index, sans progression publiée (comme toute étape,
-    ADR-014) ; 4 requêtes de vue sur 76 dépassent encore 300 ms (18 avant), suivis dans
+    `finishing` dure environ 44 s, dont 19 s d'index (depuis P4.8, une phase `finalizing` publie l'étape en
+    cours, ADR-014) ; 4 requêtes de vue sur 76 dépassent encore 300 ms (18 avant), suivis dans
     `docs/PERFORMANCE.md` ;
   - une session dont l'import s'arrête avant ses étapes (ou dont une étape échoue) reste sans index
     secondaires jusqu'à sa prochaine ouverture en écriture ; un serveur `--read-only` ne la répare
@@ -873,7 +883,9 @@ acceptée : la remplacer par une nouvelle qui la référence.
     (`INDEXED BY` seulement sur les index uniques et ceux des tables remplies par une étape, qui ne
     sont jamais différés) ; tant que l'étape correspondante n'est pas marquée
     (`finalize::step_done`), la série temporelle et ses totaux lisent la table à la seconde, les rôles
-    de serveurs les vues `*_source` (vue Servers, compteur du résumé, rôles du graphe), et les
+    de serveurs les vues `*_source` (vue Servers, compteur du résumé, rôles du graphe ; les tables de
+    rôles d'une étape `servers` de version antérieure restent lues, `finalize::step_done_since`), le rang des
+    serveurs, les comptes par catégorie et les ports par hôte sont recalculés à la lecture, et les
     recherches HTTP et DNS passent par `LIKE` au lieu des index trigram. Un test d'API compare une
     session finalisée et la même sans ses étapes, servie en lecture seule. Restent comme avant P4.2,
     propres aux étapes d'ADR-014 et d'ADR-018 : appariement DNS (`dns_pairs`), graphe Network et

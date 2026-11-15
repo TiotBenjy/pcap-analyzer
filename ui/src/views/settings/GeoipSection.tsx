@@ -30,10 +30,12 @@ export function GeoipSection({ info, infoError }: GeoipSectionProps) {
   const [browsing, setBrowsing] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
 
-  const { mutation: update, busy, downloading, progress } = useGeoipUpdate();
+  const { mutation: update, busy, downloading, progress, lastResult } = useGeoipUpdate();
   const freshness = useGeoipStatus();
-  // A newer database is offered (notice, Settings > Online): the state is not shown as fine.
+  // An update is offered (notice): the state is not shown as fine. A newer database is only
+  // claimed when DB-IP confirmed it at startup and no later download found nothing newer.
   const outdated = freshness.data?.offer === 'update';
+  const newerAvailable = outdated && freshness.data?.online === 'published' && lastResult?.newer !== false;
 
   const desktop = nativePicker() !== null;
   const readOnly = info?.read_only ?? true;
@@ -77,7 +79,7 @@ export function GeoipSection({ info, infoError }: GeoipSectionProps) {
         ))}
       {info !== undefined && (
         <div className="flex min-w-0 flex-col gap-0.5">
-          <GeoipStatus geoip={info.geoip} outdated={outdated} />
+          <GeoipStatus geoip={info.geoip} outdated={outdated} newerAvailable={newerAvailable} />
           <GeoipDetails geoip={info.geoip} />
         </div>
       )}
@@ -142,7 +144,15 @@ export function GeoipSection({ info, infoError }: GeoipSectionProps) {
   );
 }
 
-function GeoipStatus({ geoip, outdated }: { geoip: GeoipInfo; outdated: boolean }) {
+interface GeoipStatusProps {
+  geoip: GeoipInfo;
+  /** An update is offered: neutral tone. */
+  outdated: boolean;
+  /** DB-IP confirmed a newer database: said after the state. */
+  newerAvailable: boolean;
+}
+
+function GeoipStatus({ geoip, outdated, newerAvailable }: GeoipStatusProps) {
   const { t, i18n } = useTranslation();
   let text: string;
   let tone: string;
@@ -156,7 +166,7 @@ function GeoipStatus({ geoip, outdated }: { geoip: GeoipInfo; outdated: boolean 
             // Build date of the database in UTC: the publisher's calendar, not local time.
             date: formatLongDate(geoip.built_at_us / 1000, true, i18n.language),
           });
-    if (outdated) text = `${text}. ${t('views.geoipPrompt.newerAvailable')}`;
+    if (newerAvailable) text = `${text}. ${t('views.geoipPrompt.newerAvailable')}`;
   } else if (geoip.status === 'invalid') {
     tone = 'text-danger';
     text = t('views.settings.geoip.invalid');

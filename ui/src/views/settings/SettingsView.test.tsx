@@ -237,7 +237,17 @@ describe('SettingsView', () => {
     expect(status).toHaveClass('text-success');
     cleanup();
 
+    // Local check only: neutral, no claim about DB-IP.
     freshness = { ...freshness, state: 'outdated', built_month: '2026-10', offer: 'update' };
+    renderView();
+    await waitFor(() => {
+      expect(screen.getByTestId('geoip-status')).not.toHaveClass('text-success');
+    });
+    expect(screen.getByTestId('geoip-status')).toHaveTextContent(/^Database installed, built Nov 1, 2026$/);
+    cleanup();
+
+    // Confirmed by the startup check.
+    freshness = { ...freshness, online: 'published', published_month: '2026-11' };
     renderView();
     await waitFor(() => {
       expect(screen.getByTestId('geoip-status')).toHaveTextContent(
@@ -245,6 +255,20 @@ describe('SettingsView', () => {
       );
     });
     expect(screen.getByTestId('geoip-status')).not.toHaveClass('text-success');
+  });
+
+  it('stops claiming a newer database once a download found nothing newer', async () => {
+    readOnly = false;
+    geoip = AVAILABLE;
+    freshness = { ...freshness, state: 'outdated', built_month: '2026-10', online: 'published', published_month: '2026-11', offer: 'update' };
+    api.downloadGeoip.mockResolvedValue({ info: AVAILABLE, month: '2026-10', newer: false, dismissed: true });
+    renderView();
+    await waitFor(() => {
+      expect(screen.getByTestId('geoip-status')).toHaveTextContent('A newer database is available.');
+    });
+    await setupUser().click(screen.getByRole('button', { name: 'Download latest version' }));
+    expect(await screen.findByText('No newer database published yet.')).toBeInTheDocument();
+    expect(screen.getByTestId('geoip-status')).toHaveTextContent(/^Database installed, built Nov 1, 2026$/);
   });
 
   it('translates the update errors', async () => {

@@ -24,6 +24,11 @@ snmp-parser = "0.11.0"
 tls-parser = "0.12.2"
 x509-parser = "0.18.1"
 
+[features]
+# Entry points of the cargo-fuzz targets (`fuzz/`): reaches module-private parsers. Never
+# enabled by the application.
+fuzzing = []
+
 [lints]
 workspace = true
 

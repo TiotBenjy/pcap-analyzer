@@ -14,7 +14,7 @@
 
 mod ldap;
 mod lineproto;
-mod snmp;
+pub(crate) mod snmp;
 pub(crate) mod text;
 
 use std::collections::HashMap;

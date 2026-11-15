@@ -197,15 +197,18 @@ main() {
   info "2/5 Versions $current -> $version, CHANGELOG.md, commit"
   set_workspace_version "$wt/Cargo.toml" "$version"
   "$root/x.sh" -C "$wt" cargo update --workspace --quiet
+  # fuzz/ (hors workspace) référence les crates netsift-* : son Cargo.lock suit leur version
+  # (le gate le vérifie avec --locked). cargo metadata ne change que ces entrées.
+  "$root/x.sh" -C "$wt" cargo metadata --quiet --format-version 1 --manifest-path fuzz/Cargo.toml >/dev/null
   "$root/x.sh" -C "$wt" npm version "$version" --no-git-tag-version --allow-same-version >/dev/null
   bash "$root/scripts/check-version.sh" -C "$wt" "$tag" >/dev/null
   "$root/x.sh" -C "$wt" cliff --tag "$tag" --output CHANGELOG.md
 
   local unexpected
   unexpected="$(git -C "$wt" status --porcelain \
-    | grep -vE '^( M|M |\?\?) (Cargo\.toml|Cargo\.lock|ui/package\.json|ui/package-lock\.json|CHANGELOG\.md)$' || true)"
+    | grep -vE '^( M|M |\?\?) (Cargo\.toml|Cargo\.lock|fuzz/Cargo\.lock|ui/package\.json|ui/package-lock\.json|CHANGELOG\.md)$' || true)"
   [[ -z "$unexpected" ]] || die "modifications inattendues dans le worktree :"$'\n'"$unexpected"
-  git -C "$wt" add Cargo.toml Cargo.lock ui/package.json ui/package-lock.json CHANGELOG.md
+  git -C "$wt" add Cargo.toml Cargo.lock fuzz/Cargo.lock ui/package.json ui/package-lock.json CHANGELOG.md
   local msg="chore(release): $tag"
   [[ -n "$RELEASE_COAUTHOR" ]] && msg+=$'\n\n'"$RELEASE_COAUTHOR"
   git -C "$wt" commit --quiet -m "$msg"

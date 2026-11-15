@@ -28,7 +28,7 @@
 //! (`Authorization: Basic` / `NTLM`, login forms) are emitted by [`auth::inspect`] for the same
 //! view, as `Record::Credential` (P3.7).
 
-mod auth;
+pub(crate) mod auth;
 mod body;
 pub mod inspect;
 mod message;

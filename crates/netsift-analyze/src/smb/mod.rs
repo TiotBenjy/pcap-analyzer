@@ -10,11 +10,11 @@
 //!   credentials for the Credentials tab).
 
 mod analyzer;
-mod browser;
+pub(crate) mod browser;
 mod bytes;
-mod message;
+pub(crate) mod message;
 pub(crate) mod ntlmssp;
-mod os;
+pub(crate) mod os;
 
 pub use analyzer::{SmbAnalyzer, SmbConfig};
 

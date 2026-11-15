@@ -392,7 +392,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       483 ms et `/open-ports?category=` 343 ms (comptes par catégorie ou total estimé), `/http/transactions?q=` 343 ms
       (régression de P4.2, 212 ms avant) ; requêtes entre 150 et 300 ms (`/connections/stats`, `/dns/stats`, `/dns/messages?q=`
       court) ; writer pendant la lecture (`tls_sessions`, `conversations`, `hosts`).
-- [ ] **P4.11** `feat/outbound-base` — Socle commun de P4.9 et P4.10, à fusionner avant elles (qui se font ensuite en
+- [~] **P4.11** `feat/outbound-base` — Socle commun de P4.9 et P4.10, à fusionner avant elles (qui se font ensuite en
       parallèle) : client HTTP sortant partagé extrait de `netsift-api/src/geoip/download.rs` (HTTPS seul, redirections,
       délais et tailles bornés, `.part` puis renommage, User-Agent générique) ; réglages persistants « vérifications en
       ligne » (GeoIP, mises à jour), désactivés par défaut, lus au démarrage ; composant de bandeau de notification

@@ -379,6 +379,13 @@ Hors vague (demande utilisateur du 2026-11-08) :
       483 ms et `/open-ports?category=` 343 ms (comptes par catégorie ou total estimé), `/http/transactions?q=` 343 ms
       (régression de P4.2, 212 ms avant) ; requêtes entre 150 et 300 ms (`/connections/stats`, `/dns/stats`, `/dns/messages?q=`
       court) ; writer pendant la lecture (`tls_sessions`, `conversations`, `hosts`).
+- [ ] **P4.9** `feat/geoip-prompt` — Proposer la base GeoIP au démarrage. Vérification locale, sans réseau :
+      date de la base installée (métadonnées mmdb `build_epoch`) comparée au mois courant ; base absente ou antérieure
+      au mois -> bandeau discret « Télécharger » / « Mettre à jour » (masquable jusqu'au mois suivant), qui lance le
+      téléchargement existant (ADR-015). Réglage « Vérifier en ligne au démarrage », désactivé par défaut : activé, une
+      requête HEAD vers l'URL DB-IP du mois confirme la disponibilité (échec réseau silencieux, aucun bandeau d'erreur) ;
+      amender ADR-015 et la règle « aucun appel sortant » de `CLAUDE.md` / `ARCHITECTURE.md` (seconde exception, sur
+      option). Demandé par l'utilisateur le 2026-11-15, à livrer avant la publication de 0.1.0.
 - [x] **P4.6** `ci/release-pipeline` — Releases GitHub publiées par la CI sur tag `vX.Y.Z` : notes
       générées depuis l'historique des commits (Conventional Commits), bundles Linux (AppImage, .deb, .rpm),
       Windows (NSIS .exe, MSI) et macOS (.dmg), sommes SHA-256 ; version unique (workspace, Tauri, UI)

@@ -6,8 +6,9 @@ import type { UpdateInstaller } from "./UpdateInstaller";
  */
 export type UpdateRelease = { version: string, 
 /**
- * Release name on GitHub as plain text (control and bidirectional characters dropped, one
- * line, at most 120 characters): `NetSift vX.Y.Z` or `NetSift vX.Y.Z — <title>`.
+ * Release name on GitHub as plain text (control, bidirectional formatting and invisible
+ * characters dropped, one line, at most 120 characters): `NetSift vX.Y.Z` or
+ * `NetSift vX.Y.Z — <title>`.
  */
 name: string | null, 
 /**

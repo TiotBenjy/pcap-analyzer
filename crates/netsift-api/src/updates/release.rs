@@ -285,14 +285,20 @@ pub(crate) fn expected_sha256(sums: &[u8], name: &str) -> Option<String> {
     found
 }
 
-/// Release notes as plain text: line breaks and tabs kept, other control and bidirectional
-/// formatting characters dropped, at most [`MAX_NOTES_CHARS`] characters. True when cut.
+/// Release notes as plain text: line breaks and tabs kept (Unicode line and paragraph separators
+/// become line breaks), other control, bidirectional formatting and invisible characters dropped,
+/// at most [`MAX_NOTES_CHARS`] characters. True when cut.
 pub(crate) fn plain_notes(body: Option<&str>) -> (String, bool) {
     let mut out = String::new();
     let mut count = 0;
     let mut truncated = false;
     for c in body.unwrap_or_default().chars() {
-        let keep = c == '\n' || c == '\t' || !(c.is_control() || is_bidi_control(c));
+        let c = if matches!(c, '\u{2028}' | '\u{2029}') {
+            '\n'
+        } else {
+            c
+        };
+        let keep = c == '\n' || c == '\t' || !is_hidden(c);
         if !keep {
             continue;
         }
@@ -308,8 +314,8 @@ pub(crate) fn plain_notes(body: Option<&str>) -> (String, bool) {
     (out, truncated)
 }
 
-/// Release name as one line of plain text: control and bidirectional formatting characters
-/// dropped (line breaks and tabs become spaces), runs of spaces collapsed, at most
+/// Release name as one line of plain text: control, bidirectional formatting and invisible
+/// characters dropped (line breaks, tabs and the other Unicode spaces become spaces), runs of spaces collapsed, at most
 /// [`MAX_NAME_CHARS`] characters. Empty: none.
 pub(crate) fn plain_name(name: Option<&str>) -> Option<String> {
     let mut out = String::new();
@@ -317,7 +323,7 @@ pub(crate) fn plain_name(name: Option<&str>) -> Option<String> {
     let mut space = false;
     for c in name.unwrap_or_default().chars() {
         let c = if c.is_whitespace() { ' ' } else { c };
-        if c.is_control() || is_bidi_control(c) {
+        if is_hidden(c) {
             continue;
         }
         if c == ' ' {
@@ -369,8 +375,27 @@ pub(crate) fn release_title(name: &str, tag: &str) -> Option<String> {
     (!title.is_empty()).then(|| title.to_owned())
 }
 
+/// Characters dropped from text read in the release JSON: controls, bidirectional formatting,
+/// invisible characters.
+fn is_hidden(c: char) -> bool {
+    c.is_control() || is_bidi_control(c) || is_invisible(c)
+}
+
+/// Bidirectional formatting: marks (also the Arabic letter mark), embeddings, overrides, isolates.
 fn is_bidi_control(c: char) -> bool {
-    matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+    matches!(
+        c,
+        '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+    )
+}
+
+/// Invisible characters that can hide or split text: Mongolian vowel separator, zero-width space,
+/// word joiner and invisible operators, byte order mark (zero-width no-break space).
+fn is_invisible(c: char) -> bool {
+    matches!(
+        c,
+        '\u{180e}' | '\u{200b}' | '\u{2060}'..='\u{2064}' | '\u{feff}'
+    )
 }
 
 #[cfg(test)]
@@ -653,6 +678,13 @@ mod tests {
         assert_eq!(plain_name(None), None);
         assert_eq!(plain_name(Some("")), None);
         assert_eq!(plain_name(Some(" \n\t\u{202e}\u{1b} ")), None);
+        // Line and paragraph separators are spaces; invisible and bidirectional characters go.
+        assert_eq!(
+            plain_name(Some(
+                "\u{feff}Fast\u{2028}im\u{200b}port\u{2029}x\u{061c}y\u{2060}z\u{180e}"
+            )),
+            Some("Fast import xyz".to_owned())
+        );
         assert_eq!(
             plain_name(Some(
                 "  NetSift v0.2.0 \u{2014}\r\n <b>Fast</b>\u{1b}[31m\u{2066}import  "
@@ -734,6 +766,10 @@ mod tests {
         let (notes, cut) = plain_notes(Some(&long));
         assert_eq!(notes.chars().count(), MAX_NOTES_CHARS);
         assert!(cut);
+        let (notes, _) = plain_notes(Some(
+            "a\u{2028}b\u{2029}c\u{feff}\u{200b}\u{061c}\u{2064}\u{180e}d",
+        ));
+        assert_eq!(notes, "a\nb\ncd");
         let exact = "x".repeat(MAX_NOTES_CHARS);
         assert_eq!(plain_notes(Some(&exact)), (exact.clone(), false));
     }

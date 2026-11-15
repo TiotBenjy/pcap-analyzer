@@ -116,8 +116,9 @@ pub enum UpdateCheckStatus {
 #[ts(export)]
 pub struct UpdateRelease {
     pub version: String,
-    /// Release name on GitHub as plain text (control and bidirectional characters dropped, one
-    /// line, at most 120 characters): `NetSift vX.Y.Z` or `NetSift vX.Y.Z — <title>`.
+    /// Release name on GitHub as plain text (control, bidirectional formatting and invisible
+    /// characters dropped, one line, at most 120 characters): `NetSift vX.Y.Z` or
+    /// `NetSift vX.Y.Z — <title>`.
     pub name: Option<String>,
     /// Short summary of the release: the part of `name` after the version, or the whole name
     /// when it was edited by hand without that prefix; none for the default name.

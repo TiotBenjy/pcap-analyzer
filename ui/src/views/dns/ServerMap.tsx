@@ -5,7 +5,7 @@ import { Card } from '../../components/Card';
 import { ErrorState } from '../../components/ErrorState';
 import { WorldMap } from '../../components/WorldMap';
 import { formatCount } from '../../lib/format';
-import { countryTooltip, groupByCountry } from './serverMap';
+import { countryTooltip, groupByCountry } from './serverCountries';
 
 /** Map of the queried DNS servers: light choropleth and points proportional to the queries. */
 export function ServerMap({ sessionId, enabled }: { sessionId: string; enabled: boolean }) {

@@ -799,3 +799,45 @@ fn category_plans_use_their_indexes() {
         "{p}"
     );
 }
+
+#[test]
+fn both_sides_in_one_pass_match_each_side() {
+    let conn = db();
+    mixed_categories(&conn);
+    let traffic = |ip: &str, sent: u64, received: u64| {
+        StoreRecord::HostTraffic(HostTrafficRow {
+            ip: ip.parse().unwrap(),
+            bytes_sent: sent,
+            bytes_received: received,
+            packets_sent: 1,
+            packets_received: 1,
+        })
+    };
+    for (i, (ip, country)) in [
+        ("81.0.0.1", Some("FR")),
+        ("81.0.0.2", Some("FR")),
+        ("81.0.0.3", Some("DE")),
+        ("81.0.0.4", None),
+        ("10.0.0.1", None),
+        ("10.0.0.2", None),
+        ("100.64.0.1", None),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let i = u64::try_from(i).unwrap();
+        // Some hosts only send, some only receive, some neither.
+        insert(&conn, traffic(ip, (i % 3) * 100, (i % 2) * 50 + i));
+        if let Some(c) = country {
+            insert(&conn, StoreRecord::Host(host(ip, "public", Some(c), &[])));
+        }
+    }
+    insert(&conn, traffic("10.9.9.9", 0, 0));
+    let (sent, received) = country_traffic_both(&conn).unwrap();
+    assert_eq!(sent, country_traffic(&conn, TrafficSide::Sent).unwrap());
+    assert_eq!(
+        received,
+        country_traffic(&conn, TrafficSide::Received).unwrap()
+    );
+    assert!(sent.len() >= 3 && received.len() >= 3);
+}

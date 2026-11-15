@@ -530,7 +530,7 @@ pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<Count
         "SELECT h.country, coalesce(h.category, '') = 'public' AS public, \
          CAST(min(total({col}), 9223372036854775807.0) AS INTEGER), count(*) \
          FROM host_traffic t LEFT JOIN hosts h ON h.ip = t.ip WHERE {col} > 0 \
-         GROUP BY h.country, public ORDER BY 3 DESC, 1"
+         GROUP BY h.country, public"
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], |r| {
@@ -544,9 +544,50 @@ pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<Count
             hosts: r.get(3)?,
         })
     })?;
+    fold_countries(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Bytes sent and received per country of the host, as two calls of [`country_traffic`] but in
+/// one pass over `host_traffic` (P4.8: the Connections statistics read both).
+pub fn country_traffic_both(
+    conn: &Connection,
+) -> Result<(Vec<CountryTraffic>, Vec<CountryTraffic>)> {
+    let mut stmt = conn.prepare(
+        "SELECT h.country, coalesce(h.category, '') = 'public' AS public, \
+         CAST(min(total(t.bytes_sent), 9223372036854775807.0) AS INTEGER), \
+         count(*) FILTER (WHERE t.bytes_sent > 0), \
+         CAST(min(total(t.bytes_received), 9223372036854775807.0) AS INTEGER), \
+         count(*) FILTER (WHERE t.bytes_received > 0) \
+         FROM host_traffic t LEFT JOIN hosts h ON h.ip = t.ip \
+         WHERE t.bytes_sent > 0 OR t.bytes_received > 0 \
+         GROUP BY h.country, public",
+    )?;
+    let mut sent = Vec::new();
+    let mut received = Vec::new();
+    let mut rows = stmt.query([])?;
+    while let Some(r) = rows.next()? {
+        let country: Option<String> = r.get(0)?;
+        // A country is only ever set on public addresses.
+        let public = r.get::<_, bool>(1)? || country.is_some();
+        for (side, bytes, hosts) in [(&mut sent, 2, 3), (&mut received, 4, 5)] {
+            let hosts: u64 = r.get(hosts)?;
+            if hosts > 0 {
+                side.push(CountryTraffic {
+                    country: country.clone(),
+                    public,
+                    bytes: r.get(bytes)?,
+                    hosts,
+                });
+            }
+        }
+    }
+    Ok((fold_countries(sent)?, fold_countries(received)?))
+}
+
+/// Groups of hosts with a country merged by country, largest first.
+fn fold_countries(rows: Vec<CountryTraffic>) -> Result<Vec<CountryTraffic>> {
     let mut out: Vec<CountryTraffic> = Vec::new();
     for row in rows {
-        let row = row?;
         // Hosts with a country are grouped by country whatever their category.
         match out
             .iter_mut()
@@ -563,6 +604,7 @@ pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<Count
         b.bytes
             .cmp(&a.bytes)
             .then_with(|| a.country.cmp(&b.country))
+            .then(a.public.cmp(&b.public))
     });
     Ok(out)
 }

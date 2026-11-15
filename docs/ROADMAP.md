@@ -336,7 +336,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
 
 - [x] **P4.1** `test/fuzzing` — cibles cargo-fuzz : lecteurs pcap/pcapng, dissect L2-L4, DNS, HTTP, TLS,
       NTLMSSP, SNMP ; corpus depuis les fixtures ; 0 crash sur 30 min par cible.
-- [ ] **P4.2** `perf/large-sessions` — Bench 5 Go (fixtures `--big`), profilage, index SQL, cibles d'ARCHITECTURE.
+- [~] **P4.2** `perf/large-sessions` — Bench 5 Go (fixtures `--big`), profilage, index SQL, cibles d'ARCHITECTURE.
       Inclut (revue P2.4) : `resample` lit une ligne par seconde et par libellé (7 jours ≈ 6 M lignes,
       plusieurs secondes) et `traffic_totals` somme toute la table à chaque `summary` -> table cumulée par
       minute/heure écrite en fin d'import + `stats.bytes` dans `meta` (prévoir la mise à niveau des sessions

@@ -8,7 +8,9 @@ import { mockUpdate } from './updateMocks';
 
 // Screenshots + automated layout assertions from docs/UI_GUIDELINES.md ("Tests visuels"):
 //   1. PNG per view, width and theme in .artifacts/screens/<view>-<width>-<theme>.png
-//   2. no horizontal overflow (page or main column)
+//   2. no horizontal overflow (page or main column); the document never scrolls (only #main does),
+//      even with #main scrolled to the bottom, and no absolutely positioned box escapes its scroll
+//      container (an `sr-only` label without a positioned ancestor makes the whole page scroll)
 //   3. no overlapping text/tspan boxes inside one SVG chart, no label outside its SVG
 //   4. every [data-testid="truncatable"] element has a title
 // Select views with SHOT_VIEW=<name>|all and languages with SHOT_LANG=en|fr|all.
@@ -195,6 +197,8 @@ if (views.length === 0) throw new Error(`unknown view "${selected}"; known: ${Ob
 
 interface LayoutReport {
   pageOverflow: { scrollWidth: number; innerWidth: number } | null;
+  documentScroll: { scrollWidth: number; scrollHeight: number; innerWidth: number; innerHeight: number } | null;
+  escaping: string[];
   mainOverflow: { scrollWidth: number; clientWidth: number } | null;
   overlaps: string[];
   outside: string[];
@@ -206,8 +210,21 @@ async function inspectLayout(page: Page): Promise<LayoutReport> {
     const TOL = 1;
     const doc = document.documentElement;
     const main = document.getElementById('main');
+    // Measured even though html/body hide their overflow (index.css): that guard only stops the
+    // user from scrolling, the overflow itself is the bug.
+    const scroller = document.scrollingElement ?? doc;
     const report: LayoutReport = {
       pageOverflow: doc.scrollWidth > window.innerWidth ? { scrollWidth: doc.scrollWidth, innerWidth: window.innerWidth } : null,
+      documentScroll:
+        scroller.scrollHeight > window.innerHeight + TOL || scroller.scrollWidth > window.innerWidth + TOL
+          ? {
+              scrollWidth: scroller.scrollWidth,
+              scrollHeight: scroller.scrollHeight,
+              innerWidth: window.innerWidth,
+              innerHeight: window.innerHeight,
+            }
+          : null,
+      escaping: [],
       mainOverflow:
         main !== null && main.scrollWidth > main.clientWidth + TOL
           ? { scrollWidth: main.scrollWidth, clientWidth: main.clientWidth }
@@ -218,6 +235,27 @@ async function inspectLayout(page: Page): Promise<LayoutReport> {
     };
 
     const label = (el: Element) => (el.textContent ?? '').trim().slice(0, 40);
+
+    // An absolutely positioned box takes its nearest positioned ancestor as containing block. When
+    // that ancestor lies outside the nearest scroll container (or there is none: the viewport), the
+    // box is neither clipped nor scrolled by the container and extends the page at its static position.
+    const scrolls = (el: Element) => {
+      const cs = getComputedStyle(el);
+      return /auto|scroll/.test(`${cs.overflowX} ${cs.overflowY}`);
+    };
+    for (const el of document.body.querySelectorAll('*')) {
+      if (!(el instanceof HTMLElement) || getComputedStyle(el).position !== 'absolute') continue;
+      let container = el.parentElement;
+      while (container !== null && container !== document.body && !scrolls(container)) container = container.parentElement;
+      if (container === null || container === document.body) continue;
+      const block = el.offsetParent;
+      // offsetParent is null for a box that is not rendered (display: none in an ancestor).
+      if (block === null && el.getClientRects().length === 0) continue;
+      if (block === null || !container.contains(block)) {
+        const where = container.id === '' ? container.tagName.toLowerCase() : `#${container.id}`;
+        report.escaping.push(`${el.tagName.toLowerCase()}.${el.className} "${label(el)}" out of ${where}`);
+      }
+    }
     for (const svg of document.querySelectorAll('svg')) {
       // Icons (lucide) have no text; only charts are checked.
       const texts = [...svg.querySelectorAll('text, tspan')].filter((t) => {
@@ -412,6 +450,8 @@ for (const lang of LANGS) {
               await expect(dialog).toBeVisible();
               const r = await inspectLayout(page);
               expect(r.pageOverflow, 'horizontal page overflow (export dialog)').toBeNull();
+              expect(r.documentScroll, 'the document scrolls (export dialog)').toBeNull();
+              expect(r.escaping, 'absolutely positioned boxes outside their scroll container (export dialog)').toEqual([]);
               expect(r.untitled, 'truncatable elements without title (export dialog)').toEqual([]);
               await page.screenshot({ path: `${shotDir}/credentials-export-dialog-${width}-${theme}.png` });
               const download = page.waitForEvent('download');
@@ -571,6 +611,8 @@ for (const lang of LANGS) {
           const check = async (when: string) => {
             const r = await inspectLayout(page);
             expect(r.pageOverflow, `horizontal page overflow (${when})`).toBeNull();
+            expect(r.documentScroll, `the document scrolls, not only #main (${when})`).toBeNull();
+            expect(r.escaping, `absolutely positioned boxes outside their scroll container (${when})`).toEqual([]);
             expect(r.mainOverflow, `horizontal overflow in the main column (${when})`).toBeNull();
             expect(r.overlaps, `overlapping chart labels (${when})`).toEqual([]);
             expect(r.outside, `chart labels outside their SVG (${when})`).toEqual([]);
@@ -579,6 +621,16 @@ for (const lang of LANGS) {
           await settled(page);
           await check(`${HEIGHT}px high`);
           expect(pageErrors, 'uncaught errors in the page (frozen Object.prototype)').toEqual([]);
+
+          // Bottom of a long view: boxes laid out far down #main must not extend the document.
+          const scrollTop = await page.evaluate(() => {
+            const main = document.getElementById('main');
+            const top = main?.scrollTop ?? 0;
+            main?.scrollTo(0, main.scrollHeight);
+            return top;
+          });
+          await check('#main scrolled to the bottom');
+          await page.evaluate((top) => document.getElementById('main')?.scrollTo(0, top), scrollTop);
 
           // `#main` scrolls, not the page, so `fullPage` alone would only capture the first screen:
           // grow the viewport to the content height (same width, same layout) before the capture.

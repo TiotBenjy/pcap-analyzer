@@ -346,6 +346,7 @@ export const en = {
       moreWarnings_other: '{{count}} more warnings not shown',
       cancel: 'Cancel import',
       cancelling: 'Cancelling',
+      cancelUnavailable: 'Reading is over: the import can no longer be cancelled',
       cancelError: 'Cancel failed: {{message}}',
       hide: 'Continue in background',
       done: 'Import finished',

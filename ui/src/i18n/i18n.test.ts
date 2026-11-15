@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { en } from './en';
 import { fr } from './fr';
-import { resolveLanguage } from './index';
+import i18n, { resolveLanguage } from './index';
 
 function flatten(obj: object, prefix = ''): Map<string, string> {
   const out = new Map<string, string>();
@@ -97,6 +97,34 @@ describe('French dictionary', () => {
       if (value.includes('...')) fail('three dots, use the ellipsis character');
     }
     expect(problems).toEqual([]);
+  });
+});
+
+describe('plural forms', () => {
+  const loaded = flatten(i18n.getResourceBundle('fr', 'translation') as object);
+
+  it('gives every French plural its `many` form (1,000,000 and above)', () => {
+    expect(new Intl.PluralRules('fr').select(1_000_000)).toBe('many');
+    const missing = [...loaded.keys()]
+      .filter((key) => key.endsWith('_other'))
+      .map((key) => key.replace(/_other$/, '_many'))
+      .filter((key) => !loaded.has(key));
+    expect(missing).toEqual([]);
+  });
+
+  it('writes a million in French, not in English', async () => {
+    await i18n.changeLanguage('fr');
+    try {
+      expect(i18n.t('views.import.files', { count: 1_000_000 })).toBe('1\u202f000\u202f000 fichiers');
+      expect(i18n.t('views.credentials.paths.entries', { count: 2_000_000 })).toBe('2\u202f000\u202f000 entrées');
+      expect(i18n.t('views.import.files', { count: 1 })).toBe('1 fichier');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('uses no i18next format specifier (the quantity formatter replaces the built-in one)', () => {
+    for (const [key, value] of [...flatten(en), ...flatten(fr)]) expect(/\{\{[^}]*,[^}]*\}\}/.test(value), key).toBe(false);
   });
 });
 

@@ -94,9 +94,9 @@ Points de rupture : `sm` 640, `md` 768, `lg` 1024, `xl` 1280, `2xl` 1536.
   (la page elle-même ne défile jamais horizontalement) ou affichage en cartes empilées selon la spec.
 - Le document ne défile jamais : seule la colonne `#main` défile (et la liste de la sidebar), puis les
   panneaux internes (tableaux, listes). `html` et `body` masquent leur débordement par sécurité, mais un
-  débordement reste un bogue. Un conteneur qui défile et contient un élément `absolute` (un libellé
-  `sr-only`, par exemple) est positionné (`relative`) : sinon l'élément, sans ancêtre positionné, s'en
-  échappe à sa position statique et allonge la page ou le conteneur parent.
+  débordement reste un bogue. Un conteneur qui défile est positionné (`relative`) dès qu'il peut
+  contenir autre chose que du texte : sinon un élément `absolute` sans ancêtre positionné (un libellé
+  `sr-only`, par exemple) s'en échappe à sa position statique et allonge la page ou le conteneur parent.
 - Texte long (URL, noms DNS, hash) : `truncate` + infobulle + bouton copier ; police mono pour IP, ports, hash.
 - La sidebar affiche le nombre d'éléments par onglet (badge neutre), estompe les onglets à 0.
 
@@ -172,7 +172,7 @@ cibles tactiles ≥ 32 px, pas d'information portée uniquement par la couleur.
 
 1. enregistre `.artifacts/screens/<vue>-<largeur>-<theme>.png` ;
 2. échoue si `document.documentElement.scrollWidth > window.innerWidth` (débordement horizontal), si le
-   document défile (`document.scrollingElement` plus haut ou plus large que la fenêtre, y compris
+   document défile (`document.scrollingElement` ou `body` plus haut ou plus large que la fenêtre, y compris
    `#main` défilé jusqu'en bas) ou si un élément `absolute` sort de son conteneur de défilement ;
 3. échoue si deux éléments `text`/`tspan` d'un même graphique SVG ont des boîtes qui se recouvrent
    (tolérance 1 px), ou si un libellé sort de son conteneur ;

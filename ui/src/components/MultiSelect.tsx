@@ -107,7 +107,7 @@ export function MultiSelect<T extends string>({ label, options, selected, onChan
               {t('common.none')}
             </Button>
           </div>
-          <ul className="flex max-h-80 flex-col overflow-y-auto">
+          <ul className="relative flex max-h-80 flex-col overflow-y-auto">
             {options.map((o) => (
               <li key={o.value}>
                 <label className="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-subtle has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent">

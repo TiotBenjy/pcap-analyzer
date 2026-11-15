@@ -109,12 +109,13 @@ campaign() { # [durée] [jobs]
   ensure_corpus
   build
   mkdir -p "$LOG_DIR"
+  rm -f "$LOG_DIR"/*.rc "$LOG_DIR"/*.log "$LOG_DIR/summary.txt"
   mapfile -t list < <(targets)
   echo ">> Campagne : ${#list[@]} cibles, ${d}s chacune, ${jobs} en parallèle (journaux : $LOG_DIR)"
   local running=0 t
   for t in "${list[@]}"; do
     while (( running >= jobs )); do wait -n || true; running=$(( running - 1 )); done
-    ( run_one "$t" "$d" >"$LOG_DIR/$t.log" 2>&1; echo $? >"$LOG_DIR/$t.rc" ) &
+    ( rc=0; run_one "$t" "$d" >"$LOG_DIR/$t.log" 2>&1 || rc=$?; echo "$rc" >"$LOG_DIR/$t.rc" ) &
     running=$(( running + 1 ))
   done
   wait || true

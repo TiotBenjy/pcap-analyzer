@@ -3,14 +3,16 @@
 //! fed with a conversation ([`netsift_fuzz::segments`]) on one TCP flow to port 443.
 #![no_main]
 
+use std::sync::LazyLock;
+
 use libfuzzer_sys::fuzz_target;
 use netsift_analyze::Analyzer;
 use netsift_analyze::tls::stream::{DirParser, Event};
 use netsift_analyze::tls::{TlsAnalyzer, cert, fingerprint, hello};
 use netsift_fuzz::{Sink, analyzer_config, drive_stream, segments};
 
-/// Same bound as the analyzer's default `max_handshake_message`.
-const MAX_MESSAGE: usize = 128 * 1024;
+/// Handshake message bound of the analyzer's default settings.
+static MAX_MESSAGE: LazyLock<usize> = LazyLock::new(|| analyzer_config().tls.max_handshake_message);
 
 fn handshake(msg: &[u8]) {
     let (Some(&kind), Some(body)) = (msg.first(), msg.get(4..)) else {
@@ -47,8 +49,8 @@ fuzz_target!(|data: &[u8]| {
     let mut parser = DirParser::default();
     let mut events = Vec::new();
     let (a, b) = rest.split_at(rest.len() / 2);
-    parser.feed(a, MAX_MESSAGE, &mut events);
-    parser.feed(b, MAX_MESSAGE, &mut events);
+    parser.feed(a, *MAX_MESSAGE, &mut events);
+    parser.feed(b, *MAX_MESSAGE, &mut events);
     let _ = parser.buffered();
     for e in &events {
         if let Event::Handshake(msg) = e {

@@ -34,7 +34,7 @@
 Cargo.toml                 workspace (resolver 3, lints partagés)
 rust-toolchain.toml        Rust 1.99.1
 crates/
-  netsift-capture/         lecture pcap/pcapng/gz, détection & ordonnancement des chunks
+  netsift-capture/         lecture pcap/pcapng/gz, détection & ordonnancement des chunks, écriture pcapng
   netsift-dissect/         parseurs purs, sans I/O, fuzzables (L2..L7)
   netsift-flow/            défragmentation IP, table de flux, réassemblage TCP
   netsift-analyze/         trait Analyzer + analyseurs par protocole + classification
@@ -112,8 +112,10 @@ geoip/                base GeoIP facultative (téléchargée ou importée depuis
 
 Les captures sources ne sont **jamais copiées** : la session référence les chemins des chunks
 (+ taille, mtime, empreinte des 64 premiers Kio pour détecter une modification).
-L'export « Save PCAP » (flux ou plage temporelle) relit uniquement les chunks dont la plage
-temporelle intersecte la demande.
+L'export « Save PCAP » (session, flux ou plage temporelle) relit uniquement les chunks dont la plage
+temporelle intersecte la demande, avec le lecteur de l'import (`ChunkSetSource`), après avoir vérifié
+qu'ils n'ont pas changé, et écrit un pcapng (`netsift_capture::writer`) dans `exports/` (ADR-021,
+`docs/specs/export-pcap.md`).
 
 Tables principales (chaque analyseur ajoute les siennes via sa migration) :
 
@@ -146,6 +148,9 @@ jusqu'à un réimport (ADR-013).
 - Graphiques : endpoints dédiés qui renvoient des données **déjà agrégées et bornées**
   (top N + « autres », séries rééchantillonnées ≤ 2 000 points).
 - Import : `POST /sessions/import { path }` -> id ; progression via SSE `GET /sessions/{id}/events`.
+- Save PCAP : `POST /sessions/{id}/exports/pcap` -> job (202), polling `GET /exports/{job}`,
+  annulation `POST /exports/{job}/cancel`, fichier `GET /exports/{job}/file` (web) ; le fichier est
+  écrit par un thread dédié dans `<données>/exports/` sous un nom choisi par le serveur (ADR-021).
 - Blobs : `GET /sessions/{id}/objects/{sha256}` en pièce jointe `application/octet-stream` avec
   `Content-Security-Policy: sandbox` ; la webview n'affiche que les PNG ré-encodés par le backend
   (`.../thumb`, `.../preview`), jamais l'original (ADR-016).

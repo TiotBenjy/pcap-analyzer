@@ -108,7 +108,9 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     Finalizer {
         id: "network",
         version: 1,
-        after: &["indexes"],
+        // Not after `indexes`: it reads its sources by primary key and in storage order, and the
+        // indexes of the tables it fills are never deferred.
+        after: &[],
         fills: &[
             "network_hosts",
             "network_edges",
@@ -155,6 +157,16 @@ pub fn finalizers_done(conn: &Connection) -> Result<Vec<String>> {
         .filter(|m| !m.is_empty())
         .map(str::to_owned)
         .collect())
+}
+
+/// True when the current version of step `id` is recorded as done. Readers of a table that only
+/// a step fills fall back to its sources while it is not (session served read-only before its
+/// steps ran, or a failed step): slower, never wrong (ADR-023).
+pub fn step_done(conn: &Connection, id: &str) -> Result<bool> {
+    let Some(step) = SESSION_FINALIZERS.iter().find(|f| f.id == id) else {
+        return Ok(false);
+    };
+    Ok(finalizers_done(conn)?.contains(&step.marker()))
 }
 
 /// True when every registered step is recorded as done.

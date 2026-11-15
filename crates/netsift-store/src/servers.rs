@@ -21,6 +21,17 @@ use crate::session::tables_added_after_import;
 /// Table of the derived roles (a view before migration 0801).
 pub const EVIDENCE_VIEW: &str = "server_evidence";
 
+/// Relations to read the roles from, `(evidence, roles)`: the tables filled by the step `servers`
+/// (version 2), or their source views while it has not run (a session served read-only before
+/// its steps, a failed step): slower, never empty by mistake (ADR-023).
+pub fn role_relations(conn: &Connection) -> Result<(&'static str, &'static str)> {
+    Ok(if crate::finalize::step_done(conn, "servers")? {
+        ("server_evidence", "server_roles")
+    } else {
+        ("server_evidence_source", "server_roles_source")
+    })
+}
+
 /// A row of the `servers` analyzer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerRow {
@@ -333,7 +344,7 @@ pub const MAX_SERVERS_PER_ROLE: u32 = 1000;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RoleEvidence {
     /// Every piece of evidence of the kept servers, by role, then server rank (decreasing sum of
-    /// counts, then address text), then decreasing count.
+    /// counts, then address text), then decreasing count, kind and example.
     pub entries: Vec<EvidenceEntry>,
     /// Servers per role after the category filter (kept or not), for the roles with servers.
     pub totals: Vec<(String, u64)>,
@@ -346,11 +357,12 @@ pub struct RoleEvidence {
 pub fn evidence(conn: &Connection, q: &EvidenceQuery<'_>) -> Result<RoleEvidence> {
     let categories = q.categories.map(serde_json::to_string).transpose()?;
     let limit = q.limit.clamp(1, MAX_SERVERS_PER_ROLE);
-    let mut stmt = conn.prepare(
+    let (evidence_from, _) = role_relations(conn)?;
+    let mut stmt = conn.prepare(&format!(
         "WITH e AS MATERIALIZED (
              SELECT e.role, e.ip, e.kind, e.count, e.clients, e.first_ts, e.last_ts, e.example,
                     h.names, h.category, h.country
-             FROM server_evidence e LEFT JOIN hosts h ON h.ip = e.ip
+             FROM {evidence_from} e LEFT JOIN hosts h ON h.ip = e.ip
              WHERE e.ip IS NOT NULL AND (?1 IS NULL OR e.role = ?1)
                AND (?2 IS NULL OR h.category IS NULL
                     OR h.category IN (SELECT value FROM json_each(?2)))),
@@ -363,8 +375,8 @@ pub fn evidence(conn: &Connection, q: &EvidenceQuery<'_>) -> Result<RoleEvidence
                 e.names, e.category, e.country, r.servers
          FROM e JOIN r ON r.role = e.role AND r.ip = e.ip
          WHERE r.rank <= ?3
-         ORDER BY e.role, r.rank, e.count DESC, e.kind",
-    )?;
+         ORDER BY e.role, r.rank, e.count DESC, e.kind, e.example"
+    ))?;
     let rows = stmt.query_map(params![q.role, categories, limit], |r| {
         let ip: String = r.get(1)?;
         Ok((

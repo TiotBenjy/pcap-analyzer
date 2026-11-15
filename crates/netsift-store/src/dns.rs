@@ -534,7 +534,9 @@ impl DnsFilter {
         s
     }
 
-    fn search(&self) -> Search {
+    /// Without the search index (`fts_ready` false: step `dns` not run, ADR-023), every search
+    /// uses `LIKE`.
+    fn search(&self, fts_ready: bool) -> Search {
         let Some(q) = self
             .search
             .as_deref()
@@ -543,7 +545,7 @@ impl DnsFilter {
         else {
             return Search::None;
         };
-        if q.chars().count() >= 3 {
+        if fts_ready && q.chars().count() >= 3 {
             // A quoted FTS5 string: any character is literal inside.
             Search::Fts(format!("\"{}\"", q.replace('"', "\"\"")))
         } else {
@@ -593,7 +595,7 @@ fn push_search(c: &mut Conditions, search: &Search) {
 
 /// The active filters of the message list only (P4.2): with every protocol and no other
 /// filter, the count reads the table without evaluating anything per row.
-fn message_conditions(filter: &DnsFilter, pair: Option<i64>) -> Conditions {
+fn message_conditions(filter: &DnsFilter, pair: Option<i64>, fts_ready: bool) -> Conditions {
     let mut c = Conditions::new();
     if let Some(p) = pair {
         c.push("m.pair_id = ?", [Value::Integer(p)]);
@@ -607,12 +609,12 @@ fn message_conditions(filter: &DnsFilter, pair: Option<i64>) -> Conditions {
     if filter.errors_only {
         c.push("m.is_error = 1", []);
     }
-    push_search(&mut c, &filter.search());
+    push_search(&mut c, &filter.search(fts_ready));
     c
 }
 
 /// Same for the pair list: the search applies to the messages of a pair.
-fn pair_conditions(filter: &DnsFilter) -> Conditions {
+fn pair_conditions(filter: &DnsFilter, fts_ready: bool) -> Conditions {
     let mut c = Conditions::new();
     if filter.filters_protocols() {
         c.push(
@@ -624,7 +626,7 @@ fn pair_conditions(filter: &DnsFilter) -> Conditions {
         c.push("p.errors > 0", []);
     }
     let mut search = Conditions::new();
-    push_search(&mut search, &filter.search());
+    push_search(&mut search, &filter.search(fts_ready));
     c.push_group(
         "p.id IN (SELECT m.pair_id FROM dns_messages m WHERE ",
         search,
@@ -699,7 +701,7 @@ pub fn pairs_page(
     filter: &DnsFilter,
     request: &PageRequest,
 ) -> Result<(Page<DnsPairRow>, u64)> {
-    let cond = pair_conditions(filter);
+    let cond = pair_conditions(filter, crate::finalize::step_done(conn, "dns")?);
     let where_sql = cond.sql();
     let query = Keyset {
         from: PAIR_FROM,
@@ -792,7 +794,7 @@ pub fn messages_page(
     filter: &DnsFilter,
     request: &PageRequest,
 ) -> Result<(Page<DnsMessageRow>, u64)> {
-    let cond = message_conditions(filter, pair);
+    let cond = message_conditions(filter, pair, crate::finalize::step_done(conn, "dns")?);
     let where_sql = cond.sql();
     let query = Keyset {
         from: "dns_messages m",

@@ -19,15 +19,31 @@ use crate::error::{Result, StoreError};
 pub const META_KEY: &str = "import.deferred_indexes";
 
 /// Drops every non-unique secondary index of an empty session and records its definition, in one
-/// transaction. Returns the number of indexes dropped.
+/// transaction. Returns the number of indexes dropped. The indexes of the tables that the
+/// end-of-import steps fill ([`crate::finalize::Finalizer::fills`]) stay: those tables are empty
+/// during the import, and a step may name its index (`INDEXED BY`) even when `indexes` failed.
 pub(crate) fn defer(conn: &Connection) -> Result<usize> {
+    let filled: Vec<&str> = crate::finalize::SESSION_FINALIZERS
+        .iter()
+        .flat_map(|f| f.fills.iter().copied())
+        .collect();
     let defs: Vec<(String, String)> = conn
         .prepare(
-            "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL \
-             AND sql NOT LIKE 'CREATE UNIQUE %' ORDER BY name",
+            "SELECT name, sql, tbl_name FROM sqlite_master WHERE type = 'index' \
+             AND sql IS NOT NULL AND sql NOT LIKE 'CREATE UNIQUE %' ORDER BY name",
         )?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<rusqlite::Result<_>>()?;
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .filter(|(_, _, table)| !filled.contains(&table.as_str()))
+        .map(|(name, sql, _)| (name, sql))
+        .collect();
     if defs.is_empty() {
         return Ok(0);
     }
@@ -88,10 +104,27 @@ pub(crate) fn finalize(conn: &Connection) -> Result<()> {
                 reason: "not an index definition",
             });
         }
-        conn.prepare(&sql)?.execute([])?;
+        // A definition recorded by an older build whose table or column a later migration
+        // removed (migrations drop indexes with `IF EXISTS`, see `schema.rs`): skipped, or the
+        // step would fail at every opening and hold back the steps that come after it.
+        match conn.prepare(&sql) {
+            Ok(mut stmt) => {
+                stmt.execute([])?;
+            }
+            Err(e) if is_missing_object(&e) => {
+                tracing::warn!(index = %name, "deferred index skipped: {e}");
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
     conn.execute("DELETE FROM meta WHERE key = ?1", [META_KEY])?;
     Ok(())
+}
+
+/// Error of a statement naming a table or column that does not exist.
+fn is_missing_object(e: &rusqlite::Error) -> bool {
+    let text = e.to_string();
+    text.contains("no such table") || text.contains("no such column")
 }
 
 /// SQL identifier quoting.
@@ -127,13 +160,18 @@ mod tests {
         assert!(reference.len() > 50, "{}", reference.len());
         let session = Session::open(dir.path(), OpenMode::Import).unwrap();
         let conn = session.conn();
-        // Only unique indexes are left while the import runs.
+        // Only unique indexes, and those of the tables the steps fill, are left while the
+        // import runs.
         let during = indexes(conn);
         assert_ne!(during, Vec::new());
         assert!(
             during
                 .iter()
-                .all(|(_, sql)| sql.starts_with("CREATE UNIQUE"))
+                .all(|(name, sql)| sql.starts_with("CREATE UNIQUE")
+                    || name.starts_with("network_")
+                    || name.starts_with("dns_pairs")
+                    || name.starts_with("server_")),
+            "{during:?}"
         );
         finalize(conn).unwrap();
         assert_eq!(indexes(conn), reference);
@@ -144,6 +182,46 @@ mod tests {
             crate::query::get_meta(conn, META_KEY).unwrap().is_none(),
             "definitions forgotten"
         );
+    }
+
+    #[test]
+    fn definitions_of_removed_tables_are_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::open(dir.path(), OpenMode::ReadWrite).unwrap();
+        let conn = session.conn();
+        let defs = [
+            ("gone_idx", "CREATE INDEX gone_idx ON gone_table (x)"),
+            (
+                "flows_gone",
+                "CREATE INDEX flows_gone ON flows (gone_column)",
+            ),
+            ("flows_kept", "CREATE INDEX flows_kept ON flows (src_port)"),
+        ];
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2)",
+            params![META_KEY, serde_json::to_string(&defs).unwrap()],
+        )
+        .unwrap();
+        finalize(conn).unwrap();
+        let names: Vec<String> = indexes(conn).into_iter().map(|(n, _)| n).collect();
+        assert!(names.contains(&"flows_kept".to_owned()));
+        assert!(!names.contains(&"flows_gone".to_owned()));
+        assert!(crate::query::get_meta(conn, META_KEY).unwrap().is_none());
+    }
+
+    #[test]
+    fn indexes_of_tables_filled_by_steps_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Session::open(dir.path(), OpenMode::Import).unwrap();
+        let names: Vec<String> = indexes(session.conn())
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert!(
+            names.contains(&"network_hosts_bytes".to_owned()),
+            "{names:?}"
+        );
+        assert!(!names.contains(&"flows_src_ip".to_owned()), "{names:?}");
     }
 
     #[test]

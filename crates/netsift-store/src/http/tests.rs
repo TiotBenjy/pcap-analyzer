@@ -127,8 +127,8 @@ fn fill(conn: &Connection) {
     for r in &rows {
         r.insert(conn).unwrap();
     }
-    // The search indexes are built at the end of the import (finalizer `http`).
-    finalize(conn).unwrap();
+    // The search indexes are built at the end of the import (step `http`, recorded in `meta`).
+    assert!(crate::finalize::run_finalizers(conn).unwrap().is_complete());
 }
 
 fn paths(page: &Page<HttpEntry>) -> Vec<String> {
@@ -448,13 +448,13 @@ fn sort_queries_use_indexes() {
     }
     // Without filter, the query has no condition at all (P4.2): the count no longer builds the
     // set of transactions of the header filter (a scan of `http_headers`).
-    assert!(conditions(&HttpFilter::default()).unwrap().is_empty());
+    assert!(conditions(&HttpFilter::default(), true).unwrap().is_empty());
     // An active filter uses its index.
     let host = HttpFilter {
         host: Some("www.example.test".into()),
         ..HttpFilter::default()
     };
-    let c = conditions(&host).unwrap();
+    let c = conditions(&host, true).unwrap();
     let p = plan(&format!(
         "SELECT count(*) FROM http_transactions t WHERE {}",
         c.sql().unwrap()
@@ -494,37 +494,46 @@ fn active_filters_match_the_former_filter() {
     let texts = [None, Some("issin"), Some("/l"), Some("curl")];
     let names = [None, Some("host"), Some("AUTHORIZATION")];
     let header_texts = [None, Some("3cr3t"), Some("b.")];
+    // The expected rows use the search index; the second pass forgets the step `http`, so that
+    // every search falls back to `LIKE` (ADR-023): same rows.
+    let fts_ready = true;
     let mut checked = 0;
-    for m in &methods {
-        for st in &statuses {
-            for host in hosts {
-                for q in texts {
-                    for name in names {
-                        for hq in header_texts {
-                            let filter = HttpFilter {
-                                methods: m.clone(),
-                                statuses: st.clone(),
-                                host: host.map(str::to_owned),
-                                q: q.map(str::to_owned),
-                                header_name: name.map(str::to_owned),
-                                header_q: hq.map(str::to_owned),
-                            };
-                            let (fts, like) = search(filter.q.as_deref()).unwrap();
-                            let (hfts, hlike) = search(filter.header_q.as_deref()).unwrap();
-                            let p: [Option<String>; 8] = [
-                                json_list(filter.methods.as_ref()).unwrap(),
-                                json_list(filter.statuses.as_ref()).unwrap(),
-                                filter.host.clone(),
-                                fts,
-                                like,
-                                filter
-                                    .header_name
-                                    .as_deref()
-                                    .map(|n| n.trim().to_ascii_lowercase()),
-                                hfts,
-                                hlike,
-                            ];
-                            let want: Vec<String> = conn
+    for pass in 0..2 {
+        if pass == 1 {
+            conn.execute("DELETE FROM meta WHERE key = 'finalizers'", [])
+                .unwrap();
+        }
+        for m in &methods {
+            for st in &statuses {
+                for host in hosts {
+                    for q in texts {
+                        for name in names {
+                            for hq in header_texts {
+                                let filter = HttpFilter {
+                                    methods: m.clone(),
+                                    statuses: st.clone(),
+                                    host: host.map(str::to_owned),
+                                    q: q.map(str::to_owned),
+                                    header_name: name.map(str::to_owned),
+                                    header_q: hq.map(str::to_owned),
+                                };
+                                let (fts, like) = search(filter.q.as_deref(), fts_ready).unwrap();
+                                let (hfts, hlike) =
+                                    search(filter.header_q.as_deref(), fts_ready).unwrap();
+                                let p: [Option<String>; 8] = [
+                                    json_list(filter.methods.as_ref()).unwrap(),
+                                    json_list(filter.statuses.as_ref()).unwrap(),
+                                    filter.host.clone(),
+                                    fts,
+                                    like,
+                                    filter
+                                        .header_name
+                                        .as_deref()
+                                        .map(|n| n.trim().to_ascii_lowercase()),
+                                    hfts,
+                                    hlike,
+                                ];
+                                let want: Vec<String> = conn
                                 .prepare(&format!(
                                     "SELECT t.path FROM http_transactions t WHERE {FORMER_FILTER} \
                                      ORDER BY t.ts, t.id"
@@ -534,18 +543,19 @@ fn active_filters_match_the_former_filter() {
                                 .unwrap()
                                 .map(Result::unwrap)
                                 .collect();
-                            assert_eq!(list(&conn, &filter), want, "{filter:?}");
-                            assert_eq!(
-                                count_transactions(&conn, &filter).unwrap(),
-                                u64::try_from(want.len()).unwrap(),
-                                "{filter:?}"
-                            );
-                            checked += usize::from(!want.is_empty());
+                                assert_eq!(list(&conn, &filter), want, "{filter:?}");
+                                assert_eq!(
+                                    count_transactions(&conn, &filter).unwrap(),
+                                    u64::try_from(want.len()).unwrap(),
+                                    "{filter:?}"
+                                );
+                                checked += usize::from(!want.is_empty());
+                            }
                         }
                     }
                 }
             }
         }
     }
-    assert!(checked > 30, "too few non-empty cases: {checked}");
+    assert!(checked > 60, "too few non-empty cases: {checked}");
 }

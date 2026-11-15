@@ -309,6 +309,16 @@ Suivis de la vague 3.A :
   ICMP liées au flux non incluses ; snaplen 0 hors première interface d'un chunk pcapng ; `ExportJob.path` absolu
   exposé mais inutilisé par l'UI ; à vérifier sur un bundle : « Ouvrir le dossier » (plugin opener réel) et un
   export de plusieurs Go (progression, annulation) ; la fermeture du desktop annule un export sans confirmation.
+- P4.2 (fusionnée le 2026-11-15, ADR-023, `docs/PERFORMANCE.md`, `./x.sh bench`) : import 5 Go 578 s -> 95 s sur
+  4 cœurs (104 Mo/s pendant la lecture, 56 Mo/s sur la durée totale), pic RSS 375 Mio (cache d'import 256 Mio par
+  import simultané), requêtes de vue > 300 ms 18 -> 4 sur 76 ; index secondaires, FTS HTTP, cumuls de séries et
+  rôles de serveurs construits en fin d'import, avec replis justes (mais lents) tant que l'étape n'a pas tourné ;
+  les suivis « P4.2 » des phases précédentes sont traités ou repris dans P4.8. Restent hors P4.8 : repli
+  `server_evidence_source` très lent sans `flows_service` (lecture seule ou étape `indexes` en échec) ; repli
+  `LIKE` sans pliage de casse Unicode ; détection des définitions d'index invalides par texte d'erreur ; test
+  « import sans étapes » qui retouche une base finie au lieu d'arrêter le writer ; pic disque en fin d'import
+  (WAL de la taille des index) ; rapports de bench en français. Le gate `./x.sh check` laissait passer un échec
+  au milieu d'une chaîne `&&` (version, `fuzz/`, bindings) : corrigé sur `main` (une commande par ligne).
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -336,7 +346,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
 
 - [x] **P4.1** `test/fuzzing` — cibles cargo-fuzz : lecteurs pcap/pcapng, dissect L2-L4, DNS, HTTP, TLS,
       NTLMSSP, SNMP ; corpus depuis les fixtures ; 0 crash sur 30 min par cible.
-- [~] **P4.2** `perf/large-sessions` — Bench 5 Go (fixtures `--big`), profilage, index SQL, cibles d'ARCHITECTURE.
+- [x] **P4.2** `perf/large-sessions` — Bench 5 Go (fixtures `--big`), profilage, index SQL, cibles d'ARCHITECTURE.
       Inclut (revue P2.4) : `resample` lit une ligne par seconde et par libellé (7 jours ≈ 6 M lignes,
       plusieurs secondes) et `traffic_totals` somme toute la table à chaque `summary` -> table cumulée par
       minute/heure écrite en fin d'import + `stats.bytes` dans `meta` (prévoir la mise à niveau des sessions
@@ -353,6 +363,13 @@ Hors vague (demande utilisateur du 2026-11-08) :
       fusionne les sessions, sans erreur visible. Piste : faire entrer l'index de trame global du premier paquet,
       identique entre fichier unique et chunks (test d'équivalence) ; test synthétique : deux connexions HTTP
       même 5-tuple, ts constant. Trouvé par la revue de P4.1.
+- [ ] **P4.8** `perf/followups` — Reste de P4.2 (chiffres dans `docs/PERFORMANCE.md`) : affichage Overview 616 ms
+      pour 500 visés (réponses ≈ 130 ms, ≈ 480 ms de rendu ECharts SVG de 13 séries ; mesurer aussi dans WebKitGTK) ;
+      fin d'import de 44 s sans progression (index 19 s, DNS 11,5 s, FTS HTTP 7,7 s, réseau 2,6 s) -> phase dédiée
+      dans `Progress` ; requêtes > 300 ms : `/servers` 571 ms (rang précalculé sans filtre), `/connections?category=`
+      483 ms et `/open-ports?category=` 343 ms (comptes par catégorie ou total estimé), `/http/transactions?q=` 343 ms
+      (régression de P4.2, 212 ms avant) ; requêtes entre 150 et 300 ms (`/connections/stats`, `/dns/stats`, `/dns/messages?q=`
+      court) ; writer pendant la lecture (`tls_sessions`, `conversations`, `hosts`).
 - [x] **P4.6** `ci/release-pipeline` — Releases GitHub publiées par la CI sur tag `vX.Y.Z` : notes
       générées depuis l'historique des commits (Conventional Commits), bundles Linux (AppImage, .deb, .rpm),
       Windows (NSIS .exe, MSI) et macOS (.dmg), sommes SHA-256 ; version unique (workspace, Tauri, UI)

@@ -392,21 +392,25 @@ Hors vague (demande utilisateur du 2026-11-08) :
       483 ms et `/open-ports?category=` 343 ms (comptes par catégorie ou total estimé), `/http/transactions?q=` 343 ms
       (régression de P4.2, 212 ms avant) ; requêtes entre 150 et 300 ms (`/connections/stats`, `/dns/stats`, `/dns/messages?q=`
       court) ; writer pendant la lecture (`tls_sessions`, `conversations`, `hosts`).
-- [~] **P4.11** `feat/outbound-base` — Socle commun de P4.9 et P4.10, à fusionner avant elles (qui se font ensuite en
+- [x] **P4.11** `feat/outbound-base` — Socle commun de P4.9 et P4.10, à fusionner avant elles (qui se font ensuite en
       parallèle) : client HTTP sortant partagé extrait de `netsift-api/src/geoip/download.rs` (HTTPS seul, redirections,
       délais et tailles bornés, `.part` puis renommage, User-Agent générique) ; réglages persistants « vérifications en
       ligne » (GeoIP, mises à jour), désactivés par défaut, lus au démarrage ; composant de bandeau de notification
       discret et masquable (UI_GUIDELINES) et son point d'insertion dans l'en-tête ; nouvel ADR (ADR-015 inchangé) qui
       crée les exceptions DB-IP (vérification sur option) et GitHub releases (vérification sur option, téléchargement
       sur clic), reprises dans `CLAUDE.md` / `ARCHITECTURE.md`. Pas de logique propre à GeoIP ni aux mises à jour.
-- [ ] **P4.9** `feat/geoip-prompt` — Proposer la base GeoIP au démarrage. Vérification locale, sans réseau :
+      Fusionné le 2026-11-15 (ADR-025). Suivis : `.part` orphelins après un plantage jamais nettoyés (nouvel essai sur
+      `AlreadyExists`, à traiter par P4.10, premier utilisateur de `download_to`) ; un champ mal typé de `settings.json`
+      rejette tout le fichier (réglages remis à désactivé, sûr) ; `settings.json.tmp` à nom fixe ; retirer les
+      `allow(dead_code)` d'`outbound.rs` / `online.rs` / `AppState::online` après P4.9 et P4.10.
+- [~] **P4.9** `feat/geoip-prompt` — Proposer la base GeoIP au démarrage. Vérification locale, sans réseau :
       date de la base installée (métadonnées mmdb `build_epoch`) comparée au mois courant ; base absente ou antérieure
       au mois -> bandeau discret « Télécharger » / « Mettre à jour » (masquable jusqu'au mois suivant), qui lance le
       téléchargement existant (ADR-015). Réglage « Vérifier en ligne au démarrage », désactivé par défaut : activé, une
       requête HEAD vers l'URL DB-IP du mois confirme la disponibilité (échec réseau silencieux, aucun bandeau d'erreur) ;
       Exception DB-IP, client HTTP, réglages et bandeau fournis par P4.11 (dépendance). Demandé par l'utilisateur le
       2026-11-15, à livrer avant la publication de 0.1.0.
-- [ ] **P4.10** `feat/update-check` — Nouvelle version depuis les releases GitHub du dépôt. Bouton « Rechercher une
+- [~] **P4.10** `feat/update-check` — Nouvelle version depuis les releases GitHub du dépôt. Bouton « Rechercher une
       mise à jour » dans « À propos » et réglage « Vérifier les mises à jour au démarrage », désactivé par défaut ;
       requête faite par l'API Rust (jamais la webview) vers la dernière release publiée (`releases/latest`, URL du dépôt
       fixée au build, HTTPS, tailles et redirections bornées, échec réseau silencieux au démarrage). Version plus récente

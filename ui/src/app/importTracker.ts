@@ -108,6 +108,14 @@ export function progressFraction(p: ImportProgress | null): number {
   return importFraction(p.bytes_done, p.bytes_total);
 }
 
+/**
+ * Warnings found so far: the backend lists a bounded number (and a few per code and chunk) but
+ * counts them all in the progress; the final event counts every anomaly of the session.
+ */
+export function warningTotal(imp: Pick<TrackedImport, 'warningCount' | 'progress' | 'result'>): number {
+  return Math.max(imp.warningCount, imp.progress?.warnings_found ?? 0, imp.result?.anomalies ?? 0);
+}
+
 /** 1-based number of the step running (the last one once all are finished). */
 export function stepNumber(p: ImportProgress): number {
   return Math.min(p.steps_total, p.steps_done + (p.step === null ? 0 : 1));
@@ -129,6 +137,7 @@ function onEvent(sessionId: string, ev: ImportEvent): void {
         step,
         steps_done,
         steps_total,
+        warnings_found,
       } = ev;
       const progress: ImportProgress = {
         bytes_done,
@@ -143,6 +152,7 @@ function onEvent(sessionId: string, ev: ImportEvent): void {
         step,
         steps_done,
         steps_total,
+        warnings_found,
       };
       update(sessionId, () => ({ progress }));
       break;

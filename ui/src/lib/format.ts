@@ -235,6 +235,23 @@ export function formatLatency(us: number, lang: string = currentLanguage()): str
   return `${formatNumber(ms, ms < 10 ? 1 : 0, lang)}${NBSP}ms`;
 }
 
+/**
+ * Duration in microseconds down to the microsecond: `850 µs`, `1.2 ms`, `45 ms`, then as
+ * `formatDuration` from one second (`1.2 s`, `12 min 05 s`). Below 1 µs: `< 1 µs`.
+ */
+export function formatPreciseDuration(us: number, lang: string = currentLanguage()): string {
+  const v = Math.max(0, finite(us));
+  if (v < 1) return `<${NBSP}1${NBSP}µs`;
+  // Thresholds below the next unit, so that rounding never prints `1,000 µs` or `1,000 ms`.
+  if (v < 999.5) return `${formatNumber(v, 0, lang)}${NBSP}µs`;
+  if (v < 999_500) {
+    const ms = v / 1000;
+    return `${formatNumber(ms, ms < 10 ? 1 : 0, lang)}${NBSP}ms`;
+  }
+  // From 999.5 ms: at least `1 s`, never `0.999 s`.
+  return formatDuration(Math.max(1, v / 1e6), lang);
+}
+
 /** Last path component (handles `/` and `\` separators). */
 export function baseName(path: string): string {
   const trimmed = path.replace(/[/\\]+$/, '');

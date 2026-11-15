@@ -58,6 +58,9 @@ chacune éventuellement `.gz`. Le format est déterminé par le **magic number**
 - Liste des chunks : n°, nom, taille, début, fin, durée, paquets, état (ok / tronqué / doublon / ignoré).
 - Frise temporelle de couverture : un segment par chunk, trous et chevauchements mis en évidence.
 - Bandeau d'anomalies résumé (« 2 fichiers manquants dans la séquence, 1 trou de 43 s »), détail dépliable.
+- Horodatages qui reculent : chaque anomalie donne le recul (`précédent - courant`, « recule de 1,2 ms »), le résumé
+  et le journal d'import le plus grand. Lecture : µs ou ms = pcapng multi-interface ou horodatage par la carte
+  réseau, sans gravité ; secondes ou plus = correction de l'horloge (NTP, changement manuel) pendant la capture.
 
 ## Tests obligatoires (pcaps synthétiques via `netsift-fixtures`)
 

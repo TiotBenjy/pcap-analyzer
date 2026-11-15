@@ -355,7 +355,7 @@ export const fr: Dictionary = {
       repeatedCapped: '×{{n}}+',
       moreWarnings_one: '{{count}} autre avertissement non affiché',
       moreWarnings_other: '{{count}} autres avertissements non affichés',
-      fullList: 'liste complète dans Sources',
+      fullList: '(<sources>liste complète dans Sources</sources>)',
       cancel: "Annuler l'import",
       cancelling: 'Annulation',
       cancelUnavailable: "Lecture terminée\u00a0: l'import ne peut plus être annulé",

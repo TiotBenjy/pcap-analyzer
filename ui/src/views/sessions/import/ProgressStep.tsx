@@ -2,7 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { CircleAlert, CircleCheck, TriangleAlert, Unplug } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { TFunction } from 'i18next';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   cancelTrackedImport,
   closeImportWizard,
@@ -176,20 +176,16 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
           )}
           {total > imp.warnings.length && (
             <p className="text-meta text-muted">
-              {t('views.import.moreWarnings', { count: total - imp.warnings.length })} (
-              {imp.status === 'done' ? (
-                <Link
-                  to="/sessions/$sessionId/sources"
-                  params={{ sessionId: imp.sessionId }}
-                  className="text-accent hover:underline"
-                  onClick={closeImportWizard}
-                >
-                  {t('views.import.fullList')}
-                </Link>
-              ) : (
-                t('views.import.fullList')
-              )}
-              )
+              {t('views.import.moreWarnings', { count: total - imp.warnings.length })}{' '}
+              <Trans
+                t={t}
+                i18nKey="views.import.fullList"
+                components={{
+                  // A link once the session exists, plain text while it is imported.
+                  // Not `link`: an HTML void element, which the parser would leave empty.
+                  sources: imp.status === 'done' ? <SourcesLink sessionId={imp.sessionId} /> : <span />,
+                }}
+              />
             </p>
           )}
         </section>
@@ -199,6 +195,20 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
         )}
       </div>
     </WizardDialog>
+  );
+}
+
+/** Link to the Sources view of the imported session (filled by `Trans`); closes the wizard. */
+function SourcesLink({ sessionId, children }: { sessionId: string; children?: ReactNode }) {
+  return (
+    <Link
+      to="/sessions/$sessionId/sources"
+      params={{ sessionId }}
+      className="text-accent hover:underline"
+      onClick={closeImportWizard}
+    >
+      {children}
+    </Link>
   );
 }
 

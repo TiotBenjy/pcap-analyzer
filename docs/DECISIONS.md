@@ -951,7 +951,10 @@ acceptée : la remplacer par une nouvelle qui la référence.
 - Décision :
   - **exception DB-IP** : au démarrage, une requête (`HEAD`) vers `download.db-ip.com` vérifie si une
     base plus récente est publiée, **uniquement si l'utilisateur a activé** « Rechercher une nouvelle
-    base GeoIP au démarrage » (désactivé par défaut). Le téléchargement reste celui d'ADR-015, sur clic ;
+    base GeoIP au démarrage » (désactivé par défaut) et si la base installée n'est pas du mois courant
+    (vérification locale du `build_epoch`). Elle vise le fichier du mois courant, puis, sur 404, celui
+    du mois précédent (deux requêtes au plus, les mois que tente le téléchargement). Le téléchargement
+    reste celui d'ADR-015, sur clic ;
   - **exception releases GitHub du dépôt** : la dernière release publiée est lue sur `api.github.com`
     (JSON borné) au démarrage si l'utilisateur a activé « Rechercher les mises à jour au démarrage »
     (désactivé par défaut), ou sur clic du bouton « Rechercher une mise à jour ». Le téléchargement

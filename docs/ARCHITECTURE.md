@@ -209,10 +209,16 @@ jusqu'à un réimport (ADR-013).
   HTTPS, tailles bornées) ou `POST /geoip/import { path }` ; validation (`netsift_geo::install`) puis
   renommage atomique dans `<données>/geoip/` et rechargement à chaud. Les sessions déjà importées gardent
   leurs pays (ADR-009).
+- Fraîcheur (`GET /geoip/status`, `netsift-api/src/geoip/freshness.rs`) : vérification locale, sans réseau,
+  du mois UTC du `build_epoch` de la base utilisée (copie utilisateur, sinon bundle) contre le mois courant ;
+  base absente ou illisible -> bandeau « Télécharger », mois antérieur -> « Mettre à jour » (bandeau `geoip`,
+  masqué jusqu'au mois suivant, qui lance le téléchargement d'ADR-015). Rien n'est proposé en `--read-only`.
 - Vérification en ligne au démarrage (ADR-025) : si l'utilisateur l'a activée dans « Paramètres > En ligne »
-  (désactivée par défaut), une requête `HEAD` vers `download.db-ip.com` confirme qu'une base plus récente
-  est publiée ; échec silencieux. Le téléchargement reste celui d'ADR-015, sur clic. Avec les releases
-  GitHub (ADR-025), ce sont les seules requêtes réseau sortantes de l'application.
+  (désactivée par défaut) et que la base n'est pas du mois, une requête `HEAD` vers `download.db-ip.com`
+  (fichier du mois courant, puis du précédent sur 404, comme le téléchargement) confirme qu'une base plus
+  récente est publiée, sinon le bandeau n'est pas affiché ; échec silencieux (bandeau selon la vérification
+  locale). Le téléchargement reste celui d'ADR-015, sur clic. Avec les releases GitHub (ADR-025), ce sont les
+  seules requêtes réseau sortantes de l'application.
 - Classification d'adresses : privée (RFC 1918 / ULA), publique, broadcast, multicast, link-local, loopback,
   CGNAT. Utilisée pour les filtres et légendes (LAN / Public / Broadcast / Multicast / Link-local / Loopback).
 

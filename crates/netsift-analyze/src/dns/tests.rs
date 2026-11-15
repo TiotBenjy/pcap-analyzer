@@ -324,7 +324,7 @@ fn stream_ctx(ts_ns: i64, gap_before: u64) -> StreamCtx {
         ts_ns,
         chunk_id: 0,
         frame: 0,
-        id: FlowId::derive(&key, 0),
+        id: FlowId::from_first_frame(0),
         key,
         gap_before,
     }

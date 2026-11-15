@@ -40,21 +40,24 @@ pub enum Direction {
     ToClient,
 }
 
-/// Flow identifier, deterministic: derived from the key and the first packet time, so that the
-/// same traffic gets the same ids whatever the number of shards or the chunking of the input.
+/// Flow identifier: the global index ([`PacketCtx::frame`]) of the frame that created the flow,
+/// that is its first packet (for a flow opened by a reassembled IP datagram, the fragment that
+/// completed it).
+///
+/// Unique by construction, without hashing: the engine numbers frames once, in reading order,
+/// before sharding, and a frame creates at most one flow. Two instances of the same 5-tuple
+/// starting at the same timestamp (connection closed then reopened, LRU eviction, constant or
+/// hostile timestamps) therefore get distinct ids, and no input can provoke a collision. The id
+/// does not depend on the number of shards nor on the chunking of the input: a chunk set and a
+/// single file deliver the same frames in the same order (docs/DECISIONS.md, ADR-022).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FlowId(pub i64);
 
 impl FlowId {
-    /// FNV-1a over the key and `first_ts_ns`, masked to a non-negative `i64` (SQLite rowid).
-    pub fn derive(key: &FlowKey, first_ts_ns: i64) -> Self {
-        let mut h = Fnv::new();
-        h.byte(key.proto);
-        h.endpoint(&key.client);
-        h.endpoint(&key.server);
-        h.bytes(&first_ts_ns.to_le_bytes());
-        let masked = h.finish() & 0x7fff_ffff_ffff_ffff;
-        Self(i64::try_from(masked).unwrap_or(0))
+    /// Id of the flow created by global frame `frame`. Non-negative (SQLite rowid); frames
+    /// beyond `i64::MAX` (unreachable: 2^63 packets) are clamped.
+    pub fn from_first_frame(frame: u64) -> Self {
+        Self(i64::try_from(frame).unwrap_or(i64::MAX))
     }
 }
 
@@ -250,10 +253,6 @@ impl Fnv {
             }
         }
     }
-    fn endpoint(&mut self, e: &Endpoint) {
-        self.ip(&e.ip);
-        self.bytes(&e.port.to_be_bytes());
-    }
     fn finish(&self) -> u64 {
         self.0
     }
@@ -262,36 +261,22 @@ impl Fnv {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
-
-    fn key(a: [u8; 4], pa: u16, b: [u8; 4], pb: u16) -> FlowKey {
-        FlowKey {
-            proto: 6,
-            client: Endpoint {
-                ip: IpAddr::V4(Ipv4Addr::from(a)),
-                port: pa,
-            },
-            server: Endpoint {
-                ip: IpAddr::V4(Ipv4Addr::from(b)),
-                port: pb,
-            },
-        }
-    }
 
     #[test]
-    fn flow_id_is_deterministic_and_non_negative() {
-        let k = key([10, 0, 0, 1], 40000, [10, 0, 0, 2], 80);
-        let a = FlowId::derive(&k, 1_700_000_000_000_000_000);
-        assert_eq!(a, FlowId::derive(&k, 1_700_000_000_000_000_000));
-        assert!(a.0 >= 0);
-        assert_ne!(a, FlowId::derive(&k, 1_700_000_000_000_000_001));
-        assert_ne!(
-            a,
-            FlowId::derive(
-                &key([10, 0, 0, 2], 80, [10, 0, 0, 1], 40000),
-                1_700_000_000_000_000_000
-            )
+    fn flow_id_is_the_first_frame_and_ignores_key_and_time() {
+        assert_eq!(FlowId::from_first_frame(0), FlowId(0));
+        assert_eq!(FlowId::from_first_frame(41), FlowId(41));
+        assert_eq!(
+            FlowId::from_first_frame(i64::MAX.unsigned_abs()),
+            FlowId(i64::MAX)
         );
+        // Unreachable in practice (2^63 frames): clamped, never negative.
+        assert_eq!(FlowId::from_first_frame(u64::MAX), FlowId(i64::MAX));
+        // Two flows can only share an id if they share their first frame, which a frame
+        // never does (it creates at most one flow): distinct frames, distinct ids.
+        let ids: std::collections::BTreeSet<FlowId> =
+            (0..10_000u64).map(FlowId::from_first_frame).collect();
+        assert_eq!(ids.len(), 10_000);
     }
 
     #[test]

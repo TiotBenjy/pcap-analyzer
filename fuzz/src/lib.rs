@@ -357,7 +357,7 @@ pub fn drive_stream(
         client: endpoint(CLIENT_IP, client_port),
         server: endpoint(SERVER_IP, server_port),
     };
-    let id = FlowId::derive(&key, BASE_TS_NS);
+    let id = FlowId::from_first_frame(0);
     let mut ts = BASE_TS_NS;
     for (frame, seg) in (0u64..).zip(segs) {
         ts += MS;

@@ -163,16 +163,10 @@ jobs:
       - name: Navigateurs Playwright (version de ui/package-lock.json ; WebKit pour le test de fumée desktop)
         working-directory: ui
         run: npx playwright install --with-deps chromium webkit
+      # Captures vérifiées mais jamais publiées en artefact (demande de l'utilisateur, 2026-11-16) :
+      # en cas d'échec, les relancer en local avec `./x.sh shots <vue>`.
       - name: Captures et vérifications visuelles
         run: bash scripts/ci/shots.sh
-      - name: Publier les captures
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: screens
-          path: .artifacts/screens
-          if-no-files-found: ignore
-          retention-days: 14
 
   fuzz:
     name: Fuzz (60 s par cible)

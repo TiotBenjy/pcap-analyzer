@@ -280,10 +280,8 @@ const FORMER_CONDITION: &str = "(?1 IS NULL OR h.category IN (SELECT value FROM 
           OR instr(coalesce(o.service, ''), ?4) > 0 OR instr(coalesce(o.detected, ''), ?4) > 0 \
           OR CAST(o.port AS TEXT) = ?4)";
 
-#[test]
-fn active_filters_match_the_former_condition() {
-    let conn = db();
-    // 30 hosts (a third unknown to `hosts`), up to 6 ports each, services on some.
+/// 30 hosts (a third unknown to `hosts`), up to 6 ports each, services on some.
+fn thirty_hosts(conn: &Connection) {
     let services = [None, Some("http"), Some("ssh"), Some("domain")];
     for i in 0..30_u16 {
         let ip = format!("10.0.{}.{}", i % 4, i + 1);
@@ -295,16 +293,22 @@ fn active_filters_match_the_former_condition() {
             };
             let names: Vec<&str> = names.iter().map(String::as_str).collect();
             let category = if i % 5 == 0 { "public" } else { "private" };
-            insert(&conn, StoreRecord::Host(host(&ip, category, None, &names)));
+            insert(conn, StoreRecord::Host(host(&ip, category, None, &names)));
         }
         for k in 0..(i % 6) {
             let number = [22, 53, 80, 443, 8080, 3389][usize::from(k)];
             let mut p = port(&ip, if number == 53 { 17 } else { 6 }, number, "syn_ack");
             p.service = services[usize::from((i + k) % 4)].map(str::to_owned);
             p.detected = services[usize::from((i * k) % 4)].map(str::to_owned);
-            insert(&conn, StoreRecord::OpenPort(p));
+            insert(conn, StoreRecord::OpenPort(p));
         }
     }
+}
+
+#[test]
+fn active_filters_match_the_former_condition() {
+    let conn = db();
+    thirty_hosts(&conn);
     let categories = [
         None,
         Some(vec!["public".to_owned()]),

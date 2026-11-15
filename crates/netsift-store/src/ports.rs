@@ -229,15 +229,16 @@ fn host_categories(filter: &PortFilter) -> Result<Conditions> {
     Ok(c)
 }
 
-/// One page of hosts with open ports: most ports first, then by address (descending).
-pub fn hosts_page(
+/// Addresses of one page of [`hosts_page`]: from `open_port_hosts` when `per_host` (P4.8), else
+/// grouped from `open_ports` with the conditions `cond`.
+fn page_hosts(
     conn: &Connection,
     filter: &PortFilter,
+    cond: &Conditions,
+    per_host: bool,
     request: &PageRequest,
-) -> Result<Page<HostPorts>> {
-    let mut cond = conditions(filter)?;
-    let per_host = per_host_table(conn, filter)?;
-    let page = if per_host {
+) -> Result<Page<String>> {
+    if per_host {
         // In key order of `open_port_hosts_rank`, category covered: stops at the page size.
         let hosts = host_categories(filter)?;
         let where_sql = hosts.sql();
@@ -249,23 +250,33 @@ pub fn hosts_page(
             descending: true,
             filter: where_sql.as_deref(),
         };
-        keyset_page(conn, &query, &hosts.params(), request, |r| {
+        return keyset_page(conn, &query, &hosts.params(), request, |r| {
             r.get::<_, String>(0)
-        })?
-    } else {
-        let from = hosts_from(&cond);
-        let query = Keyset {
-            from: &from,
-            select: "g.ip",
-            sort: "g.ports",
-            tiebreak: "g.ip",
-            descending: true,
-            filter: None,
-        };
-        keyset_page(conn, &query, &cond.params(), request, |r| {
-            r.get::<_, String>(0)
-        })?
+        });
+    }
+    let from = hosts_from(cond);
+    let query = Keyset {
+        from: &from,
+        select: "g.ip",
+        sort: "g.ports",
+        tiebreak: "g.ip",
+        descending: true,
+        filter: None,
     };
+    keyset_page(conn, &query, &cond.params(), request, |r| {
+        r.get::<_, String>(0)
+    })
+}
+
+/// One page of hosts with open ports: most ports first, then by address (descending).
+pub fn hosts_page(
+    conn: &Connection,
+    filter: &PortFilter,
+    request: &PageRequest,
+) -> Result<Page<HostPorts>> {
+    let mut cond = conditions(filter)?;
+    let per_host = per_host_table(conn, filter)?;
+    let page = page_hosts(conn, filter, &cond, per_host, request)?;
     if page.items.is_empty() {
         return Ok(Page {
             items: Vec::new(),

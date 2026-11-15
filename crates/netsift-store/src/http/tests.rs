@@ -623,7 +623,7 @@ fn pages_read_their_hosts_after_the_sort_with_the_same_rows() {
                         None => break,
                     }
                 }
-                assert!(!want.is_empty());
+                assert_ne!(want.len(), 0);
                 assert_eq!(got, want, "{filter:?} {sort:?} {descending}");
             }
         }

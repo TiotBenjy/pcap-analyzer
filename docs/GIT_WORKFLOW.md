@@ -146,6 +146,13 @@ et la branche de release. Après la fusion locale (échec du push de `main` ou d
 commandes pour annuler la fusion locale ou pour terminer (tag). Rien n'est interactif (utilisable par
 un agent).
 
+Relance après un échec partiel : si `main` contient déjà la release (fusion
+`merge(chore/release-X.Y.Z)` ou commit `chore(release): vX.Y.Z`), le script refuse de fusionner une
+seconde fois et affiche les commandes de création et de push du tag ; si le tag existe en local
+seulement, il affiche `git push origin vX.Y.Z` ; s'il existe sur `origin`, la version est publiée et
+le script refuse. Dernier garde-fou : une branche de release sans aucun changement (`CHANGELOG.md`
+identique) n'est jamais commitée. Suivi dans tous les cas : `scripts/release-status.sh vX.Y.Z --wait`.
+
 ### Ce que fait la CI (`release.yml`)
 
 1. `version` : le tag désigne un commit de `main`, `scripts/check-version.sh vX.Y.Z` ; calcule

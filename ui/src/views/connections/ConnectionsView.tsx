@@ -341,7 +341,7 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
       {
         id: 'actions',
         header: () => <span className="sr-only">{t('views.exportPcap.flows.title')}</span>,
-        size: 44,
+        size: 60,
         cell: ({ row }) => {
           const c = row.original;
           const label = t('views.exportPcap.flows.actionLabel', { from: c.src.names[0] ?? c.src.ip, to: c.dst.names[0] ?? c.dst.ip });
@@ -349,7 +349,6 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
             <Button
               variant="ghost"
               icon
-              className="h-7 w-7"
               aria-label={label}
               title={label}
               onClick={() => {

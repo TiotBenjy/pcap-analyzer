@@ -41,6 +41,7 @@ function job(over: Partial<ExportJob> = {}): ExportJob {
     bytes_written: 0,
     bytes_read: 512,
     bytes_total: 2048,
+    read_errors: 0,
     error: null,
     created_at_us: 0,
     ...over,
@@ -95,13 +96,14 @@ describe('Save PCAP dialog', () => {
     await user.click(screen.getByRole('radio', { name: 'Time range' }));
     const from = screen.getByRole('textbox', { name: 'From' });
     const to = screen.getByRole('textbox', { name: 'To' });
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(from).toHaveValue(formatTimestamp(FIRST));
     expect(to).toHaveValue(formatTimestamp(LAST));
 
     await user.clear(from);
     await user.type(from, '2026-11-08 9:00');
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Enter a date and time as 2026-11-08 14:03:12');
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a date and time as YYYY-MM-DD hh:mm:ss');
     expect(exportsApi.startPcapExport).not.toHaveBeenCalled();
 
     await user.clear(from);
@@ -150,7 +152,7 @@ describe('Save PCAP dialog', () => {
     const user = setupUser();
     vi.mocked(exportsApi.deliversByFolder).mockReturnValue(true);
     vi.mocked(exportsApi.openExportFolder).mockResolvedValue();
-    const done = job({ state: 'done', packets: 1, bytes_written: 100 });
+    const done = job({ state: 'done', packets: 1, bytes_written: 100, read_errors: 2 });
     vi.mocked(exportsApi.startPcapExport).mockResolvedValue(done);
     vi.mocked(exportsApi.listExports).mockResolvedValue([done]);
     renderDialog();
@@ -159,6 +161,7 @@ describe('Save PCAP dialog', () => {
     expect(exportsApi.openExportFolder).toHaveBeenCalledWith('/data/exports');
     expect(screen.queryByRole('link', { name: 'Download' })).toBeNull();
     expect(screen.getByText('Saved: 1 packet, 100 B')).toBeInTheDocument();
+    expect(screen.getByText('2 read errors in the capture files: packets may be missing, as in the analysis.')).toBeInTheDocument();
   });
 
   it('cannot start on a read-only server, and closes', async () => {

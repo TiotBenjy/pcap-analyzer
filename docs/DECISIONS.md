@@ -705,7 +705,21 @@ acceptée : la remplacer par une nouvelle qui la référence.
     table `chunks`, dans l'ordre des identifiants, sans `ChunkGroup::new` (qui retrierait) ; les chunks
     hors de la demande (`[first_ts, last_ts]` disjoint) et les doublons y figurent comme membres
     `Skipped`, donc jamais ouverts, et l'ordre de sortie est celui de `ChunkSetSource` (fusion k-voies,
-    égalités par chunk puis position). La lecture s'arrête au premier paquet postérieur à la fin ;
+    égalités par chunk puis position). `ChunkSetSource` rend chaque fichier dans l'ordre du fichier :
+    la lecture ne s'arrête au premier paquet postérieur à la fin, et un flux n'est borné en bas par
+    son `first_ts` (heure de son premier paquet *lu*, pas la plus petite), que si l'import a lu la
+    session dans l'ordre des horodatages (`read_in_time_order` : aucune anomalie `out_of_order`,
+    `timestamp_backwards` ou `merge_fanout_limit`, liste d'anomalies non tronquée par
+    `limit_reached`, statistiques de fin d'import présentes). Sinon, aucun arrêt anticipé, et un flux
+    est choisi par sa fenêtre de chunks (sans borne basse) et son 5-tuple. `max_backstep_ns` n'est
+    pas utilisé comme marge : il ne mesure que le recul observé à la sortie de la fusion ;
+  - **erreurs de lecture** : les anomalies `read_error` et `skipped_record` rencontrées pendant la
+    relecture (fichier inchangé mais corrompu, que l'import a lu de la même façon) sont comptées dans
+    `ExportReport::read_errors` et `ExportJob.read_errors`, affichées dans l'UI et par la CLI : un
+    export incomplet ne passe pas pour complet ;
+  - **flux d'une conversation** : `GET /sessions/{id}/connections/{conversation}/flows`, servi par
+    l'index `flows_conversation (src_ip, dst_ip, first_ts)` de la migration 0401 (appliquée à
+    l'ouverture des sessions existantes, ADR-013) : pagination keyset sans tri temporaire ;
   - **sources vérifiées deux fois** par `chunkset::probe_file` (même sonde que l'inventaire) : avant la
     lecture (taille, date de modification, empreinte des 64 premiers Kio, en-tête lisible), d'où une
     erreur problem+json synchrone (409 `export-source-missing` ou `export-source-modified`, détail
@@ -736,13 +750,16 @@ acceptée : la remplacer par une nouvelle qui la référence.
     premier fragment est reconnu par ses ports, les suivants par (source, destination, identification),
     avec 30 s de marge avant le début du flux (la table date un datagramme par son dernier fragment) ;
   - serveur `--read-only` : la route `POST` est refusée comme toute mutation ; la CLI
-    `netsift export pcap` appelle le même code moteur.
+    `netsift export pcap` appelle le même code moteur et refuse, comme l'API, une session `importing`
+    ou `failed`. Le nom du fichier et le `flow_id` du job viennent de l'identifiant analysé (`+5` ou
+    des zéros en tête ne passent jamais dans le nom).
 - Conséquences :
   - limites : deux flux successifs de même 5-tuple dont les fenêtres se recouvrent (port réutilisé
     aussitôt, horodatages identiques) ne se distinguent pas, l'export de l'un contient l'autre ; un
-    fragment arrivé avant son premier fragment n'est pas inclus ; un horodatage qui recule dans un
-    fichier après la fin demandée est perdu (arrêt anticipé) ; le snaplen d'une interface autre que la
-    première d'un chunk pcapng n'est pas connu (écrit 0) ;
+    fragment arrivé avant son premier fragment n'est pas inclus ; sur une session lue hors de l'ordre
+    des horodatages, l'export d'un flux peut contenir un flux antérieur de même 5-tuple présent dans
+    les chunks relus, et l'export relit tous les chunks jusqu'à la fin demandée ; le snaplen d'une
+    interface autre que la première d'un chunk pcapng n'est pas connu (écrit 0) ;
   - une session mono-fichier relit le fichier depuis le début même pour un flux tardif (pas d'index
     d'offsets) ; seul le découpage en chunks évite de relire ce qui précède ;
   - les fichiers d'export s'accumulent dans `exports/` (aucune purge automatique, en mode web

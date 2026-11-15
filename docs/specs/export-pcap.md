@@ -84,7 +84,8 @@ lecture, avant de publier le fichier. Aucun fichier partiel ne reste.
   « Toute la session » / « Plage horaire » ; la plage est saisie en heure locale au format ISO
   (`2026-11-08 14:03:12`, fraction facultative), préremplie avec la période capturée ; une fin sans
   fraction inclut toute sa seconde. Puis l'état du job dans le même dialogue.
-- Connections, tableau des conversations : action « Flux » par ligne, qui ouvre la liste des flux de
+- Connections, tableau des conversations : première colonne étroite, bouton icône « Flux de A vers B »
+  par ligne (visible sans défilement horizontal à 1280 px), qui ouvre la liste des flux de
   la conversation (protocole, ports, protocole applicatif, début, durée, octets, paquets) avec un
   bouton « Save PCAP » par flux et l'état de son dernier export.
 - État d'un export : en cours (pourcentage et octets sources lus, Annuler), réussi (paquets, taille,
@@ -99,5 +100,7 @@ lecture, avant de publier le fichier. Aucun fichier partiel ne reste.
   bornes incluses ; linktypes mixtes dans un fichier valide ; chunk absent ou modifié refusé sans
   fichier restant, y compris modifié pendant l'export ; annulation sans fichier restant.
 - Routes : statuts, nom non contrôlable par le client, téléchargement en pièce jointe.
-- Tests Vitest du dialogue et de la liste des flux ; `./x.sh shots overview` et
-  `./x.sh shots connections` verts en `en` et `fr`.
+- Tests Vitest du dialogue et de la liste des flux ; `./x.sh shots` verts en `en` et `fr` pour
+  `overview`, `overview-export` (dialogue ouvert sur la plage), `connections` et `connections-flows`
+  (liste des flux ouverte). Le serveur des captures est en lecture seule : les boutons d'export y
+  sont désactivés.

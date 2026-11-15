@@ -378,7 +378,7 @@ mod tests {
             frame: 0,
             wire_len: 100,
             flow: Some(PacketFlow {
-                id: FlowId::derive(&key, 0),
+                id: FlowId::from_first_frame(0),
                 key,
                 dir: Direction::ToServer,
             }),
@@ -403,7 +403,7 @@ mod tests {
     fn flow_end_emits_a_summary() {
         let key = flow_key();
         let ctx = FlowCtx {
-            id: FlowId::derive(&key, 1),
+            id: FlowId::from_first_frame(1),
             key,
             first_ts_ns: 1,
             last_ts_ns: 2,

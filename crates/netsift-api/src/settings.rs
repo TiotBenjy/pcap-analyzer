@@ -5,9 +5,11 @@
 //! - Safe defaults: every online setting is off until the user enables it.
 //! - A missing file means the defaults; an unreadable, oversized or invalid file means the
 //!   defaults too, with a warning in the logs (never its contents), and is replaced by the next
-//!   change. Invalid entries of a valid file are dropped one by one.
-//! - Writes are atomic: temporary file, `fsync`, rename. The file is only written by the routes
-//!   below, one change at a time.
+//!   change. Invalid entries of a valid file are dropped one by one: a malformed dismissed notice
+//!   (wrong type, missing field, invalid id or key) never resets the online settings.
+//! - Writes are atomic: temporary file of a unique name created exclusively (never an existing
+//!   file, never through a link), `fsync`, rename. The file is only written by the routes below,
+//!   one change at a time.
 //!
 //! Routes: `GET /settings`, `PUT /settings` (fields omitted are left unchanged) and
 //! `PUT /settings/notices/{id}` (notice dismissed until its key changes; the least recently
@@ -20,6 +22,7 @@ mod tests;
 use std::collections::HashSet;
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::extract::{Path as UrlPath, State};
@@ -33,7 +36,6 @@ use crate::{ApiError, AppState, blocking};
 
 /// Name of the settings file in the data directory.
 pub(crate) const FILE_NAME: &str = "settings.json";
-const TEMP_NAME: &str = "settings.json.tmp";
 /// Larger files are not read (the real file is well under 1 KiB).
 const MAX_FILE_BYTES: u64 = 64 * 1024;
 /// Dismissed notices kept at most: past it, the least recently dismissed is forgotten.
@@ -154,6 +156,22 @@ impl SettingsStore {
     }
 }
 
+impl SettingsStore {
+    /// Hides the notice `id` until its key differs from `key` (blocking). `id` and `key` must be
+    /// valid (checked by the route; constants of the server otherwise).
+    pub(crate) fn dismiss(&self, id: String, key: String) -> Result<Settings, ApiError> {
+        self.update(|settings| {
+            let list = &mut settings.dismissed_notices;
+            list.retain(|n| n.id != id);
+            list.push(DismissedNotice { id, key });
+            // Least recently dismissed first: forget the oldest ones.
+            let excess = list.len().saturating_sub(MAX_DISMISSED);
+            list.drain(..excess);
+            Ok(())
+        })
+    }
+}
+
 /// `GET /settings`.
 async fn get_settings(State(state): State<Arc<AppState>>) -> Json<Settings> {
     Json(state.settings.get())
@@ -194,18 +212,7 @@ async fn dismiss_notice(
     if !valid_key(&body.key) {
         return Err(ApiError::BadRequest("invalid notice key".to_owned()));
     }
-    let settings = blocking(&state, move |s| {
-        s.settings.update(|settings| {
-            let list = &mut settings.dismissed_notices;
-            list.retain(|n| n.id != id);
-            list.push(DismissedNotice { id, key: body.key });
-            // Least recently dismissed first: forget the oldest ones.
-            let excess = list.len().saturating_sub(MAX_DISMISSED);
-            list.drain(..excess);
-            Ok(())
-        })
-    })
-    .await?;
+    let settings = blocking(&state, move |s| s.settings.dismiss(id, body.key)).await?;
     Ok(Json(settings))
 }
 
@@ -246,8 +253,8 @@ fn read_file(path: &Path) -> Settings {
         tracing::warn!("settings file too large, defaults used");
         return Settings::default();
     }
-    match serde_json::from_slice::<Settings>(&bytes) {
-        Ok(settings) => sanitize(settings),
+    match serde_json::from_slice::<FileSettings>(&bytes) {
+        Ok(file) => sanitize(file.into_settings()),
         Err(e) => {
             // Position only: the message of serde_json may quote the contents.
             tracing::warn!(
@@ -256,6 +263,43 @@ fn read_file(path: &Path) -> Settings {
                 "invalid settings file, defaults used"
             );
             Settings::default()
+        }
+    }
+}
+
+/// Settings as read from the file: the dismissed notices are read one by one, so that a
+/// malformed entry only loses itself.
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct FileSettings {
+    online: OnlineSettings,
+    dismissed_notices: serde_json::Value,
+}
+
+impl FileSettings {
+    /// The settings with the well-formed dismissed notices (a list that is not an array counts
+    /// as empty), with a warning for the others.
+    fn into_settings(self) -> Settings {
+        let (entries, mut dropped) = match self.dismissed_notices {
+            serde_json::Value::Array(entries) => (entries, 0_usize),
+            serde_json::Value::Null => (Vec::new(), 0),
+            _ => (Vec::new(), 1),
+        };
+        let total = entries.len();
+        let dismissed_notices: Vec<DismissedNotice> = entries
+            .into_iter()
+            .filter_map(|entry| serde_json::from_value(entry).ok())
+            .collect();
+        dropped += total - dismissed_notices.len();
+        if dropped > 0 {
+            tracing::warn!(
+                dropped,
+                "malformed dismissed notices dropped from the settings"
+            );
+        }
+        Settings {
+            online: self.online,
+            dismissed_notices,
         }
     }
 }
@@ -283,15 +327,29 @@ fn sanitize(mut settings: Settings) -> Settings {
     settings
 }
 
-/// Writes `settings` to `path` atomically (temporary file next to it, `fsync`, rename).
+/// Writes started by this process, for unique temporary names.
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// `settings.json.<pid>-<n>.tmp` in `dir`, unique within this process.
+fn temp_path(dir: &Path) -> PathBuf {
+    let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    dir.join(format!("{FILE_NAME}.{}-{n}.tmp", std::process::id()))
+}
+
+/// Writes `settings` to `path` atomically: temporary file next to it, created exclusively
+/// (`O_CREAT | O_EXCL`: never an existing file, never through a symbolic link), `fsync`,
+/// rename. Only a temporary file created here is ever removed.
 fn write_file(path: &Path, settings: &Settings) -> std::io::Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir)?;
-    let temp = dir.join(TEMP_NAME);
+    let mut bytes = serde_json::to_vec_pretty(settings).map_err(std::io::Error::other)?;
+    bytes.push(b'\n');
+    let temp = temp_path(dir);
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)?;
     let result = (|| {
-        let mut bytes = serde_json::to_vec_pretty(settings).map_err(std::io::Error::other)?;
-        bytes.push(b'\n');
-        let mut file = std::fs::File::create(&temp)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
         drop(file);

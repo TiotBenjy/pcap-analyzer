@@ -126,7 +126,6 @@ pub(crate) struct AppState {
     /// Settings of `<data_dir>/settings.json`, read when the server is built.
     pub(crate) settings: settings::SettingsStore,
     /// States of the online features (ADR-025), one per type: `online.get::<T>()`.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) online: online::OnlineStates,
     shutdown: watch::Sender<bool>,
 }
@@ -139,7 +138,8 @@ impl AppState {
         // this path only when none is usable.
         ingest_template.geoip_path = Some(user_geoip.clone());
         if !config.read_only {
-            let removed = netsift_geo::remove_orphan_temp_files(&user_geoip);
+            let removed = netsift_geo::remove_orphan_temp_files(&user_geoip)
+                + netsift_geo::remove_orphan_temp_files(&geoip::month_record_path(&user_geoip));
             if removed > 0 {
                 tracing::info!(removed, "interrupted GeoIP update files removed");
             }

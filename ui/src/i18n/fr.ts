@@ -1,6 +1,7 @@
 import type { Dictionary } from './en';
 import { credentialsFr } from './credentials';
 import { exportsFr } from './exports';
+import { geoipPromptFr } from './geoipPrompt';
 import { onlineFr } from './online';
 import { picturesFr } from './pictures';
 import { tlsFr } from './tls';
@@ -977,6 +978,7 @@ export const fr: Dictionary = {
     // --- analysis views kept in their own module: one line each, sorted ---
     credentials: credentialsFr,
     exportPcap: exportsFr,
+    geoipPrompt: geoipPromptFr,
     online: onlineFr,
     pictures: picturesFr,
     tls: tlsFr,

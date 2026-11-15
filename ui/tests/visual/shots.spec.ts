@@ -23,6 +23,7 @@ import { fr } from '../../src/i18n/fr';
  */
 const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   captures: '/captures',
+  'captures-geoip-missing': '/captures',
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
   'connections-flows': async (page) => `/sessions/${await demoSessionId(page)}/connections`,
   credentials: async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
@@ -41,6 +42,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'servers-empty': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   'servers-filter': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   settings: '/settings',
+  'settings-geoip-outdated': '/settings',
   'settings-licenses': '/settings',
   'settings-licenses-initial': '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
@@ -81,6 +83,49 @@ async function demoSessionId(page: Page): Promise<string> {
       b.chunk_count - a.chunk_count,
   );
   return ranked[0]?.id ?? NO_SESSION;
+}
+
+/**
+ * Views captured with the GeoIP notice (P4.9). The shots server is read-only, so it never offers
+ * the database: `GET /geoip/status` is mocked, and `server-info` / `settings` are patched (writable
+ * server, startup check on) so that the banner and Settings > Online render as a user sees them.
+ */
+const GEOIP_NOTICE: Record<string, 'missing' | 'outdated'> = {
+  'captures-geoip-missing': 'missing',
+  'settings-geoip-outdated': 'outdated',
+};
+
+/** `YYYY-MM` of the month `back` months before the current one (UTC). */
+function monthKey(back = 0): string {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+  return `${String(d.getUTCFullYear())}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+async function mockGeoipNotice(page: Page, kind: 'missing' | 'outdated'): Promise<void> {
+  const status =
+    kind === 'missing'
+      ? { state: 'missing', built_month: null, online: 'off', published_month: null, offer: 'download' }
+      : { state: 'outdated', built_month: monthKey(2), online: 'published', published_month: monthKey(), offer: 'update' };
+  await page.route('**/api/v1/geoip/status', (route) =>
+    route.fulfill({ json: { current_month: monthKey(), ...status } }),
+  );
+  // Settings > About shows the same database as the banner.
+  const built = new Date(`${monthKey(2)}-01T00:00:00Z`).getTime() * 1000;
+  const geoip =
+    kind === 'outdated'
+      ? { status: 'available', source: 'bundled', built_at_us: built, size_bytes: 8 << 20, installed_at_us: null }
+      : { status: 'missing', source: null, built_at_us: null, size_bytes: null, installed_at_us: null };
+  await page.route('**/api/v1/server-info', async (route) => {
+    const res = await route.fetch();
+    return route.fulfill({ response: res, json: { ...((await res.json()) as object), read_only: false, geoip } });
+  });
+  await page.route('**/api/v1/settings', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const res = await route.fetch();
+    const body = (await res.json()) as { online: object };
+    return route.fulfill({ response: res, json: { ...body, online: { ...body.online, geoip_check: kind === 'outdated' } } });
+  });
 }
 
 type Lang = 'en' | 'fr';
@@ -229,6 +274,8 @@ for (const lang of LANGS) {
           await page.setViewportSize({ width, height: HEIGHT });
 
           const path = typeof target === 'string' ? target : await target(page);
+          const geoipNotice = GEOIP_NOTICE[view];
+          if (geoipNotice !== undefined) await mockGeoipNotice(page, geoipNotice);
           await page.goto(`/#${path}`);
           await page.locator('#main h1').first().waitFor();
           await page.waitForLoadState('networkidle');
@@ -455,6 +502,16 @@ for (const lang of LANGS) {
             await page.waitForLoadState('networkidle');
           }
 
+          if (geoipNotice !== undefined) {
+            const banner = page.getByTestId('notice-geoip');
+            await expect(banner).toBeVisible();
+            const action = geoipNotice === 'missing' ? D.views.geoipPrompt.download : D.views.geoipPrompt.update;
+            await expect(banner.getByRole('button', { name: action, exact: true })).toBeEnabled();
+            await expect(banner.getByRole('button', { name: D.notices.dismiss })).toBeVisible();
+            if (geoipNotice === 'outdated') {
+              await expect(page.getByTestId('geoip-check-status')).toContainText(pattern(D.views.geoipPrompt.checkPublished, { anywhere: true }));
+            }
+          }
           if (view === 'settings') {
             // /server-info is authenticated: "Read-only" proves the proxy injects a valid token.
             await expect(page.getByTestId('backend-status')).toContainText(D.views.settings.backendOk.split(',')[0] ?? '');

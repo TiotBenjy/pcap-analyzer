@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { en } from './en';
 import { fr } from './fr';
-import { resolveLanguage } from './index';
+import i18n, { resolveLanguage } from './index';
 
 function flatten(obj: object, prefix = ''): Map<string, string> {
   const out = new Map<string, string>();
@@ -36,6 +36,95 @@ describe('dictionaries', () => {
       expect(DECORATIVE.test(value) || JOINERS.test(value), `${key}: ${value}`).toBe(false);
       expect(value.includes('!'), `${key}: ${value}`).toBe(false);
     }
+  });
+});
+
+/** Placeholders of a value (`{{count}}`), sorted. */
+const placeholders = (v: string) => [...v.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]).sort();
+
+/**
+ * Words spelled the same in French and English: a French value equal to the English one is
+ * accepted when it is made only of these, of acronyms and code-like names (`DNS`, `NetNTLMv2`,
+ * `SSL/TLS`), of the names below and of placeholders.
+ */
+const SAME_IN_FRENCH = new Set(
+  [
+    'actions', 'anomalies', 'bits', 'captures', 'chunk', 'chunks', 'client', 'clients', 'communications',
+    'conversation', 'conversations', 'destination', 'destinations', 'dimensions', 'documents', 'extensions',
+    'format', 'images', 'import', 'message', 'mode', 'modules', 'navigation', 'observations', 'occurrences', 'ports', 'position', 'public',
+    'secret', 'session', 'sessions', 'source', 'sources', 'total', 'transactions', 'type', 'version', 'versions', 'volume',
+  ],
+);
+
+/** Product, tool and language names, written the same in every language. */
+const NAMES = ['Windows for Workgroups', 'Client Hello', 'Server Hello', 'tcpdump', 'English', 'Français', 'NetSift', 'Telnet', 'Ethernet', 'Kerberos', 'Novell', 'Apple', 'Xenix', 'GeoIP'];
+
+/** True for a value that reads the same in every language (see `SAME_IN_FRENCH`), or a URL. */
+function isLanguageNeutral(value: string): boolean {
+  if (/^https?:\/\//.test(value)) return true;
+  let text = value.replace(/\{\{[^}]*\}\}/g, ' ');
+  for (const name of NAMES) text = text.replaceAll(name, ' ');
+  const words = text.match(/\p{L}[\p{L}\d]*/gu) ?? [];
+  // A word without three lowercase letters in a row is an acronym or a code (`SSL`, `mDNS`, `JA3`).
+  return words.every((w) => !/\p{Ll}{3,}/u.test(w) || SAME_IN_FRENCH.has(w.toLowerCase()));
+}
+
+describe('French dictionary', () => {
+  const enFlat = flatten(en);
+  const frFlat = flatten(fr);
+
+  it('keeps the placeholders of every English value', () => {
+    for (const [key, value] of enFlat) expect(placeholders(frFlat.get(key) ?? ''), key).toEqual(placeholders(value));
+  });
+
+  it('translates every value, except language-neutral ones and words spelled the same', () => {
+    const untranslated = [...enFlat]
+      .filter(([key, value]) => frFlat.get(key) === value && !isLanguageNeutral(value))
+      .map(([key, value]) => `${key}: ${value}`);
+    expect(untranslated).toEqual([]);
+  });
+
+  it('follows French typography', () => {
+    const problems: string[] = [];
+    for (const [key, value] of frFlat) {
+      const fail = (why: string) => problems.push(`${key} (${why}): ${value}`);
+      // High punctuation takes a no-break space before it (`Total\u00a0:`), never a plain one.
+      if (/ [:;?!]/.test(value)) fail('plain space before : ; ? !');
+      if (/[^\s\u00a0\u202f/][;?!](\s|$)/.test(value) || /[^\s\u00a0\u202f/\d]:(\s|$)/.test(value)) fail('no space before : ; ?');
+      if (value.includes('"')) fail('straight double quotes, use « »');
+      if (/«(?![\u00a0\u202f])|(?<![\u00a0\u202f])»/.test(value)) fail('« » need no-break spaces inside');
+      if (value.includes('\u2019')) fail('typographic apostrophe: the dictionary uses the straight one');
+      if (value.includes('...')) fail('three dots, use the ellipsis character');
+    }
+    expect(problems).toEqual([]);
+  });
+});
+
+describe('plural forms', () => {
+  const loaded = flatten(i18n.getResourceBundle('fr', 'translation') as object);
+
+  it('gives every French plural its `many` form (1,000,000 and above)', () => {
+    expect(new Intl.PluralRules('fr').select(1_000_000)).toBe('many');
+    const missing = [...loaded.keys()]
+      .filter((key) => key.endsWith('_other'))
+      .map((key) => key.replace(/_other$/, '_many'))
+      .filter((key) => !loaded.has(key));
+    expect(missing).toEqual([]);
+  });
+
+  it('writes a million in French, not in English', async () => {
+    await i18n.changeLanguage('fr');
+    try {
+      expect(i18n.t('views.import.files', { count: 1_000_000 })).toBe('1\u202f000\u202f000 fichiers');
+      expect(i18n.t('views.credentials.paths.entries', { count: 2_000_000 })).toBe('2\u202f000\u202f000 entrées');
+      expect(i18n.t('views.import.files', { count: 1 })).toBe('1 fichier');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('uses no i18next format specifier (the quantity formatter replaces the built-in one)', () => {
+    for (const [key, value] of [...flatten(en), ...flatten(fr)]) expect(/\{\{[^}]*,[^}]*\}\}/.test(value), key).toBe(false);
   });
 });
 

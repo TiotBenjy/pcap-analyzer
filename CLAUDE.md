@@ -29,7 +29,7 @@ L'utilisateur n'a **ni Rust ni Node** sur sa machine. Tout passe par le conteneu
 ./x.sh cargo <args>          # cargo arbitraire dans le conteneur
 ./x.sh npm <args>            # npm dans ui/
 ./x.sh dev                   # backend + Vite -> http://localhost:5173 (long, en arrière-plan)
-./x.sh shots [vue]           # captures Playwright 375/768/1280/1920 -> .artifacts/screens/
+./x.sh shots [vue] [en|fr|all]  # captures Playwright 375/768/1280/1920, en et fr -> .artifacts/screens/
 ./x.sh desktop               # build Tauri Linux (AppImage + .deb) -> dist/
 ./x.sh -C .worktrees/<branche> <cmd>   # exécuter dans un worktree
 ./x.sh cliff [args]          # git-cliff épinglé (CHANGELOG, notes de release)

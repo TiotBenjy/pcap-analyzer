@@ -12,7 +12,7 @@ import {
 } from '../../../app/importTracker';
 import { Button } from '../../../components/Button';
 import { ErrorNote } from '../../../components/ErrorNote';
-import { formatBytes, formatCount, formatDuration } from '../../../lib/format';
+import { colon, formatCount, formatDuration, formatPercent, formatRate } from '../../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
 import { SessionStateBadge } from '../SessionStateBadge';
 import { WizardDialog } from './WizardDialog';
@@ -24,7 +24,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
   const active = isActive(imp);
   const p = imp.progress;
   const fraction = imp.status === 'done' ? 1 : importFraction(p?.bytes_done ?? 0, p?.bytes_total ?? 0);
-  const percent = new Intl.NumberFormat(i18n.language, { style: 'percent', maximumFractionDigits: 0 }).format(fraction);
+  const percent = formatPercent(fraction, 0, i18n.language);
 
   const openSession = () => {
     const sessionId = imp.sessionId;
@@ -110,7 +110,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
 
         <dl className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-x-4 gap-y-2">
           <Stat label={t('views.import.packets')}>{p === null ? '' : formatCount(p.packets)}</Stat>
-          <Stat label={t('views.import.rate')}>{p === null ? '' : `${formatBytes(p.rate_bps)}/s`}</Stat>
+          <Stat label={t('views.import.rate')}>{p === null ? '' : formatRate(p.rate_bps)}</Stat>
           <Stat label={t('views.import.eta')}>
             {p === null || !active ? '' : p.eta_s === null ? t('views.import.unknown') : formatDuration(p.eta_s)}
           </Stat>
@@ -130,10 +130,10 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
                   <li key={i} className="flex min-w-0 items-start gap-2">
                     <TriangleAlert aria-hidden size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
                     <span className="min-w-0 [overflow-wrap:anywhere]">
-                      <span className="font-medium">{anomalyLabel(t, w.code)}</span>
+                      <span className="font-medium">{anomalyLabel(t, w)}</span>
                       <span className="text-muted">
                         {' '}
-                        ({anomalyWhere(t, w)}){detail === '' ? '' : `: ${detail}`}
+                        ({anomalyWhere(t, w)}){detail === '' ? '' : `${colon(i18n.language)} ${detail}`}
                       </span>
                     </span>
                   </li>

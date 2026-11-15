@@ -144,7 +144,7 @@ describe('Import wizard', () => {
     expect(within(dialog).getByText('ring_00025_20261108.pcapng')).toHaveAttribute('title');
 
     stream.emit({ type: 'warning', id: null, code: 'missing_sequence', chunk: 12, ts_us: null, detail: { first: 13, last: 13 } });
-    expect(within(dialog).getByText('Missing files in the sequence')).toBeInTheDocument();
+    expect(within(dialog).getByText('1 missing file')).toBeInTheDocument();
 
     // Closing the wizard keeps the import running; the header indicator reopens it.
     await user.click(within(dialog).getByRole('button', { name: 'Continue in background' }));

@@ -1,5 +1,6 @@
 import type { DnsServer } from '../../api/types/DnsServer';
 import { countryName } from '../../lib/countries';
+import { labelled } from '../../lib/format';
 import { escapeHtml } from './dnsCharts';
 
 // Data of the DNS server map (ServerMap.tsx): servers grouped by country, tooltip per country.
@@ -44,8 +45,8 @@ export function countryTooltip(countries: readonly CountryServers[], text: MapTe
     if (c === undefined) return name;
     const lines = c.servers
       .slice(0, TOOLTIP_SERVERS)
-      .map((s) => `${escapeHtml(s.ip)}: ${escapeHtml(text.queries(s.messages))}`);
+      .map((s) => labelled(escapeHtml(s.ip), escapeHtml(text.queries(s.messages)), text.lang));
     if (c.servers.length > TOOLTIP_SERVERS) lines.push('…');
-    return [`<b>${name}</b>: ${escapeHtml(text.queries(c.messages))}`, ...lines].join('<br/>');
+    return [labelled(`<b>${name}</b>`, escapeHtml(text.queries(c.messages)), text.lang), ...lines].join('<br/>');
   };
 }

@@ -109,9 +109,11 @@ describe('anomaly texts', () => {
       'out_of_order',
       'analyzer_panicked',
     ]) {
-      expect(anomalyLabel(t, code)).not.toContain(code);
+      expect(anomalyLabel(t, { code, detail: {} })).not.toContain(code);
     }
-    expect(anomalyLabel(t, 'brand_new_code')).toBe('Other anomaly (brand_new_code)');
+    expect(anomalyLabel(t, { code: 'brand_new_code', detail: {} })).toBe('Other anomaly (brand_new_code)');
+    expect(anomalyLabel(t, { code: 'missing_sequence', detail: { first: 4, last: 4 } })).toBe('1 missing file');
+    expect(anomalyLabel(t, { code: 'missing_sequence', detail: { first: 4, last: 6 } })).toBe('3 missing files');
   });
 
   it('describes details and summarizes', () => {
@@ -184,7 +186,7 @@ describe('Sources view', () => {
     ]);
 
     const anomalyTable = screen.getByRole('table', { name: 'Anomalies' });
-    expect(within(anomalyTable).getByText('Missing files in the sequence')).toBeInTheDocument();
+    expect(within(anomalyTable).getByText('1 missing file')).toBeInTheDocument();
     expect(within(anomalyTable).getByText('Number 5')).toBeInTheDocument();
     expect(within(anomalyTable).getByText('Time gap')).toBeInTheDocument();
   });

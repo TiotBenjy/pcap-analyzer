@@ -112,11 +112,3 @@ export const CERT_ISSUE_KEYS = {
 export function isCertIssue(s: string): s is CertIssue {
   return (CERT_ISSUES as readonly string[]).includes(s);
 }
-
-/** Local calendar date of a microsecond timestamp (`2026-11-08`). */
-export function formatDate(us: number): string {
-  const d = new Date(Math.floor(us / 1000));
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}

@@ -14,10 +14,10 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { FilterBar, type FilterOption } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
-import { formatCount } from '../../lib/format';
+import { formatCount, formatLatency } from '../../lib/format';
 import { CountryList } from './CountryList';
 import { barsHeight, barsOption, type ChartEntry, DONUT_CENTER_Y, donutOption, withOther } from './dnsCharts';
-import { formatLatency, protocolColor, protocolLabel, rcodeLabel } from './dnsFormat';
+import { protocolColor, protocolLabel, rcodeLabel } from './dnsFormat';
 import { PairsList } from './PairsList';
 import { ServerMap } from './ServerMap';
 

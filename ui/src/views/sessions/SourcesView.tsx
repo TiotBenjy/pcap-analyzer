@@ -260,7 +260,7 @@ function AnomalyTable({ query, oneDay, chunks }: TableProps<AnomalyInfo> & { chu
     () => [
       {
         id: 'type',
-        accessorFn: (a) => anomalyLabel(t, a.code),
+        accessorFn: (a) => anomalyLabel(t, a),
         header: t('views.sources.anomalyCol.type'),
         size: 240,
         cell: ({ getValue }) => {

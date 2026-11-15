@@ -729,6 +729,11 @@ acceptée : la remplacer par une nouvelle qui la référence.
     `ReadOptions::max_open` (paquets délivrés hors ordre). L'ancien schéma résistait à ces
     réordonnancements entre flux mais pas aux collisions ; l'identifiant n'a pas à être stable d'un
     import à l'autre ;
+  - un identifiant ne doit jamais être réutilisé dans une session : les clauses `ON CONFLICT` de
+    `flows` (maximum des compteurs) et de `tls_sessions` (`DO NOTHING`) ne servent qu'aux rejeux et à
+    la commutativité entre shards, et fusionneraient ou ignoreraient sans erreur un second flux. En
+    particulier, l'ajout de chunks à une session existante (phase 5, `docs/CHUNKED_CAPTURES.md`) devra
+    reprendre le compteur de trames au nombre de paquets déjà importés au lieu de repartir de 0 ;
   - tests : dérivation (`netsift-flow/src/api.rs`), table de flux (réouverture et éviction à horodatage
     constant, 1 à 7 tables, propriété « jamais deux fois le même identifiant » sur du trafic hostile,
     `netsift-flow/tests/identity.rs`) et bout en bout HTTP, TLS, SMB et éviction, fichier unique,

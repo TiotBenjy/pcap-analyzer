@@ -78,5 +78,8 @@ Ce dernier test est le critère d'acceptation principal de la fonctionnalité.
 ## Plus tard (phase 5)
 
 - Ajout de nouveaux chunks à une session existante (append si `first_ts` > dernier ts analysé).
+  Le compteur de trames globales doit alors reprendre au nombre de paquets déjà importés : l'index
+  de trame sert d'identifiant de flux (ADR-022), et repartir de 0 ferait entrer les nouveaux flux en
+  collision avec les lignes existantes, fusionnées sans erreur par les upserts.
 - Surveillance d'un dossier en cours d'écriture par dumpcap (analyse au fil de l'eau).
 - `.zst` / `.lz4`.

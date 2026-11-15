@@ -114,12 +114,29 @@ export function chooseLicenses(expression: string, accepted: readonly string[]):
   return best?.licenses ?? null;
 }
 
-/** `accepted = [...]` of about.toml (string literals only). */
-export function acceptedFromAboutToml(toml: string): string[] {
-  const block = /^accepted\s*=\s*\[([\s\S]*?)\]/m.exec(toml)?.[1];
-  if (block === undefined) throw new Error('about.toml: no accepted = [...]');
-  return [...block.replace(/#.*$/gm, '').matchAll(/"([^"]+)"/g)].map((m) => m[1] ?? '');
+/**
+ * String array `key = [...]` of a TOML file, at the top level or in `[section]` (string literals
+ * only, comments ignored): enough for the license lists of about.toml and deny.toml.
+ */
+export function tomlStringArray(toml: string, key: string, section?: string): string[] {
+  let text = toml.replace(/#.*$/gm, '');
+  if (section !== undefined) {
+    const header = text.split('\n').findIndex((l) => l.trim() === `[${section}]`);
+    if (header < 0) throw new Error(`no [${section}] section`);
+    const lines = text.split('\n').slice(header + 1);
+    const end = lines.findIndex((l) => l.startsWith('['));
+    text = (end < 0 ? lines : lines.slice(0, end)).join('\n');
+  } else {
+    const firstSection = text.search(/^\[/m);
+    if (firstSection >= 0) text = text.slice(0, firstSection);
+  }
+  const block = new RegExp(`^${key}\\s*=\\s*\\[([\\s\\S]*?)\\]`, 'm').exec(text)?.[1];
+  if (block === undefined) throw new Error(`no ${key} = [...]${section === undefined ? '' : ` in [${section}]`}`);
+  return [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1] ?? '');
 }
+
+/** `accepted = [...]` of about.toml, in order of preference. */
+export const acceptedFromAboutToml = (toml: string): string[] => tomlStringArray(toml, 'accepted');
 
 // --- Inputs -------------------------------------------------------------------------------
 

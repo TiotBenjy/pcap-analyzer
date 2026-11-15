@@ -15,6 +15,7 @@ import {
   OUTPUT_JSON,
   referenceTexts,
   type ThirdPartyLicenses,
+  tomlStringArray,
 } from './third-party-licenses';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -44,6 +45,22 @@ describe('SPDX expressions', () => {
     expect(chooseLicenses('GPL-3.0-only OR ISC', ACCEPTED)).toEqual(['ISC']);
     expect(chooseLicenses('GPL-3.0-only', ACCEPTED)).toBeNull();
     expect(chooseLicenses('MIT AND GPL-3.0-only', ACCEPTED)).toBeNull();
+  });
+
+  it('accepts exactly the licenses allowed by deny.toml', () => {
+    const accepted = acceptedFromAboutToml(readFileSync(join(ROOT, 'about.toml'), 'utf8'));
+    const allowed = tomlStringArray(readFileSync(join(ROOT, 'deny.toml'), 'utf8'), 'allow', 'licenses');
+    expect(allowed.length).toBeGreaterThan(5);
+    expect([...accepted].sort()).toEqual([...allowed].sort());
+  });
+
+  it('reads string arrays of a TOML section only', () => {
+    const toml = 'allow = ["top"]\n[a]\nallow = [\n  "x", # "comment"\n  "y WITH z",\n]\n[b]\nallow = ["other"]\n';
+    expect(tomlStringArray(toml, 'allow')).toEqual(['top']);
+    expect(tomlStringArray(toml, 'allow', 'a')).toEqual(['x', 'y WITH z']);
+    expect(tomlStringArray(toml, 'allow', 'b')).toEqual(['other']);
+    expect(() => tomlStringArray(toml, 'allow', 'c')).toThrow(/no \[c\]/);
+    expect(() => tomlStringArray(toml, 'deny', 'a')).toThrow(/no deny/);
   });
 
   it('reads the accepted licenses of about.toml in order', () => {

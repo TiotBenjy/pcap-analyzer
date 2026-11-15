@@ -319,6 +319,15 @@ Suivis de la vague 3.A :
   « import sans étapes » qui retouche une base finie au lieu d'arrêter le writer ; pic disque en fin d'import
   (WAL de la taille des index) ; rapports de bench en français. Le gate `./x.sh check` laissait passer un échec
   au milieu d'une chaîne `&&` (version, `fuzz/`, bindings) : corrigé sur `main` (une commande par ligne).
+- P4.8 (fusionnée le 2026-11-15, `docs/PERFORMANCE.md` « Suite P4.8 ») : 0 requête de vue > 300 ms (`/servers`
+  588 -> 7 ms, mesuré avant la lecture par l'index `server_ranks_rank`, non re-mesurée ; catégories Connections
+  478 -> 4 ms et Open Ports 341 -> 44 ms ; HTTP `q=` 337 -> 132 ms) ; Overview 635 -> 298 ms (délai de suspension
+  React supprimé, ECharts chargé hors `React.lazy`) ; phase `finalizing` publiée (étape n/N) et Annuler désactivé
+  après la lecture. Restent : fin d'import 44,5 s (index 18,5 s, DNS 11,9 s, FTS HTTP 7,6 s, réseau 2,7 s) ;
+  writer pendant la lecture 41 s (`tls_sessions`, `conversations`, `http_transactions`, `hosts`) ; neuf requêtes
+  entre 150 et 300 ms ; premier `setOption` ECharts ≈ 90 ms ; mesures dans WebKitGTK non faites ; miniatures
+  générées sous « Finalisation 9/9 » ; plan Probe/Lookup choisi sur la catégorie seule ; boîte de progression
+  d'import sans capture `shots` (pas d'import possible sur le serveur des captures).
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -363,7 +372,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       fusionne les sessions, sans erreur visible. Piste : faire entrer l'index de trame global du premier paquet,
       identique entre fichier unique et chunks (test d'équivalence) ; test synthétique : deux connexions HTTP
       même 5-tuple, ts constant. Trouvé par la revue de P4.1.
-- [~] **P4.8** `perf/followups` — Reste de P4.2 (chiffres dans `docs/PERFORMANCE.md`) : affichage Overview 616 ms
+- [x] **P4.8** `perf/followups` — Reste de P4.2 (chiffres dans `docs/PERFORMANCE.md`) : affichage Overview 616 ms
       pour 500 visés (réponses ≈ 130 ms, ≈ 480 ms de rendu ECharts SVG de 13 séries ; mesurer aussi dans WebKitGTK) ;
       fin d'import de 44 s sans progression (index 19 s, DNS 11,5 s, FTS HTTP 7,7 s, réseau 2,6 s) -> phase dédiée
       dans `Progress` ; requêtes > 300 ms : `/servers` 571 ms (rang précalculé sans filtre), `/connections?category=`

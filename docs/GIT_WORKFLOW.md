@@ -107,12 +107,19 @@ l'utilisateur pour ce numéro. Jamais de tag poussé à la main. Décision : ADR
   précédent, `v0.1.0`) : seuls les groupes Fonctionnalités et Performances sont détaillés, le reste de
   l'historique de développement est résumé en une phrase et les marqueurs de rupture (interfaces
   internes figées pendant le développement) ne sont pas affichés.
+- Titre de release (facultatif, recommandé) : un résumé court, `scripts/release.sh X.Y.Z --title "…"`.
+  Il est écrit dans le message du tag annoté (ligne 1 `NetSift vX.Y.Z`, ligne vide, ligne 3 le titre)
+  et `release.yml` en fait le nom de la release GitHub : `NetSift vX.Y.Z — titre` (sans titre :
+  `NetSift vX.Y.Z`). L'application affiche ce titre dans le bandeau de mise à jour et dans
+  « Paramètres > À propos », à la place d'un extrait des notes, qui restent derrière « Notes de
+  version » (ADR-028). Une ligne, 80 caractères au plus, sans caractère de contrôle ni de mise en
+  forme bidirectionnelle ; écrit pour l'utilisateur (ce qui change pour lui), dans la langue des notes.
 - Licences tierces : la liste embarquée (« À propos », `THIRD_PARTY_LICENSES` des bundles) est
   vérifiée par le gate ; elle est donc à jour sur `main` au moment de la release (`docs/LICENSES.md`).
 
-### Déroulé (`scripts/release.sh X.Y.Z`, sur l'hôte, depuis le checkout racine)
+### Déroulé (`scripts/release.sh X.Y.Z [--title "…"]`, sur l'hôte, depuis le checkout racine)
 
-Préconditions vérifiées avant toute modification : checkout racine sur `main`, propre ;
+Préconditions vérifiées avant toute modification : titre valide s'il est donné ; checkout racine sur `main`, propre ;
 `git fetch origin` fait et `main` égal à `origin/main` ; `X.Y.Z` SemVer, supérieur ou égal à la
 version actuelle ; tag `vX.Y.Z` absent en local et sur `origin` ; branche `chore/release-X.Y.Z` absente.
 
@@ -130,25 +137,28 @@ modifié ; la branche de release ne contient que `CHANGELOG.md`.
 3. `scripts/wt.sh merge chore/release-X.Y.Z --push --cleanup` : rebase, **gate complet**, fusion
    `--no-ff` et push de `main`, puis suppression du worktree, de la branche locale et de la branche
    distante. C'est le seul chemin qui pousse `main`, comme pour toute branche.
-4. Tag annoté `vX.Y.Z` sur le HEAD de `main` (le commit de fusion), puis `git push origin vX.Y.Z`.
-   Ce push déclenche `release.yml`.
+4. Tag annoté `vX.Y.Z` sur le HEAD de `main` (le commit de fusion), message `NetSift vX.Y.Z`
+   suivi du titre (`git tag -a --cleanup=whitespace vX.Y.Z -m "NetSift vX.Y.Z" -m "titre"`), puis
+   `git push origin vX.Y.Z`. Ce push déclenche `release.yml`.
 5. Affichage des URL (page Actions du workflow, page de la release) et de la commande de suivi.
 
 Option `--dry-run` : préconditions, plan exact (version modifiée ou déjà en place, fichiers touchés,
-`CHANGELOG.md` créé ou régénéré, fusion, tag) et notes de la release (git-cliff). Aucune écriture dans le dépôt (seules les références distantes sont rafraîchies par le
+`CHANGELOG.md` créé ou régénéré, fusion, tag, titre et nom de la release) et notes de la release (git-cliff). Aucune écriture dans le dépôt (seules les références distantes sont rafraîchies par le
 fetch). Il n'y a pas de mode « sans push » : pour tester le script de bout en bout, utiliser un clone
 jetable dont `origin` est un dépôt bare local. `scripts/tests/release.sh` (gate et `ci.yml`) teste
 `apply_version` sur un dépôt temporaire : `Cargo.lock`, `fuzz/Cargo.lock` et le lockfile de l'UI
-suivent la nouvelle version, et rien d'autre ne change.
+suivent la nouvelle version, et rien d'autre ne change ; il teste aussi la validation du titre, le
+message du tag et le nom de la release relu comme dans `release.yml`.
 
 En cas d'échec avant la fusion (étape 3), rien n'est poussé et le script supprime lui-même le worktree
 et la branche de release. Après la fusion locale (échec du push de `main` ou du tag), il affiche les
-commandes pour annuler la fusion locale ou pour terminer (tag). Rien n'est interactif (utilisable par
+commandes pour annuler la fusion locale ou pour terminer (tag, avec le titre donné). Rien n'est interactif (utilisable par
 un agent).
 
 Relance après un échec partiel : si `main` contient déjà la release (fusion
 `merge(chore/release-X.Y.Z)` ou commit `chore(release): vX.Y.Z`), le script refuse de fusionner une
-seconde fois et affiche les commandes de création et de push du tag ; si le tag existe en local
+seconde fois et affiche les commandes de création et de push du tag (avec le titre passé à cette
+relance) ; si le tag existe en local
 seulement, il affiche `git push origin vX.Y.Z` ; s'il existe sur `origin`, la version est publiée et
 le script refuse. Dernier garde-fou : une branche de release sans aucun changement (`CHANGELOG.md`
 identique) n'est jamais commitée. Suivi dans tous les cas : `scripts/release-status.sh vX.Y.Z --wait`.
@@ -157,8 +167,11 @@ identique) n'est jamais commitée. Suivi dans tous les cas : `scripts/release-st
 
 1. `version` : le tag désigne un commit de `main`, `scripts/check-version.sh vX.Y.Z` ; calcule
    « prerelease » (suffixe SemVer).
-2. `create` : notes git-cliff de la plage tag précédent -> tag courant, plus les mentions
-   d'installation (`.github/release-notes-footer.md`) ; crée la release **en brouillon**.
+2. `create` : nom de la release lu dans le message du tag annoté (`scripts/ci/release-name.sh`,
+   après `git fetch` de l'objet tag, qu'`actions/checkout` remplace par une référence légère) ;
+   notes git-cliff de la plage tag précédent -> tag courant, plus les mentions d'installation
+   (`.github/release-notes-footer.md`) ; crée la release **en brouillon**. Un titre absent ou
+   invalide (tag créé à la main) donne le nom `NetSift vX.Y.Z` et un avertissement, jamais un échec.
 3. `bundle` (en parallèle) : Linux x86_64 (`.AppImage`, `.deb`, `.rpm`, Ubuntu 22.04),
    Windows x86_64 (`-setup.exe` NSIS, `.msi`), macOS universel (`.dmg`, Apple Silicon + Intel).
    Noms produits par Tauri, avec version et architecture ; le job échoue si un nom ne contient pas
@@ -175,6 +188,14 @@ Bundle en échec :
   corriger sur une branche, fusionner, puis publier `X.Y.Z+1` avec `scripts/release.sh`, et supprimer
   le brouillon `vX.Y.Z` dans l'interface GitHub (le tag reste, sans release). Supprimer le tag distant
   pour réutiliser `X.Y.Z` réécrirait un historique publié : à éviter.
+
+Changer le titre après coup (release publiée, ou publiée sans titre comme `v0.1.0` et `v0.1.1`) :
+page de la release sur GitHub, « Edit release », champ du nom : `NetSift vX.Y.Z — nouveau titre`,
+puis « Update release ». Rien d'autre ne change (fichiers, notes, tag) ; ne jamais recréer le tag.
+L'application lit le nom à chaque vérification : elle affiche ce qui suit la version
+(séparateur `—`, `–`, `-`, `:` ou `|`), le nom entier s'il ne commence pas par `NetSift vX.Y.Z`,
+et rien pour le nom par défaut. Le message du tag garde l'ancien titre (ou aucun) : seul le nom de la
+release compte pour l'application.
 
 Lancement manuel (`workflow_dispatch`) sans tag : bundles en artefacts du workflow, aucune release.
 

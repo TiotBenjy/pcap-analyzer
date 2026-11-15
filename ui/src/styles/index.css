@@ -82,6 +82,17 @@
     height: 100%;
   }
 
+  /*
+   * The document never scrolls: #main and the inner panels do (AppShell). Guard against a box
+   * escaping the layout (the shots assert there is none). Screen only, so that printing is not cut.
+   */
+  @media screen {
+    html,
+    body {
+      overflow: hidden;
+    }
+  }
+
   body {
     @apply bg-app text-body text-fg font-sans antialiased;
     font-feature-settings: 'cv11', 'ss01';

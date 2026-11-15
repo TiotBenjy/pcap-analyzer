@@ -127,7 +127,7 @@ export function ExpandableList<T>({
   return (
     <div className="flex min-w-0 flex-col">
       {header}
-      <div ref={scrollRef} className="min-w-0 overflow-y-auto overscroll-contain" style={{ maxHeight }}>
+      <div ref={scrollRef} className="relative min-w-0 overflow-y-auto overscroll-contain" style={{ maxHeight }}>
         <div role="list" aria-label={ariaLabel} style={virtual ? { paddingTop: padTop, paddingBottom: padBottom } : undefined}>
           {virtual
             ? virtualItems.map((v) => {

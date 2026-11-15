@@ -50,28 +50,47 @@ pub const MARKER_KEY: &str = "finalizers";
 /// A step goes after every step listed in its `after` (checked by a test); between
 /// independent steps, append at the end. The order is never alphabetical by construction.
 pub static SESSION_FINALIZERS: &[Finalizer] = &[
+    // --- core ---
+    Finalizer {
+        // First: the secondary indexes dropped by the import (ADR-023), read by the steps below.
+        id: "indexes",
+        version: 1,
+        after: &[],
+        fills: &[],
+        reads: &[],
+        run: crate::deferred::finalize,
+    },
+    Finalizer {
+        id: "timeseries",
+        version: 1,
+        after: &[],
+        fills: &["timeseries_minute", "timeseries_hour"],
+        reads: &["timeseries"],
+        run: crate::traffic::finalize,
+    },
     // --- analyzers: one line each, in execution order ---
     Finalizer {
         id: "dns",
         version: 1,
-        after: &[],
+        after: &["indexes"],
         fills: &["dns_pairs", "dns_fts"],
         reads: &["dns_messages"],
         run: crate::dns::finalize,
     },
     Finalizer {
         id: "servers",
-        version: 1,
+        // 2: materializes the roles (0801).
+        version: 2,
         // After `dns`: when a host reaches MAX_HOST_NAMES, DNS names are kept first, always.
-        after: &["dns"],
-        fills: &[],
+        after: &["indexes", "dns"],
+        fills: &["server_evidence", "server_roles"],
         reads: &["dhcp_messages"],
         run: crate::servers::finalize,
     },
     Finalizer {
         id: "objects",
         version: 1,
-        after: &[],
+        after: &["indexes"],
         // Nothing to unlist: a session imported before P3.6 never stored bodies, so its
         // `objects` stays "not analyzed" (ADR-013) rather than empty.
         fills: &[],
@@ -79,8 +98,18 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         run: crate::objects::finalize,
     },
     Finalizer {
+        id: "http",
+        version: 1,
+        after: &[],
+        fills: &["http_transactions_fts", "http_headers_fts"],
+        reads: &["http_transactions", "http_headers"],
+        run: crate::http::finalize,
+    },
+    Finalizer {
         id: "network",
         version: 1,
+        // Not after `indexes`: it reads its sources by primary key and in storage order, and the
+        // indexes of the tables it fills are never deferred.
         after: &[],
         fills: &[
             "network_hosts",
@@ -105,6 +134,8 @@ pub struct FinalizeReport {
     pub failed: Vec<(&'static str, String)>,
     /// Steps not run because a step they come after is not done.
     pub skipped: Vec<&'static str>,
+    /// Wall-clock time of every step run (succeeded or failed), in order.
+    pub timings: Vec<(&'static str, std::time::Duration)>,
 }
 
 impl FinalizeReport {
@@ -126,6 +157,16 @@ pub fn finalizers_done(conn: &Connection) -> Result<Vec<String>> {
         .filter(|m| !m.is_empty())
         .map(str::to_owned)
         .collect())
+}
+
+/// True when the current version of step `id` is recorded as done. Readers of a table that only
+/// a step fills fall back to its sources while it is not (session served read-only before its
+/// steps ran, or a failed step): slower, never wrong (ADR-023).
+pub fn step_done(conn: &Connection, id: &str) -> Result<bool> {
+    let Some(step) = SESSION_FINALIZERS.iter().find(|f| f.id == id) else {
+        return Ok(false);
+    };
+    Ok(finalizers_done(conn)?.contains(&step.marker()))
 }
 
 /// True when every registered step is recorded as done.
@@ -168,7 +209,10 @@ pub(crate) fn run_with(conn: &Connection, steps: &[Finalizer]) -> Result<Finaliz
             .cloned()
             .collect();
         next.push(marker);
-        match run_one(conn, step, &next.join(",")) {
+        let started = std::time::Instant::now();
+        let outcome = run_one(conn, step, &next.join(","));
+        report.timings.push((step.id, started.elapsed()));
+        match outcome {
             Ok(()) => {
                 done = next;
                 report.ran.push(step.id);
@@ -367,11 +411,12 @@ mod tests {
             WriterConfig::default(),
         )
         .unwrap();
-        // Another connection breaks the DNS step before the end of the import.
+        // Another connection breaks the DNS step before the end of the import (its search
+        // index: the tables keep their name, so the deferred indexes can be built).
         let other = Session::open(dir.path(), OpenMode::ReadWrite).unwrap();
         other
             .conn()
-            .execute_batch("ALTER TABLE dns_pairs RENAME TO dns_pairs_away")
+            .execute_batch("ALTER TABLE dns_fts RENAME TO dns_fts_away")
             .unwrap();
         let stats = writer.finish().unwrap();
         assert!(!stats.finalize.ran.contains(&"dns"));
@@ -382,7 +427,7 @@ mod tests {
         // Repaired: the next opening runs the missing step.
         other
             .conn()
-            .execute_batch("ALTER TABLE dns_pairs_away RENAME TO dns_pairs")
+            .execute_batch("ALTER TABLE dns_fts_away RENAME TO dns_fts")
             .unwrap();
         // The steps that come after `dns` were postponed with it.
         let after_dns: Vec<&str> = SESSION_FINALIZERS

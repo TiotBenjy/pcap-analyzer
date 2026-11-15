@@ -2,16 +2,18 @@
 //! queries of the HTTP and HTTP Headers views.
 //!
 //! Rows are plain inserts (one transaction and its headers per record, atomically): the set of
-//! rows does not depend on arrival order, only their `id`s do.
+//! rows does not depend on arrival order, only their `id`s do. The two search indexes
+//! (`http_transactions_fts`, `http_headers_fts`) are built by [`finalize`] at the end of the
+//! import (`0201_http_fts_deferred.sql`).
 
 use std::net::IpAddr;
 
 use rusqlite::types::Value;
-use rusqlite::{Connection, OptionalExtension, Row, ToSql, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use crate::connections::EndpointInfo;
 use crate::error::{Result, StoreError};
-use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::query::{Conditions, Keyset, Page, PageRequest, keyset_page};
 use crate::records::conversion;
 
 /// Method groups of the filters and charts, in display order (`other`: any other method, or no
@@ -360,26 +362,24 @@ impl HttpEntry {
     }
 }
 
-/// Every filter of [`HttpFilter`], with `NULL` parameters for the unused ones. The sort
-/// indexes serve the order (`sort_queries_use_indexes`); the filters themselves are evaluated
-/// row by row (building the condition from the active filters only is a follow-up).
-pub(crate) const FILTER: &str = "(?1 IS NULL OR t.method_group IN (SELECT value FROM json_each(?1))) \
-    AND (?2 IS NULL OR t.status_class IN (SELECT value FROM json_each(?2)) \
-         OR CAST(t.status AS TEXT) IN (SELECT value FROM json_each(?2))) \
-    AND (?3 IS NULL OR t.host = ?3) \
-    AND (?4 IS NULL OR t.id IN (SELECT rowid FROM http_transactions_fts \
-         WHERE http_transactions_fts MATCH ?4)) \
-    AND (?5 IS NULL OR t.host LIKE ?5 ESCAPE '\\' OR t.uri LIKE ?5 ESCAPE '\\' \
-         OR t.user_agent LIKE ?5 ESCAPE '\\') \
-    AND ((?6 IS NULL AND ?7 IS NULL AND ?8 IS NULL) OR t.id IN ( \
-         SELECT h.transaction_id FROM http_headers h \
-         WHERE (?6 IS NULL OR h.name_lc = ?6) \
-           AND (?7 IS NULL OR h.id IN (SELECT rowid FROM http_headers_fts \
-                WHERE http_headers_fts MATCH ?7)) \
-           AND (?8 IS NULL OR h.name LIKE ?8 ESCAPE '\\' OR h.value LIKE ?8 ESCAPE '\\')))";
+/// End-of-import step `http` ([`crate::finalize::SESSION_FINALIZERS`]): rebuilds both search
+/// indexes from their content tables, in the transaction of the caller. Idempotent.
+pub(crate) fn finalize(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "INSERT INTO http_transactions_fts (http_transactions_fts) VALUES ('rebuild')",
+        [],
+    )?;
+    conn.execute(
+        "INSERT INTO http_headers_fts (http_headers_fts) VALUES ('rebuild')",
+        [],
+    )?;
+    Ok(())
+}
 
 /// A text search as (FTS5 phrase, LIKE pattern): one of them is used, depending on its length.
-fn search(q: Option<&str>) -> Result<(Option<String>, Option<String>)> {
+/// Without the search indexes (`fts_ready` false: step `http` not run, ADR-023), every search
+/// uses `LIKE`: slower, same matches.
+fn search(q: Option<&str>, fts_ready: bool) -> Result<(Option<String>, Option<String>)> {
     let Some(q) = q.map(str::trim).filter(|q| !q.is_empty()) else {
         return Ok((None, None));
     };
@@ -389,7 +389,7 @@ fn search(q: Option<&str>) -> Result<(Option<String>, Option<String>)> {
             reason: "search text too long",
         });
     }
-    if q.chars().count() >= MIN_FTS_CHARS {
+    if fts_ready && q.chars().count() >= MIN_FTS_CHARS {
         Ok((Some(format!("\"{}\"", q.replace('"', "\"\""))), None))
     } else {
         let escaped: String = q
@@ -407,31 +407,83 @@ fn json_list(list: Option<&Vec<String>>) -> Result<Option<String>> {
     Ok(list.map(serde_json::to_string).transpose()?)
 }
 
-struct FilterParams([Option<String>; 8]);
-
-impl FilterParams {
-    fn new(filter: &HttpFilter) -> Result<Self> {
-        let (fts, like) = search(filter.q.as_deref())?;
-        let (hfts, hlike) = search(filter.header_q.as_deref())?;
-        Ok(Self([
-            json_list(filter.methods.as_ref())?,
-            json_list(filter.statuses.as_ref())?,
-            filter.host.clone(),
-            fts,
-            like,
-            filter
-                .header_name
-                .as_deref()
-                .map(|n| n.trim().to_ascii_lowercase())
-                .filter(|n| !n.is_empty()),
-            hfts,
-            hlike,
-        ]))
+/// The active filters of [`HttpFilter`] only, so that the planner can use their indexes (a
+/// condition with a parameter that may be NULL is evaluated row by row).
+fn conditions(filter: &HttpFilter, fts_ready: bool) -> Result<Conditions> {
+    let (fts, like) = search(filter.q.as_deref(), fts_ready)?;
+    let (hfts, hlike) = search(filter.header_q.as_deref(), fts_ready)?;
+    let mut c = Conditions::new();
+    if let Some(methods) = json_list(filter.methods.as_ref())? {
+        c.push(
+            "t.method_group IN (SELECT value FROM json_each(?))",
+            [Value::Text(methods)],
+        );
     }
-
-    fn refs(&self) -> Vec<&dyn ToSql> {
-        self.0.iter().map(|p| p as &dyn ToSql).collect()
+    if let Some(statuses) = &filter.statuses {
+        // A value is a class (`4xx`, `none`...) or the decimal text of a code (`404`): each part
+        // goes to its own indexed column (`status_class`, `status_key` = the code).
+        let (classes, codes): (Vec<&String>, Vec<&String>) = statuses
+            .iter()
+            .partition(|v| STATUS_CLASSES.contains(&v.as_str()));
+        let codes: Vec<i64> = codes
+            .iter()
+            .filter_map(|v| v.parse::<u16>().ok().filter(|n| n.to_string() == **v))
+            .map(i64::from)
+            .collect();
+        c.push(
+            "t.status_class IN (SELECT value FROM json_each(?)) \
+             OR t.status_key IN (SELECT value FROM json_each(?))",
+            [
+                Value::Text(serde_json::to_string(&classes)?),
+                Value::Text(serde_json::to_string(&codes)?),
+            ],
+        );
     }
+    if let Some(host) = &filter.host {
+        c.push("t.host = ?", [Value::Text(host.clone())]);
+    }
+    if let Some(fts) = fts {
+        c.push(
+            "t.id IN (SELECT rowid FROM http_transactions_fts WHERE http_transactions_fts MATCH ?)",
+            [Value::Text(fts)],
+        );
+    }
+    if let Some(like) = like {
+        c.push(
+            "t.host LIKE ? ESCAPE '\\' OR t.uri LIKE ? ESCAPE '\\' \
+             OR t.user_agent LIKE ? ESCAPE '\\'",
+            [0, 1, 2].map(|_| Value::Text(like.clone())),
+        );
+    }
+    let mut headers = Conditions::new();
+    if let Some(name) = filter
+        .header_name
+        .as_deref()
+        .map(|n| n.trim().to_ascii_lowercase())
+        .filter(|n| !n.is_empty())
+    {
+        headers.push("h.name_lc = ?", [Value::Text(name)]);
+    }
+    if let Some(hfts) = hfts {
+        headers.push(
+            "h.id IN (SELECT rowid FROM http_headers_fts WHERE http_headers_fts MATCH ?)",
+            [Value::Text(hfts)],
+        );
+    }
+    if let Some(hlike) = hlike {
+        headers.push(
+            "h.name LIKE ? ESCAPE '\\' OR h.value LIKE ? ESCAPE '\\'",
+            [Value::Text(hlike.clone()), Value::Text(hlike)],
+        );
+    }
+    // Correlated: the headers of each transaction are read by its index, so a page stops at its
+    // last row instead of collecting every matching header first.
+    c.push_group(
+        "EXISTS (SELECT 1 FROM http_headers h WHERE h.transaction_id = t.id AND ",
+        headers,
+        ")",
+    );
+    Ok(c)
 }
 
 /// One page of transactions matching `filter`.
@@ -442,7 +494,8 @@ pub fn transactions_page(
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<HttpEntry>> {
-    let params = FilterParams::new(filter)?;
+    let conditions = conditions(filter, crate::finalize::step_done(conn, "http")?)?;
+    let where_sql = conditions.sql();
     let query = Keyset {
         from: ENTRY_FROM,
         select: ENTRY_COLUMNS,
@@ -453,19 +506,25 @@ pub fn transactions_page(
         },
         tiebreak: "t.id",
         descending,
-        filter: Some(FILTER),
+        filter: where_sql.as_deref(),
     };
-    keyset_page(conn, &query, &params.refs(), request, HttpEntry::from_row)
+    keyset_page(
+        conn,
+        &query,
+        &conditions.params(),
+        request,
+        HttpEntry::from_row,
+    )
 }
 
 /// Number of transactions matching `filter`.
 pub fn count_transactions(conn: &Connection, filter: &HttpFilter) -> Result<u64> {
-    let params = FilterParams::new(filter)?;
-    let n: i64 = conn.query_row(
-        &format!("SELECT count(*) FROM http_transactions t WHERE {FILTER}"),
-        params.refs().as_slice(),
-        |r| r.get(0),
-    )?;
+    let conditions = conditions(filter, crate::finalize::step_done(conn, "http")?)?;
+    let sql = match conditions.sql() {
+        Some(w) => format!("SELECT count(*) FROM http_transactions t WHERE {w}"),
+        None => "SELECT count(*) FROM http_transactions t".to_owned(),
+    };
+    let n: i64 = conn.query_row(&sql, conditions.params().as_slice(), |r| r.get(0))?;
     Ok(u64::try_from(n).unwrap_or(0))
 }
 
@@ -661,10 +720,11 @@ pub fn stats(conn: &Connection) -> Result<HttpStats> {
         )?,
         &STATUS_CLASSES,
     );
+    // `status_key` is the status, or -1 without one: its index serves the grouping (P4.2).
     let statuses = counts(
         conn,
-        "SELECT status, count(*) c FROM http_transactions WHERE status IS NOT NULL \
-         GROUP BY status ORDER BY c DESC, status LIMIT ?1",
+        "SELECT status_key, count(*) c FROM http_transactions WHERE status_key >= 0 \
+         GROUP BY status_key ORDER BY c DESC, status_key LIMIT ?1",
         TOP_STATUSES,
     )?;
     let content_types = counts(

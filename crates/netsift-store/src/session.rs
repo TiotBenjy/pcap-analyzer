@@ -1,8 +1,9 @@
 //! A session directory: `session.db` (SQLite, WAL) plus `blobs/` and `thumbs/`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::{LazyLock, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OpenFlags, Transaction, params};
 
@@ -24,6 +25,32 @@ pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long the upgrade of an older session waits for the write lock (another opening upgrading
 /// it, or a long transaction) before giving up with [`StoreError::SessionBusy`].
 pub const UPGRADE_BUSY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// After an end-of-import step failed at an opening, the following openings of the same session
+/// in this process do not retry before this delay (P4.2): a failing step can cost tens of seconds
+/// (the index step of a large session), paid by every request otherwise.
+pub const STEP_RETRY_DELAY: Duration = Duration::from_secs(600);
+
+/// Last failed run of the end-of-import steps, per session database.
+static FAILED_STEPS: LazyLock<Mutex<HashMap<PathBuf, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn steps_failed_recently(db: &Path) -> bool {
+    FAILED_STEPS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(db)
+        .is_some_and(|at| at.elapsed() < STEP_RETRY_DELAY)
+}
+
+fn record_steps(db: &Path, complete: bool) {
+    let mut failed = FAILED_STEPS.lock().unwrap_or_else(PoisonError::into_inner);
+    if complete {
+        failed.remove(db);
+    } else {
+        failed.insert(db.to_path_buf(), Instant::now());
+    }
+}
 /// `meta` key listing the tables created by migrations applied after the import (sorted,
 /// comma-separated): they exist but their analyzer never ran on this session (ADR-013).
 pub const TABLES_ADDED_AFTER_IMPORT: &str = "schema.tables_added_after_import";
@@ -80,9 +107,14 @@ impl Session {
                 };
                 conn.pragma_update(None, "synchronous", sync)?;
                 if mode == OpenMode::Import {
-                    // Negative value = KiB: 64 MiB of page cache for the writer.
-                    conn.pragma_update(None, "cache_size", -65_536)?;
+                    // Negative value = KiB: 256 MiB of page cache for the writer, so that the
+                    // indexes being filled stay in memory (P4.2: 64 MiB made the 5 GB benchmark
+                    // read index pages back from the file at every insert).
+                    conn.pragma_update(None, "cache_size", -262_144)?;
                     conn.pragma_update(None, "temp_store", "MEMORY")?;
+                    // Checkpoint the WAL every 128 MiB instead of 8 MiB: a page modified by
+                    // several transactions is copied back to the database file once.
+                    conn.pragma_update(None, "wal_autocheckpoint", 16_384)?;
                 }
                 migrate_session(&mut conn, &SESSION_SCHEMA)?;
                 if mode == OpenMode::Import {
@@ -94,6 +126,8 @@ impl Session {
                         "DELETE FROM meta WHERE key = ?1",
                         [TABLES_ADDED_AFTER_IMPORT],
                     )?;
+                    // Secondary indexes are built at the end (step `indexes`, ADR-023).
+                    crate::deferred::defer(&conn)?;
                 }
                 conn
             }
@@ -145,7 +179,11 @@ impl Session {
         let needed = write_needed(&conn, set)?;
         // A read-only server never writes: pending end-of-import steps wait (the session is
         // readable without them, ADR-014); only a pending migration makes it unreadable.
-        if !needed.any() || (policy == Upgrade::Refuse && !needed.migrations) {
+        // Same when only steps are pending and they failed a moment ago (`STEP_RETRY_DELAY`).
+        if !needed.any()
+            || (policy == Upgrade::Refuse && !needed.migrations)
+            || (!needed.migrations && steps_failed_recently(&db_path))
+        {
             return Ok(Self {
                 dir,
                 conn,
@@ -308,7 +346,8 @@ fn upgrade(path: &Path, set: &MigrationSet) -> Result<()> {
     // End-of-import steps missing from the marker, on the same write connection, after the
     // migrations (ADR-014). A failed step is not an upgrade failure: the session stays
     // readable, the step is retried at the next opening.
-    crate::finalize::run_finalizers(&conn)?;
+    let report = crate::finalize::run_finalizers(&conn)?;
+    record_steps(path, report.is_complete());
     Ok(())
 }
 

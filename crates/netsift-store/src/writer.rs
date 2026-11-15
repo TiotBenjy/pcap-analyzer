@@ -29,8 +29,8 @@ pub struct WriterConfig {
 impl Default for WriterConfig {
     fn default() -> Self {
         Self {
-            batch_rows: 50_000,
-            flush_interval: Duration::from_millis(250),
+            batch_rows: 200_000,
+            flush_interval: Duration::from_secs(1),
             channel_capacity: 4096,
         }
     }
@@ -46,6 +46,11 @@ pub struct WriterStats {
     pub rejected: BTreeMap<&'static str, u64>,
     /// Committed transactions.
     pub batches: u64,
+    /// Time spent inserting rows, per record kind (commits excluded): where the writer spends
+    /// its time (`netsift bench ingest`).
+    pub insert_time: BTreeMap<&'static str, std::time::Duration>,
+    /// Time spent committing transactions.
+    pub commit_time: std::time::Duration,
     /// End-of-import steps run after the last record (ADR-014).
     pub finalize: crate::finalize::FinalizeReport,
 }
@@ -173,7 +178,10 @@ impl Batch<'_> {
             self.deadline = Some(Instant::now() + self.config.flush_interval);
         }
         // A failed statement only rolls itself back: the transaction stays usable.
-        match record.insert(self.conn) {
+        let started = Instant::now();
+        let result = record.insert(self.conn);
+        *self.stats.insert_time.entry(record.kind()).or_default() += started.elapsed();
+        match result {
             Ok(()) => *self.stats.rows.entry(record.kind()).or_insert(0) += 1,
             Err(e) if is_row_level(&e) => {
                 *self.stats.rejected.entry(record.kind()).or_insert(0) += 1;
@@ -189,7 +197,9 @@ impl Batch<'_> {
 
     fn commit(&mut self) -> Result<()> {
         if self.deadline.take().is_some() {
+            let started = Instant::now();
             self.conn.execute_batch("COMMIT")?;
+            self.stats.commit_time += started.elapsed();
             self.stats.batches += 1;
         }
         self.pending = 0;
@@ -234,6 +244,10 @@ fn run(conn: Connection, rx: &Receiver<Msg>, config: WriterConfig) -> Result<Wri
         let _ = conn.execute_batch("ROLLBACK");
     }
     result?;
+    // The steps sort large tables (index builds, ADR-023): temporary data goes to files rather
+    // than memory, sorted by a few worker threads.
+    conn.pragma_update(None, "temp_store", "FILE")?;
+    conn.pragma_update(None, "threads", 4)?;
     // A failed end-of-import step does not fail the import (ADR-014): it is reported in the
     // statistics, its marker stays absent and the next opening of the session runs it again.
     batch.stats.finalize = crate::finalize::run_finalizers(&conn).unwrap_or_else(|e| {

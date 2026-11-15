@@ -1,5 +1,7 @@
 //! `netsift` command-line entry point.
 
+#[cfg(feature = "bench")]
+mod bench;
 #[cfg(any(feature = "demo", test))]
 #[cfg_attr(not(feature = "demo"), allow(dead_code))]
 mod demo;
@@ -40,6 +42,10 @@ enum Command {
     /// Generate synthetic demo captures and import them (screenshots, previews).
     #[cfg(feature = "demo")]
     DemoSession(demo::DemoArgs),
+    /// Measure ingestion and view queries (docs/PERFORMANCE.md).
+    #[cfg(feature = "bench")]
+    #[command(subcommand)]
+    Bench(bench::BenchCommand),
 }
 
 #[derive(Debug, Args)]
@@ -202,6 +208,11 @@ fn main() -> Result<ExitCode> {
         #[cfg(feature = "demo")]
         Command::DemoSession(args) => {
             demo::run(&args, &mut std::io::stdout()).map(|()| ExitCode::SUCCESS)
+        }
+        #[cfg(feature = "bench")]
+        Command::Bench(command) => {
+            drop(runtime);
+            bench::run(&command, &mut std::io::stdout()).map(|()| ExitCode::SUCCESS)
         }
     }
 }

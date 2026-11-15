@@ -127,6 +127,8 @@ fn fill(conn: &Connection) {
     for r in &rows {
         r.insert(conn).unwrap();
     }
+    // The search indexes are built at the end of the import (step `http`, recorded in `meta`).
+    assert!(crate::finalize::run_finalizers(conn).unwrap().is_complete());
 }
 
 fn paths(page: &Page<HttpEntry>) -> Vec<String> {
@@ -234,6 +236,34 @@ fn text_search_uses_trigrams_or_like() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn search_indexes_are_built_by_the_finalizer_only() {
+    let conn = db();
+    fill(&conn);
+    // No trigger: a row inserted afterwards waits for the next rebuild.
+    row(
+        9,
+        1,
+        Some("GET"),
+        "late.test",
+        "/late",
+        Some(200),
+        None,
+        0,
+        &[],
+    )
+    .insert(&conn)
+    .unwrap();
+    let q = HttpFilter {
+        q: Some("late".into()),
+        ..HttpFilter::default()
+    };
+    assert_eq!(list(&conn, &q), Vec::<String>::new());
+    finalize(&conn).unwrap();
+    finalize(&conn).unwrap();
+    assert_eq!(list(&conn, &q), vec!["/late"]);
 }
 
 #[test]
@@ -409,11 +439,123 @@ fn sort_queries_use_indexes() {
     ] {
         for cursor in ["", &format!(" AND ({sort}, t.id) < (?, ?)")] {
             let p = plan(&format!(
-                "SELECT t.id FROM {ENTRY_FROM} WHERE ({FILTER}){cursor} \
+                "SELECT t.id FROM {ENTRY_FROM} WHERE 1{cursor} \
                  ORDER BY {sort} DESC, t.id DESC LIMIT 10"
             ));
             assert!(p.contains(index), "{sort}: {p}");
             assert!(!p.contains("TEMP B-TREE"), "{sort}: {p}");
         }
     }
+    // Without filter, the query has no condition at all (P4.2): the count no longer builds the
+    // set of transactions of the header filter (a scan of `http_headers`).
+    assert!(conditions(&HttpFilter::default(), true).unwrap().is_empty());
+    // An active filter uses its index.
+    let host = HttpFilter {
+        host: Some("www.example.test".into()),
+        ..HttpFilter::default()
+    };
+    let c = conditions(&host, true).unwrap();
+    let p = plan(&format!(
+        "SELECT count(*) FROM http_transactions t WHERE {}",
+        c.sql().unwrap()
+    ));
+    assert!(p.contains("http_transactions_host"), "{p}");
+}
+
+/// The filter before P4.2 (`?n IS NULL OR`), reference of [`active_filters_match_the_former_filter`].
+const FORMER_FILTER: &str = "(?1 IS NULL OR t.method_group IN (SELECT value FROM json_each(?1))) \
+    AND (?2 IS NULL OR t.status_class IN (SELECT value FROM json_each(?2)) \
+         OR CAST(t.status AS TEXT) IN (SELECT value FROM json_each(?2))) \
+    AND (?3 IS NULL OR t.host = ?3) \
+    AND (?4 IS NULL OR t.id IN (SELECT rowid FROM http_transactions_fts \
+         WHERE http_transactions_fts MATCH ?4)) \
+    AND (?5 IS NULL OR t.host LIKE ?5 ESCAPE '\\' OR t.uri LIKE ?5 ESCAPE '\\' \
+         OR t.user_agent LIKE ?5 ESCAPE '\\') \
+    AND ((?6 IS NULL AND ?7 IS NULL AND ?8 IS NULL) OR t.id IN ( \
+         SELECT h.transaction_id FROM http_headers h \
+         WHERE (?6 IS NULL OR h.name_lc = ?6) \
+           AND (?7 IS NULL OR h.id IN (SELECT rowid FROM http_headers_fts \
+                WHERE http_headers_fts MATCH ?7)) \
+           AND (?8 IS NULL OR h.name LIKE ?8 ESCAPE '\\' OR h.value LIKE ?8 ESCAPE '\\')))";
+
+#[test]
+fn active_filters_match_the_former_filter() {
+    let conn = db();
+    fill(&conn);
+    let lists = |v: &[&str]| Some(v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>());
+    let methods = [None, lists(&["GET"]), lists(&["POST", "other"])];
+    let statuses = [
+        None,
+        lists(&["2xx"]),
+        lists(&["404", "none"]),
+        lists(&["0404", "5xx", "abc"]),
+    ];
+    let hosts = [None, Some("a.test")];
+    let texts = [None, Some("issin"), Some("/l"), Some("curl")];
+    let names = [None, Some("host"), Some("AUTHORIZATION")];
+    let header_texts = [None, Some("3cr3t"), Some("b.")];
+    // The expected rows use the search index; the second pass forgets the step `http`, so that
+    // every search falls back to `LIKE` (ADR-023): same rows.
+    let fts_ready = true;
+    let mut checked = 0;
+    for pass in 0..2 {
+        if pass == 1 {
+            conn.execute("DELETE FROM meta WHERE key = 'finalizers'", [])
+                .unwrap();
+        }
+        for m in &methods {
+            for st in &statuses {
+                for host in hosts {
+                    for q in texts {
+                        for name in names {
+                            for hq in header_texts {
+                                let filter = HttpFilter {
+                                    methods: m.clone(),
+                                    statuses: st.clone(),
+                                    host: host.map(str::to_owned),
+                                    q: q.map(str::to_owned),
+                                    header_name: name.map(str::to_owned),
+                                    header_q: hq.map(str::to_owned),
+                                };
+                                let (fts, like) = search(filter.q.as_deref(), fts_ready).unwrap();
+                                let (hfts, hlike) =
+                                    search(filter.header_q.as_deref(), fts_ready).unwrap();
+                                let p: [Option<String>; 8] = [
+                                    json_list(filter.methods.as_ref()).unwrap(),
+                                    json_list(filter.statuses.as_ref()).unwrap(),
+                                    filter.host.clone(),
+                                    fts,
+                                    like,
+                                    filter
+                                        .header_name
+                                        .as_deref()
+                                        .map(|n| n.trim().to_ascii_lowercase()),
+                                    hfts,
+                                    hlike,
+                                ];
+                                let want: Vec<String> = conn
+                                .prepare(&format!(
+                                    "SELECT t.path FROM http_transactions t WHERE {FORMER_FILTER} \
+                                     ORDER BY t.ts, t.id"
+                                ))
+                                .unwrap()
+                                .query_map(rusqlite::params_from_iter(p.iter()), |r| r.get(0))
+                                .unwrap()
+                                .map(Result::unwrap)
+                                .collect();
+                                assert_eq!(list(&conn, &filter), want, "{filter:?}");
+                                assert_eq!(
+                                    count_transactions(&conn, &filter).unwrap(),
+                                    u64::try_from(want.len()).unwrap(),
+                                    "{filter:?}"
+                                );
+                                checked += usize::from(!want.is_empty());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(checked > 60, "too few non-empty cases: {checked}");
 }

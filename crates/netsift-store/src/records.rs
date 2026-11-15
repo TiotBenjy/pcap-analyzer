@@ -381,7 +381,8 @@ fn json_set<'a>(values: impl Iterator<Item = &'a str>, limit: usize) -> Result<S
     Ok(serde_json::to_string(&v)?)
 }
 
-/// SQL merging two JSON arrays of strings: sorted union, truncated to `?limit` values.
+/// SQL merging two JSON arrays of strings: sorted union, truncated to `limit` values (a
+/// literal: see [`HostRow::insert`]).
 /// Keeping the N smallest of a union is associative and commutative.
 macro_rules! json_union {
     ($col:literal, $limit:literal) => {
@@ -425,6 +426,23 @@ macro_rules! min_non_null {
     };
 }
 
+/// Upsert of a host. The limits are literals (16 = [`MAX_HOST_MACS`], 64 = [`MAX_HOST_NAMES`],
+/// checked by a test): with bound parameters in the LIMIT of these subqueries, SQLite re-prepared
+/// the cached statement at every execution (about 100 us per row instead of 4, P4.2).
+const HOST_UPSERT: &str = concat!(
+    "INSERT INTO hosts (ip, macs, names, country, category, first_ts, last_ts) \
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT (ip) DO UPDATE SET ",
+    json_union!("macs", "16"),
+    ", ",
+    json_union!("names", "64"),
+    ", ",
+    min_non_null!("hosts", "country"),
+    ", ",
+    min_non_null!("hosts", "category"),
+    ", first_ts = min(hosts.first_ts, excluded.first_ts), \
+     last_ts = max(hosts.last_ts, excluded.last_ts)"
+);
+
 impl HostRow {
     fn insert(&self, conn: &Connection) -> Result<()> {
         let macs: Vec<String> = self.macs.iter().map(|m| format_mac(*m)).collect();
@@ -436,20 +454,7 @@ impl HostRow {
                 .filter(|n| !n.is_empty() && n.len() <= MAX_HOST_NAME_LEN),
             MAX_HOST_NAMES,
         )?;
-        conn.prepare_cached(concat!(
-            "INSERT INTO hosts (ip, macs, names, country, category, first_ts, last_ts) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT (ip) DO UPDATE SET ",
-            json_union!("macs", "?8"),
-            ", ",
-            json_union!("names", "?9"),
-            ", ",
-            min_non_null!("hosts", "country"),
-            ", ",
-            min_non_null!("hosts", "category"),
-            ", first_ts = min(hosts.first_ts, excluded.first_ts), \
-             last_ts = max(hosts.last_ts, excluded.last_ts)"
-        ))?
-        .execute(params![
+        conn.prepare_cached(HOST_UPSERT)?.execute(params![
             self.ip.to_string(),
             macs,
             names,
@@ -457,8 +462,6 @@ impl HostRow {
             self.category,
             self.first_ts,
             self.last_ts,
-            i64::try_from(MAX_HOST_MACS).unwrap_or(i64::MAX),
-            i64::try_from(MAX_HOST_NAMES).unwrap_or(i64::MAX),
         ])?;
         Ok(())
     }
@@ -585,5 +588,41 @@ pub(crate) fn is_row_level(err: &StoreError) -> bool {
             ) || e.sqlite_error_code() == Some(rusqlite::ErrorCode::ConstraintViolation)
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::StatementStatus;
+
+    #[test]
+    fn host_upsert_limits_match_the_constants_and_are_never_reprepared() {
+        assert!(HOST_UPSERT.contains(&format!("LIMIT {MAX_HOST_MACS})")));
+        assert!(HOST_UPSERT.contains(&format!("LIMIT {MAX_HOST_NAMES})")));
+        let dir = tempfile::tempdir().unwrap();
+        let session = crate::Session::open(dir.path(), crate::OpenMode::Import).unwrap();
+        let conn = session.conn();
+        for i in 0..20u8 {
+            let row = HostRow {
+                ip: IpAddr::from([10, 0, 0, i % 4]),
+                macs: vec![[2, 0, 0, 0, 0, i]],
+                names: vec![format!("host{i}")],
+                country: None,
+                category: Some("private".into()),
+                first_ts: i64::from(i),
+                last_ts: i64::from(i),
+            };
+            row.insert(conn).unwrap();
+        }
+        // The cached statement executed above: never prepared again.
+        let stmt = conn.prepare_cached(HOST_UPSERT).unwrap();
+        assert_eq!(stmt.get_status(StatementStatus::RePrepare), 0);
+        let macs: String = conn
+            .query_row("SELECT macs FROM hosts WHERE ip = '10.0.0.1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(macs.matches(':').count(), 5 * 5);
     }
 }

@@ -14,6 +14,10 @@
 //! To add a migration: create the SQL file, then add **one line** to [`SESSION_MIGRATIONS`]
 //! at its numeric position. Never edit or renumber a migration that has been merged into
 //! `main`: write a new one instead. The registry must stay strictly increasing (unit test).
+//!
+//! A migration that removes an index writes `DROP INDEX IF EXISTS`: an import interrupted before
+//! its end-of-import steps has its secondary indexes dropped (ADR-023, `deferred.rs`) until the
+//! step `indexes` creates them again.
 
 use crate::migrate::{Migration, MigrationSet};
 
@@ -31,16 +35,24 @@ macro_rules! migration {
 pub static SESSION_MIGRATIONS: &[Migration] = &[
     // --- core (0001-0099) ---
     migration!(1, "core", "0001_core.sql"),
+    migration!(
+        2,
+        "core_timeseries_rollup",
+        "0002_core_timeseries_rollup.sql"
+    ),
     // --- analyzers (0100+): one line per migration, in numeric order ---
     migration!(100, "dns", "0100_dns.sql"),
     migration!(200, "http", "0200_http.sql"),
+    migration!(201, "http_fts_deferred", "0201_http_fts_deferred.sql"),
     migration!(300, "tls", "0300_tls.sql"),
+    migration!(301, "tls_stats_indexes", "0301_tls_stats_indexes.sql"),
     migration!(400, "flows", "0400_flows.sql"),
     migration!(401, "flows_conversation", "0401_flows_conversation.sql"),
     migration!(500, "smb", "0500_smb.sql"),
     migration!(600, "credentials", "0600_credentials.sql"),
     migration!(700, "objects", "0700_objects.sql"),
     migration!(800, "servers", "0800_servers.sql"),
+    migration!(801, "servers_materialized", "0801_servers_materialized.sql"),
     migration!(900, "network", "0900_network.sql"),
 ];
 

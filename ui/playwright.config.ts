@@ -25,6 +25,8 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', testDir: 'tests/visual' },
+    // Overview display time on the benchmark session (`./x.sh bench ui`, docs/PERFORMANCE.md).
+    { name: 'perf', testDir: 'tests/perf' },
     { name: 'desktop-chromium', testDir: 'tests/desktop' },
     {
       name: 'desktop-webkit',

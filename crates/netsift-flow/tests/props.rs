@@ -150,6 +150,8 @@ fn tiny_config() -> FlowConfig {
         other_timeout_ns: 500_000_000,
         max_flows: 8,
         max_stream_buffer: 512,
+        // Not exercised here: a bound shared by the streams of a table depends on the split.
+        max_buffered_bytes: usize::MAX,
         defrag_timeout_ns: 1_000_000_000,
         max_defrag_bytes: 4096,
     }

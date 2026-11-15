@@ -8,10 +8,11 @@
 use std::net::IpAddr;
 use std::sync::LazyLock;
 
-use rusqlite::{Connection, ToSql, params};
+use rusqlite::types::Value;
+use rusqlite::{Connection, params};
 
 use crate::error::Result;
-use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::query::{Conditions, Keyset, Page, PageRequest, keyset_page};
 use crate::records::{conversion, sat};
 
 /// Maximum number of protocol labels kept per conversation.
@@ -185,13 +186,43 @@ const CONVERSATION_SELECT: &str = "c.id, c.src_ip, c.dst_ip, c.first_ts, c.last_
     c.dns_bytes_rev, c.dns_flows, c.protocols, hs.names, hs.category, hs.country, hd.names, \
     hd.category, hd.country";
 
-// Numbered parameters: the keyset helper appends its own (`?`) after the largest one.
-const CONVERSATION_FILTER: &str = "\
-    (?1 IS NULL OR instr(c.src_ip, ?1) > 0 OR instr(lower(coalesce(hs.names, '')), ?1) > 0) \
-    AND (?2 IS NULL OR instr(c.dst_ip, ?2) > 0 OR instr(lower(coalesce(hd.names, '')), ?2) > 0) \
-    AND (?3 IS NULL OR EXISTS (SELECT 1 FROM json_each(c.protocols) WHERE value = ?3)) \
-    AND (?4 IS NULL OR hs.category IN (SELECT value FROM json_each(?4)) \
-         OR hd.category IN (SELECT value FROM json_each(?4)))";
+/// The active filters of [`ConversationFilter`], on `c` (`conversations`) only: they are
+/// evaluated before the joins with `hosts`, and the count needs no join at all (P4.2). Host
+/// names and categories are looked up in `hosts` once per query, by sub-query.
+fn conditions(filter: &ConversationFilter) -> Result<Conditions> {
+    let mut c = Conditions::new();
+    if let Some(from) = text_filter(filter.from.as_ref()) {
+        c.push(
+            "instr(c.src_ip, ?) > 0 \
+             OR c.src_ip IN (SELECT ip FROM hosts WHERE instr(lower(names), ?) > 0)",
+            [Value::Text(from.clone()), Value::Text(from)],
+        );
+    }
+    if let Some(to) = text_filter(filter.to.as_ref()) {
+        c.push(
+            "instr(c.dst_ip, ?) > 0 \
+             OR c.dst_ip IN (SELECT ip FROM hosts WHERE instr(lower(names), ?) > 0)",
+            [Value::Text(to.clone()), Value::Text(to)],
+        );
+    }
+    if let Some(protocol) = &filter.protocol {
+        c.push(
+            "EXISTS (SELECT 1 FROM json_each(c.protocols) WHERE value = ?)",
+            [Value::Text(protocol.clone())],
+        );
+    }
+    if let Some(categories) = json_list(filter.categories.as_deref())? {
+        // `+`: no index for these terms. A category matches a large part of the hosts; looking
+        // up their conversations one by one in two indexes (multi-index OR) took 2 s for the
+        // first page, against a scan in sort order that stops at the page size.
+        c.push(
+            "+c.src_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?))) \
+             OR +c.dst_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?)))",
+            [Value::Text(categories.clone()), Value::Text(categories)],
+        );
+    }
+    Ok(c)
+}
 
 fn json_list(values: Option<&[String]>) -> Result<Option<String>> {
     Ok(values.map(serde_json::to_string).transpose()?)
@@ -253,19 +284,23 @@ pub fn conversations_page(
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<ConversationEntry>> {
+    let conditions = conditions(filter)?;
+    let where_sql = conditions.sql();
     let query = Keyset {
         from: CONVERSATION_FROM,
         select: CONVERSATION_SELECT,
         sort: sort.expr(),
         tiebreak: "c.id",
         descending,
-        filter: Some(CONVERSATION_FILTER),
+        filter: where_sql.as_deref(),
     };
-    let from = text_filter(filter.from.as_ref());
-    let to = text_filter(filter.to.as_ref());
-    let categories = json_list(filter.categories.as_deref())?;
-    let params: [&dyn ToSql; 4] = [&from, &to, &filter.protocol, &categories];
-    keyset_page(conn, &query, &params, request, conversation_entry)
+    keyset_page(
+        conn,
+        &query,
+        &conditions.params(),
+        request,
+        conversation_entry,
+    )
 }
 
 /// Client and server of the conversation with this id, if any.
@@ -286,14 +321,12 @@ pub fn conversation_ends(conn: &Connection, id: i64) -> Result<Option<(IpAddr, I
 
 /// Number of conversations matching `filter`.
 pub fn count_conversations(conn: &Connection, filter: &ConversationFilter) -> Result<u64> {
-    let from = text_filter(filter.from.as_ref());
-    let to = text_filter(filter.to.as_ref());
-    let categories = json_list(filter.categories.as_deref())?;
-    let n: i64 = conn.query_row(
-        &format!("SELECT count(*) FROM {CONVERSATION_FROM} WHERE {CONVERSATION_FILTER}"),
-        params![from, to, filter.protocol, categories],
-        |r| r.get(0),
-    )?;
+    let conditions = conditions(filter)?;
+    let sql = match conditions.sql() {
+        Some(w) => format!("SELECT count(*) FROM conversations c WHERE {w}"),
+        None => "SELECT count(*) FROM conversations c".to_owned(),
+    };
+    let n: i64 = conn.query_row(&sql, conditions.params().as_slice(), |r| r.get(0))?;
     Ok(u64::try_from(n).unwrap_or(0))
 }
 

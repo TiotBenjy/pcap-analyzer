@@ -6,7 +6,7 @@ use common::{MS, Recorder, run, timed};
 use netsift_fixtures::craft::{Side, TcpConv, TcpSeg};
 use netsift_fixtures::scenario::{HttpGet, Scenario};
 use netsift_fixtures::scenarios::hosts;
-use netsift_flow::{Direction, EndReason, FlowConfig, FlowId, TcpState};
+use netsift_flow::{Direction, EndReason, FlowConfig, FlowId, FlowTable, TcpState};
 
 fn conv() -> TcpConv {
     TcpConv::new(hosts::workstation(), hosts::web_server(), 40_000, 80)
@@ -147,6 +147,48 @@ fn buffer_limit_gives_up_on_a_hole() {
         })
         .collect();
     assert_eq!(streams, vec![(4, b"efghijklm".to_vec())]);
+}
+
+#[test]
+fn the_table_bound_is_shared_by_every_stream() {
+    // Room for one buffered piece in the whole table (P4.2): the first flow keeps its piece,
+    // the second one cannot buffer and gives up its hole at once.
+    let a = conv();
+    let b = TcpConv::new(hosts::workstation(), hosts::web_server(), 40_001, 80);
+    let config = FlowConfig {
+        max_buffered_bytes: 64 + 8,
+        ..FlowConfig::default()
+    };
+    let mut frames = handshake(&a);
+    frames.extend(handshake(&b));
+    frames.push(a.data(Side::Client, 4, 0, b"efgh")); // buffered: 4 + 64 bytes
+    frames.push(b.data(Side::Client, 4, 0, b"wxyz")); // no room left: delivered after a gap
+    frames.push(a.data(Side::Client, 0, 0, b"abcd")); // fills the hole of `a`
+    frames.push(b.data(Side::Client, 0, 0, b"stuv")); // too late for `b`
+    let packets = timed(frames, 0, MS);
+    // Mid-run, the table never holds more than its bound.
+    let mut table = FlowTable::new(config);
+    let mut partial = Recorder::default();
+    for n in 1..=packets.len() {
+        common::feed(&mut table, &packets[n - 1..n], &mut partial);
+        assert!(
+            table.buffered_bytes() <= 64 + 8,
+            "{n}: {}",
+            table.buffered_bytes()
+        );
+    }
+    let rec = run(&packets, config);
+    let ends = rec.ends();
+    assert_eq!(ends.len(), 2);
+    let id = |port: u16| ends.iter().find(|f| f.key.client.port == port).unwrap().id;
+    assert_eq!(
+        rec.stream(id(40_000), Direction::ToServer),
+        (b"abcdefgh".to_vec(), vec![])
+    );
+    assert_eq!(
+        rec.stream(id(40_001), Direction::ToServer),
+        (b"wxyz".to_vec(), vec![4])
+    );
 }
 
 #[test]

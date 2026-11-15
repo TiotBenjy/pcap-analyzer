@@ -19,6 +19,7 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 rustls-platform-verifier = "0.7.1"
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.11.1"
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "time"] }
 tower-http.workspace = true

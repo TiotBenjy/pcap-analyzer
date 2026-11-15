@@ -22,7 +22,12 @@ path: string | null, packets: number, bytes_written: number,
 /**
  * Bytes of the source files read so far, out of `bytes_total`.
  */
-bytes_read: number, bytes_total: number, error: ExportFailure | null, 
+bytes_read: number, bytes_total: number, 
+/**
+ * Read errors met in the source files (a file that ends early, a record skipped): the
+ * export may lack packets, as the import did.
+ */
+read_errors: number, error: ExportFailure | null, 
 /**
  * Wall-clock creation time, microseconds since the epoch.
  */

@@ -352,30 +352,9 @@ impl RunCtx<'_> {
         // A send error is reported by `finish` below.
         let _ = sender.send_batch(tail);
         drop(sender);
-        let base = Progress {
-            session: self.session.clone(),
-            phase: Phase::Finalizing,
-            bytes_read: reader.source.bytes_read(),
-            bytes_total: reader.source.total_bytes(),
-            packets: reader.packets,
-            chunk: None,
-            chunk_name: None,
-            chunks_total: self.group.active().count(),
-            elapsed: self.started.elapsed(),
-            new_anomalies: Vec::new(),
-            finalize: None,
-        };
         let writer_stats = self
-            .finish_writer(writer, &base, progress)
+            .finish_writer(writer, &self.finalizing_progress(&reader), progress)
             .map_err(|e| e.to_string())?;
-        // A failed end-of-import step leaves the session usable; it runs again at the next
-        // opening (ADR-014).
-        for (step, error) in &writer_stats.finalize.failed {
-            tracing::warn!(
-                step,
-                "end-of-import step failed, retried at the next opening: {error}"
-            );
-        }
         if let Some(reason) = failure {
             return Err(reason);
         }
@@ -413,6 +392,23 @@ impl RunCtx<'_> {
         Ok(report)
     }
 
+    /// Progress of the end-of-import steps, before the first one (reading is over).
+    fn finalizing_progress(&self, reader: &ReaderOutcome) -> Progress {
+        Progress {
+            session: self.session.clone(),
+            phase: Phase::Finalizing,
+            bytes_read: reader.source.bytes_read(),
+            bytes_total: reader.source.total_bytes(),
+            packets: reader.packets,
+            chunk: None,
+            chunk_name: None,
+            chunks_total: self.group.active().count(),
+            elapsed: self.started.elapsed(),
+            new_anomalies: Vec::new(),
+            finalize: None,
+        }
+    }
+
     /// Waits for the writer (last rows, then end-of-import steps), reporting the steps every
     /// progress interval from the calling thread, then their end.
     fn finish_writer(
@@ -431,11 +427,7 @@ impl RunCtx<'_> {
                 stats
             });
             let mut last = None;
-            loop {
-                match done_rx.recv_timeout(interval) {
-                    Err(RecvTimeoutError::Timeout) => {}
-                    Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
-                }
+            while let Err(RecvTimeoutError::Timeout) = done_rx.recv_timeout(interval) {
                 let step = watch.get();
                 if step.is_some() && step != last {
                     last = step;
@@ -449,6 +441,14 @@ impl RunCtx<'_> {
             let stats = handle
                 .join()
                 .unwrap_or(Err(netsift_store::StoreError::WriterPanicked));
+            // A failed end-of-import step leaves the session usable; it runs again at the next
+            // opening (ADR-014).
+            for (step, error) in stats.iter().flat_map(|s| &s.finalize.failed) {
+                tracing::warn!(
+                    step,
+                    "end-of-import step failed, retried at the next opening: {error}"
+                );
+            }
             // The end of the steps is always reported, however short they were.
             if let Some(step) = watch.get().filter(|_| stats.is_ok()) {
                 progress(&Progress {

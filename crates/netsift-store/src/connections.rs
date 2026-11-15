@@ -544,7 +544,7 @@ pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<Count
             hosts: r.get(3)?,
         })
     })?;
-    fold_countries(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    Ok(fold_countries(rows.collect::<rusqlite::Result<Vec<_>>>()?))
 }
 
 /// Bytes sent and received per country of the host, as two calls of [`country_traffic`] but in
@@ -581,11 +581,11 @@ pub fn country_traffic_both(
             }
         }
     }
-    Ok((fold_countries(sent)?, fold_countries(received)?))
+    Ok((fold_countries(sent), fold_countries(received)))
 }
 
 /// Groups of hosts with a country merged by country, largest first.
-fn fold_countries(rows: Vec<CountryTraffic>) -> Result<Vec<CountryTraffic>> {
+fn fold_countries(rows: Vec<CountryTraffic>) -> Vec<CountryTraffic> {
     let mut out: Vec<CountryTraffic> = Vec::new();
     for row in rows {
         // Hosts with a country are grouped by country whatever their category.
@@ -606,7 +606,7 @@ fn fold_countries(rows: Vec<CountryTraffic>) -> Result<Vec<CountryTraffic>> {
             .then_with(|| a.country.cmp(&b.country))
             .then(a.public.cmp(&b.public))
     });
-    Ok(out)
+    out
 }
 
 #[cfg(test)]

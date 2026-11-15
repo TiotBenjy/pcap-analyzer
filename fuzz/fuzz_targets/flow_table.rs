@@ -45,6 +45,7 @@ fuzz_target!(|data: &[u8]| {
     let config = FlowConfig {
         max_flows: 8,
         max_stream_buffer: 4096,
+        max_buffered_bytes: 16_384,
         max_defrag_bytes: 8192,
         ..FlowConfig::default()
     };

@@ -210,7 +210,8 @@ fn a_large_download_in_parallel_does_not_starve_the_images() {
             shards: Some(shards),
             ..IngestOptions::default()
         };
-        options.analyzers.config_mut().http.max_retained_bytes = 1024 * 1024;
+        // A global budget: 1 MiB per shard.
+        options.analyzers.config_mut().http.max_retained_bytes = shards * 1024 * 1024;
         let report = ingest(&catalog, &file, &options, &CancelToken::new(), &mut |_| {}).unwrap();
         results.push((
             object_rows(&catalog, &report),

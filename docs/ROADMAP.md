@@ -328,6 +328,17 @@ Suivis de la vague 3.A :
   entre 150 et 300 ms ; premier `setOption` ECharts ≈ 90 ms ; mesures dans WebKitGTK non faites ; miniatures
   générées sous « Finalisation 9/9 » ; plan Probe/Lookup choisi sur la catégorie seule ; boîte de progression
   d'import sans capture `shots` (pas d'import possible sur le serveur des captures).
+- P4.5, préparation (fusionnée le 2026-11-15, ADR-024, `docs/LICENSES.md`) : NetSift sous Apache-2.0 seule
+  (`LICENSE` officiel, `NOTICE`), `THIRD_PARTY_LICENSES` généré hors ligne par cargo-about 0.9.3 et un script npm
+  (`./x.sh licenses [--check]`, gate et job CI `licenses`), dont la section des sources des 5 crates MPL-2.0
+  embarquées (cssparser, cssparser-macros, selectors, dtoa-short, option-ext) ; icône « flux qui convergent » ;
+  « À propos » avec liste des licences ; `release.sh` publie la version courante (0.1.0 déjà en place) et refuse
+  une relance après fusion ; notes de la première version résumées (fonctionnalités et performances). Suivis :
+  `release.sh` propose de pousser un tag présent seulement en local sans inviter à vérifier son commit (tag
+  supprimé exprès sur origin puis rapporté par un fetch) ; bundle `.deb` non reconstruit depuis le passage à
+  Apache-2.0 (ressources vérifiées par `apps/desktop/tests/bundle.rs`) ; `taiki-e/install-action` avec
+  `cargo-about@0.9.3` non vérifié avant le premier passage CI (repli : compilation épinglée) ; proc-macros et
+  outils de build listés sans être embarqués ; preflight Tailwind et polyfill Vite non listés.
 - Transverse : harmoniser les vues après la vague (composant `Endpoint` commun, `CopyButton` partagé
   16 px / cible 32 px, helper unique de barres horizontales avec valeurs, format d'heure, filtres dans
   l'en-tête de carte, tableaux en cartes sous `md`).
@@ -364,7 +375,9 @@ Hors vague (demande utilisateur du 2026-11-08) :
 - [x] **P4.3** `feat/export-pcap` — « Save PCAP » : export d'un flux, d'une plage temporelle ou de la session
       fusionnée (pcapng).
 - [x] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
-- [~] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`.
+- [~] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`. Préparation
+      fusionnée le 2026-11-15 ; reste la publication (`scripts/release.sh 0.1.0`, accord de l'utilisateur), après
+      P4.11, P4.9 et P4.10.
 - [x] **P4.7** `fix/flow-id-collision` — `FlowId::derive(key, first_ts)` (`netsift-flow/src/api.rs`) donne le même
       id à deux flux successifs de même 5-tuple et même premier horodatage (flux fermé puis nouveau SYN, éviction
       LRU, capture à horodatages constants ou hostile) : `flows` fusionne les compteurs par max (octets perdus),

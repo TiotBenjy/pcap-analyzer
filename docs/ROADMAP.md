@@ -329,11 +329,11 @@ Hors vague (demande utilisateur du 2026-11-08) :
       minute/heure écrite en fin d'import + `stats.bytes` dans `meta` (prévoir la mise à niveau des sessions
       existantes) ; mesurer l'affichage Overview (< 500 ms) côté UI ; zoom Overview avec refetch serveur
       (`from_us`/`to_us`) avec le filtre global de phase 5.
-- [ ] **P4.3** `feat/export-pcap` — « Save PCAP » : export d'un flux, d'une plage temporelle ou de la session
+- [~] **P4.3** `feat/export-pcap` — « Save PCAP » : export d'un flux, d'une plage temporelle ou de la session
       fusionnée (pcapng).
 - [x] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
 - [ ] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`.
-- [ ] **P4.7** `fix/flow-id-collision` — `FlowId::derive(key, first_ts)` (`netsift-flow/src/api.rs`) donne le même
+- [~] **P4.7** `fix/flow-id-collision` — `FlowId::derive(key, first_ts)` (`netsift-flow/src/api.rs`) donne le même
       id à deux flux successifs de même 5-tuple et même premier horodatage (flux fermé puis nouveau SYN, éviction
       LRU, capture à horodatages constants ou hostile) : `flows` fusionne les compteurs par max (octets perdus),
       `http_transactions` rejette le second flux (`UNIQUE (flow_id, seq)`), TLS l'ignore (`DO NOTHING`), SMB

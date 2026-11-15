@@ -34,6 +34,17 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
       ? t('views.import.stepOf', { n: stepNumber(p), total: p.steps_total })
       : formatPercent(fraction, 0, i18n.language);
 
+  // Once reading is over, nothing listens to the cancel request any more: the import ends.
+  const readingOver = p !== null && (p.phase === 'finishing' || p.phase === 'finalizing');
+  const label =
+    p === null
+      ? t('views.import.waiting')
+      : finalizing
+        ? stepLabel(t, p.step)
+        : readingOver
+          ? t('views.import.finishing')
+          : t('views.import.chunk', { n: Math.min(p.chunk_index + 1, p.chunk_count), total: p.chunk_count });
+
   const openSession = () => {
     const sessionId = imp.sessionId;
     closeImportWizard();
@@ -47,7 +58,8 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
         <Button onClick={closeImportWizard}>{t('views.import.hide')}</Button>
         <Button
           variant="danger"
-          disabled={imp.status === 'cancelling'}
+          disabled={imp.status === 'cancelling' || readingOver}
+          {...(readingOver ? { title: t('views.import.cancelUnavailable') } : {})}
           onClick={() => {
             void cancelTrackedImport();
           }}
@@ -90,14 +102,8 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
 
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex min-w-0 items-center justify-between gap-2 text-meta text-muted">
-            <span className="min-w-0 truncate">
-              {p === null
-                ? t('views.import.waiting')
-                : finalizing
-                  ? stepLabel(t, p.step)
-                  : p.phase === 'finishing' || p.phase === 'finalizing'
-                    ? t('views.import.finishing')
-                    : t('views.import.chunk', { n: Math.min(p.chunk_index + 1, p.chunk_count), total: p.chunk_count })}
+            <span data-testid="truncatable" title={label} className="min-w-0 truncate">
+              {label}
             </span>
             <span className="num shrink-0">{percent}</span>
           </div>

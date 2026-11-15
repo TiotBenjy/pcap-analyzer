@@ -32,7 +32,6 @@ export const exportsEn = {
     file: 'File',
   },
   flows: {
-    action: 'Flows',
     actionLabel: 'Flows from {{from}} to {{to}}',
     title: 'Flows',
     description: '{{from}} to {{to}}',
@@ -86,7 +85,6 @@ export const exportsFr: typeof exportsEn = {
     file: 'Fichier',
   },
   flows: {
-    action: 'Flux',
     actionLabel: 'Flux de {{from}} vers {{to}}',
     title: 'Flux',
     description: '{{from}} vers {{to}}',

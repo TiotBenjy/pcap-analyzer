@@ -35,6 +35,11 @@ vi.mock('../../api/geoip', () => ({
   getGeoipUpdate: api.getGeoipUpdate,
 }));
 vi.mock('../../api/sessions', () => ({ browse: api.browse }));
+vi.mock('../../api/settings', () => ({
+  getSettings: () => Promise.resolve({ online: { geoip_check: false, update_check: false }, dismissed_notices: [] }),
+  updateSettings: vi.fn(),
+  dismissNotice: vi.fn(),
+}));
 
 function renderView() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });

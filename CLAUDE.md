@@ -105,8 +105,15 @@ porté (Wireshark, NetworkMiner, etc.) : on s'appuie sur les RFC et specs publiq
 
 - Les captures sont des **entrées hostiles** : parsing défensif, fuzzing (`./x.sh fuzz`).
 - Les identifiants extraits sont sensibles : masqués par défaut dans l'UI, jamais logués,
-  aucune télémétrie, aucun appel réseau sortant de l'application, à une seule exception : le
-  téléchargement de la base GeoIP sur clic de l'utilisateur, fait par l'API Rust (ADR-015).
+  aucune télémétrie, aucun appel réseau sortant de l'application, sauf ces exceptions, toutes
+  faites par l'API Rust (jamais la webview) via le client `netsift-api/src/outbound.rs`, vers des
+  hôtes en liste blanche et sans aucune donnée utilisateur :
+  - téléchargement de la base GeoIP sur clic de l'utilisateur (ADR-015) ;
+  - vérification DB-IP d'une nouvelle base au démarrage, si l'utilisateur l'a activée (désactivée
+    par défaut, ADR-025) ;
+  - releases GitHub du dépôt : vérification au démarrage sur option (désactivée par défaut) ou sur
+    clic, téléchargement d'un artefact seulement sur clic vers un chemin choisi par l'utilisateur
+    (ADR-025). Échecs silencieux au démarrage.
 - Contenus extraits (HTML, SVG, scripts) jamais rendus tels quels dans la webview :
   miniatures générées côté Rust, SVG servis en téléchargement uniquement.
 - `captures/`, `.data/`, `.artifacts/`, `dist/`, `*.pcap*` sont ignorés par git.

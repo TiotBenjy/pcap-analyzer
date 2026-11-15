@@ -105,7 +105,7 @@ async fn serve_upstream(up: &Arc<Upstream>) -> SocketAddr {
 fn source(addr: SocketAddr) -> Source {
     Source {
         base: format!("http://{addr}/free/"),
-        allow_http: true,
+        policy: crate::outbound::Policy::new(&["127.0.0.1"]).local_http_for_tests(),
     }
 }
 

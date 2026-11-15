@@ -47,6 +47,14 @@ pub enum ApiError {
     ExportSourceMissing(String),
     #[error("export source modified: {0}")]
     ExportSourceModified(String),
+    /// Problem of an online feature (ADR-025), without a variant of its own: problem type
+    /// `urn:netsift:problem:<kind>`, fixed title. See `OutboundError::into_problem`.
+    #[error("{title}")]
+    Feature {
+        status: StatusCode,
+        kind: &'static str,
+        title: &'static str,
+    },
     #[error("internal error")]
     Internal,
 }
@@ -139,6 +147,11 @@ impl ApiError {
                 "export-source-modified",
                 "A capture file of the session changed since the import",
             ),
+            Self::Feature {
+                status,
+                kind,
+                title,
+            } => (*status, kind, title),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",

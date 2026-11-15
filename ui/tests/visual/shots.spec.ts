@@ -459,6 +459,13 @@ for (const lang of LANGS) {
             // /server-info is authenticated: "Read-only" proves the proxy injects a valid token.
             await expect(page.getByTestId('backend-status')).toContainText(D.views.settings.backendOk.split(',')[0] ?? '');
             await expect(page.getByTestId('server-mode')).toHaveText(D.views.settings.readOnly);
+            // Online checks read from the server settings: off by default, locked when read-only.
+            const online = page.getByTestId('online-settings');
+            for (const name of [D.views.online.geoipCheck, D.views.online.updateCheck]) {
+              const toggle = online.getByRole('switch', { name });
+              await expect(toggle).toHaveAttribute('aria-checked', 'false');
+              await expect(toggle).toBeDisabled();
+            }
           }
           if (view === 'settings-licenses' || view === 'settings-licenses-initial') {
             // Third-party licenses: the dialog as it opens (groups closed), then, for

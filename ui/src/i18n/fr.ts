@@ -1,6 +1,7 @@
 import type { Dictionary } from './en';
 import { credentialsFr } from './credentials';
 import { exportsFr } from './exports';
+import { onlineFr } from './online';
 import { picturesFr } from './pictures';
 import { tlsFr } from './tls';
 
@@ -899,7 +900,7 @@ export const fr: Dictionary = {
       },
     },
     settings: {
-      subtitle: "Préférences d'affichage, enregistrées sur cet appareil",
+      subtitle: 'Affichage, vérifications en ligne et informations sur NetSift',
       appearance: 'Apparence',
       about: 'À propos',
       backend: 'Serveur',
@@ -976,6 +977,7 @@ export const fr: Dictionary = {
     // --- analysis views kept in their own module: one line each, sorted ---
     credentials: credentialsFr,
     exportPcap: exportsFr,
+    online: onlineFr,
     pictures: picturesFr,
     tls: tlsFr,
   },
@@ -1000,6 +1002,10 @@ export const fr: Dictionary = {
     back: 'Retour',
     loadMore: 'Charger la suite',
     shownOf: '{{shown}} sur {{total}}',
+  },
+  notices: {
+    region: "Notifications de l'application",
+    dismiss: 'Masquer',
   },
   secret: {
     hidden_one: 'Masqué ({{count}} caractère)',

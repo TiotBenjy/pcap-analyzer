@@ -88,7 +88,8 @@ const failed = () => failure;
 export function useChartRendererReady(needed: boolean): boolean {
   const loaded = useSyncExternalStore(subscribe, ready, ready);
   const error = useSyncExternalStore(subscribe, failed, failed);
-  const [mountedAt] = useState(() => attempts);
+  // Attempts before this mount: a load still running when it mounts is one of its own.
+  const [mountedAt] = useState(() => (loading !== null ? attempts - 1 : attempts));
   useEffect(() => {
     if (!loaded) void loadChartRenderer();
   }, [loaded]);

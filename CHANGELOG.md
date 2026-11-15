@@ -3,6 +3,14 @@
 Modifications notables de NetSift, par version. Généré par [git-cliff](https://git-cliff.org)
 à partir des messages de commit (Conventional Commits) : ne pas éditer à la main.
 
+## [0.1.1](https://github.com/TiotBenjy/pcap-analyzer/releases/tag/v0.1.1) - 2026-11-15
+
+### Corrections
+
+- **ui** : Give the DNS server map data module a name of its own ([08b8e92](https://github.com/TiotBenjy/pcap-analyzer/commit/08b8e92a705aebc1e654960850cb93d97470d998))
+
+**Comparaison** : [v0.1.0...v0.1.1](https://github.com/TiotBenjy/pcap-analyzer/compare/v0.1.0...v0.1.1)
+
 ## [0.1.0](https://github.com/TiotBenjy/pcap-analyzer/releases/tag/v0.1.0) - 2026-11-15
 
 ### Fonctionnalités

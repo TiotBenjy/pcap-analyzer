@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-analyze"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "brotli-decompressor",
@@ -660,7 +660,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-capture"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "flate2",
@@ -670,7 +670,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-dissect"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "etherparse",
  "thiserror",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "image",
  "netsift-analyze",
@@ -692,7 +692,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-fixtures"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -704,7 +704,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-flow"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "netsift-dissect",
 ]
@@ -724,7 +724,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-geo"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flate2",
  "lru",
@@ -735,7 +735,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rusqlite",
  "serde_json",

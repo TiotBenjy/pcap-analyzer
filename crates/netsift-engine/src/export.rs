@@ -160,7 +160,10 @@ pub fn plan_export(session: &Session, selection: &Selection) -> Result<ExportPla
             let flow = flow_by_id(session.conn(), id)?.ok_or(ExportError::FlowNotFound(id))?;
             let filter = FlowFilter::new(&flow);
             (
-                (flow.first_ts.saturating_sub(FRAGMENT_SLACK_NS), flow.last_ts),
+                (
+                    flow.first_ts.saturating_sub(FRAGMENT_SLACK_NS),
+                    flow.last_ts,
+                ),
                 Some(filter),
             )
         }
@@ -398,7 +401,8 @@ fn all_chunks(session: &Session) -> Result<Vec<ChunkRow>, StoreError> {
 /// True when the chunk was read by the import and its time span meets `window`. A chunk whose
 /// end is unknown (import interrupted before reading it) is kept when it starts in time.
 fn is_needed(row: &ChunkRow, (from, to): (i64, i64)) -> bool {
-    let read = matches!(row.status, ChunkStatus::Ok | ChunkStatus::Truncated) && row.format.is_some();
+    let read =
+        matches!(row.status, ChunkStatus::Ok | ChunkStatus::Truncated) && row.format.is_some();
     let Some(first) = row.first_ts else {
         return false;
     };

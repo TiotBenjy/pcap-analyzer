@@ -390,7 +390,14 @@ mod tests {
             "--out",
             data.to_str().unwrap(),
         ]);
-        ingest::run(&args, &CancelToken::new(), false, &mut Vec::new(), &mut Vec::new()).unwrap();
+        ingest::run(
+            &args,
+            &CancelToken::new(),
+            false,
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .unwrap();
         let catalog = netsift_store::Catalog::open(&data).unwrap();
         let id = catalog.list().unwrap()[0].id.to_string();
 

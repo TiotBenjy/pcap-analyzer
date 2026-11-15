@@ -127,7 +127,8 @@ impl<W: Write> PcapNgWriter<W> {
         put(&mut head, 24, orig_len.max(caplen));
         self.out.write_all(&head)?;
         self.out.write_all(data)?;
-        self.out.write_all([0u8; 3].get(..pad).unwrap_or_default())?;
+        self.out
+            .write_all([0u8; 3].get(..pad).unwrap_or_default())?;
         self.out.write_all(&total.to_le_bytes())?;
         self.packets = self.packets.saturating_add(1);
         self.bytes = self.bytes.saturating_add(u64::from(total));

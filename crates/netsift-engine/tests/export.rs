@@ -132,8 +132,11 @@ fn flow_id(session: &Session, sport: u16, dport: u16, transport: u8) -> u64 {
 
 fn chunks_dir(tmp: &TempDir, packets: &[Packet]) -> (PathBuf, Vec<PathBuf>) {
     let dir = tmp.path().join("chunks");
-    let opts = SplitOptions::new(SplitBy::Size(8 * 1024), Naming::Dumpcap)
-        .with_encodings(vec![Encoding::pcapng(), Encoding::pcap_ns(), Encoding::pcapng().gz()]);
+    let opts = SplitOptions::new(SplitBy::Size(8 * 1024), Naming::Dumpcap).with_encodings(vec![
+        Encoding::pcapng(),
+        Encoding::pcap_ns(),
+        Encoding::pcapng().gz(),
+    ]);
     let files = split_to_dir(&dir, packets, &opts).unwrap().1;
     assert!(files.len() >= 4, "{} chunks", files.len());
     (dir, files)
@@ -188,14 +191,22 @@ fn flow_export_keeps_both_directions_and_nothing_else() {
     let session = session(&catalog, &import(&catalog, &dir));
 
     let a = flow_id(&session, 40_000, 80, 6);
-    let got = export(&session, ExportSelection::Flow { id: a }, &tmp.path().join("a.pcapng"));
+    let got = export(
+        &session,
+        ExportSelection::Flow { id: a },
+        &tmp.path().join("a.pcapng"),
+    );
     let data: Vec<Vec<u8>> = got.iter().map(|p| p.data.to_vec()).collect();
     assert_eq!(data, t.flow_a);
     assert!(got.windows(2).all(|w| w[0].ts_ns <= w[1].ts_ns));
 
     // The fragments of a datagram follow their first fragment.
     let frag = flow_id(&session, 6000, 7000, 17);
-    let got = export(&session, ExportSelection::Flow { id: frag }, &tmp.path().join("f.pcapng"));
+    let got = export(
+        &session,
+        ExportSelection::Flow { id: frag },
+        &tmp.path().join("f.pcapng"),
+    );
     let data: Vec<Vec<u8>> = got.iter().map(|p| p.data.to_vec()).collect();
     assert_eq!(data, t.flow_frag);
     assert!(data.len() >= 3);
@@ -203,7 +214,10 @@ fn flow_export_keeps_both_directions_and_nothing_else() {
     // No session reaches i64::MAX flows or frames: never an existing id.
     let missing = u64::try_from(i64::MAX).unwrap();
     let err = plan_export(&session, &ExportSelection::Flow { id: missing }).unwrap_err();
-    assert!(matches!(err, ExportError::FlowNotFound(id) if id == missing), "{err}");
+    assert!(
+        matches!(err, ExportError::FlowNotFound(id) if id == missing),
+        "{err}"
+    );
 }
 
 #[test]
@@ -281,8 +295,18 @@ fn chunks_with_different_link_types_give_one_valid_file() {
         .collect();
     let dir = tmp.path().join("mixed");
     fs::create_dir(&dir).unwrap();
-    write_file(&dir.join("cap_00001_20231114221320.pcap"), eth, &Encoding::pcap()).unwrap();
-    write_file(&dir.join("cap_00002_20231114221321.pcapng"), &raw, &Encoding::pcapng()).unwrap();
+    write_file(
+        &dir.join("cap_00001_20231114221320.pcap"),
+        eth,
+        &Encoding::pcap(),
+    )
+    .unwrap();
+    write_file(
+        &dir.join("cap_00002_20231114221321.pcapng"),
+        &raw,
+        &Encoding::pcapng(),
+    )
+    .unwrap();
     let session = session(&catalog, &import(&catalog, &dir));
     let dest = tmp.path().join("mixed.pcapng");
     let got = export(&session, ExportSelection::Session, &dest);
@@ -367,7 +391,9 @@ fn a_source_changed_during_the_export_or_a_cancellation_leaves_nothing() {
     let mut bytes = fs::read(&files[0]).unwrap();
     bytes.extend_from_slice(&[0; 4]);
     fs::write(&files[0], &bytes).unwrap();
-    let err = plan.run(&dest, &CancelToken::new(), &mut |_| {}).unwrap_err();
+    let err = plan
+        .run(&dest, &CancelToken::new(), &mut |_| {})
+        .unwrap_err();
     assert!(matches!(err, ExportError::SourceModified { .. }), "{err}");
     assert_eq!(only_files(&out), Vec::<String>::new());
 
@@ -385,7 +411,9 @@ fn a_source_changed_during_the_export_or_a_cancellation_leaves_nothing() {
     // An existing destination is never overwritten.
     fs::write(&dest, b"keep").unwrap();
     let plan = plan_export(&session2, &ExportSelection::Session).unwrap();
-    let err = plan.run(&dest, &CancelToken::new(), &mut |_| {}).unwrap_err();
+    let err = plan
+        .run(&dest, &CancelToken::new(), &mut |_| {})
+        .unwrap_err();
     assert!(matches!(err, ExportError::DestinationExists(_)));
     assert_eq!(fs::read(&dest).unwrap(), b"keep");
     assert_eq!(only_files(&out), ["x.pcapng"]);

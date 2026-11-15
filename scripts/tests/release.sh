@@ -100,14 +100,24 @@ check "right-to-left override" not title_ok $'a\xe2\x80\xaeb'
 check "right-to-left mark" not title_ok $'a\xe2\x80\x8fb'
 check "first strong isolate" not title_ok $'a\xe2\x81\xa8b'
 check "invalid UTF-8" not title_ok $'a\xffb'
+check "line separator U+2028" not title_ok $'a\xe2\x80\xa8b'
+check "paragraph separator U+2029" not title_ok $'a\xe2\x80\xa9b'
+check "Arabic letter mark U+061C" not title_ok $'a\xd8\x9cb'
+check "zero-width space U+200B" not title_ok $'a\xe2\x80\x8bb'
+check "byte order mark U+FEFF" not title_ok $'\xef\xbb\xbfab'
+check "word joiner U+2060" not title_ok $'a\xe2\x81\xa0b'
+check "Mongolian vowel separator U+180E" not title_ok $'a\xe1\xa0\x8eb'
+check "zero-width joiner U+200D is kept" title_ok $'a\xe2\x80\x8db'
+check "en dash U+2013 and ellipsis U+2026 are kept" title_ok "a – b…"
 check "trim" test "$(trim $'  \t -n title  ')" = "-n title"
 check "shell_quote round trip" test "$(eval "printf '%s' $(shell_quote "It's \"fast\" \$HOME \\ \`x\`")")" = "It's \"fast\" \$HOME \\ \`x\`"
-check "tag command without title" test "$(tag_command /r v1.0.0 main)" = 'git -C /r tag -a --cleanup=whitespace v1.0.0 -m "NetSift v1.0.0" main'
+check "tag command without title" test "$(tag_command /r v1.0.0 main)" = "git -C '/r' tag -a --cleanup=whitespace v1.0.0 -m \"NetSift v1.0.0\" main"
 check "tag command with title" test "$(tag_command /r v1.0.0 abc "It's fast")" = \
-  "git -C /r tag -a --cleanup=whitespace v1.0.0 -m \"NetSift v1.0.0\" -m 'It'\\''s fast' abc"
+  "git -C '/r' tag -a --cleanup=whitespace v1.0.0 -m \"NetSift v1.0.0\" -m 'It'\\''s fast' abc"
 
 # --- Rerun after a partial failure: release already merged, tag on origin ---------------
-GITREPO="$TMP/git"
+# A space and a quote in the path: the printed commands quote it.
+GITREPO="$TMP/git repo's"
 gc() { git -C "$GITREPO" -c user.name=t -c user.email=t@example.invalid "$@"; }
 git init -q -b main "$GITREPO"
 gc commit -q --allow-empty -m "feat: start"
@@ -140,6 +150,8 @@ check "release name without title" test "$(name_of v9.0.1)" = "NetSift v9.0.1"
 tagged v9.0.2 "$HOSTILE"
 check "title with quotes, \$, # and backslash survives the printed command" \
   test "$(name_of v9.0.2)" = "NetSift v9.0.2 — $HOSTILE"
+tagged v9.0.5 "#42 fixed"
+check "title starting with # survives the tag message" test "$(name_of v9.0.5)" = "NetSift v9.0.5 — #42 fixed"
 gc tag -a -m "NetSift v9.0.3" -m "$(printf 'x%.0s' {1..81})" v9.0.3 main
 check "invalid title in the tag: default name" test "$(name_of v9.0.3)" = "NetSift v9.0.3"
 gc commit -q --allow-empty -m "feat: subject" -m "Body that is not a title"

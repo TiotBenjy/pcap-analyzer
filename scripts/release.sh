@@ -17,8 +17,8 @@
 #      « NetSift vX.Y.Z »), que l'application affiche dans son bandeau de mise à jour
 #   5. affiche les URL (Actions, release) et la commande de suivi
 #
-#   --title T  titre de la release (une ligne, 80 caractères au plus, sans caractère de contrôle
-#              ni de mise en forme bidirectionnelle ; espaces de début et de fin retirés)
+#   --title T  titre de la release (une ligne, 80 caractères au plus, sans caractère de contrôle,
+#              invisible ni de mise en forme bidirectionnelle ; espaces de début et de fin retirés)
 #   --dry-run  vérifie les préconditions, affiche le plan exact (versions modifiées ou non,
 #              CHANGELOG.md, fusion, tag) et les notes de la release ; aucune écriture dans le
 #              dépôt (seules les références distantes sont rafraîchies).
@@ -75,15 +75,19 @@ semver_gt() {
 }
 
 # release_title_error TITRE : raison du refus de TITRE comme titre de release, rien s'il convient
-# (une ligne d'UTF-8 valide, TITLE_MAX caractères au plus, sans caractère de contrôle, C0, DEL ou
-# C1, ni de mise en forme bidirectionnelle U+200E-U+200F, U+202A-U+202E, U+2066-U+2069).
+# (une ligne d'UTF-8 valide, TITLE_MAX caractères au plus), sans :
+#   - caractère de contrôle C0, DEL ou C1, ni séparateur de ligne ou de paragraphe U+2028-U+2029 ;
+#   - mise en forme bidirectionnelle U+061C, U+200E-U+200F, U+202A-U+202E, U+2066-U+2069 ;
+#   - caractère invisible U+180E, U+200B, U+2060-U+2064, U+FEFF.
+# Mêmes caractères que ceux que l'application retire (netsift-api/src/updates/release.rs).
 release_title_error() {
   local title="$1" bad chars
-  bad=$'[\x01-\x1f\x7f]|\xc2[\x80-\x9f]|\xe2\x80[\x8e\x8f\xaa-\xae]|\xe2\x81[\xa6-\xa9]'
+  bad=$'[\x01-\x1f\x7f]|\xc2[\x80-\x9f]|\xd8\x9c|\xe1\xa0\x8e|\xe2\x80[\x8b\x8e\x8f\xa8-\xae]'
+  bad+=$'|\xe2\x81[\xa0-\xa4\xa6-\xa9]|\xef\xbb\xbf'
   if [[ -z "$title" ]]; then
     echo "titre vide"
   elif [[ "$title" =~ $bad ]]; then
-    echo "le titre doit tenir sur une ligne, sans caractère de contrôle ni de mise en forme bidirectionnelle"
+    echo "le titre doit tenir sur une ligne, sans caractère de contrôle, invisible ni de mise en forme bidirectionnelle"
   elif ! printf '%s' "$title" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
     echo "le titre n'est pas de l'UTF-8 valide"
   else
@@ -112,7 +116,7 @@ shell_quote() {
 # avec le message qu'écrit ce script. --cleanup=whitespace : un titre qui commence par « # »
 # n'est pas pris pour un commentaire.
 tag_command() {
-  local cmd="git -C $1 tag -a --cleanup=whitespace $2 -m \"NetSift $2\""
+  local cmd="git -C $(shell_quote "$1") tag -a --cleanup=whitespace $2 -m \"NetSift $2\""
   [[ -n "${4:-}" ]] && cmd+=" -m $(shell_quote "$4")"
   printf '%s\n' "$cmd $3"
 }
@@ -240,6 +244,7 @@ main() {
 
   # Globales (pas `local`) : lues par le piège EXIT.
   root="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel)"
+  qroot="$(shell_quote "$root")" # dans les commandes affichées
   tag="v$version"
   br="chore/release-$version"
   wt="$root/.worktrees/$br"
@@ -270,12 +275,12 @@ main() {
     *) die "impossible d'interroger les tags d'origin (git ls-remote)" ;;
   esac
   git -C "$root" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
-    && die "le tag $tag existe en local mais pas sur origin. Pour terminer :"$'\n'"  git -C $root push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
+    && die "le tag $tag existe en local mais pas sur origin. Pour terminer :"$'\n'"  git -C $qroot push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
   # Relance après un échec partiel (fusion faite, tag non créé) : jamais de seconde fusion.
   local merged
   merged="$(release_merged "$root" "$version")"
   [[ -z "$merged" ]] \
-    || die "main contient déjà la release $tag (commit ${merged:0:12}) ; ne pas la fusionner une seconde fois. Il ne manque que le tag :"$'\n'"  $(tag_command "$root" "$tag" "$merged" "$title") && git -C $root push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
+    || die "main contient déjà la release $tag (commit ${merged:0:12}) ; ne pas la fusionner une seconde fois. Il ne manque que le tag :"$'\n'"  $(tag_command "$root" "$tag" "$merged" "$title") && git -C $qroot push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
   git -C "$root" show-ref --verify --quiet "refs/heads/$br" && die "la branche $br existe déjà"
   [[ ! -e "$wt" ]] || die "le worktree $wt existe déjà"
 
@@ -338,19 +343,19 @@ main() {
           "$root/scripts/wt.sh" rm "$br" --delete-branch >&2 || true
         elif [[ "$now_main" != "$origin_main" ]]; then
           echo "release: main contient la fusion mais n'est pas poussé. Pour annuler :" >&2
-          echo "  git -C $root reset --hard $orig_main" >&2
-          echo "  $root/scripts/wt.sh rm $br --delete-branch" >&2
+          echo "  git -C $qroot reset --hard $orig_main" >&2
+          echo "  $(shell_quote "$root/scripts/wt.sh") rm $br --delete-branch" >&2
         else
           echo "release: main est poussé, le tag ne l'est pas. Pour terminer :" >&2
-          echo "  $(tag_command "$root" "$tag" main "$title") && git -C $root push origin $tag" >&2
+          echo "  $(tag_command "$root" "$tag" main "$title") && git -C $qroot push origin $tag" >&2
         fi ;;
       tag)
         if git -C "$root" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
           echo "release: le tag $tag existe en local, pas sur origin. Pour terminer :" >&2
-          echo "  git -C $root push origin $tag" >&2
+          echo "  git -C $qroot push origin $tag" >&2
         else
           echo "release: main est fusionné, tag non créé. Pour terminer :" >&2
-          echo "  $(tag_command "$root" "$tag" main "$title") && git -C $root push origin $tag" >&2
+          echo "  $(tag_command "$root" "$tag" main "$title") && git -C $qroot push origin $tag" >&2
         fi ;;
     esac
   }
@@ -371,7 +376,7 @@ main() {
   "$root/x.sh" -C "$wt" cliff --tag "$tag" --output CHANGELOG.md
   # Second garde-fou contre une release vide (déjà fusionnée) : rien à committer.
   [[ -n "$(git -C "$wt" status --porcelain)" ]] \
-    || die "aucun changement (CHANGELOG.md identique) : $tag semble déjà fusionnée sur main. Créer et pousser le tag (COMMIT = la fusion de la release sur main) :"$'\n'"  $(tag_command "$root" "$tag" COMMIT "$title") && git -C $root push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
+    || die "aucun changement (CHANGELOG.md identique) : $tag semble déjà fusionnée sur main. Créer et pousser le tag (COMMIT = la fusion de la release sur main) :"$'\n'"  $(tag_command "$root" "$tag" COMMIT "$title") && git -C $qroot push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
 
   local unexpected
   unexpected="$(git -C "$wt" status --porcelain \

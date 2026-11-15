@@ -5,6 +5,8 @@ export function Skeleton({ className, height }: { className?: string; height?: n
   return (
     <div
       aria-hidden
+      // The visual tests wait for every placeholder to be replaced before a capture.
+      data-skeleton
       className={cn('animate-pulse rounded-md bg-subtle', className)}
       style={height === undefined ? undefined : { height }}
     />

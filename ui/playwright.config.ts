@@ -16,9 +16,6 @@ export default defineConfig({
   forbidOnly: process.env.CI !== undefined && process.env.CI !== '',
   retries: 0,
   reporter: [['list']],
-  // The visual run doubles with the French captures and often shares the machine with other gates:
-  // the first chart of a view (lazy ECharts chunk plus its query) can take more than 5 s to appear.
-  expect: { timeout: 15_000 },
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     ...devices['Desktop Chrome'],

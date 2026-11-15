@@ -43,7 +43,8 @@ export const updatesEn = {
     path: 'This location cannot be used. Choose another one.',
     asset: 'This installer is no longer in the latest release. Check again.',
   },
-  onlineDownloads: 'Installer downloads, only on click, come from GitHub and its file storage:',
+  onlineDownloads:
+    'Installer downloads, only on click: github.com, then the GitHub file storage (release-assets.githubusercontent.com, objects.githubusercontent.com).',
 };
 
 export const updatesFr: typeof updatesEn = {
@@ -88,5 +89,6 @@ export const updatesFr: typeof updatesEn = {
     path: 'Cet emplacement ne peut pas être utilisé. Choisissez-en un autre.',
     asset: "Cet installateur n'est plus dans la dernière version. Relancez la recherche.",
   },
-  onlineDownloads: "Les installateurs, téléchargés seulement sur clic, viennent de GitHub et de son stockage de fichiers :",
+  onlineDownloads:
+    'Téléchargement des installateurs, seulement sur clic : github.com, puis le stockage de fichiers de GitHub (release-assets.githubusercontent.com, objects.githubusercontent.com).',
 };

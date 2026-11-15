@@ -296,7 +296,7 @@ function ServerTable({ role, labels, byAddress }: ServerListProps) {
   const baseId = useId();
   const label = labels[role.role];
   return (
-    <div className="min-w-0 overflow-x-auto">
+    <div className="relative min-w-0 overflow-x-auto">
       <table aria-label={t('views.servers.listLabel', { role: label })} className="w-full table-fixed border-collapse text-table">
         <thead>
           <tr className="border-b border-line text-left text-meta text-muted">

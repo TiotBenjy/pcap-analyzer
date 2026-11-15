@@ -229,6 +229,7 @@ describe('Connections view', () => {
       bytes_written: 0,
       bytes_read: 0,
       bytes_total: 100,
+      read_errors: 0,
       error: null,
       created_at_us: 0,
     } satisfies Awaited<ReturnType<typeof exportsApi.startPcapExport>>;

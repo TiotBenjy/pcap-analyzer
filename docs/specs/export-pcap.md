@@ -26,11 +26,21 @@ de l'import (chunks fusionnés, doublons écartés).
 |---|---|---|
 | Session | tous | tous les chunks lus par l'import (`ok`, `truncated`) |
 | Plage `[from, to]` | `from <= ts <= to`, bornes incluses | ceux dont `[first_ts, last_ts]` coupe la plage |
-| Flux | les deux sens du 5-tuple, entre premier et dernier horodatage du flux | ceux qui coupent `[first_ts - 30 s, last_ts]` |
+| Flux | les deux sens du 5-tuple, entre premier et dernier horodatage du flux (sans borne basse si la session est lue hors ordre) | ceux qui coupent `[first_ts - 30 s, last_ts]` (`[-inf, last_ts]` hors ordre) |
 
 - Ordre et doublons : lecteur `ChunkSetSource` de l'import (fusion k-voies par horodatage, égalités
   départagées par chunk puis position), chunks doublons et ignorés jamais lus. La lecture s'arrête
-  au premier paquet postérieur à la fin demandée.
+  au premier paquet postérieur à la fin demandée, sauf si l'import n'a pas lu la session dans
+  l'ordre des horodatages.
+- Horodatages qui reculent dans un fichier : chaque fichier est rendu dans son ordre. Si la session
+  porte une anomalie `out_of_order`, `timestamp_backwards` ou `merge_fanout_limit`, si sa liste
+  d'anomalies a été tronquée (`limit_reached`) ou si ses statistiques de fin d'import manquent
+  (import arrêté brutalement), la lecture ne s'arrête jamais avant la fin des chunks retenus, et un
+  flux n'a pas de borne basse : son `first_ts` est l'heure de son premier paquet *lu*, pas la plus
+  petite. Le flux est alors choisi par sa fenêtre de chunks et son 5-tuple, ce qui peut y inclure un
+  flux antérieur de même 5-tuple.
+- Erreurs de lecture (fichier inchangé mais corrompu, comme à l'import) : comptées et signalées dans
+  le job, l'UI et la CLI (« des paquets peuvent manquer »).
 - Un chunk dont la fin est inconnue (import interrompu avant sa lecture) est relu s'il commence avant
   la fin demandée.
 - Flux et fragments IP : le premier fragment (offset 0) porte les ports et est reconnu comme un
@@ -60,7 +70,7 @@ lecture, avant de publier le fichier. Aucun fichier partiel ne reste.
 | GET | `/exports/{job}` | `ExportJob` (état `running`, `done`, `failed`, `cancelled`, progression en octets sources lus) |
 | POST | `/exports/{job}/cancel` | `ExportJob` |
 | GET | `/exports/{job}/file` | fichier en pièce jointe, `application/octet-stream`, streamé |
-| GET | `/sessions/{id}/connections/{conversation}/flows` | `Page<FlowInfo>` (flux d'une conversation) |
+| GET | `/sessions/{id}/connections/{conversation}/flows` | `Page<FlowInfo>` (flux d'une conversation, index `flows_conversation`, migration 0401) |
 
 - Erreurs synchrones (problem+json) : 404 session ou flux inconnu, 400 plage inversée ou flux mal
   formé, 409 `export-source-missing` / `export-source-modified` (détail : nom du fichier seulement),
@@ -76,7 +86,7 @@ lecture, avant de publier le fichier. Aucun fichier partiel ne reste.
 ### CLI
 
 `netsift export pcap --data-dir D --session ID [--flow N | --from-ns A --to-ns B] -o FICHIER`
-(même code moteur ; le fichier de sortie n'est jamais écrasé).
+(même code moteur ; le fichier de sortie n'est jamais écrasé ; session `importing` ou `failed` refusée ; erreurs de lecture signalées).
 
 ## Mise en page
 
@@ -95,7 +105,10 @@ lecture, avant de publier le fichier. Aucun fichier partiel ne reste.
 ## Critères d'acceptation
 
 - Aller-retour export puis relecture par `netsift-capture` : mêmes paquets, octets, horodatages ns
-  et ordre, pour un fichier unique comme pour ses chunks (`crates/netsift-engine/tests/export.rs`).
+  et ordre, pour un fichier unique, ses chunks séquentiels, et des chunks qui se chevauchent (fusion
+  k-voies) avec un doublon (`crates/netsift-engine/tests/export.rs`).
+- Fichier aux horodatages non monotones : export de flux (autant de paquets que `packets_total`)
+  et de plage sans perte ; erreur de lecture comptée.
 - Flux : les deux sens, aucun paquet d'un autre flux des mêmes hôtes, fragments inclus ; plage aux
   bornes incluses ; linktypes mixtes dans un fichier valide ; chunk absent ou modifié refusé sans
   fichier restant, y compris modifié pendant l'export ; annulation sans fichier restant.

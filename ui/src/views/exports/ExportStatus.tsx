@@ -59,6 +59,7 @@ export function ExportStatus({ job, sessionId }: { job: ExportJob; sessionId: st
       <p className="text-success">
         {t('views.exportPcap.status.done', { count: job.packets, size: formatBytes(job.bytes_written, lang) })}
       </p>
+      {job.read_errors > 0 && <p className="text-warning">{t('views.exportPcap.status.readErrors', { count: job.read_errors })}</p>}
       <p className="flex min-w-0 items-center gap-1.5">
         <span className="shrink-0 text-muted">{t('views.exportPcap.status.file')}</span>
         <span data-testid="truncatable" title={job.file_name} className="min-w-0 truncate font-mono">

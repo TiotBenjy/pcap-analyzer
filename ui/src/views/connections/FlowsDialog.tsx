@@ -44,10 +44,14 @@ export function FlowsDialog({ sessionId, conversation, onClose }: FlowsDialogPro
       {...(conversation === null
         ? {}
         : {
-            description: t('views.exportPcap.flows.description', {
-              from: endpointName(conversation, 'src'),
-              to: endpointName(conversation, 'dst'),
-            }),
+            description: (
+              <span className="break-all">
+                {t('views.exportPcap.flows.description', {
+                  from: endpointName(conversation, 'src'),
+                  to: endpointName(conversation, 'dst'),
+                })}
+              </span>
+            ),
           })}
     >
       {conversation !== null && <FlowList sessionId={sessionId} conversationId={conversation.id} />}

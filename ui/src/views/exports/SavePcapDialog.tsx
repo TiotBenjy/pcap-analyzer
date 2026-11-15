@@ -23,16 +23,12 @@ interface SavePcapDialogProps {
 }
 
 /** Save PCAP of the whole session or of a time range, then the progress of that export. */
-export function SavePcapDialog({ open, onClose, sessionId, firstUs, lastUs }: SavePcapDialogProps) {
-  const { t } = useTranslation();
-  return (
-    <Dialog open={open} onClose={onClose} title={t('views.exportPcap.dialog.title')} description={t('views.exportPcap.dialog.description')}>
-      {open && <DialogBody sessionId={sessionId} firstUs={firstUs} lastUs={lastUs} onClose={onClose} />}
-    </Dialog>
-  );
+export function SavePcapDialog({ open, ...rest }: SavePcapDialogProps) {
+  // Mounted on opening: the form starts from the captured period each time.
+  return open ? <OpenDialog {...rest} /> : null;
 }
 
-function DialogBody({ sessionId, firstUs, lastUs, onClose }: Omit<SavePcapDialogProps, 'open'>) {
+function OpenDialog({ sessionId, firstUs, lastUs, onClose }: Omit<SavePcapDialogProps, 'open'>) {
   const { t } = useTranslation();
   const [scope, setScope] = useState<Scope>('session');
   const [from, setFrom] = useState(firstUs === null ? '' : formatTimestamp(firstUs));
@@ -48,6 +44,9 @@ function DialogBody({ sessionId, firstUs, lastUs, onClose }: Omit<SavePcapDialog
   const invalid = scope === 'range' && 'error' in range;
   const hintId = useId();
   const errorId = useId();
+  const formId = useId();
+  const rangeError = touched && 'error' in range ? range.error : null;
+  const describedBy = rangeError === null ? hintId : `${hintId} ${errorId}`;
 
   const submit = () => {
     setTouched(true);
@@ -64,50 +63,63 @@ function DialogBody({ sessionId, firstUs, lastUs, onClose }: Omit<SavePcapDialog
   };
 
   return (
-    <form
-      className="flex flex-col gap-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        submit();
-      }}
+    <Dialog
+      open
+      onClose={onClose}
+      title={t('views.exportPcap.dialog.title')}
+      description={t('views.exportPcap.dialog.description')}
+      footer={
+        <>
+          <Button onClick={onClose}>{t('common.close')}</Button>
+          <Button
+            type="submit"
+            form={formId}
+            variant="primary"
+            disabled={readOnly || running || start.isPending || (touched && invalid)}
+            title={readOnly ? t('views.exportPcap.dialog.readOnly') : undefined}
+          >
+            {t('views.exportPcap.dialog.start')}
+          </Button>
+        </>
+      }
     >
-      <SegmentedControl
-        label={t('views.exportPcap.dialog.scope')}
-        value={scope}
-        options={[
-          { value: 'session', label: t('views.exportPcap.dialog.session') },
-          { value: 'range', label: t('views.exportPcap.dialog.range') },
-        ]}
-        onChange={setScope}
-      />
-      {scope === 'range' && (
-        <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <TimeField label={t('views.exportPcap.dialog.from')} value={from} onChange={setFrom} describedBy={`${hintId} ${errorId}`} />
-            <TimeField label={t('views.exportPcap.dialog.to')} value={to} onChange={setTo} describedBy={`${hintId} ${errorId}`} />
+      <form
+        id={formId}
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <SegmentedControl
+          label={t('views.exportPcap.dialog.scope')}
+          value={scope}
+          options={[
+            { value: 'session', label: t('views.exportPcap.dialog.session') },
+            { value: 'range', label: t('views.exportPcap.dialog.range') },
+          ]}
+          onChange={setScope}
+        />
+        {scope === 'range' && (
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <TimeField label={t('views.exportPcap.dialog.from')} value={from} onChange={setFrom} describedBy={describedBy} />
+              <TimeField label={t('views.exportPcap.dialog.to')} value={to} onChange={setTo} describedBy={describedBy} />
+            </div>
+            <p id={hintId} className="text-meta text-muted">
+              {t('views.exportPcap.dialog.timeHint', { zone: timeZoneLabel() })}
+            </p>
+            {rangeError !== null && (
+              <p id={errorId} role="alert" className="text-meta text-danger">
+                {t(`views.exportPcap.dialog.${rangeError}`)}
+              </p>
+            )}
           </div>
-          <p id={hintId} className="text-meta text-muted">
-            {t('views.exportPcap.dialog.timeHint', { zone: timeZoneLabel() })}
-          </p>
-          <p id={errorId} role="alert" className="text-meta text-danger">
-            {touched && 'error' in range ? t(`views.exportPcap.dialog.${range.error}`) : null}
-          </p>
-        </div>
-      )}
-      {start.isError && <ErrorNote error={start.error} />}
-      {job !== undefined && <ExportStatus job={job} sessionId={sessionId} />}
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
-        <Button onClick={onClose}>{t('common.close')}</Button>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={readOnly || running || start.isPending || (touched && invalid)}
-          title={readOnly ? t('views.exportPcap.dialog.readOnly') : undefined}
-        >
-          {t('views.exportPcap.dialog.start')}
-        </Button>
-      </div>
-    </form>
+        )}
+        {start.isError && <ErrorNote error={start.error} />}
+        {job !== undefined && <ExportStatus job={job} sessionId={sessionId} />}
+      </form>
+    </Dialog>
   );
 }
 

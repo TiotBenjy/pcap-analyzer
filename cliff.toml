@@ -1,6 +1,10 @@
 # git-cliff configuration: CHANGELOG.md (scripts/release.sh) and GitHub release notes
 # (.github/workflows/release.yml). Version pinned in docs/STACK_VERSIONS.md.
 # Groups are in French (project documentation language); commit messages stay in English.
+# First release (no previous version): only the features and performance groups are listed, the
+# development history before it (fixes of unreleased code, docs, tests, tooling) is summed up in
+# one sentence, and breaking-change markers (internal interfaces frozen during development) are
+# not shown.
 
 [changelog]
 header = """
@@ -16,15 +20,25 @@ body = """
 {% else -%}
 ## Non publié
 {% endif -%}
+{%- set first = true -%}
+{%- if previous -%}{%- if previous.version -%}{%- set first = false -%}{%- endif -%}{%- endif -%}
+{%- set_global hidden = 0 -%}
 {% for group, commits in commits | group_by(attribute="group") %}
+{%- if not first or group is containing("Fonctionnalités") or group is containing("Performances") %}
 ### {{ group | striptags | trim }}
 {% for commit in commits %}
-- {% if commit.breaking %}**[rupture]** {% endif %}\
+- {% if commit.breaking and not first %}**[rupture]** {% endif %}\
 {% if commit.scope %}**{{ commit.scope }}** : {% endif %}\
 {{ commit.message | split(pat="\n") | first | trim | upper_first }} \
 ([{{ commit.id | truncate(length=7, end="") }}]({{ repo }}/commit/{{ commit.id }}))\
 {% endfor %}
+{% else %}{% set n = commits | length %}{% set_global hidden = hidden + n %}{% endif -%}
 {% endfor %}
+{%- if hidden > 0 %}
+Première version : seules les fonctionnalités et les performances sont listées ; les corrections, \
+la documentation, les tests et l'outillage du développement qui l'a précédée ({{ hidden }} commits) \
+ne sont pas détaillés.
+{% endif %}
 {%- if previous and previous.version and version %}
 **Comparaison** : [{{ previous.version }}...{{ version }}]({{ repo }}/compare/{{ previous.version }}...{{ version }})
 {% endif %}\n

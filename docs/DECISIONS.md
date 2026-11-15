@@ -906,3 +906,36 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - garde-fous dans la CI : plans de requête sans `SCAN` ni `TEMP B-TREE` pour les lectures corrigées,
     équivalence ancien et nouveau calcul (séries, filtres, rôles), instruction de l'upsert d'hôtes
     jamais préparée de nouveau ; les mesures restent hors du gate (`./x.sh bench`).
+
+## ADR-024 — Licences tierces : liste générée et commitée, vérifiée par le gate
+
+- Contexte : P4.5. Les bundles redistribuent environ 440 crates Rust et 40 paquets npm sous MIT,
+  Apache-2.0, BSD, ISC, MPL-2.0, Unicode, OFL... ; la plupart exigent que leur texte de licence (et
+  pour Apache-2.0 les fichiers `NOTICE`) accompagne la distribution. L'application est hors ligne et
+  ne peut rien télécharger pour les afficher.
+- Décision :
+  - **liste générée, commitée** : `ui/src/views/settings/licenses/third-party-licenses.json` (UI) et
+    `THIRD_PARTY_LICENSES` (racine, cité par `NOTICE`, livré dans les bundles), produits par
+    `./x.sh licenses` ; le gate et le job `licenses` de `ci.yml` régénèrent avec `--check` et échouent
+    sur toute différence. Commiter plutôt que générer au build : le build de l'UI (dev, shots, Tauri)
+    ne dépend ni de cargo-about ni du registre cargo, et chaque changement de licence apparaît dans un
+    diff relu ;
+  - **Rust** : `cargo-about` 0.9.3 (MIT OR Apache-2.0), épinglé dans `scripts/ct/licenses.sh`, compilé
+    dans le cache comme git-cliff ; périmètre = binaire desktop, quatre cibles des bundles, sans
+    dépendances de dev ni de build ; `--frozen` (registre local uniquement) ;
+  - **npm** : script maison (`ui/scripts/third-party-licenses.ts`, Node avec suppression des types,
+    sans dépendance) sur les entrées de production de `package-lock.json` et les fichiers de
+    `node_modules` ; la liste d'acceptation est celle d'`about.toml` plus `0BSD`, `Unlicense`, `OFL-1.1` ;
+  - **UI** : dialogue chargé à la demande (chunk séparé de ~420 Ko, ~50 Ko compressé), regroupement par
+    licence reproduite, recherche, textes affichés en nœuds texte (aucun HTML injecté) ;
+  - **licence du projet** : Apache-2.0 seule (décision de l'utilisateur), `LICENSE` officiel et
+    `NOTICE` à la racine ;
+  - **MPL-2.0** : pour chaque paquet embarqué sous MPL-2.0, `THIRD_PARTY_LICENSES` donne l'adresse
+    de son code source à la version embarquée (MPL-2.0, section 3.2) ;
+  - **bundles** : `LICENSE`, `NOTICE` et `THIRD_PARTY_LICENSES` en ressources Tauri
+    (`licenses/`), vérifiés par un test du crate desktop ; pas de page de licence à accepter dans les
+    installateurs (`licenseFile` non défini : les licences permissives ne demandent pas d'acceptation).
+- Conséquences : toute mise à jour de dépendance demande `./x.sh licenses` et un commit des deux
+  fichiers (le gate le signale) ; le gate fait un `cargo fetch` (réseau) et environ 25 s de
+  cargo-about ; une nouvelle version de `ring` exige de relire et réépingler sa clarification dans
+  `about.toml` ; la liste npm est un sur-ensemble de ce que Vite garde après tree-shaking.

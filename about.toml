@@ -1,0 +1,55 @@
+# cargo-about configuration: third-party licenses of the Rust crates shipped in the desktop
+# application (scripts/ct/licenses.sh, docs/LICENSES.md). Version pinned in scripts/ct/licenses.sh.
+
+# Same allow-list as deny.toml; for a choice of licenses (MIT OR Apache-2.0), the first one listed
+# here is the one reproduced.
+accepted = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "MPL-2.0",
+  "CC0-1.0",
+]
+
+# Platforms of the published bundles (release.yml): crates of other targets are not shipped.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+]
+
+# Only what ends up in the binaries: no test or build-time dependency.
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+
+# Our own crates (publish = false) are covered by LICENSE and NOTICE (Apache-2.0).
+[private]
+ignore = true
+
+# ring: its license files are matched with the right text, instead of every source file header.
+# The checksums pin the reviewed files: a new ring version fails the generation until reviewed.
+[ring.clarify]
+license = "Apache-2.0 AND ISC"
+
+# LICENSE explains which files are ISC (new code, headers inherited from BoringSSL) and which are
+# Apache-2.0: reproduced with the two license texts it points to.
+[[ring.clarify.files]]
+path = "LICENSE"
+license = "ISC"
+checksum = "b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a"
+
+[[ring.clarify.files]]
+path = "LICENSE-BoringSSL"
+license = "Apache-2.0"
+checksum = "005fc765ddc5115da796cca915baa9557abae13ff35e0a47c47affc56f6c414d"
+
+[[ring.clarify.files]]
+path = "LICENSE-other-bits"
+license = "ISC"
+checksum = "f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f"

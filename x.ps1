@@ -3,7 +3,7 @@
 # Equivalent de x.sh. Docker Desktop ou Podman requis ; aucune toolchain Rust/Node sur l'hote.
 #
 #   ./x.ps1 image | check | test | cargo <args> | npm <args> | dev | shots [vue] | desktop | shell
-#   ./x.ps1 geoip | cliff [args]
+#   ./x.ps1 geoip | cliff [args] | licenses [--check]
 #   ./x.ps1 -C <dir> <sous-commande>   execute avec <dir> comme racine (worktree)
 #
 # Variables d'env : ENGINE=docker|podman, NETSIFT_UI_PORT, NETSIFT_API_PORT, REBUILD=1, NO_SCCACHE=1
@@ -80,7 +80,43 @@ switch ($Cmd) {
   "deny"      { Run-In @() "cargo deny check $r" -Tty }
   "npm"       { Run-In @() "cd ui && npm $r" -Tty }
   "ui"        { Run-In @() "cd ui && npm run $r" -Tty }
-  "check"     { Run-In @() "set -e; bash scripts/check-version.sh >/dev/null; bash scripts/tests/check-version.sh; bash scripts/tests/release.sh; [ ! -f scripts/tests/cache.sh ] || bash scripts/tests/cache.sh; cargo fmt --all --check; cargo clippy --workspace --all-targets --all-features -- -D warnings; cargo nextest run --workspace; if [ -f ui/package.json ]; then cd ui && (npm ci || npm install) && npm run -s lint && npm run -s typecheck && npm run -s test -- --run; fi; echo OK" }
+  # Same gate as x.sh check. One command per line: under `set -e`, a failure in the middle of an
+  # `a && b` list does not stop the script (only the last command of the list counts). No double
+  # quote (Windows PowerShell 5.1 mangles them in native arguments), CR removed (CRLF checkout).
+  "check"     { Run-In @() ((@'
+set -e
+echo == version ==
+bash scripts/check-version.sh >/dev/null
+bash scripts/tests/check-version.sh
+bash scripts/tests/release.sh
+if [ -f scripts/tests/cache.sh ]; then bash scripts/tests/cache.sh; fi
+echo == rustfmt ==
+cargo fmt --all --check
+echo == clippy ==
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+echo == cargo-deny ==
+cargo deny check || true
+echo == tests Rust ==
+cargo nextest run --workspace
+echo == fuzz/ ==
+cargo fmt --manifest-path fuzz/Cargo.toml --check
+cargo check -q --locked --manifest-path fuzz/Cargo.toml --all-targets
+cargo test -q --locked --manifest-path fuzz/Cargo.toml --lib
+echo == bindings TS ==
+cargo test -q -p netsift-api export_bindings >/dev/null
+if [ -d ui ] && [ -f ui/package.json ]; then
+  echo == UI : install ==
+  (cd ui && { npm ci || npm install; })
+  echo == UI : typecheck/lint ==
+  (cd ui && npm run -s lint)
+  (cd ui && npm run -s typecheck)
+  echo == UI : tests unitaires ==
+  (cd ui && npm run -s test -- --run)
+  echo == licences tierces ==
+  bash scripts/ct/licenses.sh --check
+fi
+echo OK
+'@) -replace "`r", "") }
   "dev" {
     $up = UiPort; $ap = ApiPort
     Write-Host ">> UI  : http://localhost:$up"
@@ -93,6 +129,7 @@ switch ($Cmd) {
   "shots"     { Run-In @() "bash scripts/ct/shots.sh $r" }
   "desktop"   { Run-In @() "bash scripts/ct/desktop.sh linux" }
   "geoip"     { Run-In @() "bash scripts/ct/geoip.sh" }
+  "licenses"  { Run-In @() "bash scripts/ct/licenses.sh $r" }
   # git-cliff : depuis le checkout racine seulement (un worktree a besoin du montage git de x.sh).
   "cliff"     { Run-In @() "bash scripts/ct/cliff.sh $r" }
   default     { Get-Content "$Root/x.ps1" | Select-Object -Skip 2 -First 12 | ForEach-Object { $_ -replace '^#\s?','' } }

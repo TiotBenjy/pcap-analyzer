@@ -5,15 +5,18 @@
 #   scripts/release.sh X.Y.Z [--dry-run]
 #
 #   1. scripts/wt.sh new chore/release-X.Y.Z
-#   2. dans ce worktree : versions (Cargo.toml, Cargo.lock, ui/package*.json), check-version,
-#      CHANGELOG.md (git-cliff --tag vX.Y.Z), commit « chore(release): vX.Y.Z »
+#   2. dans ce worktree : versions (Cargo.toml, Cargo.lock, fuzz/Cargo.lock, ui/package*.json),
+#      check-version, CHANGELOG.md (git-cliff --tag vX.Y.Z), commit « chore(release): vX.Y.Z »
+#      X.Y.Z égal à la version actuelle (première publication de la version déjà en place, par
+#      exemple 0.1.0) : aucune modification de version, seulement CHANGELOG.md et le commit
 #   3. scripts/wt.sh merge chore/release-X.Y.Z --push --cleanup   (gate complet ; pousse main)
 #   4. tag annoté vX.Y.Z sur main (le commit de fusion), git push origin vX.Y.Z
 #      -> déclenche .github/workflows/release.yml
 #   5. affiche les URL (Actions, release) et la commande de suivi
 #
-#   --dry-run  vérifie les préconditions, affiche les versions et les notes de la release ;
-#              aucune écriture dans le dépôt (seules les références distantes sont rafraîchies).
+#   --dry-run  vérifie les préconditions, affiche le plan exact (versions modifiées ou non,
+#              CHANGELOG.md, fusion, tag) et les notes de la release ; aucune écriture dans le
+#              dépôt (seules les références distantes sont rafraîchies).
 #
 # Tests : utiliser un clone jetable dont `origin` est un dépôt bare local (pas de mode sans push :
 # seul `wt.sh merge --push` pousse main).
@@ -71,6 +74,40 @@ github_slug() {
   fi
 }
 
+# release_kind ACTUELLE DEMANDÉE : « bump » si la version demandée dépasse l'actuelle, « same » si
+# elle lui est égale (publication de la version déjà en place : seul le tag manque), échec sinon.
+release_kind() {
+  if [[ "$2" == "$1" ]]; then echo same
+  elif semver_gt "$2" "$1"; then echo bump
+  else return 1
+  fi
+}
+
+# remote_tag_state ROOT TAG : « present », « absent » ou « error » (git ls-remote sur origin).
+remote_tag_state() {
+  local rc=0
+  git -C "$1" ls-remote --exit-code --tags origin "refs/tags/$2" >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0) echo present ;;
+    2) echo absent ;;
+    *) echo error ;;
+  esac
+}
+
+# release_merged ROOT VERSION : commit de main qui contient déjà la release VERSION (fusion
+# « merge(chore/release-VERSION): intégration », à défaut le commit « chore(release): vVERSION »),
+# vide sinon.
+release_merged() {
+  local root="$1" version="$2" found
+  found="$(git -C "$root" log main --first-parent --format='%H %s' \
+    | awk -v s="merge(chore/release-$version): intégration" 'substr($0, index($0, " ") + 1) == s { print $1; exit }')"
+  if [[ -z "$found" ]]; then
+    found="$(git -C "$root" log main --format='%H %s' \
+      | awk -v s="chore(release): v$version" 'substr($0, index($0, " ") + 1) == s { print $1; exit }')"
+  fi
+  echo "$found"
+}
+
 # Remplace la version de [workspace.package] dans un Cargo.toml (fichier modifié sur place).
 set_workspace_version() {
   local file="$1" version="$2"
@@ -81,6 +118,24 @@ set_workspace_version() {
     END { if (!done) exit 1 }' "$file" > "$file.release.tmp" \
     || { rm -f "$file.release.tmp"; return 1; }
   mv "$file.release.tmp" "$file"
+}
+
+# apply_version DIR VERSION RUNNER : écrit VERSION dans le dépôt DIR. RUNNER exécute
+# « RUNNER cargo <args> » à la racine de DIR et « RUNNER npm <args> » dans DIR/ui (x.sh -C DIR en
+# vrai, cargo et npm directs dans scripts/tests/release.sh).
+#   - Cargo.toml [workspace.package] version, puis Cargo.lock (crates du workspace seulement) ;
+#   - fuzz/Cargo.lock : fuzz/ est hors workspace mais référence les crates netsift-* par chemin ;
+#     cargo metadata (sans --locked) y réécrit leur version, rien d'autre (le gate le vérifie
+#     ensuite avec --locked) ;
+#   - ui/package.json et ui/package-lock.json (npm version, sans commit ni tag).
+apply_version() {
+  local dir="$1" version="$2" runner="$3"
+  set_workspace_version "$dir/Cargo.toml" "$version"
+  "$runner" cargo update --workspace --quiet
+  if [[ -f "$dir/fuzz/Cargo.toml" ]]; then
+    "$runner" cargo metadata --quiet --format-version 1 --manifest-path fuzz/Cargo.toml >/dev/null
+  fi
+  "$runner" npm version "$version" --no-git-tag-version --allow-same-version >/dev/null
 }
 
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"; }
@@ -121,16 +176,22 @@ main() {
   local current
   current="$(bash "$root/scripts/check-version.sh" -C "$root")" \
     || die "versions incohérentes sur main (scripts/check-version.sh)"
-  semver_gt "$version" "$current" || die "$version ne dépasse pas la version actuelle ($current)"
+  local kind
+  kind="$(release_kind "$current" "$version")" \
+    || die "$version est inférieure à la version actuelle ($current)"
 
-  git -C "$root" rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "le tag $tag existe déjà en local"
-  local rc=0
-  git -C "$root" ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 || rc=$?
-  case "$rc" in
-    0) die "le tag $tag existe déjà sur origin" ;;
-    2) ;;
-    *) die "impossible d'interroger les tags d'origin (git ls-remote, code $rc)" ;;
+  case "$(remote_tag_state "$root" "$tag")" in
+    present) die "le tag $tag existe déjà sur origin : $tag est publiée (suivi : scripts/release-status.sh $tag)" ;;
+    absent) ;;
+    *) die "impossible d'interroger les tags d'origin (git ls-remote)" ;;
   esac
+  git -C "$root" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
+    && die "le tag $tag existe en local mais pas sur origin. Pour terminer :"$'\n'"  git -C $root push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
+  # Relance après un échec partiel (fusion faite, tag non créé) : jamais de seconde fusion.
+  local merged
+  merged="$(release_merged "$root" "$version")"
+  [[ -z "$merged" ]] \
+    || die "main contient déjà la release $tag (commit ${merged:0:12}) ; ne pas la fusionner une seconde fois. Il ne manque que le tag :"$'\n'"  git -C $root tag -a $tag -m \"NetSift $tag\" $merged && git -C $root push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
   git -C "$root" show-ref --verify --quiet "refs/heads/$br" && die "la branche $br existe déjà"
   [[ ! -e "$wt" ]] || die "le worktree $wt existe déjà"
 
@@ -139,9 +200,23 @@ main() {
 
   # --- Dry run ----------------------------------------------------------------------
   if [[ "$dry_run" == "1" ]]; then
-    info "Préconditions OK. Versions qui seraient appliquées ($current -> $version) :"
-    echo "   Cargo.toml [workspace.package] version, Cargo.lock (crates netsift-*),"
-    echo "   ui/package.json, ui/package-lock.json ; tag $tag ; branche $br"
+    local changelog="créé"
+    [[ -f "$root/CHANGELOG.md" ]] && changelog="régénéré"
+    info "Préconditions OK. Plan de publication de $tag :"
+    echo "   1. worktree et branche $br (scripts/wt.sh new)"
+    if [[ "$kind" == "same" ]]; then
+      echo "   2. version $version déjà en place (Cargo.toml, Cargo.lock, fuzz/Cargo.lock, ui/package*.json) :"
+      echo "      aucune modification de version, première publication de la version courante ;"
+    else
+      echo "   2. version $current -> $version : Cargo.toml [workspace.package], Cargo.lock et"
+      echo "      fuzz/Cargo.lock (crates netsift-*), ui/package.json, ui/package-lock.json ;"
+    fi
+    echo "      CHANGELOG.md $changelog (git-cliff --tag $tag), commit « chore(release): $tag »"
+    echo "   3. scripts/wt.sh merge $br --push --cleanup : gate complet, fusion --no-ff dans main,"
+    echo "      push de main sur origin, suppression du worktree et de la branche"
+    echo "   4. tag annoté $tag sur la fusion, git push origin $tag -> release.yml (brouillon,"
+    echo "      bundles Linux, Windows et macOS, SHA256SUMS.txt, publication)"
+    echo "   5. suivi : scripts/release-status.sh $tag --wait"
     info "Notes de la release $tag (git-cliff --unreleased --tag $tag) :"
     echo
     "$root/x.sh" -C "$root" cliff --unreleased --tag "$tag" --strip all
@@ -194,15 +269,19 @@ main() {
   info "1/5 Worktree $br"
   "$root/scripts/wt.sh" new "$br" main
 
-  info "2/5 Versions $current -> $version, CHANGELOG.md, commit"
-  set_workspace_version "$wt/Cargo.toml" "$version"
-  "$root/x.sh" -C "$wt" cargo update --workspace --quiet
-  # fuzz/ (hors workspace) référence les crates netsift-* : son Cargo.lock suit leur version
-  # (le gate le vérifie avec --locked). cargo metadata ne change que ces entrées.
-  "$root/x.sh" -C "$wt" cargo metadata --quiet --format-version 1 --manifest-path fuzz/Cargo.toml >/dev/null
-  "$root/x.sh" -C "$wt" npm version "$version" --no-git-tag-version --allow-same-version >/dev/null
+  if [[ "$kind" == "same" ]]; then
+    info "2/5 Version $version déjà en place : CHANGELOG.md, commit"
+  else
+    info "2/5 Versions $current -> $version, CHANGELOG.md, commit"
+    # shellcheck disable=SC2329 # invoquée par apply_version
+    xrun() { "$root/x.sh" -C "$wt" "$@"; }
+    apply_version "$wt" "$version" xrun
+  fi
   bash "$root/scripts/check-version.sh" -C "$wt" "$tag" >/dev/null
   "$root/x.sh" -C "$wt" cliff --tag "$tag" --output CHANGELOG.md
+  # Second garde-fou contre une release vide (déjà fusionnée) : rien à committer.
+  [[ -n "$(git -C "$wt" status --porcelain)" ]] \
+    || die "aucun changement (CHANGELOG.md identique) : $tag semble déjà fusionnée sur main. Créer et pousser le tag :"$'\n'"  git -C $root push origin $tag (après git tag -a sur la fusion), puis scripts/release-status.sh $tag --wait"
 
   local unexpected
   unexpected="$(git -C "$wt" status --porcelain \

@@ -915,7 +915,7 @@ acceptée : la remplacer par une nouvelle qui la référence.
   ne peut rien télécharger pour les afficher.
 - Décision :
   - **liste générée, commitée** : `ui/src/views/settings/licenses/third-party-licenses.json` (UI) et
-    `apps/desktop/resources/licenses/THIRD-PARTY-NOTICES.txt` (bundles), produits par
+    `THIRD_PARTY_LICENSES` (racine, cité par `NOTICE`, livré dans les bundles), produits par
     `./x.sh licenses` ; le gate et le job `licenses` de `ci.yml` régénèrent avec `--check` et échouent
     sur toute différence. Commiter plutôt que générer au build : le build de l'UI (dev, shots, Tauri)
     ne dépend ni de cargo-about ni du registre cargo, et chaque changement de licence apparaît dans un
@@ -928,7 +928,11 @@ acceptée : la remplacer par une nouvelle qui la référence.
     `node_modules` ; la liste d'acceptation est celle d'`about.toml` plus `0BSD`, `Unlicense`, `OFL-1.1` ;
   - **UI** : dialogue chargé à la demande (chunk séparé de ~420 Ko, ~50 Ko compressé), regroupement par
     licence reproduite, recherche, textes affichés en nœuds texte (aucun HTML injecté) ;
-  - **bundles** : `LICENSE-MIT`, `LICENSE-APACHE` et `THIRD-PARTY-NOTICES.txt` en ressources Tauri
+  - **licence du projet** : Apache-2.0 seule (décision de l'utilisateur), `LICENSE` officiel et
+    `NOTICE` à la racine ;
+  - **MPL-2.0** : pour chaque paquet embarqué sous MPL-2.0, `THIRD_PARTY_LICENSES` donne l'adresse
+    de son code source à la version embarquée (MPL-2.0, section 3.2) ;
+  - **bundles** : `LICENSE`, `NOTICE` et `THIRD_PARTY_LICENSES` en ressources Tauri
     (`licenses/`), vérifiés par un test du crate desktop ; pas de page de licence à accepter dans les
     installateurs (`licenseFile` non défini : les licences permissives ne demandent pas d'acceptation).
 - Conséquences : toute mise à jour de dépendance demande `./x.sh licenses` et un commit des deux

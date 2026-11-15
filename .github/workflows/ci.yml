@@ -103,7 +103,7 @@ jobs:
 
   licenses:
     name: Licences tierces (liste à jour)
-    # Liste des crates Rust et paquets npm embarqués (« À propos », THIRD-PARTY-NOTICES.txt des
+    # Liste des crates Rust et paquets npm embarqués (« À propos », THIRD_PARTY_LICENSES des
     # bundles) : régénérée par le même script que ./x.sh licenses, puis comparée aux fichiers commités.
     runs-on: ubuntu-22.04
     steps:

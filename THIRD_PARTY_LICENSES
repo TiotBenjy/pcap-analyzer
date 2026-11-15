@@ -1,7 +1,7 @@
-NetSift - third-party software notices and licenses
+NetSift - third-party software licenses and notices
 
-NetSift is licensed under the MIT license or the Apache License 2.0, at your option
-(LICENSE-MIT, LICENSE-APACHE). Source: https://github.com/TiotBenjy/pcap-analyzer
+NetSift is licensed under the Apache License 2.0 (LICENSE, NOTICE).
+Source: https://github.com/TiotBenjy/pcap-analyzer
 
 NetSift includes the third-party software listed below; each package is followed by the
 number of the license texts and notices that apply to it, reproduced afterwards.
@@ -427,32 +427,32 @@ tracing-subscriber 0.3.23 (Rust crate) - MIT - [194]
 try-lock 0.2.5 (Rust crate) - MIT - [196]
 ts-rs 12.0.1 (Rust crate) - MIT - [8]
 ts-rs-macros 12.0.1 (Rust crate) - MIT - [8]
-tslib 2.3.0 (npm package) - 0BSD - [197]
+tslib 2.3.0 (npm package) - 0BSD - [197] [198]
 typeid 1.0.3 (Rust crate) - MIT OR Apache-2.0 - [9]
-typenum 1.20.1 (Rust crate) - MIT OR Apache-2.0 - [198]
-uds_windows 1.2.1 (Rust crate) - MIT - [199]
-unicode-ident 1.0.27 (Rust crate) - (MIT OR Apache-2.0) AND Unicode-3.0 - [9] [200]
+typenum 1.20.1 (Rust crate) - MIT OR Apache-2.0 - [199]
+uds_windows 1.2.1 (Rust crate) - MIT - [200] [201]
+unicode-ident 1.0.27 (Rust crate) - (MIT OR Apache-2.0) AND Unicode-3.0 - [9] [202]
 unicode-segmentation 1.13.3 (Rust crate) - MIT OR Apache-2.0 - [87]
-untrusted 0.9.0 (Rust crate) - ISC - [201]
+untrusted 0.9.0 (Rust crate) - ISC - [203]
 url 2.5.8 (Rust crate) - MIT OR Apache-2.0 - [103]
-urlpattern 0.6.0 (Rust crate) - MIT - [202]
+urlpattern 0.6.0 (Rust crate) - MIT - [204]
 use-sync-external-store 1.7.0 (npm package) - MIT - [149]
-utf_types 1.0.0 (Rust crate) - Apache-2.0 OR MIT - [203]
-utf8_iter 1.1.0 (Rust crate) - Apache-2.0 OR MIT - [203]
-uuid 1.29.1 (Rust crate) - Apache-2.0 OR MIT - [204]
+utf_types 1.0.0 (Rust crate) - Apache-2.0 OR MIT - [205]
+utf8_iter 1.1.0 (Rust crate) - Apache-2.0 OR MIT - [205]
+uuid 1.29.1 (Rust crate) - Apache-2.0 OR MIT - [206]
 walkdir 2.5.0 (Rust crate) - Unlicense OR MIT - [10]
-want 0.3.2 (Rust crate) - MIT - [205]
+want 0.3.2 (Rust crate) - MIT - [207]
 web_atoms 0.2.6 (Rust crate) - MIT OR Apache-2.0 - [90]
-web-time 1.1.0 (Rust crate) - MIT OR Apache-2.0 - [206]
-webkit2gtk 2.0.2 (Rust crate) - MIT - [207]
-webkit2gtk-sys 2.0.2 (Rust crate) - MIT - [208]
+web-time 1.1.0 (Rust crate) - MIT OR Apache-2.0 - [208]
+webkit2gtk 2.0.2 (Rust crate) - MIT - [209]
+webkit2gtk-sys 2.0.2 (Rust crate) - MIT - [210]
 webview2-com 0.39.1 (Rust crate) - MIT - [8]
 webview2-com-macros 0.8.1 (Rust crate) - MIT - [8]
 webview2-com-sys 0.39.1 (Rust crate) - MIT - [8]
-weezl 0.1.12 (Rust crate) - MIT OR Apache-2.0 - [209]
-winapi 0.3.9 (Rust crate) - MIT OR Apache-2.0 - [210]
+weezl 0.1.12 (Rust crate) - MIT OR Apache-2.0 - [211]
+winapi 0.3.9 (Rust crate) - MIT OR Apache-2.0 - [212]
 winapi-util 0.1.11 (Rust crate) - Unlicense OR MIT - [160]
-window-vibrancy 0.8.1 (Rust crate) - Apache-2.0 OR MIT - [211]
+window-vibrancy 0.8.1 (Rust crate) - Apache-2.0 OR MIT - [213]
 windows 0.62.2 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-collections 0.3.2 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-core 0.62.2 (Rust crate) - MIT OR Apache-2.0 - [8]
@@ -466,33 +466,46 @@ windows-strings 0.5.1 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-sys 0.61.2 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-threading 0.2.1 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-version 0.1.7 (Rust crate) - MIT OR Apache-2.0 - [8]
-winnow 0.5.40 (Rust crate) - MIT - [212]
-winnow 1.0.5 (Rust crate) - MIT - [212]
-world-atlas 2.0.2 (npm package) - ISC - [213]
+winnow 0.5.40 (Rust crate) - MIT - [214]
+winnow 1.0.5 (Rust crate) - MIT - [214]
+world-atlas 2.0.2 (npm package) - ISC - [215]
 writeable 0.6.4 (Rust crate) - Unicode-3.0 - [101]
-wry 0.57.1 (Rust crate) - Apache-2.0 OR MIT - [214]
+wry 0.57.1 (Rust crate) - Apache-2.0 OR MIT - [216]
 x11 2.21.0 (Rust crate) - MIT - [9]
 x11-dl 2.21.0 (Rust crate) - MIT - [9]
 x509-parser 0.18.1 (Rust crate) - MIT OR Apache-2.0 - [14]
 yoke 0.8.4 (Rust crate) - Unicode-3.0 - [101]
 yoke-derive 0.8.4 (Rust crate) - Unicode-3.0 - [101]
-zbus 5.19.0 (Rust crate) - MIT - [215]
-zbus_macros 5.19.0 (Rust crate) - MIT - [215]
-zbus_names 4.3.5 (Rust crate) - MIT - [215]
-zcheapstr 1.2.0 (Rust crate) - MIT - [216]
+zbus 5.19.0 (Rust crate) - MIT - [217]
+zbus_macros 5.19.0 (Rust crate) - MIT - [217]
+zbus_names 4.3.5 (Rust crate) - MIT - [217]
+zcheapstr 1.2.0 (Rust crate) - MIT - [218]
 zerofrom 0.1.8 (Rust crate) - Unicode-3.0 - [101]
 zerofrom-derive 0.1.8 (Rust crate) - Unicode-3.0 - [101]
-zeroize 1.9.1 (Rust crate) - Apache-2.0 OR MIT - [217]
+zeroize 1.9.1 (Rust crate) - Apache-2.0 OR MIT - [219]
 zerotrie 0.2.5 (Rust crate) - Unicode-3.0 - [101]
 zerovec 0.11.9 (Rust crate) - Unicode-3.0 - [101]
 zerovec-derive 0.11.7 (Rust crate) - Unicode-3.0 - [101]
 zmij 1.0.23 (Rust crate) - MIT - [9]
-zrender 6.1.0 (npm package) - BSD-3-Clause - [218]
-zune-core 0.5.3 (Rust crate) - MIT OR Apache-2.0 OR Zlib - [219]
-zune-jpeg 0.5.15 (Rust crate) - MIT OR Apache-2.0 OR Zlib - [219]
-zvariant 5.15.1 (Rust crate) - MIT - [215]
-zvariant_derive 5.15.1 (Rust crate) - MIT - [215]
+zrender 6.1.0 (npm package) - BSD-3-Clause - [220]
+zune-core 0.5.3 (Rust crate) - MIT OR Apache-2.0 OR Zlib - [221]
+zune-jpeg 0.5.15 (Rust crate) - MIT OR Apache-2.0 OR Zlib - [221]
+zvariant 5.15.1 (Rust crate) - MIT - [217]
+zvariant_derive 5.15.1 (Rust crate) - MIT - [217]
 zvariant_utils 4.2.0 (Rust crate) - MIT - [9]
+
+==============================================================================
+Source code of the MPL-2.0 packages
+==============================================================================
+
+These packages are distributed in executable form under the Mozilla Public License 2.0;
+their source code, unmodified, is available at:
+
+cssparser 0.37.0: https://crates.io/crates/cssparser/0.37.0
+cssparser-macros 0.7.1: https://crates.io/crates/cssparser-macros/0.7.1
+dtoa-short 0.3.5: https://crates.io/crates/dtoa-short/0.3.5
+option-ext 0.2.0: https://crates.io/crates/option-ext/0.2.0
+selectors 0.38.0: https://crates.io/crates/selectors/0.38.0
 
 ==============================================================================
 [1] LICENSE
@@ -7866,7 +7879,27 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
 ==============================================================================
-[198] MIT License
+[198] CopyrightNotice.txt
+Used by: tslib 2.3.0
+==============================================================================
+
+/*! *****************************************************************************
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+***************************************************************************** */
+
+==============================================================================
+[199] MIT License
 Used by: typenum 1.20.1
 ==============================================================================
 
@@ -7893,7 +7926,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[199] MIT License
+[200] MIT License
 Used by: uds_windows 1.2.1
 ==============================================================================
 
@@ -7920,7 +7953,86 @@ Used by: uds_windows 1.2.1
     SOFTWARE
 
 ==============================================================================
-[200] Unicode License v3
+[201] THIRDPARTYNOTICES
+Used by: uds_windows 1.2.1
+==============================================================================
+
+Third Party Notices
+
+***
+
+rust
+Copyright 2016 The Rust Project Developers
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+***
+
+mio
+Copyright (c) 2014 Carl Lerche and other MIO contributors
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+***
+
+miow
+Copyright (c) 2014 Alex Crichton
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+==============================================================================
+[202] Unicode License v3
 Used by: unicode-ident 1.0.27
 ==============================================================================
 
@@ -7965,7 +8077,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
 ==============================================================================
-[201] ISC License
+[203] ISC License
 Used by: untrusted 0.9.0
 ==============================================================================
 
@@ -7984,7 +8096,7 @@ Used by: untrusted 0.9.0
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ==============================================================================
-[202] MIT License
+[204] MIT License
 Used by: urlpattern 0.6.0
 ==============================================================================
 
@@ -8011,7 +8123,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[203] MIT License
+[205] MIT License
 Used by: utf_types 1.0.0, utf8_iter 1.1.0
 ==============================================================================
 
@@ -8042,7 +8154,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[204] MIT License
+[206] MIT License
 Used by: uuid 1.29.1
 ==============================================================================
 
@@ -8074,7 +8186,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[205] MIT License
+[207] MIT License
 Used by: want 0.3.2
 ==============================================================================
 
@@ -8099,7 +8211,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-[206] MIT License
+[208] MIT License
 Used by: web-time 1.1.0
 ==============================================================================
 
@@ -8126,7 +8238,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[207] MIT License
+[209] MIT License
 Used by: webkit2gtk 2.0.2
 ==============================================================================
 
@@ -8152,7 +8264,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[208] MIT License
+[210] MIT License
 Used by: webkit2gtk-sys 2.0.2
 ==============================================================================
 
@@ -8176,7 +8288,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[209] MIT License
+[211] MIT License
 Used by: weezl 0.1.12
 ==============================================================================
 
@@ -8203,7 +8315,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[210] MIT License
+[212] MIT License
 Used by: winapi 0.3.9
 ==============================================================================
 
@@ -8228,7 +8340,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[211] MIT License
+[213] MIT License
 Used by: window-vibrancy 0.8.1
 ==============================================================================
 
@@ -8255,7 +8367,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[212] MIT License
+[214] MIT License
 Used by: winnow 0.5.40, winnow 1.0.5
 ==============================================================================
 
@@ -8279,7 +8391,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[213] LICENSE
+[215] LICENSE
 Used by: world-atlas 2.0.2
 ==============================================================================
 
@@ -8298,7 +8410,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
 ==============================================================================
-[214] MIT License
+[216] MIT License
 Used by: wry 0.57.1
 ==============================================================================
 
@@ -8325,7 +8437,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[215] MIT License
+[217] MIT License
 Used by: zbus 5.19.0, zbus_macros 5.19.0, zbus_names 4.3.5, zvariant 5.15.1, zvariant_derive 5.15.1
 ==============================================================================
 
@@ -8356,7 +8468,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[216] MIT License
+[218] MIT License
 Used by: zcheapstr 1.2.0
 ==============================================================================
 
@@ -8387,7 +8499,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[217] MIT License
+[219] MIT License
 Used by: zeroize 1.9.1
 ==============================================================================
 
@@ -8418,7 +8530,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[218] LICENSE
+[220] LICENSE
 Used by: zrender 6.1.0
 ==============================================================================
 
@@ -8453,7 +8565,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-[219] MIT License
+[221] MIT License
 Used by: zune-core 0.5.3, zune-jpeg 0.5.15
 ==============================================================================
 

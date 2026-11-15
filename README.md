@@ -81,8 +81,18 @@ x.sh / x.ps1 pilote de la toolchain conteneurisée
 
 ## Licences et données
 
-NetSift est distribué sous double licence MIT ou Apache-2.0, au choix (`LICENSE-MIT`,
-`LICENSE-APACHE`). Dépendances sous licences permissives uniquement (`deny.toml`) ; leur liste, avec
-les textes de licence, est consultable dans « Paramètres > À propos » et livrée avec les bundles
-(`THIRD-PARTY-NOTICES.txt`). Aucun code sous licence copyleft n'est porté. GeoIP : base DB-IP IP-to-Country Lite (CC BY 4.0), attribution dans « À propos ».
+NetSift est distribué sous licence Apache-2.0 (voir « License » ci-dessous). Les logiciels tiers
+embarqués, avec leurs textes de licence, sont listés dans `THIRD_PARTY_LICENSES`, consultable aussi
+dans « Paramètres > À propos ». Aucun code sous licence copyleft n'est porté. GeoIP : base DB-IP IP-to-Country Lite (CC BY 4.0), attribution dans « À propos ».
 Les captures analysées ne quittent jamais la machine ; l'application n'émet aucun trafic réseau.
+
+## License
+
+NetSift est distribué sous licence [Apache License 2.0](LICENSE). Toute redistribution, modifiée ou
+non, doit conserver [`LICENSE`](LICENSE) et [`NOTICE`](NOTICE), et signaler de façon visible les
+fichiers modifiés (section 4 de la licence).
+
+Les logiciels tiers embarqués dans l'application (crates Rust et paquets npm) et leurs licences,
+avis et sources (MPL-2.0) sont listés dans [`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES), avec
+l'attribution de la base GeoIP DB-IP (CC BY 4.0). Ce fichier est généré : après un changement de
+dépendances, `./x.sh licenses` le régénère (`./x.sh licenses --check` le vérifie, comme le gate).

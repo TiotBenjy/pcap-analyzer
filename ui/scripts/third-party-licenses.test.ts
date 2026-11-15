@@ -14,6 +14,7 @@ import {
   npmPackages,
   OUTPUT_JSON,
   referenceTexts,
+  sourceUrl,
   type ThirdPartyLicenses,
   tomlStringArray,
 } from './third-party-licenses';
@@ -103,13 +104,14 @@ describe('npm packages', () => {
     });
     write('node_modules/a/LICENSE', 'MIT License\r\nCopyright A\r\n');
     write('node_modules/a/NOTICE', 'Notice of A');
+    write('node_modules/a/THIRDPARTYNOTICES', 'Bundled code of A');
     write('node_modules/a/licenses/LICENSE-d3', 'ISC License d3');
     write('node_modules/@s/b/LICENSE-MIT', 'MIT B');
     write('node_modules/@s/b/LICENSE.spdx', 'SPDXVersion: SPDX-2.1');
     write('node_modules/a/node_modules/c/license.md', 'ISC C');
     const pkgs = npmPackages(dir, ACCEPTED, reference);
     expect(pkgs.map((p) => [p.name, p.version, p.license, p.texts.map((t) => t.title)])).toEqual([
-      ['a', '1.0.0', 'MIT', ['LICENSE', 'licenses/LICENSE-d3', 'NOTICE']],
+      ['a', '1.0.0', 'MIT', ['LICENSE', 'licenses/LICENSE-d3', 'NOTICE', 'THIRDPARTYNOTICES']],
       ['@s/b', '2.0.0', 'MIT', ['LICENSE-MIT']],
       ['c', '0.1.0', 'ISC', ['license.md']],
     ]);
@@ -198,7 +200,24 @@ describe('outputs', () => {
     expect(txt).toContain('Alpha 10.0.0 (npm package) - MIT - [2]');
     expect(txt).toContain('[2] MIT License\nUsed by: Alpha 10.0.0, zeta 1.0.0');
     expect(txt).toContain('DB-IP');
+    expect(txt).toContain('Apache License 2.0 (LICENSE, NOTICE)');
+    expect(txt).not.toContain('MPL-2.0 packages');
     expect(txt.endsWith('MIT shared\n')).toBe(true);
+  });
+
+  it('says where to get the source code of MPL-2.0 packages', () => {
+    const mpl = assemble([
+      { name: 'cssparser', version: '0.37.0', source: 'cargo', declared: 'MPL-2.0', license: 'MPL-2.0', texts: [{ title: 'MPL', text: 'MPL' }] },
+      { name: 'dual', version: '1.0.0', source: 'cargo', declared: 'MIT OR MPL-2.0', license: 'MIT', texts: [{ title: 'MIT', text: 'MIT' }] },
+      { name: 'web', version: '2.0.0', source: 'npm', declared: 'MPL-2.0', license: 'MPL-2.0', texts: [{ title: 'MPL', text: 'MPL' }] },
+    ]);
+    const txt = noticesText(mpl);
+    expect(txt).toContain('Source code of the MPL-2.0 packages');
+    expect(txt).toContain('cssparser 0.37.0: https://crates.io/crates/cssparser/0.37.0');
+    expect(txt).toContain('web 2.0.0: https://www.npmjs.com/package/web/v/2.0.0');
+    // MIT chosen: the MPL-2.0 alternative does not apply.
+    expect(txt).not.toContain('dual 1.0.0: https://');
+    expect(sourceUrl({ name: '@s/b', version: '1.0.0', source: 'npm' })).toBe('https://www.npmjs.com/package/@s/b/v/1.0.0');
   });
 
   it('the committed list has well-formed references', () => {

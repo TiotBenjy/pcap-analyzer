@@ -688,6 +688,67 @@ acceptée : la remplacer par une nouvelle qui la référence.
     `./x.sh cargo fmt --manifest-path fuzz/Cargo.toml`. Procédure et résultats : `docs/FUZZING.md` ;
   - le job `fuzz` de la CI rend `main` rouge si une cible plante en 60 s : assumé, comme un test cassé.
 
+## ADR-021 — Save PCAP : export pcapng par job en arrière-plan, sources vérifiées
+
+- Contexte : P4.3. L'utilisateur veut récupérer les paquets d'une session, d'une plage horaire ou d'un
+  flux dans un pcapng. Les captures ne sont jamais copiées (seuls leurs chemins et empreintes sont en
+  base) ; une session peut peser plusieurs Gio et un export durer des minutes ; le desktop ne peut
+  ouvrir que `<données>/exports` (ADR-012) ; la webview desktop ne peut pas télécharger une URL qui
+  exige le jeton en en-tête.
+- Décision :
+  - **writer maison** `netsift_capture::writer::PcapNgWriter`, écrit d'après la spécification pcapng
+    (pas de code porté) : SHB petit-boutiste, un IDB par couple (linktype, snaplen) émis juste avant
+    son premier paquet, `if_tsresol = 9`, EPB avec longueur d'origine. `pcap-file` n'est pas une
+    dépendance du dépôt (les lecteurs sont déjà écrits à la main, ADR de P1.1) et n'apporte rien pour
+    trois types de blocs ; l'aller-retour est vérifié avec nos lecteurs ;
+  - **relecture par le lecteur de l'import** : le moteur reconstruit le `ChunkGroup` à partir de la
+    table `chunks`, dans l'ordre des identifiants, sans `ChunkGroup::new` (qui retrierait) ; les chunks
+    hors de la demande (`[first_ts, last_ts]` disjoint) et les doublons y figurent comme membres
+    `Skipped`, donc jamais ouverts, et l'ordre de sortie est celui de `ChunkSetSource` (fusion k-voies,
+    égalités par chunk puis position). La lecture s'arrête au premier paquet postérieur à la fin ;
+  - **sources vérifiées deux fois** par `chunkset::probe_file` (même sonde que l'inventaire) : avant la
+    lecture (taille, date de modification, empreinte des 64 premiers Kio, en-tête lisible), d'où une
+    erreur problem+json synchrone (409 `export-source-missing` ou `export-source-modified`, détail
+    limité au nom du fichier), puis après la lecture, avant de publier le fichier : une source remplacée
+    pendant l'export fait échouer le job. Seuls les chunks relus sont vérifiés ;
+  - **job en arrière-plan interrogé par polling** : `POST /sessions/{id}/exports/pcap` planifie et
+    vérifie dans `spawn_blocking`, répond 202 avec le job, puis un thread dédié écrit le fichier (le
+    runtime async n'est jamais bloqué). L'UI interroge `GET /sessions/{id}/exports` toutes les 500 ms
+    tant qu'un job tourne ; `POST /exports/{job}/cancel` arrête la lecture (jeton vérifié à chaque
+    paquet). Le SSE de l'import a été écarté : il sert un flux d'anomalies et d'événements, alors qu'un
+    export n'a qu'un état court à relire, que le polling donne avec un cache TanStack Query ordinaire et
+    qui survit à la fermeture du dialogue. Au plus 2 exports simultanés (409 `too-many-exports`) ; les
+    jobs vivent en mémoire (32 terminés gardés), les fichiers restent ;
+  - **fichier** : `<données>/exports/netsift-<session>-<portée>-<job>.pcapng`, nom généré par le serveur
+    à partir de l'ULID de session, de la portée et des 8 derniers caractères de l'ULID du job (aucun
+    champ du client, champs inconnus ignorés), écrit en `<nom>.part` (`create_new`), `fsync`, renommé,
+    jamais écrasé. Le `.part` est supprimé à l'erreur et à l'annulation (garde `Drop`) ; les orphelins
+    (arrêt brutal) au démarrage d'un serveur non `--read-only`. L'arrêt de l'API annule les exports et
+    les attend avec les imports (`STOP_LIMIT`) ; la fermeture du desktop ne demande pas de confirmation
+    pour un export (rien n'est perdu que l'on ne puisse relancer) ;
+  - **livraison** : desktop, « Ouvrir le dossier » par la commande `plugin:opener|open_path` sur le
+    dossier des exports (permission existante `opener:allow-open-path`, aucune capability ajoutée) ;
+    web, lien same-origin `GET /exports/{job}/file` que le navigateur télécharge lui-même (le proxy Vite
+    ajoute le jeton), servi en flux par blocs de 256 Kio, `application/octet-stream`, `attachment`,
+    `CSP: sandbox`, `nosniff`, `no-store` ;
+  - **flux** : retrouvé par sa ligne `flows` (5-tuple, premier et dernier horodatage), jamais en
+    recalculant un identifiant ; les deux sens, même décodage que la table de flux. Fragments IP : le
+    premier fragment est reconnu par ses ports, les suivants par (source, destination, identification),
+    avec 30 s de marge avant le début du flux (la table date un datagramme par son dernier fragment) ;
+  - serveur `--read-only` : la route `POST` est refusée comme toute mutation ; la CLI
+    `netsift export pcap` appelle le même code moteur.
+- Conséquences :
+  - limites : deux flux successifs de même 5-tuple dont les fenêtres se recouvrent (port réutilisé
+    aussitôt, horodatages identiques) ne se distinguent pas, l'export de l'un contient l'autre ; un
+    fragment arrivé avant son premier fragment n'est pas inclus ; un horodatage qui recule dans un
+    fichier après la fin demandée est perdu (arrêt anticipé) ; le snaplen d'une interface autre que la
+    première d'un chunk pcapng n'est pas connu (écrit 0) ;
+  - une session mono-fichier relit le fichier depuis le début même pour un flux tardif (pas d'index
+    d'offsets) ; seul le découpage en chunks évite de relire ce qui précède ;
+  - les fichiers d'export s'accumulent dans `exports/` (aucune purge automatique, en mode web
+    compris) ; `ExportJob.folder` et `path` exposent des chemins absolus de la machine, sans risque
+    hors de l'API locale authentifiée.
+
 ## ADR-022 — Identifiant de flux = index de trame global de son premier paquet
 
 - Contexte : P4.7, trouvé par la revue de P4.1. `FlowId::derive(clé, premier_ts)` (FNV-1a 63 bits de

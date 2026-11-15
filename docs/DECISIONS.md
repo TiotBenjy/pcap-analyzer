@@ -682,5 +682,8 @@ acceptée : la remplacer par une nouvelle qui la référence.
     régression sur l'entrée minimisée (`./x.sh fuzz tmin`) ; le corpus vivant reste local ;
   - changer de nightly ou de cargo-fuzz se fait dans `scripts/ct/fuzz.sh` seulement ; une nightly trop
     ancienne pour l'édition ou les fonctions utilisées par le workspace casse les cibles, pas le gate ;
-  - le crate `fuzz/` n'est pas couvert par `cargo fmt --all` ni par le clippy du gate : à formater avec
-    `./x.sh cargo fmt --manifest-path fuzz/Cargo.toml`. Procédure et résultats : `docs/FUZZING.md`.
+  - le gate (`./x.sh check`, job Rust de la CI) vérifie `fuzz/` sur la stable : format, `cargo check
+    --locked --all-targets` et tests de sa bibliothèque (pas de clippy) ; `fuzz/Cargo.lock`, commité,
+    suit la version des crates `netsift-*` (mis à jour par `scripts/release.sh`). À formater avec
+    `./x.sh cargo fmt --manifest-path fuzz/Cargo.toml`. Procédure et résultats : `docs/FUZZING.md` ;
+  - le job `fuzz` de la CI rend `main` rouge si une cible plante en 60 s : assumé, comme un test cassé.

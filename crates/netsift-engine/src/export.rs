@@ -307,22 +307,11 @@ impl ExportPlan {
                 &packet.data,
             )?;
         }
-        let read_errors = source
-            .anomalies()
-            .iter()
-            .filter(|a| {
-                matches!(
-                    a.kind,
-                    AnomalyKind::ReadError { .. }
-                        | AnomalyKind::Read(ReadWarning::SkippedRecord { .. })
-                )
-            })
-            .count();
         let report = ExportReport {
             packets: writer.packets(),
             bytes_written: writer.bytes_written(),
             chunks_read: self.needed.len(),
-            read_errors: u64::try_from(read_errors).unwrap_or(u64::MAX),
+            read_errors: read_errors(&source),
         };
         let file = writer
             .into_inner()?
@@ -368,6 +357,22 @@ impl ExportPlan {
             0
         }
     }
+}
+
+/// Read errors of the sources: chunks that stopped early and records skipped.
+fn read_errors(source: &ChunkSetSource) -> u64 {
+    let n = source
+        .anomalies()
+        .iter()
+        .filter(|a| {
+            matches!(
+                a.kind,
+                AnomalyKind::ReadError { .. }
+                    | AnomalyKind::Read(ReadWarning::SkippedRecord { .. })
+            )
+        })
+        .count();
+    u64::try_from(n).unwrap_or(u64::MAX)
 }
 
 /// `<dest>.part`.

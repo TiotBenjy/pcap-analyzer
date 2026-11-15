@@ -4154,7 +4154,8 @@
    "declared": "0BSD",
    "license": "0BSD",
    "texts": [
-    196
+    196,
+    197
    ]
   },
   {
@@ -4174,7 +4175,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    197
+    198
    ]
   },
   {
@@ -4184,7 +4185,8 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    198
+    199,
+    200
    ]
   },
   {
@@ -4195,7 +4197,7 @@
    "license": "MIT AND Unicode-3.0",
    "texts": [
     8,
-    199
+    201
    ]
   },
   {
@@ -4215,7 +4217,7 @@
    "declared": "ISC",
    "license": "ISC",
    "texts": [
-    200
+    202
    ]
   },
   {
@@ -4235,7 +4237,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    201
+    203
    ]
   },
   {
@@ -4255,7 +4257,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    202
+    204
    ]
   },
   {
@@ -4265,7 +4267,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    202
+    204
    ]
   },
   {
@@ -4275,7 +4277,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    203
+    205
    ]
   },
   {
@@ -4295,7 +4297,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    204
+    206
    ]
   },
   {
@@ -4315,7 +4317,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    205
+    207
    ]
   },
   {
@@ -4325,7 +4327,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    206
+    208
    ]
   },
   {
@@ -4335,7 +4337,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    207
+    209
    ]
   },
   {
@@ -4375,7 +4377,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    208
+    210
    ]
   },
   {
@@ -4385,7 +4387,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    209
+    211
    ]
   },
   {
@@ -4405,7 +4407,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    210
+    212
    ]
   },
   {
@@ -4545,7 +4547,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    211
+    213
    ]
   },
   {
@@ -4555,7 +4557,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    211
+    213
    ]
   },
   {
@@ -4565,7 +4567,7 @@
    "declared": "ISC",
    "license": "ISC",
    "texts": [
-    212
+    214
    ]
   },
   {
@@ -4585,7 +4587,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    213
+    215
    ]
   },
   {
@@ -4645,7 +4647,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    214
+    216
    ]
   },
   {
@@ -4655,7 +4657,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    214
+    216
    ]
   },
   {
@@ -4665,7 +4667,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    214
+    216
    ]
   },
   {
@@ -4675,7 +4677,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    215
+    217
    ]
   },
   {
@@ -4705,7 +4707,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    216
+    218
    ]
   },
   {
@@ -4755,7 +4757,7 @@
    "declared": "BSD-3-Clause",
    "license": "BSD-3-Clause",
    "texts": [
-    217
+    219
    ]
   },
   {
@@ -4765,7 +4767,7 @@
    "declared": "MIT OR Apache-2.0 OR Zlib",
    "license": "MIT",
    "texts": [
-    218
+    220
    ]
   },
   {
@@ -4775,7 +4777,7 @@
    "declared": "MIT OR Apache-2.0 OR Zlib",
    "license": "MIT",
    "texts": [
-    218
+    220
    ]
   },
   {
@@ -4785,7 +4787,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    214
+    216
    ]
   },
   {
@@ -4795,7 +4797,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    214
+    216
    ]
   },
   {
@@ -5599,12 +5601,20 @@
    "text": "Copyright (c) Microsoft Corporation.\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY\nAND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM\nLOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR\nOTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR\nPERFORMANCE OF THIS SOFTWARE."
   },
   {
+   "title": "CopyrightNotice.txt",
+   "text": "/*! *****************************************************************************\nCopyright (c) Microsoft Corporation.\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY\nAND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM\nLOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR\nOTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR\nPERFORMANCE OF THIS SOFTWARE.\n***************************************************************************** */"
+  },
+  {
    "title": "MIT License",
    "text": "The MIT License (MIT)\n\nCopyright (c) 2014 Paho Lurie-Gregg\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
   },
   {
    "title": "MIT License",
    "text": "    MIT License\n\n    Copyright (c) Microsoft Corporation. All rights reserved.\n\n    Permission is hereby granted, free of charge, to any person obtaining a copy\n    of this software and associated documentation files (the \"Software\"), to deal\n    in the Software without restriction, including without limitation the rights\n    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n    copies of the Software, and to permit persons to whom the Software is\n    furnished to do so, subject to the following conditions:\n\n    The above copyright notice and this permission notice shall be included in all\n    copies or substantial portions of the Software.\n\n    THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n    SOFTWARE"
+  },
+  {
+   "title": "THIRDPARTYNOTICES",
+   "text": "Third Party Notices\n\n***\n\nrust\nCopyright 2016 The Rust Project Developers\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n\n***\n\nmio\nCopyright (c) 2014 Carl Lerche and other MIO contributors\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n\n***\n\nmiow\nCopyright (c) 2014 Alex Crichton\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE."
   },
   {
    "title": "Unicode License v3",

@@ -28,7 +28,7 @@ targets = [
 ignore-dev-dependencies = true
 ignore-build-dependencies = true
 
-# Our own crates (publish = false) are covered by LICENSE-MIT and LICENSE-APACHE.
+# Our own crates (publish = false) are covered by LICENSE and NOTICE (Apache-2.0).
 [private]
 ignore = true
 

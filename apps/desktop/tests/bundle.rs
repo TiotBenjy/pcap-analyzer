@@ -16,9 +16,9 @@ fn bundles_ship_the_licenses_and_third_party_notices() {
         .expect("bundle.resources is a map");
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     for target in [
-        "licenses/LICENSE-MIT",
-        "licenses/LICENSE-APACHE",
-        "licenses/THIRD-PARTY-NOTICES.txt",
+        "licenses/LICENSE",
+        "licenses/NOTICE",
+        "licenses/THIRD_PARTY_LICENSES",
     ] {
         let (source, _) = resources
             .iter()

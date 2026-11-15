@@ -9,7 +9,7 @@
 # 2. ui/scripts/third-party-licenses.ts: adds the production npm packages of the UI (package-lock.json,
 #    texts from ui/node_modules, so `npm ci` first), then writes or, with --check, compares
 #    ui/src/views/settings/licenses/third-party-licenses.json and
-#    apps/desktop/resources/licenses/THIRD-PARTY-NOTICES.txt.
+#    THIRD_PARTY_LICENSES (repository root, cited by NOTICE, shipped in the bundles).
 #
 # cargo-about comes from PATH when it is the pinned version (CI: prebuilt binary installed by
 # taiki-e/install-action), otherwise it is compiled with its `cli` feature, once, into the cache

@@ -107,7 +107,7 @@ l'utilisateur pour ce numéro. Jamais de tag poussé à la main. Décision : ADR
   précédent, `v0.1.0`) : seuls les groupes Fonctionnalités et Performances sont détaillés, le reste de
   l'historique de développement est résumé en une phrase et les marqueurs de rupture (interfaces
   internes figées pendant le développement) ne sont pas affichés.
-- Licences tierces : la liste embarquée (« À propos », `THIRD-PARTY-NOTICES.txt` des bundles) est
+- Licences tierces : la liste embarquée (« À propos », `THIRD_PARTY_LICENSES` des bundles) est
   vérifiée par le gate ; elle est donc à jour sur `main` au moment de la release (`docs/LICENSES.md`).
 
 ### Déroulé (`scripts/release.sh X.Y.Z`, sur l'hôte, depuis le checkout racine)

@@ -2,11 +2,15 @@
 
 ## NetSift
 
-Double licence MIT ou Apache-2.0, au choix de l'utilisateur : `LICENSE-MIT`, `LICENSE-APACHE` à la
-racine, `license = "MIT OR Apache-2.0"` dans `Cargo.toml` (workspace) et `ui/package.json`. Les deux
-fichiers sont livrés dans chaque bundle (`licenses/`, ressources Tauri).
+Apache License 2.0 seule : `LICENSE` (texte officiel, non modifié) et `NOTICE` à la racine,
+`license = "Apache-2.0"` dans `Cargo.toml` (workspace, hérité par toutes les crates et l'application
+desktop ; en dur dans `fuzz/Cargo.toml`, hors workspace), `ui/package.json` et la racine de
+`ui/package-lock.json`. `NOTICE` renvoie à `THIRD_PARTY_LICENSES`. Les trois fichiers sont livrés dans
+chaque bundle (`licenses/`, ressources Tauri, vérifié par `apps/desktop/tests/bundle.rs`). Une
+redistribution doit conserver `LICENSE` et `NOTICE` et signaler les fichiers modifiés.
 
-Dépendances sous licences permissives uniquement : `deny.toml` pour Rust (`cargo deny`), la même
+Dépendances sous licences permissives, ou MPL-2.0 (copyleft faible, au niveau du fichier, utilisée
+sans modification) : `deny.toml` pour Rust (`cargo deny`), la même
 liste dans `about.toml` pour la liste des licences tierces, plus `0BSD`, `Unlicense` et `OFL-1.1`
 (polices) pour les paquets npm (`NPM_EXTRA_LICENSES`, `ui/scripts/third-party-licenses.ts`).
 
@@ -17,7 +21,7 @@ L'application embarque la liste des logiciels tiers qu'elle contient, avec leurs
 | Fichier (commité) | Usage |
 |---|---|
 | `ui/src/views/settings/licenses/third-party-licenses.json` | « Paramètres > À propos > Licences tierces », chargé à l'ouverture du dialogue (chunk séparé, jamais téléchargé) |
-| `apps/desktop/resources/licenses/THIRD-PARTY-NOTICES.txt` | texte brut livré dans chaque bundle (`licenses/`), avec l'attribution DB-IP |
+| `THIRD_PARTY_LICENSES` (racine) | texte brut cité par `NOTICE` et livré dans chaque bundle (`licenses/`) : licences, fichiers d'avis (`NOTICE`, `THIRDPARTYNOTICES`...), adresse des sources des paquets MPL-2.0, attribution DB-IP |
 
 Les deux fichiers sont **générés** par `./x.sh licenses` (`scripts/ct/licenses.sh`), jamais édités à
 la main :
@@ -39,7 +43,12 @@ la main :
    le texte de référence de sa licence (marqué comme tel). Une licence hors liste fait échouer.
 3. Le même script fusionne les deux listes (tri stable, textes dédupliqués, ni date, ni version, ni
    chemin absolu) et écrit les deux fichiers ; les fichiers `NOTICE` des crates sont repris aussi
-   (Apache-2.0, section 4 d).
+   (Apache-2.0, section 4 d) : tout fichier dont le nom contient « notice » ;
+4. pour chaque paquet sous MPL-2.0 (licence retenue), `THIRD_PARTY_LICENSES` indique où obtenir son
+   code source à cette version (crates.io ou npmjs.com), comme l'exige la MPL-2.0 (section 3.2) pour
+   une distribution sous forme exécutable. Aujourd'hui : `cssparser` 0.37.0, `cssparser-macros`
+   0.7.1, `dtoa-short` 0.3.5, `option-ext` 0.2.0 et `selectors` 0.38.0 (Rust, tirés par Tauri et
+   `dirs`) ; aucun paquet npm.
 
 La partie npm dépend de la plateforme : les paquets optionnels propres à un système (binaires
 natifs) ne sont installés, donc listés, que sur ce système. La liste de référence se génère donc

@@ -2,7 +2,7 @@
 // (cargo-about JSON, about.toml) and the npm packages of the UI bundle (production entries of
 // ui/package-lock.json, texts read from ui/node_modules). Writes, or checks with `--check`:
 //   - ui/src/views/settings/licenses/third-party-licenses.json  (Settings > About, lazy-loaded)
-//   - apps/desktop/resources/licenses/THIRD-PARTY-NOTICES.txt    (shipped in every bundle)
+//   - THIRD_PARTY_LICENSES (repository root, cited by NOTICE, shipped in every bundle)
 // Run by scripts/ct/licenses.sh (`./x.sh licenses [--check]`), never by the application: no
 // network access, deterministic output (no date, no version, no absolute path).
 //
@@ -163,10 +163,11 @@ interface RawPackage {
   reference?: true;
 }
 
-const NOTICE_RE = /^notice(\.(txt|md))?$/i;
+/** NOTICE, NOTICES.md, THIRDPARTYNOTICES...: any file whose name says it holds notices. */
+const NOTICE_RE = /notice/i;
 const LICENSE_FILE_RE = /^(licen[cs]e|copying)([-._].*)?$/i;
 
-/** NOTICE files at the root of a package directory (Apache-2.0 section 4 d). */
+/** Notice files at the root of a package directory (Apache-2.0 section 4 d, bundled code). */
 function noticeFiles(dir: string): LicenseText[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
@@ -336,15 +337,25 @@ export function assemble(raw: RawPackage[]): ThirdPartyLicenses {
 
 const SOURCE_LABEL: Record<Source, string> = { cargo: 'Rust crate', npm: 'npm package' };
 
-/** Plain-text notices shipped next to the binaries. */
+/** Where to get the source code of a package at this version (MPL-2.0 section 3.2). */
+export function sourceUrl(p: Pick<ThirdPartyPackage, 'name' | 'version' | 'source'>): string {
+  return p.source === 'cargo'
+    ? `https://crates.io/crates/${p.name}/${p.version}`
+    : `https://www.npmjs.com/package/${p.name}/v/${p.version}`;
+}
+
+/** Packages under a license that requires telling where their source code is (file-level copyleft). */
+const SOURCE_REQUIRED = /\bMPL-2\.0\b/;
+
+/** Plain-text licenses and notices shipped next to the binaries (THIRD_PARTY_LICENSES). */
 export function noticesText(data: ThirdPartyLicenses): string {
   const out: string[] = [];
   const rule = '='.repeat(78);
   out.push(
-    'NetSift - third-party software notices and licenses',
+    'NetSift - third-party software licenses and notices',
     '',
-    'NetSift is licensed under the MIT license or the Apache License 2.0, at your option',
-    '(LICENSE-MIT, LICENSE-APACHE). Source: https://github.com/TiotBenjy/pcap-analyzer',
+    'NetSift is licensed under the Apache License 2.0 (LICENSE, NOTICE).',
+    'Source: https://github.com/TiotBenjy/pcap-analyzer',
     '',
     'NetSift includes the third-party software listed below; each package is followed by the',
     'number of the license texts and notices that apply to it, reproduced afterwards.',
@@ -362,6 +373,20 @@ export function noticesText(data: ThirdPartyLicenses): string {
     const refs = p.texts.map((i) => `[${String(i + 1)}]`).join(' ');
     out.push(`${p.name} ${p.version} (${SOURCE_LABEL[p.source]}) - ${p.declared} - ${refs}`);
   }
+  const mpl = data.packages.filter((p) => SOURCE_REQUIRED.test(p.license));
+  if (mpl.length > 0) {
+    out.push(
+      '',
+      rule,
+      'Source code of the MPL-2.0 packages',
+      rule,
+      '',
+      'These packages are distributed in executable form under the Mozilla Public License 2.0;',
+      'their source code, unmodified, is available at:',
+      '',
+      ...mpl.map((p) => `${p.name} ${p.version}: ${sourceUrl(p)}`),
+    );
+  }
   data.texts.forEach((t, i) => {
     const users = data.packages.filter((p) => p.texts.includes(i)).map((p) => `${p.name} ${p.version}`);
     out.push('', rule, `[${String(i + 1)}] ${t.title}`, `Used by: ${users.join(', ')}`, rule, '', t.text);
@@ -373,7 +398,7 @@ export function noticesText(data: ThirdPartyLicenses): string {
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const OUTPUT_JSON = 'ui/src/views/settings/licenses/third-party-licenses.json';
-export const OUTPUT_TXT = 'apps/desktop/resources/licenses/THIRD-PARTY-NOTICES.txt';
+export const OUTPUT_TXT = 'THIRD_PARTY_LICENSES';
 
 function main(argv: string[]): number {
   const cargoIdx = argv.indexOf('--cargo');

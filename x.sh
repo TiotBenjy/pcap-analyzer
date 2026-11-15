@@ -18,7 +18,7 @@
 #                                mesures de performance (docs/PERFORMANCE.md, 5 Go synthétiques)
 #   ./x.sh cliff [args]          git-cliff épinglé (CHANGELOG, notes de release ; cliff.toml)
 #   ./x.sh licenses [--check]    licences tierces embarquées (cargo-about + npm) : régénère ou
-#                                vérifie la liste d'« À propos » et THIRD-PARTY-NOTICES.txt
+#                                vérifie la liste d'« À propos » et THIRD_PARTY_LICENSES
 #   ./x.sh fuzz [cible|all|build|corpus] [durée]
 #                                cargo-fuzz (nightly dans le conteneur, docs/FUZZING.md)
 #   ./x.sh shell                 shell interactif dans le conteneur

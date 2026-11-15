@@ -79,7 +79,7 @@ describe('SettingsView', () => {
     await i18n.changeLanguage('en');
     renderView();
     expect(screen.getByTestId('app-version')).toHaveTextContent(/^\d+\.\d+\.\d+/);
-    expect(screen.getByTestId('app-license')).toHaveTextContent('MIT OR Apache-2.0');
+    expect(screen.getByTestId('app-license')).toHaveTextContent(/^Apache-2\.0$/);
     expect(screen.getByTestId('app-repository')).toHaveTextContent('https://github.com/TiotBenjy/pcap-analyzer');
     expect(screen.getByRole('button', { name: 'View licenses' })).toBeEnabled();
     expect(document.querySelector('a')).toBeNull();

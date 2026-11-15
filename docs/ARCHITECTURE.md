@@ -109,7 +109,8 @@ sessions/<session_id>/
   thumbs/ab/...       miniatures PNG générées côté Rust (crate `image`, décodeurs purs Rust)
 catalog.db            liste des sessions (nom, chemins sources, état, tailles)
 exports/              fichiers exportés (seul dossier que l'UI desktop peut ouvrir)
-geoip/                base GeoIP facultative (téléchargée ou importée depuis l'app), prioritaire sur celle du bundle
+geoip/                base GeoIP facultative (téléchargée ou importée depuis l'app), prioritaire sur celle du bundle,
+                      et mois DB-IP du dernier téléchargement (`dbip-country-lite.month`)
 settings.json         réglages côté serveur : vérifications en ligne, bandeaux masqués (ADR-025)
 ```
 
@@ -209,11 +210,13 @@ jusqu'à un réimport (ADR-013).
   HTTPS, tailles bornées) ou `POST /geoip/import { path }` ; validation (`netsift_geo::install`) puis
   renommage atomique dans `<données>/geoip/` et rechargement à chaud. Les sessions déjà importées gardent
   leurs pays (ADR-009).
-- Fraîcheur (`GET /geoip/status`, `netsift-api/src/geoip/freshness.rs`) : vérification locale, sans réseau,
-  du mois UTC du `build_epoch` de la base utilisée (copie utilisateur, sinon bundle) contre le mois courant ;
-  base absente ou illisible -> bandeau « Télécharger », mois antérieur -> « Mettre à jour » (bandeau `geoip`,
-  masqué jusqu'au mois suivant, qui lance le téléchargement d'ADR-015). Rien n'est proposé en `--read-only`.
-- Vérification en ligne au démarrage (ADR-025) : si l'utilisateur l'a activée dans « Paramètres > En ligne »
+- Fraîcheur (`GET /geoip/status`, `netsift-api/src/geoip/freshness.rs`, ADR-026) : vérification locale, sans
+  réseau, du mois de la base utilisée (copie utilisateur, sinon bundle) contre le mois courant UTC : mois DB-IP
+  du dernier téléchargement (`<données>/geoip/dbip-country-lite.month`) tant qu'il correspond au fichier
+  installé, sinon mois du `build_epoch` ; base absente ou illisible -> bandeau « Télécharger », mois antérieur
+  -> « Mettre à jour » (bandeau `geoip`, masqué jusqu'au mois suivant, qui lance le téléchargement d'ADR-015 ;
+  masqué aussi par le serveur quand un téléchargement n'apporte rien de plus récent). Rien en `--read-only`.
+- Vérification en ligne au démarrage (ADR-025, ADR-026) : si l'utilisateur l'a activée dans « Paramètres > En ligne »
   (désactivée par défaut) et que la base n'est pas du mois, une requête `HEAD` vers `download.db-ip.com`
   (fichier du mois courant, puis du précédent sur 404, comme le téléchargement) confirme qu'une base plus
   récente est publiée, sinon le bandeau n'est pas affiché ; échec silencieux (bandeau selon la vérification

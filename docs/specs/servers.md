@@ -1,6 +1,6 @@
 # Servers
 
-Référence : `docs/reference/servers.png`.
+Référence : `docs/reference/private/servers.png`.
 
 ## But
 

@@ -1,6 +1,6 @@
 # SMB
 
-Référence : `docs/reference/smb.png`.
+Référence : `docs/reference/private/smb.png`.
 
 ## But
 

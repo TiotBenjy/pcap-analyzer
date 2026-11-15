@@ -1,6 +1,6 @@
 # Data Overview
 
-Référence : `docs/reference/overview.png`.
+Référence : `docs/reference/private/overview.png`.
 
 ## But
 

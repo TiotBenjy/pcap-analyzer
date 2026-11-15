@@ -1,6 +1,6 @@
 # DNS
 
-Références : `docs/reference/dns-1.png`, `docs/reference/dns-2.png`.
+Références : `docs/reference/private/dns-1.png`, `docs/reference/private/dns-2.png`.
 
 ## But
 

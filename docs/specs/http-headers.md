@@ -1,6 +1,6 @@
 # HTTP Headers
 
-Référence : `docs/reference/http-headers.png`.
+Référence : `docs/reference/private/http-headers.png`.
 
 ## But
 

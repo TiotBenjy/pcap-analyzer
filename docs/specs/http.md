@@ -1,6 +1,6 @@
 # HTTP
 
-Référence : `docs/reference/http.png`.
+Référence : `docs/reference/private/http.png`.
 
 ## But
 

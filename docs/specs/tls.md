@@ -1,6 +1,6 @@
 # SSL/TLS
 
-Références : `docs/reference/tls-1.png`, `docs/reference/tls-2.png`.
+Références : `docs/reference/private/tls-1.png`, `docs/reference/private/tls-2.png`.
 
 ## But
 

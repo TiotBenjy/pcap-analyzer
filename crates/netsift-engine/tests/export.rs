@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use netsift_capture::{RawPacket, reader};
+use netsift_capture::{RawPacket, ReadWarning, reader};
 use netsift_engine::{
     CancelToken, ExportError, ExportSelection, IngestOptions, IngestReport, ingest, plan_export,
 };
@@ -115,7 +115,14 @@ fn read(path: &Path) -> Vec<RawPacket> {
     while let Some(p) = source.next_packet().unwrap() {
         out.push(p);
     }
-    assert!(source.warnings().is_empty(), "{:?}", source.warnings());
+    // The export keeps the read order: a source whose timestamps go backwards gives a file
+    // whose timestamps go backwards the same way. Nothing else is tolerated.
+    let other: Vec<_> = source
+        .warnings()
+        .iter()
+        .filter(|w| !matches!(w, ReadWarning::TimestampBackwards { .. }))
+        .collect();
+    assert!(other.is_empty(), "{other:?}");
     out
 }
 
@@ -417,4 +424,166 @@ fn a_source_changed_during_the_export_or_a_cancellation_leaves_nothing() {
     assert!(matches!(err, ExportError::DestinationExists(_)));
     assert_eq!(fs::read(&dest).unwrap(), b"keep");
     assert_eq!(only_files(&out), ["x.pcapng"]);
+}
+
+fn flow_packets(session: &Session, id: u64) -> u64 {
+    session
+        .conn()
+        .query_row(
+            "SELECT packets_fwd + packets_rev FROM flows WHERE id = ?1",
+            [i64::try_from(id).unwrap()],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+#[test]
+fn timestamps_going_backwards_lose_no_packet() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let ws = hosts::workstation();
+    let a = TcpConv::new(ws, server(), 40_000, 80);
+    let noise = |i: u8| craft::udp_frame(&ws, &server(), 5353, 53, &[i; 20]);
+    // File order with timestamps (ms after T0) going backwards twice: the SYN-ACK of flow A is
+    // older than its SYN, and a data segment comes after a later UDP packet.
+    let frames: Vec<(i64, Vec<u8>)> = vec![
+        (100, a.syn()),
+        (110, noise(1)),
+        (90, a.syn_ack()),
+        (300, noise(2)),
+        (150, a.data(Side::Client, 0, 0, b"hello")),
+        (310, a.ack(Side::Server, 0, 5)),
+        (320, noise(3)),
+    ];
+    let packets: Vec<Packet> = frames
+        .iter()
+        .map(|(ms, data)| craft::packet(T0 + ms * MS, data.clone()))
+        .collect();
+    let input = tmp.path().join("backwards.pcap");
+    write_file(&input, &packets, &Encoding::pcap_ns()).unwrap();
+    let session = session(&catalog, &import(&catalog, &input));
+
+    let id = flow_id(&session, 40_000, 80, 6);
+    let got = export(
+        &session,
+        ExportSelection::Flow { id },
+        &tmp.path().join("a.pcapng"),
+    );
+    assert_eq!(
+        u64::try_from(got.len()).unwrap(),
+        flow_packets(&session, id)
+    );
+    let data: Vec<Vec<u8>> = got.iter().map(|p| p.data.to_vec()).collect();
+    let expected: Vec<Vec<u8>> = [0, 2, 4, 5].iter().map(|&i| frames[i].1.clone()).collect();
+    assert_eq!(data, expected);
+
+    // The packet at 150 ms comes after one at 300 ms: the read must not stop there.
+    let got = export(
+        &session,
+        ExportSelection::Range {
+            from_ns: T0,
+            to_ns: T0 + 200 * MS,
+        },
+        &tmp.path().join("r.pcapng"),
+    );
+    let ts: Vec<i64> = got.iter().map(|p| (p.ts_ns - T0) / MS).collect();
+    assert_eq!(ts, [100, 110, 90, 150]);
+}
+
+#[test]
+fn overlapping_and_duplicated_chunks_export_like_the_single_file() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let t = traffic();
+    // Two "interfaces" captured over the same period (k-way merge), plus a copy of the first.
+    let even: Vec<Packet> = t.packets.iter().step_by(2).cloned().collect();
+    let odd: Vec<Packet> = t.packets.iter().skip(1).step_by(2).cloned().collect();
+    let dir = tmp.path().join("overlap");
+    fs::create_dir(&dir).unwrap();
+    let first = dir.join("cap_00001_20231114221320.pcapng");
+    write_file(&first, &even, &Encoding::pcapng()).unwrap();
+    write_file(
+        &dir.join("cap_00002_20231114221320.pcap"),
+        &odd,
+        &Encoding::pcap_ns(),
+    )
+    .unwrap();
+    fs::copy(&first, dir.join("cap_00003_20231114221320.pcapng")).unwrap();
+    let session = session(&catalog, &import(&catalog, &dir));
+    let kinds: Vec<String> = {
+        let mut stmt = session
+            .conn()
+            .prepare("SELECT kind FROM anomalies")
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    assert!(kinds.iter().any(|k| k == "overlap"), "{kinds:?}");
+    assert!(kinds.iter().any(|k| k == "duplicate"), "{kinds:?}");
+
+    let got = export(
+        &session,
+        ExportSelection::Session,
+        &tmp.path().join("s.pcapng"),
+    );
+    let expected: Vec<_> = t
+        .packets
+        .iter()
+        .map(|p| (p.ts_ns, p.linktype, p.data.clone()))
+        .collect();
+    assert_eq!(summary(&got), expected);
+
+    let a = flow_id(&session, 40_000, 80, 6);
+    let got = export(
+        &session,
+        ExportSelection::Flow { id: a },
+        &tmp.path().join("a.pcapng"),
+    );
+    let data: Vec<Vec<u8>> = got.iter().map(|p| p.data.to_vec()).collect();
+    assert_eq!(data, t.flow_a);
+}
+
+#[test]
+fn read_errors_in_an_unchanged_source_are_reported() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let ws = hosts::workstation();
+    let packets: Vec<Packet> = (0..300)
+        .map(|i| {
+            let frame = craft::udp_frame(&ws, &server(), 5353, 53, &[7; 500]);
+            craft::packet(T0 + i * MS, frame)
+        })
+        .collect();
+    let input = tmp.path().join("big.pcap");
+    write_file(&input, &packets, &Encoding::pcap()).unwrap();
+    let session = session(&catalog, &import(&catalog, &input));
+
+    // Corrupt the length of a record beyond the fingerprinted 64 KiB, size and date kept.
+    let mtime = fs::metadata(&input).unwrap().modified().unwrap();
+    let mut bytes = fs::read(&input).unwrap();
+    let mut offset = 24;
+    let mut index = 0;
+    while offset < 70_000 {
+        offset += 16 + packets[index].data.len();
+        index += 1;
+    }
+    bytes[offset + 8..offset + 12].copy_from_slice(&u32::MAX.to_le_bytes());
+    fs::write(&input, &bytes).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&input)
+        .unwrap()
+        .set_modified(mtime)
+        .unwrap();
+
+    let dest = tmp.path().join("x.pcapng");
+    let report = plan_export(&session, &ExportSelection::Session)
+        .unwrap()
+        .run(&dest, &CancelToken::new(), &mut |_| {})
+        .unwrap();
+    assert_eq!(report.read_errors, 1);
+    assert_eq!(report.packets, u64::try_from(index).unwrap());
+    assert_eq!(read(&dest).len(), index);
 }

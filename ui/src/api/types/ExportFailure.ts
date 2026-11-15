@@ -3,4 +3,8 @@
 /**
  * Why an export failed: the problem type and detail it would have had as a response.
  */
-export type ExportFailure = { type: string, title: string, detail: string | null, };
+export type ExportFailure = { type: string, title: string, 
+/**
+ * HTTP status the problem would have had.
+ */
+status: number, detail: string | null, };

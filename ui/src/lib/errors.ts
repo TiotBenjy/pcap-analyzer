@@ -13,6 +13,9 @@ export const PROBLEM = {
   readOnly: 'urn:netsift:problem:read-only',
   forbidden: 'urn:netsift:problem:forbidden',
   tooManyImports: 'urn:netsift:problem:too-many-imports',
+  tooManyExports: 'urn:netsift:problem:too-many-exports',
+  exportSourceMissing: 'urn:netsift:problem:export-source-missing',
+  exportSourceModified: 'urn:netsift:problem:export-source-modified',
   sessionTooNew: 'urn:netsift:problem:session-too-new',
   sessionUpgradeFailed: 'urn:netsift:problem:session-upgrade-failed',
   sessionUpgradeNeeded: 'urn:netsift:problem:session-upgrade-needed',
@@ -60,6 +63,9 @@ export function describeError(t: TFunction, error: unknown): DescribedError {
       return { message: t('errors.notFound'), detail };
     case 409:
       if (error.kind === PROBLEM.tooManyImports) return { message: t('errors.tooManyImports'), detail: null };
+      if (error.kind === PROBLEM.tooManyExports) return { message: t('errors.tooManyExports'), detail: null };
+      if (error.kind === PROBLEM.exportSourceMissing) return { message: t('errors.exportSourceMissing'), detail };
+      if (error.kind === PROBLEM.exportSourceModified) return { message: t('errors.exportSourceModified'), detail };
       return { message: t('errors.conflict'), detail };
     default:
       return { message: t('errors.generic'), detail };

@@ -3,6 +3,7 @@ import {
   Cable,
   CircleAlert,
   Clock,
+  Download,
   FileStack,
   HardDrive,
   Hourglass,
@@ -31,6 +32,7 @@ import { StatCard } from '../../components/StatCard';
 import { sessionVersionMessage } from '../../lib/errors';
 import { formatByteCount, formatBytes, formatCompact, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
+import { SavePcapDialog } from '../exports/SavePcapDialog';
 import { SessionStateBadge } from '../sessions/SessionStateBadge';
 import { linktypeName } from './linktypes';
 import { ModuleGrid } from './ModuleGrid';
@@ -82,6 +84,7 @@ export default function OverviewView() {
   const state = session.data?.state;
   const viewable = state === 'ready' || state === 'incomplete';
   const summary = useOverviewSummary(sessionId, viewable);
+  const [saving, setSaving] = useState(false);
 
   let content: ReactNode;
   if (session.isError) {
@@ -147,17 +150,39 @@ export default function OverviewView() {
           ? {}
           : { count: <SessionStateBadge state={state} detail={session.data?.state_detail ?? null} /> })}
         actions={
-          <Link
-            to="/sessions/$sessionId/sources"
-            params={{ sessionId }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-3 font-medium hover:bg-subtle"
-          >
-            <FileStack aria-hidden size={16} strokeWidth={1.75} />
-            {t('views.session.sources')}
-          </Link>
+          <>
+            <Link
+              to="/sessions/$sessionId/sources"
+              params={{ sessionId }}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-3 font-medium hover:bg-subtle"
+            >
+              <FileStack aria-hidden size={16} strokeWidth={1.75} />
+              {t('views.session.sources')}
+            </Link>
+            {viewable && (
+              <Button
+                title={t('views.exportPcap.actionTitle')}
+                onClick={() => {
+                  setSaving(true);
+                }}
+              >
+                <Download aria-hidden size={16} strokeWidth={1.75} />
+                {t('views.exportPcap.action')}
+              </Button>
+            )}
+          </>
         }
       />
       {content}
+      <SavePcapDialog
+        open={saving}
+        onClose={() => {
+          setSaving(false);
+        }}
+        sessionId={sessionId}
+        firstUs={summary.data?.first_ts_us ?? null}
+        lastUs={summary.data?.last_ts_us ?? null}
+      />
     </div>
   );
 }

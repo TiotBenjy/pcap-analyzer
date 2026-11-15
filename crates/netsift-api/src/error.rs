@@ -167,6 +167,11 @@ impl ApiError {
     pub(crate) fn title(&self) -> &'static str {
         self.parts().2
     }
+
+    /// HTTP status of the problem.
+    pub(crate) fn status(&self) -> u16 {
+        self.parts().0.as_u16()
+    }
 }
 
 impl IntoResponse for ApiError {

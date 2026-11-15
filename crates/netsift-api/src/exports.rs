@@ -97,6 +97,8 @@ pub struct ExportFailure {
     #[ts(rename = "type")]
     pub kind: String,
     pub title: String,
+    /// HTTP status the problem would have had.
+    pub status: u16,
     pub detail: Option<String>,
 }
 
@@ -314,6 +316,7 @@ fn failure(e: &ApiError) -> ExportFailure {
     ExportFailure {
         kind,
         title: e.title().to_owned(),
+        status: e.status(),
         detail,
     }
 }

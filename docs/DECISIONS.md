@@ -962,22 +962,30 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - **points communs** :
     - requêtes faites par l'API Rust, jamais par la webview : CSP (ADR-006) et capabilities inchangées ;
     - un seul client, `netsift-api/src/outbound.rs` (utilisé aussi par ADR-015) : HTTPS seulement sur
-      le port par défaut, sans identifiants dans l'URL, hôtes en **liste blanche passée par l'appelant**
-      et revérifiée à chaque redirection (au plus 3), délais de connexion, de lecture et total, taille
-      maximale par requête vérifiée pendant la lecture, téléchargement vers `<cible>.part` avec SHA-256
-      calculé à la volée puis renommage atomique, `.part` supprimé sur erreur ou annulation ; mode HTTP
-      local réservé aux tests (absent des builds) ;
+      le port par défaut, noms d'hôte seulement (jamais d'IP littérale), sans identifiants dans l'URL,
+      hôtes en **liste blanche passée par l'appelant** (comparaison exacte, un point final est refusé)
+      et revérifiée à chaque redirection (au plus 3), délais de connexion, de lecture et total réglables
+      par l'appelant (`Policy::with_*`), taille maximale par requête vérifiée pendant la lecture ;
+      téléchargement vers un fichier temporaire propre à chaque téléchargement
+      (`<nom>.<pid>-<n>.part`, créé en exclusif, jamais à travers un lien, jamais un fichier existant),
+      SHA-256 calculé à la volée et vérifié avant le renommage atomique vers la cible, fichier temporaire
+      supprimé sur erreur ou annulation : deux téléchargements simultanés vers la même cible donnent
+      l'un des deux fichiers, entier et vérifié ; mode HTTP local réservé aux tests (absent des builds) ;
     - **aucune donnée utilisateur envoyée** : `User-Agent: NetSift/<version>`, ni cookie, ni
       identifiant, ni information sur les captures ; jamais de corps de réponse dans les logs ni dans
       les erreurs ;
     - **échecs silencieux au démarrage** : un échec réseau ne produit aucun bandeau d'erreur, au plus
       une ligne de log ; une action sur clic rapporte son échec ;
   - **réglages côté serveur** : `<données>/settings.json` (`online.geoip_check`, `online.update_check`,
-    `dismissed_notices`), lu au démarrage de l'API, valeurs par défaut sûres (tout désactivé), fichier
+    `dismissed_notices`, liste du moins récemment masqué au plus récent, 32 entrées au plus, la plus
+    ancienne oubliée au-delà), lu au démarrage de l'API, valeurs par défaut sûres (tout désactivé), fichier
     absent ou invalide = valeurs par défaut avec un avertissement, écriture atomique ; routes
     `GET /settings`, `PUT /settings` (champs absents inchangés), `PUT /settings/notices/{id}`, refusées
     en `--read-only`. Le serveur décide seul des vérifications au démarrage (`online::STARTUP_CHECKS`,
-    jamais sur un serveur en lecture seule) : desktop et mode web dev se comportent pareil. Thème et
+    jamais sur un serveur en lecture seule) : desktop et mode web dev se comportent pareil. Chaque
+    fonctionnalité garde son état dans `AppState::online` (un emplacement par type, `online.get::<T>()`)
+    et expose ses erreurs par `ApiError::Feature { status, kind, title }` (`OutboundError::into_problem`),
+    sans toucher au code commun. Thème et
     langue restent dans le stockage de la webview ;
   - **bandeaux** : les résultats s'affichent dans des bandeaux discrets sous l'en-tête (au plus deux
     à la fois), masquables jusqu'à ce que leur clé change (mois de la base, version proposée) ;

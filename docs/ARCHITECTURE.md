@@ -184,6 +184,9 @@ jusqu'à un réimport (ADR-013).
   (`windows-latest`), macOS `.dmg` universel Apple Silicon + Intel (`macos-15`, macOS 11 minimum),
   plus `SHA256SUMS.txt`. Non signés (signature ad hoc sur macOS, sans notarisation). En local,
   `./x.sh desktop` construit AppImage + .deb dans le conteneur.
+- Licences : `LICENSE-MIT`, `LICENSE-APACHE` et `THIRD-PARTY-NOTICES.txt` (logiciels tiers embarqués,
+  généré par `./x.sh licenses`) sont des ressources du bundle (`licenses/`) ; la même liste est
+  consultable dans « Paramètres > À propos » (`docs/LICENSES.md`).
 - Version : celle de `[workspace.package]` dans `Cargo.toml`, lue par Tauri (pas de `version` dans
   `tauri.conf.json`) ; `scripts/check-version.sh` la compare à l'UI, à `Cargo.lock` et au tag.
 

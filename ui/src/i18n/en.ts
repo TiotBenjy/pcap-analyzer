@@ -2,6 +2,7 @@
 // Rules: short, factual labels; no emoji, no decorative characters, no exclamation marks.
 import { credentialsEn } from './credentials';
 import { exportsEn } from './exports';
+import { geoipPromptEn } from './geoipPrompt';
 import { onlineEn } from './online';
 import { picturesEn } from './pictures';
 import { tlsEn } from './tls';
@@ -977,6 +978,7 @@ export const en = {
     // --- analysis views kept in their own module: one line each, sorted ---
     credentials: credentialsEn,
     exportPcap: exportsEn,
+    geoipPrompt: geoipPromptEn,
     online: onlineEn,
     pictures: picturesEn,
     tls: tlsEn,

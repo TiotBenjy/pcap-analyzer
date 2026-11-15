@@ -1,4 +1,5 @@
 import { apiGet, apiSend } from './client';
+import type { GeoipFreshness } from './types/GeoipFreshness';
 import type { GeoipInfo } from './types/GeoipInfo';
 import type { GeoipUpdate } from './types/GeoipUpdate';
 
@@ -18,4 +19,9 @@ export function importGeoip(path: string): Promise<GeoipInfo> {
 /** Progress of the running update. */
 export function getGeoipUpdate(signal?: AbortSignal): Promise<GeoipUpdate> {
   return apiGet<GeoipUpdate>('/geoip/update', signal);
+}
+
+/** Freshness of the database in use, and what to offer (local check, online check on option). */
+export function getGeoipStatus(signal?: AbortSignal): Promise<GeoipFreshness> {
+  return apiGet<GeoipFreshness>('/geoip/status', signal);
 }

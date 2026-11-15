@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../api/client';
+import type { GeoipFreshness } from '../../../api/types/GeoipFreshness';
 import type { Settings } from '../../../api/types/Settings';
 import i18n from '../../../i18n';
 import { setupUser } from '../../../test/user';
@@ -15,6 +16,20 @@ vi.mock('../../../api/queries', () => ({
 }));
 const api = vi.hoisted(() => ({ getSettings: vi.fn(), updateSettings: vi.fn(), dismissNotice: vi.fn() }));
 vi.mock('../../../api/settings', () => api);
+const geoipApi = vi.hoisted(() => ({ getGeoipStatus: vi.fn(), downloadGeoip: vi.fn(), importGeoip: vi.fn(), getGeoipUpdate: vi.fn() }));
+vi.mock('../../../api/geoip', () => geoipApi);
+
+function freshness(extra: Partial<GeoipFreshness> = {}): GeoipFreshness {
+  return {
+    state: 'outdated',
+    built_month: '2026-10',
+    current_month: '2026-11',
+    online: 'off',
+    published_month: null,
+    offer: 'update',
+    ...extra,
+  };
+}
 
 const DEFAULTS: Settings = { online: { geoip_check: false, update_check: false }, dismissed_notices: [] };
 
@@ -28,6 +43,7 @@ function renderCard(extensions: readonly OnlineExtension[] = ONLINE_EXTENSIONS) 
 }
 
 beforeEach(() => {
+  geoipApi.getGeoipStatus.mockResolvedValue(freshness());
   api.getSettings.mockResolvedValue(DEFAULTS);
   api.updateSettings.mockImplementation((u: { online: Partial<Settings['online']> }) =>
     Promise.resolve({ ...DEFAULTS, online: { ...DEFAULTS.online, ...u.online } }),
@@ -123,11 +139,35 @@ describe('OnlineCard', () => {
     expect(within(items[1] as HTMLElement).getByText('update example true')).toBeInTheDocument();
   });
 
+  it('shows the installed database under the GeoIP switch, and the check only when on', async () => {
+    renderCard();
+    const status = await screen.findByTestId('geoip-check-status');
+    expect(status).toHaveTextContent(/^Installed database: October 2026\.$/);
+  });
+
+  it.each([
+    [freshness({ online: 'off' }), 'Not checked at this start. Applies from the next start.'],
+    [freshness({ online: 'off', state: 'current', built_month: '2026-11', offer: null }), 'Not checked at this start: the database is current.'],
+    [freshness({ online: 'pending', offer: null }), 'Checking download.db-ip.com.'],
+    [freshness({ online: 'published', published_month: '2026-11' }), 'Last check: database of November 2026 published.'],
+    [freshness({ online: 'not_published', offer: null }), 'Last check: no database published for this month or the previous one.'],
+    [freshness({ online: 'failed' }), 'Last check: no answer from download.db-ip.com.'],
+    [freshness({ state: 'missing', built_month: null, online: 'failed', offer: 'download' }), 'Installed database: none.'],
+  ])('reports the GeoIP check when on (%#)', async (answer, text) => {
+    api.getSettings.mockResolvedValue({ ...DEFAULTS, online: { geoip_check: true, update_check: false } });
+    geoipApi.getGeoipStatus.mockResolvedValue(answer);
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId('geoip-check-status')).toHaveTextContent(text);
+    });
+  });
+
   it('is translated in French', async () => {
     await i18n.changeLanguage('fr');
     renderCard();
     expect(await screen.findByRole('heading', { name: 'En ligne' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Rechercher les mises à jour au démarrage' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Rechercher une nouvelle base GeoIP au démarrage' })).toBeInTheDocument();
+    expect(await screen.findByTestId('geoip-check-status')).toHaveTextContent(/^Base installée\s: octobre 2026\.$/);
   });
 });

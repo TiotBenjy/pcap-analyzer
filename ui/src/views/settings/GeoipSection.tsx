@@ -1,42 +1,23 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUp, File, Folder } from 'lucide-react';
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
-import { ApiError } from '../../api/client';
-import { downloadGeoip, getGeoipUpdate, importGeoip } from '../../api/geoip';
+import { useGeoipUpdate, type GeoipUpdateRequest } from '../../api/geoipQueries';
 import { browse } from '../../api/sessions';
 import type { BrowseResponse } from '../../api/types/BrowseResponse';
 import type { GeoipInfo } from '../../api/types/GeoipInfo';
-import type { GeoipUpdate } from '../../api/types/GeoipUpdate';
 import type { ServerInfo } from '../../api/types/ServerInfo';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { ErrorState } from '../../components/ErrorState';
+import { GeoipUpdateFeedback } from '../../components/GeoipUpdateFeedback';
 import { cn } from '../../lib/cn';
-import { describeError } from '../../lib/errors';
 import { formatBytes, formatLongDate } from '../../lib/format';
+import { geoipUpdateErrorMessage } from '../../lib/geoip';
 import { nativePicker, pickFile } from '../sessions/import/pickers';
 
 // Country database: state, update by download (done by the backend, ADR-015) or from a file,
 // and the CC BY 4.0 attribution. Plain text only: the application never opens external URLs.
-
-type UpdateRequest = { kind: 'download' } | { kind: 'import'; path: string };
-
-/** Problem types of the GeoIP routes (`netsift-api/src/error.rs`). */
-const GEOIP_PROBLEMS = {
-  'urn:netsift:problem:geoip-download-failed': 'views.settings.geoip.errors.downloadFailed',
-  'urn:netsift:problem:geoip-invalid': 'views.settings.geoip.errors.invalid',
-  'urn:netsift:problem:geoip-too-large': 'views.settings.geoip.errors.tooLarge',
-  'urn:netsift:problem:geoip-update-running': 'views.settings.geoip.errors.running',
-} as const;
-
-function updateErrorMessage(t: TFunction, error: unknown): string {
-  if (error instanceof ApiError && error.kind in GEOIP_PROBLEMS) {
-    return t(GEOIP_PROBLEMS[error.kind as keyof typeof GEOIP_PROBLEMS]);
-  }
-  return describeError(t, error).message;
-}
 
 interface GeoipSectionProps {
   info: ServerInfo | undefined;
@@ -46,35 +27,17 @@ interface GeoipSectionProps {
 
 export function GeoipSection({ info, infoError }: GeoipSectionProps) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
   const [browsing, setBrowsing] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
 
-  const update = useMutation({
-    mutationFn: (req: UpdateRequest) => (req.kind === 'download' ? downloadGeoip() : importGeoip(req.path)),
-    // The progress of a previous download must not show at the start of the next one.
-    onMutate: () => {
-      queryClient.removeQueries({ queryKey: ['geoip-update'] });
-    },
-    onSuccess: (geoip) => {
-      queryClient.setQueryData<ServerInfo>(['server-info'], (old) => (old === undefined ? old : { ...old, geoip }));
-    },
-  });
-  const downloading = update.isPending && update.variables.kind === 'download';
-  const progress = useQuery({
-    queryKey: ['geoip-update'],
-    queryFn: ({ signal }) => getGeoipUpdate(signal),
-    enabled: downloading,
-    refetchInterval: 500,
-    staleTime: 0,
-  });
+  const { mutation: update, downloading, progress } = useGeoipUpdate();
 
   const desktop = nativePicker() !== null;
   const readOnly = info?.read_only ?? true;
   const canImport = desktop || (info?.can_browse ?? false);
   const busy = update.isPending;
 
-  const start = (req: UpdateRequest) => {
+  const start = (req: GeoipUpdateRequest) => {
     setPickError(null);
     update.mutate(req);
   };
@@ -138,11 +101,11 @@ export function GeoipSection({ info, infoError }: GeoipSectionProps) {
               {t('views.settings.geoip.importFile')}
             </Button>
           </div>
-          <UpdateFeedback
+          <GeoipUpdateFeedback
             pending={busy}
             downloading={downloading}
-            progress={progress.data}
-            error={update.isError ? updateErrorMessage(t, update.error) : pickError}
+            progress={progress}
+            error={update.isError ? geoipUpdateErrorMessage(t, update.error) : pickError}
             success={update.isSuccess}
           />
           {readOnly && <p className="break-words text-meta text-muted">{t('views.settings.geoip.readOnly')}</p>}
@@ -222,71 +185,6 @@ function GeoipDetails({ geoip }: { geoip: GeoipInfo }) {
       {text}
     </span>
   );
-}
-
-interface UpdateFeedbackProps {
-  pending: boolean;
-  downloading: boolean;
-  progress: GeoipUpdate | undefined;
-  error: string | null;
-  success: boolean;
-}
-
-function UpdateFeedback({ pending, downloading, progress, error, success }: UpdateFeedbackProps) {
-  const { t, i18n } = useTranslation();
-  if (pending) {
-    // Only the phase is announced (role="status"); the byte counter changes twice a second and
-    // stays out of the live region.
-    const fetching = downloading && progress?.phase !== 'installing';
-    const phase = fetching ? t('views.settings.geoip.downloading') : t('views.settings.geoip.installing');
-    let counter: string | null = null;
-    let ratio: number | null = null;
-    if (fetching) {
-      const received = progress?.received_bytes ?? 0;
-      const total = progress?.total_bytes ?? null;
-      if (total !== null && total > 0) {
-        ratio = Math.min(1, received / total);
-        counter = t('views.settings.geoip.progressOf', {
-          received: formatBytes(received, i18n.language),
-          total: formatBytes(total, i18n.language),
-        });
-      } else if (received > 0) {
-        counter = t('views.settings.geoip.progressBytes', { received: formatBytes(received, i18n.language) });
-      }
-    }
-    return (
-      <div className="flex min-w-0 flex-col gap-1" data-testid="geoip-progress">
-        <span role="status" className="break-words text-meta">
-          {phase}
-        </span>
-        {counter !== null && (
-          <span className="num break-words text-meta text-muted" data-testid="geoip-progress-bytes">
-            {counter}
-          </span>
-        )}
-        {ratio !== null && (
-          <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-subtle" aria-hidden>
-            <div className="h-full bg-accent" style={{ width: `${Math.round(ratio * 100)}%` }} />
-          </div>
-        )}
-      </div>
-    );
-  }
-  if (error !== null) {
-    return (
-      <p role="alert" className="break-words text-meta text-danger">
-        {error}
-      </p>
-    );
-  }
-  if (success) {
-    return (
-      <p role="status" className="break-words text-meta text-success">
-        {t('views.settings.geoip.updated')}
-      </p>
-    );
-  }
-  return null;
 }
 
 const joinPath = (dir: string, name: string) => `${dir.replace(/[/\\]+$/, '')}/${name}`;

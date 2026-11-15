@@ -5,6 +5,7 @@
 //! | GET | `/sessions/{id}/connections?limit&cursor&sort&order&from&to&protocol&category` | `Page<ConversationInfo>` |
 //! | GET | `/sessions/{id}/connections/stats` | [`ConnectionStats`] |
 //! | GET | `/sessions/{id}/connections/top?n&exclude_dns` | [`ConnectionMatrix`] |
+//! | GET | `/sessions/{id}/connections/{conversation}/flows?limit&cursor` | `Page<FlowInfo>` |
 //!
 //! A conversation gathers the flows initiated by one host (`src`) towards another (`dst`).
 //! Like the overview routes: 404 for an unknown session, 409 while importing or failed.
@@ -42,6 +43,10 @@ pub(crate) fn routes() -> Router<Arc<AppState>> {
         .route("/sessions/{id}/connections", get(list))
         .route("/sessions/{id}/connections/stats", get(stats))
         .route("/sessions/{id}/connections/top", get(top))
+        .route(
+            "/sessions/{id}/connections/{conversation}/flows",
+            get(conversation_flows),
+        )
 }
 
 /// Row of the conversations table.
@@ -198,6 +203,82 @@ async fn list(
     blocking(&state, move |s| build_list(s, &id, query))
         .await
         .map(Json)
+}
+
+/// One flow of a conversation (dialog of the Connections table, Save PCAP per flow).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct FlowInfo {
+    /// `flows.id` as a string (ADR-008), the key of a flow export.
+    pub id: String,
+    /// IP protocol number (6 TCP, 17 UDP, 1 ICMP...).
+    pub transport: u8,
+    /// Port of the initiator (0 without ports).
+    pub src_port: u16,
+    pub dst_port: u16,
+    /// Application protocol, when classified (`dns`, `http`, `tls`...).
+    pub app_proto: Option<String>,
+    pub tcp_state: Option<String>,
+    pub bytes_fwd: u64,
+    pub bytes_rev: u64,
+    pub packets_total: u64,
+    pub first_ts_us: i64,
+    pub last_ts_us: i64,
+    pub duration_us: i64,
+}
+
+impl From<netsift_store::FlowRow> for FlowInfo {
+    fn from(r: netsift_store::FlowRow) -> Self {
+        Self {
+            id: r.id.to_string(),
+            transport: r.transport,
+            src_port: r.src_port,
+            dst_port: r.dst_port,
+            app_proto: r.app_proto,
+            tcp_state: r.tcp_state,
+            bytes_fwd: r.bytes_fwd,
+            bytes_rev: r.bytes_rev,
+            packets_total: r.packets_fwd.saturating_add(r.packets_rev),
+            first_ts_us: convert::us(r.first_ts),
+            last_ts_us: convert::us(r.last_ts),
+            duration_us: convert::us(r.last_ts.saturating_sub(r.first_ts)),
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct FlowsQuery {
+    limit: Option<u32>,
+    cursor: Option<String>,
+}
+
+/// `GET /sessions/{id}/connections/{conversation}/flows`: flows of one conversation, oldest
+/// first. 404 when the conversation does not exist.
+async fn conversation_flows(
+    State(state): State<Arc<AppState>>,
+    UrlPath((id, conversation)): UrlPath<(String, String)>,
+    ApiQuery(query): ApiQuery<FlowsQuery>,
+) -> Result<Json<Page<FlowInfo>>, ApiError> {
+    let id = parse_id(&id)?;
+    let conversation: i64 = conversation.parse().map_err(|_| ApiError::NotFound)?;
+    blocking(&state, move |s| {
+        let (_, session) = open_ready(s, &id)?;
+        let conn = session.conn();
+        let (src, dst) = store::conversation_ends(conn, conversation)?.ok_or(ApiError::NotFound)?;
+        let page = netsift_store::query::conversation_flows_page(
+            conn,
+            src,
+            dst,
+            &page_request(query.limit, query.cursor),
+        )?;
+        Ok(Page {
+            items: page.items.into_iter().map(FlowInfo::from).collect(),
+            next_cursor: page.next_cursor,
+            total_estimate: None,
+        })
+    })
+    .await
+    .map(Json)
 }
 
 /// Traffic of the hosts of one country.

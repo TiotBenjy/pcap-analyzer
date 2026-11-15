@@ -249,7 +249,7 @@ fn range_export_is_inclusive_at_both_bounds() {
         },
         &tmp.path().join("r3.pcapng"),
     );
-    assert!(got.is_empty());
+    assert_eq!(got.len(), 0);
 
     let err = plan_export(
         &session,
@@ -345,7 +345,7 @@ fn missing_or_modified_sources_are_refused_without_leaving_a_file() {
         matches!(err, ExportError::SourceModified { what, .. } if what == "modification time"),
         "{err}"
     );
-    assert!(only_files(&out).is_empty());
+    assert_eq!(only_files(&out), Vec::<String>::new());
 }
 
 #[test]
@@ -367,7 +367,7 @@ fn a_source_changed_during_the_export_or_a_cancellation_leaves_nothing() {
     fs::write(&files[0], &bytes).unwrap();
     let err = plan.run(&dest, &CancelToken::new(), &mut |_| {}).unwrap_err();
     assert!(matches!(err, ExportError::SourceModified { .. }), "{err}");
-    assert!(only_files(&out).is_empty());
+    assert_eq!(only_files(&out), Vec::<String>::new());
 
     let again = tmp.path().join("again");
     let opts = SplitOptions::new(SplitBy::Size(8 * 1024), Naming::Dumpcap);
@@ -378,7 +378,7 @@ fn a_source_changed_during_the_export_or_a_cancellation_leaves_nothing() {
     cancel.cancel();
     let err = plan.run(&dest, &cancel, &mut |_| {}).unwrap_err();
     assert!(matches!(err, ExportError::Cancelled));
-    assert!(only_files(&out).is_empty());
+    assert_eq!(only_files(&out), Vec::<String>::new());
 
     // An existing destination is never overwritten.
     fs::write(&dest, b"keep").unwrap();

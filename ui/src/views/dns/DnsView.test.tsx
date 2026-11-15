@@ -17,7 +17,7 @@ import { barsOption, donutOption, escapeHtml, truncateLabel, withOther } from '.
 import { rcodeLabel, suffixLabel } from './dnsFormat';
 import { formatLatency } from '../../lib/format';
 import { worldMapHeight, stepOf } from '../../charts/worldMapOption';
-import { groupByCountry } from './serverMap';
+import { groupByCountry } from './serverCountries';
 import i18n from '../../i18n';
 
 vi.mock('../../api/sessions');

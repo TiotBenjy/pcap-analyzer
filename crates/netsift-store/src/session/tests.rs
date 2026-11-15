@@ -363,3 +363,42 @@ fn an_smb_view_added_on_upgrade_is_reported_as_not_run() {
     assert_eq!(count_rows(conn, "smb_announces").unwrap(), None);
     assert_eq!(count_rows(conn, "smb_sessions").unwrap(), None);
 }
+
+#[test]
+fn a_failed_step_is_not_retried_by_every_opening() {
+    use crate::writer::{StoreWriter, WriterConfig};
+    let dir = tempfile::tempdir().unwrap();
+    // An import whose end-of-import steps did not run: an empty marker.
+    let writer = StoreWriter::spawn(
+        Session::open(dir.path(), OpenMode::Import).unwrap(),
+        WriterConfig::default(),
+    )
+    .unwrap();
+    writer.finish().unwrap();
+    let rw = Session::open(dir.path(), OpenMode::ReadWrite).unwrap();
+    rw.conn()
+        .execute_batch(
+            "DELETE FROM meta WHERE key = 'finalizers'; ALTER TABLE dns_fts RENAME TO dns_fts_away",
+        )
+        .unwrap();
+    let db = dir.path().join(SESSION_DB);
+    let done = |s: &Session| crate::finalize::step_done(s.conn(), "dns").unwrap();
+
+    let first = Session::open_finished(dir.path(), Upgrade::Apply).unwrap();
+    assert!(!done(&first), "the step failed");
+    assert!(steps_failed_recently(&db));
+    // Repaired, but within the delay: not retried by the next opening.
+    rw.conn()
+        .execute_batch("ALTER TABLE dns_fts_away RENAME TO dns_fts")
+        .unwrap();
+    let second = Session::open_finished(dir.path(), Upgrade::Apply).unwrap();
+    assert!(!done(&second));
+    // Once the delay is over (simulated), the opening runs it.
+    FAILED_STEPS.lock().unwrap().insert(
+        db.clone(),
+        Instant::now().checked_sub(STEP_RETRY_DELAY).unwrap(),
+    );
+    let third = Session::open_finished(dir.path(), Upgrade::Apply).unwrap();
+    assert!(done(&third));
+    assert!(!steps_failed_recently(&db));
+}

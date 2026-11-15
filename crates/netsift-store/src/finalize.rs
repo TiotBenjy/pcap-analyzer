@@ -105,6 +105,8 @@ pub struct FinalizeReport {
     pub failed: Vec<(&'static str, String)>,
     /// Steps not run because a step they come after is not done.
     pub skipped: Vec<&'static str>,
+    /// Wall-clock time of every step run (succeeded or failed), in order.
+    pub timings: Vec<(&'static str, std::time::Duration)>,
 }
 
 impl FinalizeReport {
@@ -168,7 +170,10 @@ pub(crate) fn run_with(conn: &Connection, steps: &[Finalizer]) -> Result<Finaliz
             .cloned()
             .collect();
         next.push(marker);
-        match run_one(conn, step, &next.join(",")) {
+        let started = std::time::Instant::now();
+        let outcome = run_one(conn, step, &next.join(","));
+        report.timings.push((step.id, started.elapsed()));
+        match outcome {
             Ok(()) => {
                 done = next;
                 report.ran.push(step.id);

@@ -46,6 +46,11 @@ pub struct WriterStats {
     pub rejected: BTreeMap<&'static str, u64>,
     /// Committed transactions.
     pub batches: u64,
+    /// Time spent inserting rows, per record kind (commits excluded): where the writer spends
+    /// its time (`netsift bench ingest`).
+    pub insert_time: BTreeMap<&'static str, std::time::Duration>,
+    /// Time spent committing transactions.
+    pub commit_time: std::time::Duration,
     /// End-of-import steps run after the last record (ADR-014).
     pub finalize: crate::finalize::FinalizeReport,
 }
@@ -173,7 +178,10 @@ impl Batch<'_> {
             self.deadline = Some(Instant::now() + self.config.flush_interval);
         }
         // A failed statement only rolls itself back: the transaction stays usable.
-        match record.insert(self.conn) {
+        let started = Instant::now();
+        let result = record.insert(self.conn);
+        *self.stats.insert_time.entry(record.kind()).or_default() += started.elapsed();
+        match result {
             Ok(()) => *self.stats.rows.entry(record.kind()).or_insert(0) += 1,
             Err(e) if is_row_level(&e) => {
                 *self.stats.rejected.entry(record.kind()).or_insert(0) += 1;
@@ -189,7 +197,9 @@ impl Batch<'_> {
 
     fn commit(&mut self) -> Result<()> {
         if self.deadline.take().is_some() {
+            let started = Instant::now();
             self.conn.execute_batch("COMMIT")?;
+            self.stats.commit_time += started.elapsed();
             self.stats.batches += 1;
         }
         self.pending = 0;

@@ -14,6 +14,8 @@
 #   ./x.sh desktop               build Tauri Linux (AppImage + .deb) -> dist/
 #   ./x.sh desktop-win           build Windows via cargo-xwin (expérimental) -> dist/
 #   ./x.sh geoip                 télécharge la base GeoIP (DB-IP Lite) dans .data/geoip/
+#   ./x.sh bench [all|gen|ingest|queries]
+#                                mesures de performance (docs/PERFORMANCE.md, 5 Go synthétiques)
 #   ./x.sh cliff [args]          git-cliff épinglé (CHANGELOG, notes de release ; cliff.toml)
 #   ./x.sh fuzz [cible|all|build|corpus] [durée]
 #                                cargo-fuzz (nightly dans le conteneur, docs/FUZZING.md)
@@ -432,6 +434,8 @@ case "$CMD" in
   desktop)     run_in -- "bash scripts/ct/desktop.sh linux" ;;
   desktop-win) run_in -- "bash scripts/ct/desktop.sh windows" ;;
   geoip)       run_in -- "bash scripts/ct/geoip.sh" ;;
+  bench)       run_in -e BENCH_SIZE -e BENCH_CHUNK -e BENCH_HOURS -e BENCH_CPUS -e BENCH_SHARDS \
+                 -e BENCH_REPEAT -e BENCH_ONLY -e BENCH_FULL -- "bash scripts/ct/bench.sh $*" ;;
   cliff)       mapfile -t gm < <(git_mount_args)
                run_in "${gm[@]}" -- "bash scripts/ct/cliff.sh $*" ;;
   fuzz)        run_in -- "bash scripts/ct/fuzz.sh $*" ;;

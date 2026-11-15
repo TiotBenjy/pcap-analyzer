@@ -363,7 +363,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       fusionne les sessions, sans erreur visible. Piste : faire entrer l'index de trame global du premier paquet,
       identique entre fichier unique et chunks (test d'équivalence) ; test synthétique : deux connexions HTTP
       même 5-tuple, ts constant. Trouvé par la revue de P4.1.
-- [ ] **P4.8** `perf/followups` — Reste de P4.2 (chiffres dans `docs/PERFORMANCE.md`) : affichage Overview 616 ms
+- [~] **P4.8** `perf/followups` — Reste de P4.2 (chiffres dans `docs/PERFORMANCE.md`) : affichage Overview 616 ms
       pour 500 visés (réponses ≈ 130 ms, ≈ 480 ms de rendu ECharts SVG de 13 séries ; mesurer aussi dans WebKitGTK) ;
       fin d'import de 44 s sans progression (index 19 s, DNS 11,5 s, FTS HTTP 7,7 s, réseau 2,6 s) -> phase dédiée
       dans `Progress` ; requêtes > 300 ms : `/servers` 571 ms (rang précalculé sans filtre), `/connections?category=`

@@ -482,8 +482,10 @@ fn progress_dto(p: &Progress) -> Option<ImportProgress> {
     let phase = match p.phase {
         Phase::Reading => "reading",
         Phase::Finishing => "finishing",
+        Phase::Finalizing => "finalizing",
         Phase::Done => return None,
     };
+    let steps = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
     let chunk_count = u32::try_from(p.chunks_total).unwrap_or(u32::MAX);
     Some(ImportProgress {
         bytes_done: p.bytes_read,
@@ -495,6 +497,9 @@ fn progress_dto(p: &Progress) -> Option<ImportProgress> {
         rate_bps: p.bytes_per_sec(),
         eta_s: p.eta().map(|d| d.as_secs_f64()),
         phase: phase.to_owned(),
+        step: p.finalize.and_then(|f| f.step).map(str::to_owned),
+        steps_done: p.finalize.map_or(0, |f| steps(f.done)),
+        steps_total: p.finalize.map_or(0, |f| steps(f.total)),
     })
 }
 

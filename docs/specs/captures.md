@@ -14,7 +14,9 @@ suivre l'import et vérifier la continuité des chunks.
 - `POST /api/v1/sessions/import/scan { path }` : inventaire et groupes détectés (sans analyser).
 - `POST /api/v1/sessions/import { path, group_ids, name, options }` -> `{ session_id }`.
 - `GET /api/v1/sessions/{id}/events` (SSE) : `progress { bytes_done, bytes_total, chunk_index, chunk_name,
-  packets, rate_bps, eta_s }`, `warning`, `done`, `failed`.
+  packets, rate_bps, eta_s, phase, step, steps_done, steps_total }`, `warning`, `done`, `failed`. `phase` vaut
+  `reading`, `finishing` (dernières lignes écrites) puis `finalizing` (étapes de fin d'import : index, appariement
+  DNS, tables dérivées, index de recherche ; `step` nomme l'étape en cours, `steps_done` / `steps_total` les comptent).
 - `DELETE /api/v1/sessions/{id}` (supprime la base et les blobs, jamais les captures sources).
 - `GET /api/v1/sessions/{id}/chunks`, `GET /api/v1/sessions/{id}/anomalies`.
 
@@ -28,7 +30,10 @@ suivre l'import et vérifier la continuité des chunks.
    - étape 2 : résultat du scan — groupes détectés, pour chacun : motif reconnu (dumpcap, tcpdump -C, ...),
      nombre de fichiers, taille, plage temporelle, anomalies prévues ; choix des groupes ; nom de session ;
    - étape 3 : progression — barre globale, chunk en cours (n / total), débit, ETA, journal des avertissements,
-     bouton Annuler. L'utilisateur peut fermer l'assistant, l'import continue (indicateur dans l'en-tête).
+     bouton Annuler. Pendant les étapes de fin d'import, la barre suit les étapes faites, le libellé nomme l'étape
+     en cours (« Finalisation : construction des index ») et le pourcentage devient « Étape n sur N ».
+     L'utilisateur peut fermer l'assistant, l'import continue (indicateur dans l'en-tête, « Finalisation n/N »
+     pendant les étapes).
 4. Détail de session (onglet « Sources » accessible depuis l'Overview) : frise de couverture des chunks
    (un segment par chunk, trous en hachures, chevauchements en surbrillance), tableau des chunks, anomalies.
 

@@ -64,6 +64,51 @@ describe('EChartsRenderer', () => {
     ]);
   });
 
+  it('draws once at mount, then only on a real resize or a change of legend side', () => {
+    let notify: ResizeObserverCallback = () => undefined;
+    const Original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        notify = cb;
+      }
+      observe(): void {
+        /* driven by the test */
+      }
+      unobserve(): void {
+        /* driven by the test */
+      }
+      disconnect(): void {
+        /* driven by the test */
+      }
+    };
+    try {
+      render(<EChartsRenderer option={OPTION} height={200} ariaLabel="Traffic" />);
+      // The theme defaults are never drawn alone: only the full option is.
+      const lazy = instance.setOption.mock.calls.map((c) => (c[1] as { lazyUpdate?: boolean } | undefined)?.lazyUpdate);
+      expect(lazy).toEqual([true, undefined]);
+      const sized = (width: number, height: number) => {
+        act(() => {
+          notify([{ contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver);
+        });
+      };
+      // First notification at the size of the first drawing (jsdom: 0 x 0): nothing redrawn.
+      sized(0, 0);
+      expect(instance.resize).not.toHaveBeenCalled();
+      expect(instance.setOption).toHaveBeenCalledTimes(2);
+      sized(800, 200);
+      expect(instance.resize).toHaveBeenCalledTimes(1);
+      expect(instance.setOption).toHaveBeenCalledTimes(2);
+      // Crossing the legend threshold re-applies the option (legend on the right).
+      sized(1200, 200);
+      expect(instance.resize).toHaveBeenCalledTimes(2);
+      expect(instance.setOption).toHaveBeenCalledTimes(4);
+      sized(1300, 200);
+      expect(instance.setOption).toHaveBeenCalledTimes(4);
+    } finally {
+      globalThis.ResizeObserver = Original;
+    }
+  });
+
   it('themes the zoom slider and exposes chart actions', () => {
     const handle = createRef<ChartHandle>();
     render(<EChartsRenderer option={OPTION} height={200} ariaLabel="Traffic" handleRef={handle} />);

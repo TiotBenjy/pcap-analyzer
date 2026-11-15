@@ -106,8 +106,10 @@ export default function EChartsRenderer({ option, height, ariaLabel, onEvents, h
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<EChartsType | null>(null);
   const { theme } = useTheme();
-  // Only the legend side matters, so re-render when crossing the threshold, not on every pixel.
-  const [wide, setWide] = useState(false);
+  // Only the legend side matters: the option is re-applied when the width crosses the
+  // threshold (the side is read from the element, so the first drawing already has it right).
+  const wide = useRef(false);
+  const [layout, setLayout] = useState(0);
 
   // Create once; dispose on unmount.
   useEffect(() => {
@@ -115,10 +117,23 @@ export default function EChartsRenderer({ option, height, ariaLabel, onEvents, h
     if (el === null) return;
     const chart = echarts.init(el, null, { renderer: 'svg' });
     chartRef.current = chart;
+    const box = el.getBoundingClientRect();
+    let size = { width: box.width, height: box.height };
+    wide.current = box.width >= LEGEND_SIDE_MIN_WIDTH;
     const ro = new ResizeObserver((entries) => {
-      chart.resize();
-      const w = entries[0]?.contentRect.width ?? 0;
-      setWide(w >= LEGEND_SIDE_MIN_WIDTH);
+      const rect = entries[0]?.contentRect;
+      if (rect === undefined) return;
+      // The first notification comes right after the first drawing, at the same size: redrawing
+      // every series then was a tenth of the Overview display time (P4.8).
+      if (rect.width !== size.width || rect.height !== size.height) {
+        size = { width: rect.width, height: rect.height };
+        chart.resize();
+      }
+      const side = rect.width >= LEGEND_SIDE_MIN_WIDTH;
+      if (side !== wide.current) {
+        wide.current = side;
+        setLayout((n) => n + 1);
+      }
     });
     ro.observe(el);
     return () => {
@@ -144,10 +159,11 @@ export default function EChartsRenderer({ option, height, ariaLabel, onEvents, h
     const chart = chartRef.current;
     if (chart === null) return;
     const windows = zoomWindows(chart.getOption());
-    chart.setOption(baseOption(), { notMerge: true });
-    const next = normalizeOption(option, wide ? LEGEND_SIDE_MIN_WIDTH : 0, chartTheme());
+    // Lazy: the theme defaults alone are never drawn, the next call draws everything once.
+    chart.setOption(baseOption(), { notMerge: true, lazyUpdate: true });
+    const next = normalizeOption(option, wide.current ? LEGEND_SIDE_MIN_WIDTH : 0, chartTheme());
     chart.setOption(keepZoomWindows(next, windows));
-  }, [option, theme, wide]);
+  }, [option, theme, layout]);
 
   // Handlers are (re)bound when they change; the chart instance outlives them.
   useEffect(() => {

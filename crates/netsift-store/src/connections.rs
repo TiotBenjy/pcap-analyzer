@@ -186,10 +186,28 @@ const CONVERSATION_SELECT: &str = "c.id, c.src_ip, c.dst_ip, c.first_ts, c.last_
     c.dns_bytes_rev, c.dns_flows, c.protocols, hs.names, hs.category, hs.country, hd.names, \
     hd.category, hd.country";
 
+/// How the category filter finds its conversations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CategoryPlan {
+    /// Hosts of the categories listed once, each conversation checked against the lists while
+    /// scanning in sort order (`+`: no index). The only plan before the step `connections`.
+    Lists,
+    /// Each conversation checked by a primary key search in `hosts`, scanning in sort order: a
+    /// page stops after a few rows when the categories match many conversations (P4.8).
+    Probe,
+    /// Conversations of the hosts of the categories found by index, then sorted: when the
+    /// categories match few conversations (P4.8).
+    Lookup,
+}
+
 /// The active filters of [`ConversationFilter`], on `c` (`conversations`) only: they are
 /// evaluated before the joins with `hosts`, and the count needs no join at all (P4.2). Host
 /// names and categories are looked up in `hosts` once per query, by sub-query.
 fn conditions(filter: &ConversationFilter) -> Result<Conditions> {
+    conditions_with(filter, CategoryPlan::Lists)
+}
+
+fn conditions_with(filter: &ConversationFilter, plan: CategoryPlan) -> Result<Conditions> {
     let mut c = Conditions::new();
     if let Some(from) = text_filter(filter.from.as_ref()) {
         c.push(
@@ -212,16 +230,105 @@ fn conditions(filter: &ConversationFilter) -> Result<Conditions> {
         );
     }
     if let Some(categories) = json_list(filter.categories.as_deref())? {
-        // `+`: no index for these terms. A category matches a large part of the hosts; looking
-        // up their conversations one by one in two indexes (multi-index OR) took 2 s for the
-        // first page, against a scan in sort order that stops at the page size.
+        let sql = match plan {
+            // `+`: no index for these terms. A category matches a large part of the hosts;
+            // looking up their conversations one by one in two indexes (multi-index OR) took 2 s
+            // for the first page, against a scan in sort order that stops at the page size.
+            CategoryPlan::Lists => {
+                "+c.src_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?))) \
+                 OR +c.dst_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?)))"
+            }
+            CategoryPlan::Probe => {
+                "EXISTS (SELECT 1 FROM hosts h WHERE h.ip = c.src_ip \
+                         AND h.category IN (SELECT value FROM json_each(?))) \
+                 OR EXISTS (SELECT 1 FROM hosts h WHERE h.ip = c.dst_ip \
+                            AND h.category IN (SELECT value FROM json_each(?)))"
+            }
+            CategoryPlan::Lookup => {
+                "c.src_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?))) \
+                 OR c.dst_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?)))"
+            }
+        };
         c.push(
-            "+c.src_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?))) \
-             OR +c.dst_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?)))",
+            sql,
             [Value::Text(categories.clone()), Value::Text(categories)],
         );
     }
     Ok(c)
+}
+
+/// End-of-import step `connections` ([`crate::finalize::SESSION_FINALIZERS`]): counts the
+/// conversations per pair of categories of their ends into `conversation_categories`, in the
+/// transaction of the caller. One pass over `conversations` in storage order, ends found by
+/// primary key; the counts are kept in memory (one entry per pair of categories). Idempotent.
+pub(crate) fn finalize(conn: &Connection) -> Result<()> {
+    let mut counts: std::collections::BTreeMap<(String, String), i64> =
+        std::collections::BTreeMap::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT coalesce(hs.category, ''), coalesce(hd.category, '') FROM conversations c \
+             LEFT JOIN hosts hs ON hs.ip = c.src_ip LEFT JOIN hosts hd ON hd.ip = c.dst_ip",
+        )?;
+        let mut rows = stmt.query([])?;
+        while let Some(r) = rows.next()? {
+            *counts.entry((r.get(0)?, r.get(1)?)).or_insert(0) += 1;
+        }
+    }
+    conn.execute("DELETE FROM conversation_categories", [])?;
+    let mut insert = conn.prepare(
+        "INSERT INTO conversation_categories (src_category, dst_category, conversations) \
+         VALUES (?1, ?2, ?3)",
+    )?;
+    for ((src, dst), n) in counts {
+        insert.execute(params![src, dst, n])?;
+    }
+    Ok(())
+}
+
+/// Conversations with an end in one of `categories`, and all conversations, from the counts of
+/// the step `connections`; `None` while it has not run.
+fn category_counts(conn: &Connection, categories: &str) -> Result<Option<(u64, u64)>> {
+    if !crate::finalize::step_done(conn, "connections")? {
+        return Ok(None);
+    }
+    let (matched, total): (i64, i64) = conn.query_row(
+        "SELECT coalesce(sum(conversations) FILTER (WHERE src_category IN \
+                    (SELECT value FROM json_each(?1)) OR dst_category IN \
+                    (SELECT value FROM json_each(?1))), 0), \
+                coalesce(sum(conversations), 0) \
+         FROM conversation_categories",
+        [categories],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    Ok(Some((
+        u64::try_from(matched).unwrap_or(0),
+        u64::try_from(total).unwrap_or(0),
+    )))
+}
+
+/// Plan of the category filter for a page of `limit` rows: a scan in sort order reads about
+/// `limit * total / matched` conversations before filling the page, a lookup reads the `matched`
+/// ones (then sorts them); the cheaper one wins, from the counts of the step `connections`.
+fn category_plan(
+    conn: &Connection,
+    filter: &ConversationFilter,
+    limit: u32,
+) -> Result<CategoryPlan> {
+    let Some(categories) = json_list(filter.categories.as_deref())? else {
+        return Ok(CategoryPlan::Lists);
+    };
+    Ok(match category_counts(conn, &categories)? {
+        None => CategoryPlan::Lists,
+        Some((matched, total)) => {
+            if u128::from(matched) * u128::from(matched)
+                >= u128::from(limit).saturating_add(1) * u128::from(total)
+            {
+                CategoryPlan::Probe
+            } else {
+                CategoryPlan::Lookup
+            }
+        }
+    })
 }
 
 fn json_list(values: Option<&[String]>) -> Result<Option<String>> {
@@ -284,7 +391,19 @@ pub fn conversations_page(
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<ConversationEntry>> {
-    let conditions = conditions(filter)?;
+    let plan = category_plan(conn, filter, request.effective_limit())?;
+    page_with(conn, filter, sort, descending, request, plan)
+}
+
+fn page_with(
+    conn: &Connection,
+    filter: &ConversationFilter,
+    sort: ConversationSort,
+    descending: bool,
+    request: &PageRequest,
+    plan: CategoryPlan,
+) -> Result<Page<ConversationEntry>> {
+    let conditions = conditions_with(filter, plan)?;
     let where_sql = conditions.sql();
     let query = Keyset {
         from: CONVERSATION_FROM,
@@ -319,8 +438,23 @@ pub fn conversation_ends(conn: &Connection, id: i64) -> Result<Option<(IpAddr, I
     }
 }
 
-/// Number of conversations matching `filter`.
+/// Number of conversations matching `filter`. A category filter alone is answered from the
+/// counts of the step `connections` (P4.8).
 pub fn count_conversations(conn: &Connection, filter: &ConversationFilter) -> Result<u64> {
+    let only_categories = ConversationFilter {
+        categories: filter.categories.clone(),
+        ..ConversationFilter::default()
+    };
+    if *filter == only_categories
+        && let Some(categories) = json_list(filter.categories.as_deref())?
+        && let Some((matched, _)) = category_counts(conn, &categories)?
+    {
+        return Ok(matched);
+    }
+    count_at_read_time(conn, filter)
+}
+
+fn count_at_read_time(conn: &Connection, filter: &ConversationFilter) -> Result<u64> {
     let conditions = conditions(filter)?;
     let sql = match conditions.sql() {
         Some(w) => format!("SELECT count(*) FROM conversations c WHERE {w}"),
@@ -396,7 +530,7 @@ pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<Count
         "SELECT h.country, coalesce(h.category, '') = 'public' AS public, \
          CAST(min(total({col}), 9223372036854775807.0) AS INTEGER), count(*) \
          FROM host_traffic t LEFT JOIN hosts h ON h.ip = t.ip WHERE {col} > 0 \
-         GROUP BY h.country, public ORDER BY 3 DESC, 1"
+         GROUP BY h.country, public"
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], |r| {
@@ -410,9 +544,50 @@ pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<Count
             hosts: r.get(3)?,
         })
     })?;
+    Ok(fold_countries(rows.collect::<rusqlite::Result<Vec<_>>>()?))
+}
+
+/// Bytes sent and received per country of the host, as two calls of [`country_traffic`] but in
+/// one pass over `host_traffic` (P4.8: the Connections statistics read both).
+pub fn country_traffic_both(
+    conn: &Connection,
+) -> Result<(Vec<CountryTraffic>, Vec<CountryTraffic>)> {
+    let mut stmt = conn.prepare(
+        "SELECT h.country, coalesce(h.category, '') = 'public' AS public, \
+         CAST(min(total(t.bytes_sent), 9223372036854775807.0) AS INTEGER), \
+         count(*) FILTER (WHERE t.bytes_sent > 0), \
+         CAST(min(total(t.bytes_received), 9223372036854775807.0) AS INTEGER), \
+         count(*) FILTER (WHERE t.bytes_received > 0) \
+         FROM host_traffic t LEFT JOIN hosts h ON h.ip = t.ip \
+         WHERE t.bytes_sent > 0 OR t.bytes_received > 0 \
+         GROUP BY h.country, public",
+    )?;
+    let mut sent = Vec::new();
+    let mut received = Vec::new();
+    let mut rows = stmt.query([])?;
+    while let Some(r) = rows.next()? {
+        let country: Option<String> = r.get(0)?;
+        // A country is only ever set on public addresses.
+        let public = r.get::<_, bool>(1)? || country.is_some();
+        for (side, bytes, hosts) in [(&mut sent, 2, 3), (&mut received, 4, 5)] {
+            let hosts: u64 = r.get(hosts)?;
+            if hosts > 0 {
+                side.push(CountryTraffic {
+                    country: country.clone(),
+                    public,
+                    bytes: r.get(bytes)?,
+                    hosts,
+                });
+            }
+        }
+    }
+    Ok((fold_countries(sent), fold_countries(received)))
+}
+
+/// Groups of hosts with a country merged by country, largest first.
+fn fold_countries(rows: Vec<CountryTraffic>) -> Vec<CountryTraffic> {
     let mut out: Vec<CountryTraffic> = Vec::new();
     for row in rows {
-        let row = row?;
         // Hosts with a country are grouped by country whatever their category.
         match out
             .iter_mut()
@@ -429,8 +604,9 @@ pub fn country_traffic(conn: &Connection, side: TrafficSide) -> Result<Vec<Count
         b.bytes
             .cmp(&a.bytes)
             .then_with(|| a.country.cmp(&b.country))
+            .then(a.public.cmp(&b.public))
     });
-    Ok(out)
+    out
 }
 
 #[cfg(test)]

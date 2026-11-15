@@ -431,3 +431,117 @@ fn an_upgraded_session_is_not_analyzed() {
         .unwrap();
     assert!(!analyzed(&conn).unwrap());
 }
+
+/// Servers of every role, many of them tied (same evidence sum): HTTP responders with 1 to 4
+/// responses, some also serving DNS, plus the showcase rows.
+fn tied_servers(conn: &Connection) {
+    conn.execute_batch(OTHERS).unwrap();
+    insert(conn, &server_rows());
+    conn.execute_batch(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1200)
+         INSERT INTO http_transactions (flow_id, seq, client_ip, client_port, server_ip,
+             server_port, ts, end_ts, method_group, status_key, status_class, resp_ts)
+         SELECT 100 + i, 0, '10.0.0.' || (i % 5), 40000, '172.16.' || (i % 300 / 100) || '.'
+                || (i % 100), 80, i, i, 'GET', 200, '2xx', CASE WHEN i % 7 = 0 THEN NULL ELSE i END
+         FROM n;
+         WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 90)
+         INSERT INTO dns_messages (ts, transport, proto, client_ip, client_port, server_ip,
+             server_port, txid, opcode, qname, qtype, answers, has_query, has_response)
+         SELECT 2000 + i, 17, 'dns', '10.0.0.9', 6000 + i, '172.16.0.' || (i % 30), 53, i,
+                'QUERY', 'n' || i || '.example', 'A', '[]', 1, 1
+         FROM n;",
+    )
+    .unwrap();
+    materialize_roles(conn).unwrap();
+}
+
+#[test]
+fn stored_ranks_read_the_same_evidence_as_ranking_at_read_time() {
+    let conn = db();
+    tied_servers(&conn);
+    // Every role of the source views is in the fixture, so that each is compared below.
+    assert_eq!(
+        rows(&conn, "SELECT DISTINCT role FROM server_ranks ORDER BY 1"),
+        ["dhcp", "dns", "http", "kerberos", "ldap", "ntp", "smb"]
+    );
+    let http: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM server_ranks WHERE role = 'http'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(http > 250, "{http}");
+    for role in [None, Some("http"), Some("dns"), Some("smb"), Some("nope")] {
+        for limit in [1, 2, 7, 50, 1000] {
+            let q = EvidenceQuery {
+                role,
+                categories: None,
+                limit,
+            };
+            let want = ranking_evidence(&conn, &q, limit).unwrap();
+            let got = ranked_evidence(&conn, role, limit).unwrap();
+            assert_eq!(got.totals, want.totals, "{role:?} {limit}");
+            assert_eq!(
+                render(&got.entries),
+                render(&want.entries),
+                "{role:?} {limit}"
+            );
+        }
+    }
+    // `evidence` reads the stored ranks once the step is recorded.
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES ('finalizers', 'servers:3')",
+        [],
+    )
+    .unwrap();
+    let q = EvidenceQuery {
+        role: None,
+        categories: None,
+        limit: 5,
+    };
+    assert_eq!(
+        evidence(&conn, &q).unwrap(),
+        ranked_evidence(&conn, None, 5).unwrap()
+    );
+}
+
+#[test]
+fn the_ranked_query_reads_ranks_and_evidence_by_key() {
+    let conn = db();
+    tied_servers(&conn);
+    let plan = |sql: &str, params: &[&dyn rusqlite::ToSql]| -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        stmt.query_map(params, |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let every = plan(
+        &ranked_sql(
+            "server_ranks r INDEXED BY server_ranks_rank",
+            "r.rank <= ?1",
+        ),
+        &[&10],
+    );
+    assert!(
+        every.contains("SEARCH r USING INDEX server_ranks_rank (rank<?)"),
+        "{every}"
+    );
+    let one = plan(
+        &ranked_sql("server_ranks r", "r.role = ?1 AND r.rank <= ?2"),
+        &[&"http", &10],
+    );
+    assert!(
+        one.contains("SEARCH r USING PRIMARY KEY (role=? AND rank<?)"),
+        "{one}"
+    );
+    for p in [every, one] {
+        assert!(
+            p.contains("SEARCH e USING INDEX server_evidence_role_ip"),
+            "{p}"
+        );
+        assert!(!p.contains("SCAN") && !p.contains("TEMP B-TREE"), "{p}");
+    }
+}

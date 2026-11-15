@@ -137,6 +137,7 @@ fn progress_line(p: &Progress) -> String {
     let phase = match p.phase {
         Phase::Reading => "reading",
         Phase::Finishing => "finishing",
+        Phase::Finalizing => "finalizing",
         Phase::Done => "done",
     };
     let mut line = format!(
@@ -152,6 +153,12 @@ fn progress_line(p: &Progress) -> String {
     }
     if let Some(eta) = p.eta() {
         let _ = write!(line, "  eta {}", human_duration(eta));
+    }
+    if let Some(step) = p.finalize {
+        let _ = write!(line, "  step {}/{}", step.done, step.total);
+        if let Some(id) = step.step {
+            let _ = write!(line, " {id}");
+        }
     }
     line
 }
@@ -254,11 +261,28 @@ mod tests {
             chunks_total: 3,
             elapsed: Duration::from_secs(1),
             new_anomalies: Vec::new(),
+            finalize: None,
         };
         let line = progress_line(&p);
         assert!(line.contains(" 50.0%"), "{line}");
         assert!(line.contains("chunk 2/3 cap_00002"), "{line}");
         assert!(line.contains("512 B/s"), "{line}");
         assert!(line.contains("eta 1.00 s"), "{line}");
+
+        let p = Progress {
+            phase: Phase::Finalizing,
+            chunk: None,
+            chunk_name: None,
+            finalize: Some(netsift_store::StepProgress {
+                done: 2,
+                total: 7,
+                step: Some("dns"),
+            }),
+            ..p
+        };
+        let line = progress_line(&p);
+        assert!(line.starts_with("finalizing"), "{line}");
+        assert!(line.contains("step 2/7 dns"), "{line}");
+        assert!(!line.contains("eta"), "{line}");
     }
 }

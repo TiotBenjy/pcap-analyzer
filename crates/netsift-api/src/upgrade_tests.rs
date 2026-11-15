@@ -105,6 +105,56 @@ impl Env {
         .session
     }
 
+    /// Imports the demo traffic plus the servers showcase (every role), on one shard.
+    fn import_showcase(&self) -> SessionId {
+        let path = self.captures.join("demo.pcap");
+        if !path.exists() {
+            let mut packets = generate(Kind::Demo, 3, 1);
+            let start = packets.last().map_or(0, |p| p.ts_ns) + 1_000_000_000;
+            let mut sc = netsift_fixtures::Scenario::starting_at(start);
+            netsift_fixtures::servers::servers_showcase(&mut sc);
+            packets.extend(sc.into_packets());
+            std::fs::write(&path, encode(&packets, &Encoding::pcap()).unwrap()).unwrap();
+        }
+        let options = IngestOptions {
+            name: Some("demo".to_owned()),
+            shards: Some(1),
+            ..IngestOptions::default()
+        };
+        ingest(
+            &self.catalog(),
+            &path,
+            &options,
+            &CancelToken::new(),
+            &mut |_| {},
+        )
+        .unwrap()
+        .session
+    }
+
+    /// Asserts that `paths` (relative to the session) answer the same for both sessions, ids
+    /// aside.
+    async fn same_answers(&self, want_id: &SessionId, got_id: &SessionId, paths: &[&str]) {
+        for path in paths {
+            let uri = |id: &SessionId| format!("/api/v1/sessions/{id}/{path}");
+            let (status, _, want) = self.get(&uri(want_id)).await;
+            assert_eq!(status, StatusCode::OK, "{path}: {want}");
+            let (status, _, got) = self.get(&uri(got_id)).await;
+            assert_eq!(status, StatusCode::OK, "{path}: {got}");
+            let (got, want) = (
+                serde_json::to_string_pretty(&without_ids(got)).unwrap(),
+                serde_json::to_string_pretty(&without_ids(want)).unwrap(),
+            );
+            let first_difference = got
+                .lines()
+                .zip(want.lines())
+                .enumerate()
+                .find(|(_, (a, b))| a != b)
+                .map(|(n, (a, b))| format!("line {n}: {a} | {b}"));
+            assert_eq!(got, want, "{path}: {first_difference:?}");
+        }
+    }
+
     /// Runs `sql` on the session database, as another build would have left it.
     fn tamper(&self, id: &SessionId, sql: &str) {
         let session = Session::open(self.catalog().session_dir(id), OpenMode::ReadWrite).unwrap();
@@ -378,7 +428,8 @@ const BEFORE_STEPS: &str = "DELETE FROM meta WHERE key IN \
     INSERT INTO http_transactions_fts (http_transactions_fts) VALUES ('delete-all'); \
     INSERT INTO http_headers_fts (http_headers_fts) VALUES ('delete-all'); \
     INSERT INTO dns_fts (dns_fts) VALUES ('delete-all'); \
-    DELETE FROM server_evidence; DELETE FROM server_roles; \
+    DELETE FROM server_evidence; DELETE FROM server_roles; DELETE FROM server_ranks; \
+    DELETE FROM conversation_categories; DELETE FROM open_port_hosts; \
     DELETE FROM timeseries_minute; DELETE FROM timeseries_hour;";
 
 /// Removes every `id` key (session ids differ between the two imports).
@@ -404,31 +455,19 @@ fn without_ids(mut v: Value) -> Value {
 async fn an_import_without_its_steps_reads_the_same_data_read_only() {
     // A read-only server never runs the pending steps: every view must read their sources.
     let env = Env::new(true);
-    let mut packets = generate(Kind::Demo, 3, 1);
-    let start = packets.last().map_or(0, |p| p.ts_ns) + 1_000_000_000;
-    let mut sc = netsift_fixtures::Scenario::starting_at(start);
-    netsift_fixtures::servers::servers_showcase(&mut sc);
-    packets.extend(sc.into_packets());
-    let path = env.captures.join("demo.pcap");
-    std::fs::write(&path, encode(&packets, &Encoding::pcap()).unwrap()).unwrap();
-    let import = || {
-        let options = IngestOptions {
-            name: Some("demo".to_owned()),
-            shards: Some(1),
-            ..IngestOptions::default()
-        };
-        ingest(
-            &env.catalog(),
-            &path,
-            &options,
-            &CancelToken::new(),
-            &mut |_| {},
-        )
-        .unwrap()
-        .session
-    };
+    let import = || env.import_showcase();
     let finished = import();
     let interrupted = import();
+    // The finished session reads the tables of its steps (not empty, so the comparison holds).
+    let session = Session::open(env.catalog().session_dir(&finished), OpenMode::ReadOnly).unwrap();
+    for table in ["server_ranks", "conversation_categories", "open_port_hosts"] {
+        let rows: i64 = session
+            .conn()
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert!(rows > 0, "{table}");
+    }
+    drop(session);
     let session =
         Session::open(env.catalog().session_dir(&interrupted), OpenMode::ReadWrite).unwrap();
     let conn = session.conn();
@@ -437,7 +476,7 @@ async fn an_import_without_its_steps_reads_the_same_data_read_only() {
         .prepare(
             "SELECT name FROM sqlite_master WHERE type = 'index' AND sql NOT LIKE 'CREATE UNIQUE%' \
              AND tbl_name NOT LIKE 'network\\_%' ESCAPE '\\' AND tbl_name NOT IN \
-             ('dns_pairs', 'server_evidence', 'server_roles')",
+             ('dns_pairs', 'server_evidence', 'server_roles', 'open_port_hosts')",
         )
         .unwrap()
         .query_map([], |r| r.get(0))
@@ -451,40 +490,103 @@ async fn an_import_without_its_steps_reads_the_same_data_read_only() {
     }
     drop(session);
 
-    for path in [
-        "summary",
-        "timeseries?points=500",
-        "tls/stats",
-        "tls/sessions?limit=100",
-        "servers",
-        "network/graph",
-        "network/node/192.168.1.1",
-        "http/stats",
-        "http/transactions?limit=100&q=example",
-        "http/headers?limit=100&q=nginx",
-        "dns/messages?limit=100&q=example",
-        "connections?limit=100&category=private",
-        "open-ports?limit=100",
-    ] {
-        let uri = |id: &SessionId| format!("/api/v1/sessions/{id}/{path}");
-        let (status, _, want) = env.get(&uri(&finished)).await;
-        assert_eq!(status, StatusCode::OK, "{path}: {want}");
-        let (status, _, got) = env.get(&uri(&interrupted)).await;
-        assert_eq!(status, StatusCode::OK, "{path}: {got}");
-        let (got, want) = (
-            serde_json::to_string_pretty(&without_ids(got)).unwrap(),
-            serde_json::to_string_pretty(&without_ids(want)).unwrap(),
-        );
-        let first_difference = got
-            .lines()
-            .zip(want.lines())
-            .enumerate()
-            .find(|(_, (a, b))| a != b)
-            .map(|(n, (a, b))| format!("line {n}: {a} | {b}"));
-        assert_eq!(got, want, "{path}: {first_difference:?}");
-    }
+    env.same_answers(
+        &finished,
+        &interrupted,
+        &[
+            "summary",
+            "timeseries?points=500",
+            "tls/stats",
+            "tls/sessions?limit=100",
+            "servers",
+            "servers?role=http&limit=1",
+            "servers?category=private",
+            "network/graph",
+            "network/node/192.168.1.1",
+            "http/stats",
+            "http/transactions?limit=100&q=example",
+            "http/headers?limit=100&q=nginx",
+            "dns/messages?limit=100&q=example",
+            "connections?limit=100&category=private",
+            "connections?limit=3&category=public",
+            "connections?limit=3&category=multicast,broadcast&sort=first_ts",
+            "connections?limit=100&category=private&protocol=dns",
+            "open-ports?limit=100",
+            "open-ports?limit=2&category=private",
+            "open-ports?limit=100&category=public,multicast",
+        ],
+    )
+    .await;
     // Nothing was written: the steps are still pending.
     let session =
         Session::open(env.catalog().session_dir(&interrupted), OpenMode::ReadOnly).unwrap();
     assert!(!netsift_store::finalize::finalizers_complete(session.conn()).unwrap());
+}
+
+/// What `main` before P4.8 leaves: no migrations 0402 and 0802, the roles of the step `servers`
+/// in version 2, and no steps `connections` nor `ports`.
+const BEFORE_0802: &str = "DROP TABLE server_ranks; DROP TABLE conversation_categories; \
+    DROP TABLE open_port_hosts; DELETE FROM schema_migrations WHERE version IN (402, 802); \
+    UPDATE meta SET value = replace(replace(replace(value, 'servers:3', 'servers:2'), \
+        ',connections:1', ''), ',ports:1', '') WHERE key = 'finalizers';";
+
+/// Paths of the views that P4.8 reads from tables of its steps.
+const P48_PATHS: &[&str] = &[
+    "summary",
+    "servers",
+    "servers?role=http&limit=1",
+    "servers?category=private",
+    "network/graph",
+    "connections?limit=100&category=private",
+    "connections?limit=3&category=public",
+    "connections?limit=3&category=multicast,broadcast&sort=first_ts",
+    "connections/stats",
+    "open-ports?limit=100",
+    "open-ports?limit=2&category=private",
+];
+
+fn markers(env: &Env, id: &SessionId) -> Vec<String> {
+    let session = Session::open(env.catalog().session_dir(id), OpenMode::ReadOnly).unwrap();
+    netsift_store::finalize::finalizers_done(session.conn()).unwrap()
+}
+
+#[tokio::test]
+async fn a_session_of_the_previous_build_gets_the_ranks_and_counts_at_its_opening() {
+    let env = Env::new(false);
+    let current = env.import_showcase();
+    let previous = env.import_showcase();
+    env.tamper(&previous, BEFORE_0802);
+    assert!(env.outdated(&previous));
+    // First opening: migrations 0402 and 0802, then the steps `servers` (v3), `connections`
+    // and `ports`; same answers as a session imported by this build.
+    env.same_answers(&current, &previous, P48_PATHS).await;
+    assert!(!env.outdated(&previous));
+    let done = markers(&env, &previous);
+    for step in ["servers:3", "connections:1", "ports:1"] {
+        assert!(done.contains(&step.to_owned()), "{step}: {done:?}");
+    }
+    assert!(!done.contains(&"servers:2".to_owned()));
+}
+
+#[tokio::test]
+async fn roles_of_version_2_are_read_while_the_ranks_are_missing() {
+    // Migration 0802 applied but the step `servers` v3 not done (failed, or a read-only server):
+    // the roles come from the tables of version 2, the ranks are computed at read time.
+    let env = Env::new(true);
+    let current = env.import_showcase();
+    let partial = env.import_showcase();
+    env.tamper(
+        &partial,
+        "DELETE FROM server_ranks; UPDATE meta SET value = replace(value, 'servers:3', \
+         'servers:2') WHERE key = 'finalizers';",
+    );
+    env.same_answers(&current, &partial, P48_PATHS).await;
+    let session = Session::open(env.catalog().session_dir(&partial), OpenMode::ReadOnly).unwrap();
+    let conn = session.conn();
+    assert!(netsift_store::finalize::step_done_since(conn, "servers", 2).unwrap());
+    assert!(!netsift_store::finalize::step_done(conn, "servers").unwrap());
+    let ranks: i64 = conn
+        .query_row("SELECT count(*) FROM server_ranks", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(ranks, 0, "a read-only server writes nothing");
 }

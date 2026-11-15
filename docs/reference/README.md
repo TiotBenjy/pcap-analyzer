@@ -23,5 +23,21 @@ et chaque spec de `docs/specs/` indique ce qui est repris et ce qui est amélior
 | `servers.png` | Servers |
 | `network.png` | Network |
 
-Les onglets sans capture (Documents, FTP, Telnet, SSDP, SIP, ARP, Ethernet, WiFi, Hosts)
-sont prévus en phase 5 ; demander des captures à l'utilisateur avant d'écrire leur spec.
+Phase 5 : les captures de Documents, FTP, Telnet, SSDP, SIP, ARP, Ethernet et WiFi montrent des données
+de captures (SSID, BSSID, mots de passe). À la demande de l'utilisateur, elles ne sont **pas publiées** : elles
+restent dans `docs/reference/private/` (ignoré par git, présent seulement dans le checkout racine de
+l'utilisateur ; un worktree le lit par le chemin absolu du checkout racine). Ne jamais les commiter ni
+recopier leurs données (SSID, adresses MAC, identifiants) dans les specs, tests ou captures d'écran.
+
+| Fichier (`private/`) | Onglet |
+|---|---|
+| `documents.png` | Documents |
+| `ftp.png` | FTP |
+| `telnet.png` | Telnet |
+| `sip.png` | SIP |
+| `ssdp.png` | SSDP |
+| `arp.png` | ARP |
+| `ethernet.png` | Ethernet |
+| `wifi-1-handshakes.png` à `wifi-5-probe-requests.png` | WiFi (handshakes, points d'accès, broadcast, client à client, probe requests) |
+
+Hosts n'a pas de capture de référence.

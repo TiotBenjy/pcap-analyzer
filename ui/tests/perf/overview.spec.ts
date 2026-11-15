@@ -43,9 +43,13 @@ async function measure(browser: Browser, testInfo: TestInfo, id: string, waitMs:
   await Promise.all([summary, series]);
   const fetched = Date.now() - start;
   await expect(page.getByRole('img', { name: CHART })).toBeVisible();
-  // Series drawn (ECharts SVG renderer) and summary shown.
+  // Series drawn (ECharts SVG renderer) and summary shown. A series area of the benchmark session
+  // is a path of hundreds of points: axes and grid lines alone (an empty chart) do not count.
   await page.waitForFunction(
-    (label) => (document.querySelector(`[aria-label="${label}"]`)?.querySelectorAll('path').length ?? 0) > 5,
+    (label) =>
+      [...(document.querySelector(`[aria-label="${label}"]`)?.querySelectorAll('path') ?? [])].some(
+        (p) => (p.getAttribute('d')?.length ?? 0) > 2000,
+      ),
     CHART,
   );
   await expect(page.getByTestId('overview-summary')).toBeVisible();

@@ -379,14 +379,20 @@ Hors vague (demande utilisateur du 2026-11-08) :
       483 ms et `/open-ports?category=` 343 ms (comptes par catégorie ou total estimé), `/http/transactions?q=` 343 ms
       (régression de P4.2, 212 ms avant) ; requêtes entre 150 et 300 ms (`/connections/stats`, `/dns/stats`, `/dns/messages?q=`
       court) ; writer pendant la lecture (`tls_sessions`, `conversations`, `hosts`).
+- [ ] **P4.11** `feat/outbound-base` — Socle commun de P4.9 et P4.10, à fusionner avant elles (qui se font ensuite en
+      parallèle) : client HTTP sortant partagé extrait de `netsift-api/src/geoip/download.rs` (HTTPS seul, redirections,
+      délais et tailles bornés, `.part` puis renommage, User-Agent générique) ; réglages persistants « vérifications en
+      ligne » (GeoIP, mises à jour), désactivés par défaut, lus au démarrage ; composant de bandeau de notification
+      discret et masquable (UI_GUIDELINES) et son point d'insertion dans l'en-tête ; nouvel ADR (ADR-015 inchangé) qui
+      crée les exceptions DB-IP (vérification sur option) et GitHub releases (vérification sur option, téléchargement
+      sur clic), reprises dans `CLAUDE.md` / `ARCHITECTURE.md`. Pas de logique propre à GeoIP ni aux mises à jour.
 - [ ] **P4.9** `feat/geoip-prompt` — Proposer la base GeoIP au démarrage. Vérification locale, sans réseau :
       date de la base installée (métadonnées mmdb `build_epoch`) comparée au mois courant ; base absente ou antérieure
       au mois -> bandeau discret « Télécharger » / « Mettre à jour » (masquable jusqu'au mois suivant), qui lance le
       téléchargement existant (ADR-015). Réglage « Vérifier en ligne au démarrage », désactivé par défaut : activé, une
       requête HEAD vers l'URL DB-IP du mois confirme la disponibilité (échec réseau silencieux, aucun bandeau d'erreur) ;
-      ADR-015 reste inchangé : nouvel ADR (prochain numéro libre) qui crée l'exception pour DB-IP (vérification sur
-      option), reprise dans la règle « aucun appel sortant » de `CLAUDE.md` / `ARCHITECTURE.md`. Demandé par
-      l'utilisateur le 2026-11-15, à livrer avant la publication de 0.1.0.
+      Exception DB-IP, client HTTP, réglages et bandeau fournis par P4.11 (dépendance). Demandé par l'utilisateur le
+      2026-11-15, à livrer avant la publication de 0.1.0.
 - [ ] **P4.10** `feat/update-check` — Nouvelle version depuis les releases GitHub du dépôt. Bouton « Rechercher une
       mise à jour » dans « À propos » et réglage « Vérifier les mises à jour au démarrage », désactivé par défaut ;
       requête faite par l'API Rust (jamais la webview) vers la dernière release publiée (`releases/latest`, URL du dépôt
@@ -398,9 +404,8 @@ Hors vague (demande utilisateur du 2026-11-08) :
       `SHA256SUMS.txt` (fichier supprimé si l'empreinte diffère) et affiche le chemin enregistré ; annulation du dialogue
       = aucun téléchargement. Installation manuelle par l'utilisateur (pas d'auto-installation ni de plugin updater,
       bundles non signés, ADR-011 ; confirmé par l'utilisateur). Mode web dev :
-      lien en texte vers la page de la release. Nouvel ADR pour l'exception GitHub (comme l'exception DB-IP de P4.9),
-      reprise dans `CLAUDE.md` / `ARCHITECTURE.md`. À faire après P4.9 (même zone : Paramètres, client HTTP), avant
-      la publication de 0.1.0. Demandé par l'utilisateur le 2026-11-15.
+      lien en texte vers la page de la release. Exception GitHub, client HTTP, réglages et bandeau fournis par P4.11
+      (dépendance) ; en parallèle de P4.9, avant la publication de 0.1.0. Demandé par l'utilisateur le 2026-11-15.
 - [x] **P4.6** `ci/release-pipeline` — Releases GitHub publiées par la CI sur tag `vX.Y.Z` : notes
       générées depuis l'historique des commits (Conventional Commits), bundles Linux (AppImage, .deb, .rpm),
       Windows (NSIS .exe, MSI) et macOS (.dmg), sommes SHA-256 ; version unique (workspace, Tauri, UI)

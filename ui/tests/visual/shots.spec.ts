@@ -106,6 +106,26 @@ function filled(template: string, values: Record<string, string> = {}): RegExp {
   return pattern(template.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => values[k] ?? `{{${k}}}`), { exact: true });
 }
 
+/**
+ * Upper bound for a view to finish loading. Only this wait is long: the first chart of a view
+ * needs the lazy ECharts chunk and its query, which can take several seconds when other gates
+ * share the machine.
+ */
+const LOAD_TIMEOUT = 20_000;
+
+/** Waits until no loading placeholder is left and every chart has drawn its SVG. */
+async function settled(page: Page): Promise<void> {
+  await expect(page.locator('#main [data-skeleton]')).toHaveCount(0, { timeout: LOAD_TIMEOUT });
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll('#main [data-chart]')].every(
+        (chart) => (chart.querySelector('svg')?.childElementCount ?? 0) > 0,
+      ),
+    undefined,
+    { timeout: LOAD_TIMEOUT },
+  );
+}
+
 const WIDTHS = [375, 768, 1280, 1920] as const;
 const THEMES = ['light', 'dark'] as const;
 const HEIGHT = 900;
@@ -209,6 +229,7 @@ for (const lang of LANGS) {
           await page.locator('#main h1').first().waitFor();
           await page.waitForLoadState('networkidle');
           await page.evaluate(() => document.fonts.ready);
+          await settled(page);
 
           await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /\bdark\b/ : /^(?!.*\bdark\b)/);
 
@@ -232,6 +253,7 @@ for (const lang of LANGS) {
             }
             await page.locator('#main h1').first().waitFor();
             await page.waitForLoadState('networkidle');
+            await settled(page);
           }
 
           // With the demo sessions, the data views must show data, not an empty or error state.
@@ -424,6 +446,7 @@ for (const lang of LANGS) {
             expect(r.outside, `chart labels outside their SVG (${when})`).toEqual([]);
             expect(r.untitled, `truncatable elements without title (${when})`).toEqual([]);
           };
+          await settled(page);
           await check(`${HEIGHT}px high`);
           expect(pageErrors, 'uncaught errors in the page (frozen Object.prototype)').toEqual([]);
 

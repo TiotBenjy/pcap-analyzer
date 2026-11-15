@@ -29,8 +29,10 @@ la main :
    (`publish = false`). Hors ligne : `cargo fetch` puis `cargo about generate --frozen --fail`
    (aucun appel à clearlydefined.io ni aux dépôts git des crates). Pour une crate en double licence,
    le texte reproduit est celui de la première licence acceptée dans l'ordre d'`about.toml` (MIT
-   en général). `ring` a une clarification épinglée par empreinte : une nouvelle version fait
-   échouer la génération jusqu'à relecture de ses fichiers de licence.
+   en général). `ring` a une clarification épinglée par empreinte (`LICENSE`, `LICENSE-BoringSSL`,
+   `LICENSE-other-bits`) : une nouvelle version fait échouer la génération jusqu'à relecture de ses
+   fichiers de licence. `about.toml` accepte exactement les licences de `deny.toml` (vérifié par un
+   test de `ui/scripts/third-party-licenses.test.ts`).
 2. **npm** : `ui/scripts/third-party-licenses.ts` lit les entrées de production (`dev` absent) de
    `ui/package-lock.json` et, dans `ui/node_modules` (après `npm ci`), leurs fichiers `LICENSE*`,
    `COPYING*`, `licenses/*` (code tiers intégré) et `NOTICE`. Un paquet sans fichier de licence reçoit
@@ -38,6 +40,12 @@ la main :
 3. Le même script fusionne les deux listes (tri stable, textes dédupliqués, ni date, ni version, ni
    chemin absolu) et écrit les deux fichiers ; les fichiers `NOTICE` des crates sont repris aussi
    (Apache-2.0, section 4 d).
+
+La partie npm dépend de la plateforme : les paquets optionnels propres à un système (binaires
+natifs) ne sont installés, donc listés, que sur ce système. La liste de référence se génère donc
+dans le conteneur ou en CI, tous deux Linux x64 ; `ui/node_modules` installé sur l'hôte (Windows,
+macOS) n'est pas une source valable. Aujourd'hui aucun paquet de production n'est optionnel : la
+précaution vaut pour une dépendance future.
 
 Vérification : `./x.sh check` (étape « licences tierces ») et le job `licenses` de `ci.yml` relancent
 la génération avec `--check` et échouent si un fichier commité diffère. Après un changement de

@@ -314,26 +314,26 @@ regex-automata 0.4.18 (Rust crate) - MIT OR Apache-2.0 - [23]
 regex-syntax 0.8.11 (Rust crate) - MIT OR Apache-2.0 - [23]
 reqwest 0.13.5 (Rust crate) - MIT OR Apache-2.0 - [151]
 rfd 0.17.2 (Rust crate) - MIT - [152] [153]
-ring 0.17.14 (Rust crate) - Apache-2.0 AND ISC - [154] [155]
+ring 0.17.14 (Rust crate) - Apache-2.0 AND ISC - [154] [155] [156]
 rusqlite 0.41.1 (Rust crate) - MIT - [118]
 rustc-hash 2.1.3 (Rust crate) - Apache-2.0 OR MIT - [9]
 rusticata-macros 4.1.0 (Rust crate) - MIT OR Apache-2.0 - [14]
 rustix 1.1.6 (Rust crate) - Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT - [9]
 rustls 0.23.46 (Rust crate) - Apache-2.0 OR ISC OR MIT - [97]
 rustls-native-certs 0.8.5 (Rust crate) - Apache-2.0 OR ISC OR MIT - [97]
-rustls-pki-types 1.15.1 (Rust crate) - MIT OR Apache-2.0 - [156]
-rustls-platform-verifier 0.7.1 (Rust crate) - MIT OR Apache-2.0 - [157]
-rustls-webpki 0.103.16 (Rust crate) - ISC - [158]
+rustls-pki-types 1.15.1 (Rust crate) - MIT OR Apache-2.0 - [157]
+rustls-platform-verifier 0.7.1 (Rust crate) - MIT OR Apache-2.0 - [158]
+rustls-webpki 0.103.16 (Rust crate) - ISC - [159]
 rustversion 1.0.23 (Rust crate) - MIT OR Apache-2.0 - [9]
 ryu 1.0.23 (Rust crate) - Apache-2.0 OR BSL-1.0 - [56]
-same-file 1.0.6 (Rust crate) - Unlicense OR MIT - [159]
-schannel 0.1.30 (Rust crate) - MIT - [160]
+same-file 1.0.6 (Rust crate) - Unlicense OR MIT - [160]
+schannel 0.1.30 (Rust crate) - MIT - [161]
 scheduler 0.27.0 (npm package) - MIT - [149]
-schemars 0.8.22 (Rust crate) - MIT - [161]
-schemars_derive 0.8.22 (Rust crate) - MIT - [162] [161]
-scopeguard 1.2.0 (Rust crate) - MIT OR Apache-2.0 - [163]
-security-framework 3.7.0 (Rust crate) - MIT OR Apache-2.0 - [164]
-security-framework-sys 2.17.0 (Rust crate) - MIT OR Apache-2.0 - [164]
+schemars 0.8.22 (Rust crate) - MIT - [162]
+schemars_derive 0.8.22 (Rust crate) - MIT - [163] [162]
+scopeguard 1.2.0 (Rust crate) - MIT OR Apache-2.0 - [164]
+security-framework 3.7.0 (Rust crate) - MIT OR Apache-2.0 - [165]
+security-framework-sys 2.17.0 (Rust crate) - MIT OR Apache-2.0 - [165]
 selectors 0.38.0 (Rust crate) - MPL-2.0 - [139]
 semver 1.0.28 (Rust crate) - MIT OR Apache-2.0 - [9]
 serde 1.0.229 (Rust crate) - MIT OR Apache-2.0 - [9]
@@ -343,116 +343,116 @@ serde_derive_internals 0.29.1 (Rust crate) - MIT OR Apache-2.0 - [9]
 serde_json 1.0.154 (Rust crate) - MIT OR Apache-2.0 - [9]
 serde_path_to_error 0.1.20 (Rust crate) - MIT OR Apache-2.0 - [9]
 serde_repr 0.1.21 (Rust crate) - MIT OR Apache-2.0 - [9]
-serde_spanned 1.1.3 (Rust crate) - MIT OR Apache-2.0 - [165]
-serde_urlencoded 0.7.1 (Rust crate) - MIT OR Apache-2.0 - [166]
-serde_with 3.24.0 (Rust crate) - MIT OR Apache-2.0 - [167]
-serde_with_macros 3.24.0 (Rust crate) - MIT OR Apache-2.0 - [167]
+serde_spanned 1.1.3 (Rust crate) - MIT OR Apache-2.0 - [166]
+serde_urlencoded 0.7.1 (Rust crate) - MIT OR Apache-2.0 - [167]
+serde_with 3.24.0 (Rust crate) - MIT OR Apache-2.0 - [168]
+serde_with_macros 3.24.0 (Rust crate) - MIT OR Apache-2.0 - [168]
 serde-untagged 0.1.9 (Rust crate) - MIT OR Apache-2.0 - [9]
-serialize-to-javascript 0.1.2 (Rust crate) - MIT OR Apache-2.0 - [168]
-serialize-to-javascript-impl 0.1.2 (Rust crate) - MIT OR Apache-2.0 - [168]
-seroval 1.7.10 (npm package) - MIT - [169]
-seroval-plugins 1.7.8 (npm package) - MIT - [169]
+serialize-to-javascript 0.1.2 (Rust crate) - MIT OR Apache-2.0 - [169]
+serialize-to-javascript-impl 0.1.2 (Rust crate) - MIT OR Apache-2.0 - [169]
+seroval 1.7.10 (npm package) - MIT - [170]
+seroval-plugins 1.7.8 (npm package) - MIT - [170]
 servo_arc 0.4.3 (Rust crate) - MIT OR Apache-2.0 - [9]
 sha1 0.11.0 (Rust crate) - MIT OR Apache-2.0 - [126]
-sha2 0.10.9 (Rust crate) - MIT OR Apache-2.0 - [170]
+sha2 0.10.9 (Rust crate) - MIT OR Apache-2.0 - [171]
 sha2 0.11.1 (Rust crate) - MIT OR Apache-2.0 - [126]
-sharded-slab 0.1.7 (Rust crate) - MIT - [171]
-sigma 3.0.2 (npm package) - MIT - [172]
-signal-hook-registry 1.4.8 (Rust crate) - MIT OR Apache-2.0 - [173]
-simd-adler32 0.3.10 (Rust crate) - MIT - [174]
+sharded-slab 0.1.7 (Rust crate) - MIT - [172]
+sigma 3.0.2 (npm package) - MIT - [173]
+signal-hook-registry 1.4.8 (Rust crate) - MIT OR Apache-2.0 - [174]
+simd-adler32 0.3.10 (Rust crate) - MIT - [175]
 siphasher 1.0.4 (Rust crate) - MIT OR Apache-2.0 - [16]
-slab 0.4.12 (Rust crate) - MIT - [175]
-smallvec 1.16.5 (Rust crate) - MIT OR Apache-2.0 - [176]
+slab 0.4.12 (Rust crate) - MIT - [176]
+smallvec 1.16.5 (Rust crate) - MIT OR Apache-2.0 - [177]
 snmp-parser 0.11.0 (Rust crate) - MIT OR Apache-2.0 - [14]
 socket2 0.6.5 (Rust crate) - MIT OR Apache-2.0 - [30]
-softbuffer 0.4.8 (Rust crate) - MIT OR Apache-2.0 - [177]
+softbuffer 0.4.8 (Rust crate) - MIT OR Apache-2.0 - [178]
 soup3 0.5.0 (Rust crate) - MIT - [112]
 soup3-sys 0.5.0 (Rust crate) - MIT - [112]
-stable_deref_trait 1.2.1 (Rust crate) - MIT OR Apache-2.0 - [178]
+stable_deref_trait 1.2.1 (Rust crate) - MIT OR Apache-2.0 - [179]
 string_cache 0.9.0 (Rust crate) - MIT OR Apache-2.0 - [36]
-strsim 0.11.1 (Rust crate) - MIT - [179]
-subtle 2.6.1 (Rust crate) - BSD-3-Clause - [180]
-swift-rs 1.0.9 (Rust crate) - MIT OR Apache-2.0 - [181]
+strsim 0.11.1 (Rust crate) - MIT - [180]
+subtle 2.6.1 (Rust crate) - BSD-3-Clause - [181]
+swift-rs 1.0.9 (Rust crate) - MIT OR Apache-2.0 - [182]
 syn 1.0.109 (Rust crate) - MIT OR Apache-2.0 - [9]
 syn 2.0.119 (Rust crate) - MIT OR Apache-2.0 - [9]
 syn 3.0.9 (Rust crate) - MIT OR Apache-2.0 - [9]
 sync_wrapper 1.0.2 (Rust crate) - Apache-2.0 - [56]
-synstructure 0.13.2 (Rust crate) - MIT - [182]
-synstructure 0.14.0 (Rust crate) - MIT - [182]
+synstructure 0.13.2 (Rust crate) - MIT - [183]
+synstructure 0.14.0 (Rust crate) - MIT - [183]
 tao 0.37.2 (Rust crate) - Apache-2.0 - [55]
-tauri 2.12.5 (Rust crate) - Apache-2.0 OR MIT - [183]
-tauri-codegen 2.7.4 (Rust crate) - Apache-2.0 OR MIT - [183]
-tauri-macros 2.7.4 (Rust crate) - Apache-2.0 OR MIT - [183]
+tauri 2.12.5 (Rust crate) - Apache-2.0 OR MIT - [184]
+tauri-codegen 2.7.4 (Rust crate) - Apache-2.0 OR MIT - [184]
+tauri-macros 2.7.4 (Rust crate) - Apache-2.0 OR MIT - [184]
 tauri-plugin-dialog 2.8.4 (Rust crate) - Apache-2.0 OR MIT - [8]
 tauri-plugin-fs 2.7.1 (Rust crate) - Apache-2.0 OR MIT - [8]
 tauri-plugin-opener 2.7.2 (Rust crate) - Apache-2.0 OR MIT - [8]
 tauri-plugin-single-instance 2.5.5 (Rust crate) - Apache-2.0 OR MIT - [8]
-tauri-runtime 2.12.2 (Rust crate) - Apache-2.0 OR MIT - [183]
-tauri-runtime-wry 2.12.3 (Rust crate) - Apache-2.0 OR MIT - [183]
-tauri-utils 2.10.2 (Rust crate) - Apache-2.0 OR MIT - [183]
-tempfile 3.27.0 (Rust crate) - MIT OR Apache-2.0 - [184]
-tendril 0.5.1 (Rust crate) - MIT OR Apache-2.0 - [185]
+tauri-runtime 2.12.2 (Rust crate) - Apache-2.0 OR MIT - [184]
+tauri-runtime-wry 2.12.3 (Rust crate) - Apache-2.0 OR MIT - [184]
+tauri-utils 2.10.2 (Rust crate) - Apache-2.0 OR MIT - [184]
+tempfile 3.27.0 (Rust crate) - MIT OR Apache-2.0 - [185]
+tendril 0.5.1 (Rust crate) - MIT OR Apache-2.0 - [186]
 termcolor 1.4.1 (Rust crate) - Unlicense OR MIT - [10]
 thiserror 1.0.69 (Rust crate) - MIT OR Apache-2.0 - [9]
 thiserror 2.0.21 (Rust crate) - MIT OR Apache-2.0 - [9]
 thiserror-impl 1.0.69 (Rust crate) - MIT OR Apache-2.0 - [9]
 thiserror-impl 2.0.21 (Rust crate) - MIT OR Apache-2.0 - [9]
 thread_local 1.1.10 (Rust crate) - MIT OR Apache-2.0 - [119]
-time 0.3.55 (Rust crate) - MIT OR Apache-2.0 - [186]
-time-core 0.1.9 (Rust crate) - MIT OR Apache-2.0 - [186]
-time-macros 0.2.32 (Rust crate) - MIT OR Apache-2.0 - [186]
+time 0.3.55 (Rust crate) - MIT OR Apache-2.0 - [187]
+time-core 0.1.9 (Rust crate) - MIT OR Apache-2.0 - [187]
+time-macros 0.2.32 (Rust crate) - MIT OR Apache-2.0 - [187]
 tinystr 0.8.5 (Rust crate) - Unicode-3.0 - [101]
 tls-parser 0.12.2 (Rust crate) - MIT OR Apache-2.0 - [14]
-tokio 1.54.1 (Rust crate) - MIT - [187]
-tokio-macros 2.7.2 (Rust crate) - MIT - [188]
-tokio-rustls 0.26.6 (Rust crate) - MIT OR Apache-2.0 - [189]
-toml 1.2.1+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [165]
+tokio 1.54.1 (Rust crate) - MIT - [188]
+tokio-macros 2.7.2 (Rust crate) - MIT - [189]
+tokio-rustls 0.26.6 (Rust crate) - MIT OR Apache-2.0 - [190]
+toml 1.2.1+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [166]
 toml_datetime 0.6.3 (Rust crate) - MIT OR Apache-2.0 - [30]
-toml_datetime 1.1.3+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [165]
-toml_edit 0.19.15 (Rust crate) - MIT OR Apache-2.0 - [165]
-toml_edit 0.20.2 (Rust crate) - MIT OR Apache-2.0 - [165]
-toml_edit 0.25.19+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [165]
-toml_parser 1.1.5+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [165]
-toml_writer 1.2.0+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [165]
-topojson-client 3.1.0 (npm package) - ISC - [190]
-tower 0.5.3 (Rust crate) - MIT - [191]
-tower-http 0.6.11 (Rust crate) - MIT - [192]
-tower-layer 0.3.3 (Rust crate) - MIT - [191]
-tower-service 0.3.3 (Rust crate) - MIT - [191]
-tracing 0.1.44 (Rust crate) - MIT - [193]
-tracing-attributes 0.1.31 (Rust crate) - MIT - [193]
-tracing-core 0.1.36 (Rust crate) - MIT - [193] [194]
-tracing-log 0.2.0 (Rust crate) - MIT - [193]
-tracing-subscriber 0.3.23 (Rust crate) - MIT - [193]
-try-lock 0.2.5 (Rust crate) - MIT - [195]
+toml_datetime 1.1.3+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [166]
+toml_edit 0.19.15 (Rust crate) - MIT OR Apache-2.0 - [166]
+toml_edit 0.20.2 (Rust crate) - MIT OR Apache-2.0 - [166]
+toml_edit 0.25.19+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [166]
+toml_parser 1.1.5+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [166]
+toml_writer 1.2.0+spec-1.1.0 (Rust crate) - MIT OR Apache-2.0 - [166]
+topojson-client 3.1.0 (npm package) - ISC - [191]
+tower 0.5.3 (Rust crate) - MIT - [192]
+tower-http 0.6.11 (Rust crate) - MIT - [193]
+tower-layer 0.3.3 (Rust crate) - MIT - [192]
+tower-service 0.3.3 (Rust crate) - MIT - [192]
+tracing 0.1.44 (Rust crate) - MIT - [194]
+tracing-attributes 0.1.31 (Rust crate) - MIT - [194]
+tracing-core 0.1.36 (Rust crate) - MIT - [194] [195]
+tracing-log 0.2.0 (Rust crate) - MIT - [194]
+tracing-subscriber 0.3.23 (Rust crate) - MIT - [194]
+try-lock 0.2.5 (Rust crate) - MIT - [196]
 ts-rs 12.0.1 (Rust crate) - MIT - [8]
 ts-rs-macros 12.0.1 (Rust crate) - MIT - [8]
-tslib 2.3.0 (npm package) - 0BSD - [196]
+tslib 2.3.0 (npm package) - 0BSD - [197]
 typeid 1.0.3 (Rust crate) - MIT OR Apache-2.0 - [9]
-typenum 1.20.1 (Rust crate) - MIT OR Apache-2.0 - [197]
-uds_windows 1.2.1 (Rust crate) - MIT - [198]
-unicode-ident 1.0.27 (Rust crate) - (MIT OR Apache-2.0) AND Unicode-3.0 - [9] [199]
+typenum 1.20.1 (Rust crate) - MIT OR Apache-2.0 - [198]
+uds_windows 1.2.1 (Rust crate) - MIT - [199]
+unicode-ident 1.0.27 (Rust crate) - (MIT OR Apache-2.0) AND Unicode-3.0 - [9] [200]
 unicode-segmentation 1.13.3 (Rust crate) - MIT OR Apache-2.0 - [87]
-untrusted 0.9.0 (Rust crate) - ISC - [200]
+untrusted 0.9.0 (Rust crate) - ISC - [201]
 url 2.5.8 (Rust crate) - MIT OR Apache-2.0 - [103]
-urlpattern 0.6.0 (Rust crate) - MIT - [201]
+urlpattern 0.6.0 (Rust crate) - MIT - [202]
 use-sync-external-store 1.7.0 (npm package) - MIT - [149]
-utf_types 1.0.0 (Rust crate) - Apache-2.0 OR MIT - [202]
-utf8_iter 1.1.0 (Rust crate) - Apache-2.0 OR MIT - [202]
-uuid 1.29.1 (Rust crate) - Apache-2.0 OR MIT - [203]
+utf_types 1.0.0 (Rust crate) - Apache-2.0 OR MIT - [203]
+utf8_iter 1.1.0 (Rust crate) - Apache-2.0 OR MIT - [203]
+uuid 1.29.1 (Rust crate) - Apache-2.0 OR MIT - [204]
 walkdir 2.5.0 (Rust crate) - Unlicense OR MIT - [10]
-want 0.3.2 (Rust crate) - MIT - [204]
+want 0.3.2 (Rust crate) - MIT - [205]
 web_atoms 0.2.6 (Rust crate) - MIT OR Apache-2.0 - [90]
-web-time 1.1.0 (Rust crate) - MIT OR Apache-2.0 - [205]
-webkit2gtk 2.0.2 (Rust crate) - MIT - [206]
-webkit2gtk-sys 2.0.2 (Rust crate) - MIT - [207]
+web-time 1.1.0 (Rust crate) - MIT OR Apache-2.0 - [206]
+webkit2gtk 2.0.2 (Rust crate) - MIT - [207]
+webkit2gtk-sys 2.0.2 (Rust crate) - MIT - [208]
 webview2-com 0.39.1 (Rust crate) - MIT - [8]
 webview2-com-macros 0.8.1 (Rust crate) - MIT - [8]
 webview2-com-sys 0.39.1 (Rust crate) - MIT - [8]
-weezl 0.1.12 (Rust crate) - MIT OR Apache-2.0 - [208]
-winapi 0.3.9 (Rust crate) - MIT OR Apache-2.0 - [209]
-winapi-util 0.1.11 (Rust crate) - Unlicense OR MIT - [159]
-window-vibrancy 0.8.1 (Rust crate) - Apache-2.0 OR MIT - [210]
+weezl 0.1.12 (Rust crate) - MIT OR Apache-2.0 - [209]
+winapi 0.3.9 (Rust crate) - MIT OR Apache-2.0 - [210]
+winapi-util 0.1.11 (Rust crate) - Unlicense OR MIT - [160]
+window-vibrancy 0.8.1 (Rust crate) - Apache-2.0 OR MIT - [211]
 windows 0.62.2 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-collections 0.3.2 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-core 0.62.2 (Rust crate) - MIT OR Apache-2.0 - [8]
@@ -466,32 +466,32 @@ windows-strings 0.5.1 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-sys 0.61.2 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-threading 0.2.1 (Rust crate) - MIT OR Apache-2.0 - [8]
 windows-version 0.1.7 (Rust crate) - MIT OR Apache-2.0 - [8]
-winnow 0.5.40 (Rust crate) - MIT - [211]
-winnow 1.0.5 (Rust crate) - MIT - [211]
-world-atlas 2.0.2 (npm package) - ISC - [212]
+winnow 0.5.40 (Rust crate) - MIT - [212]
+winnow 1.0.5 (Rust crate) - MIT - [212]
+world-atlas 2.0.2 (npm package) - ISC - [213]
 writeable 0.6.4 (Rust crate) - Unicode-3.0 - [101]
-wry 0.57.1 (Rust crate) - Apache-2.0 OR MIT - [213]
+wry 0.57.1 (Rust crate) - Apache-2.0 OR MIT - [214]
 x11 2.21.0 (Rust crate) - MIT - [9]
 x11-dl 2.21.0 (Rust crate) - MIT - [9]
 x509-parser 0.18.1 (Rust crate) - MIT OR Apache-2.0 - [14]
 yoke 0.8.4 (Rust crate) - Unicode-3.0 - [101]
 yoke-derive 0.8.4 (Rust crate) - Unicode-3.0 - [101]
-zbus 5.19.0 (Rust crate) - MIT - [214]
-zbus_macros 5.19.0 (Rust crate) - MIT - [214]
-zbus_names 4.3.5 (Rust crate) - MIT - [214]
-zcheapstr 1.2.0 (Rust crate) - MIT - [215]
+zbus 5.19.0 (Rust crate) - MIT - [215]
+zbus_macros 5.19.0 (Rust crate) - MIT - [215]
+zbus_names 4.3.5 (Rust crate) - MIT - [215]
+zcheapstr 1.2.0 (Rust crate) - MIT - [216]
 zerofrom 0.1.8 (Rust crate) - Unicode-3.0 - [101]
 zerofrom-derive 0.1.8 (Rust crate) - Unicode-3.0 - [101]
-zeroize 1.9.1 (Rust crate) - Apache-2.0 OR MIT - [216]
+zeroize 1.9.1 (Rust crate) - Apache-2.0 OR MIT - [217]
 zerotrie 0.2.5 (Rust crate) - Unicode-3.0 - [101]
 zerovec 0.11.9 (Rust crate) - Unicode-3.0 - [101]
 zerovec-derive 0.11.7 (Rust crate) - Unicode-3.0 - [101]
 zmij 1.0.23 (Rust crate) - MIT - [9]
-zrender 6.1.0 (npm package) - BSD-3-Clause - [217]
-zune-core 0.5.3 (Rust crate) - MIT OR Apache-2.0 OR Zlib - [218]
-zune-jpeg 0.5.15 (Rust crate) - MIT OR Apache-2.0 OR Zlib - [218]
-zvariant 5.15.1 (Rust crate) - MIT - [214]
-zvariant_derive 5.15.1 (Rust crate) - MIT - [214]
+zrender 6.1.0 (npm package) - BSD-3-Clause - [218]
+zune-core 0.5.3 (Rust crate) - MIT OR Apache-2.0 OR Zlib - [219]
+zune-jpeg 0.5.15 (Rust crate) - MIT OR Apache-2.0 OR Zlib - [219]
+zvariant 5.15.1 (Rust crate) - MIT - [215]
+zvariant_derive 5.15.1 (Rust crate) - MIT - [215]
 zvariant_utils 4.2.0 (Rust crate) - MIT - [9]
 
 ==============================================================================
@@ -6706,6 +6706,21 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Used by: ring 0.17.14
 ==============================================================================
 
+*ring* uses an "ISC" license, like BoringSSL used to use, for new code
+files. See LICENSE-other-bits for the text of that license.
+
+See LICENSE-BoringSSL for code that was sourced from BoringSSL under the
+Apache 2.0 license. Some code that was sourced from BoringSSL under the ISC
+license. In each case, the license info is at the top of the file.
+
+See src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT
+for the license to code that was sourced from the once_cell project.
+
+==============================================================================
+[156] ISC License
+Used by: ring 0.17.14
+==============================================================================
+
 Copyright 2015-2025 Brian Smith.
 
 Permission to use, copy, modify, and/or distribute this software for any
@@ -6721,7 +6736,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ==============================================================================
-[156] MIT License
+[157] MIT License
 Used by: rustls-pki-types 1.15.1
 ==============================================================================
 
@@ -6752,7 +6767,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[157] MIT License
+[158] MIT License
 Used by: rustls-platform-verifier 0.7.1
 ==============================================================================
 
@@ -6779,7 +6794,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[158] ISC License
+[159] ISC License
 Used by: rustls-webpki 0.103.16
 ==============================================================================
 
@@ -6804,7 +6819,7 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 
 ==============================================================================
-[159] MIT License
+[160] MIT License
 Used by: same-file 1.0.6, winapi-util 0.1.11
 ==============================================================================
 
@@ -6831,7 +6846,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-[160] MIT License
+[161] MIT License
 Used by: schannel 0.1.30
 ==============================================================================
 
@@ -6844,7 +6859,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[161] MIT License
+[162] MIT License
 Used by: schemars 0.8.22, schemars_derive 0.8.22
 ==============================================================================
 
@@ -6871,7 +6886,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[162] MIT License
+[163] MIT License
 Used by: schemars_derive 0.8.22
 ==============================================================================
 
@@ -6930,7 +6945,7 @@ fn is_meta_character(c: char) -> bool {
 }
 
 ==============================================================================
-[163] MIT License
+[164] MIT License
 Used by: scopeguard 1.2.0
 ==============================================================================
 
@@ -6961,7 +6976,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[164] MIT License
+[165] MIT License
 Used by: security-framework 3.7.0, security-framework-sys 2.17.0
 ==============================================================================
 
@@ -6987,7 +7002,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[165] MIT License
+[166] MIT License
 Used by: serde_spanned 1.1.3, toml 1.2.1+spec-1.1.0, toml_datetime 1.1.3+spec-1.1.0, toml_edit 0.19.15, toml_edit 0.20.2, toml_edit 0.25.19+spec-1.1.0, toml_parser 1.1.5+spec-1.1.0, toml_writer 1.2.0+spec-1.1.0
 ==============================================================================
 
@@ -7012,7 +7027,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[166] MIT License
+[167] MIT License
 Used by: serde_urlencoded 0.7.1
 ==============================================================================
 
@@ -7043,7 +7058,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[167] MIT License
+[168] MIT License
 Used by: serde_with 3.24.0, serde_with_macros 3.24.0
 ==============================================================================
 
@@ -7074,7 +7089,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[168] MIT License
+[169] MIT License
 Used by: serialize-to-javascript 0.1.2, serialize-to-javascript-impl 0.1.2
 ==============================================================================
 
@@ -7101,7 +7116,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[169] LICENSE
+[170] LICENSE
 Used by: seroval 1.7.10, seroval-plugins 1.7.8
 ==============================================================================
 
@@ -7114,7 +7129,7 @@ The above copyright notice and this permission notice (including the next paragr
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[170] MIT License
+[171] MIT License
 Used by: sha2 0.10.9
 ==============================================================================
 
@@ -7147,7 +7162,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[171] MIT License
+[172] MIT License
 Used by: sharded-slab 0.1.7
 ==============================================================================
 
@@ -7172,7 +7187,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-[172] LICENSE.txt
+[173] LICENSE.txt
 Used by: sigma 3.0.2
 ==============================================================================
 
@@ -7190,7 +7205,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OU
 IN THE SOFTWARE.
 
 ==============================================================================
-[173] MIT License
+[174] MIT License
 Used by: signal-hook-registry 1.4.8
 ==============================================================================
 
@@ -7221,7 +7236,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[174] MIT License
+[175] MIT License
 Used by: simd-adler32 0.3.10
 ==============================================================================
 
@@ -7248,7 +7263,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[175] MIT License
+[176] MIT License
 Used by: slab 0.4.12
 ==============================================================================
 
@@ -7279,7 +7294,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[176] MIT License
+[177] MIT License
 Used by: smallvec 1.16.5
 ==============================================================================
 
@@ -7310,7 +7325,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[177] MIT License
+[178] MIT License
 Used by: softbuffer 0.4.8
 ==============================================================================
 
@@ -7335,7 +7350,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[178] MIT License
+[179] MIT License
 Used by: stable_deref_trait 1.2.1
 ==============================================================================
 
@@ -7366,7 +7381,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[179] MIT License
+[180] MIT License
 Used by: strsim 0.11.1
 ==============================================================================
 
@@ -7395,7 +7410,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[180] BSD 3-Clause "New" or "Revised" License
+[181] BSD 3-Clause "New" or "Revised" License
 Used by: subtle 2.6.1
 ==============================================================================
 
@@ -7430,7 +7445,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-[181] MIT License
+[182] MIT License
 Used by: swift-rs 1.0.9
 ==============================================================================
 
@@ -7455,7 +7470,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[182] MIT License
+[183] MIT License
 Used by: synstructure 0.13.2, synstructure 0.14.0
 ==============================================================================
 
@@ -7468,7 +7483,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[183] MIT License
+[184] MIT License
 Used by: tauri 2.12.5, tauri-codegen 2.7.4, tauri-macros 2.7.4, tauri-runtime 2.12.2, tauri-runtime-wry 2.12.3, tauri-utils 2.10.2
 ==============================================================================
 
@@ -7495,7 +7510,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[184] MIT License
+[185] MIT License
 Used by: tempfile 3.27.0
 ==============================================================================
 
@@ -7526,7 +7541,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[185] MIT License
+[186] MIT License
 Used by: tendril 0.5.1
 ==============================================================================
 
@@ -7557,7 +7572,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[186] MIT License
+[187] MIT License
 Used by: time 0.3.55, time-core 0.1.9, time-macros 0.2.32
 ==============================================================================
 
@@ -7582,7 +7597,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[187] MIT License
+[188] MIT License
 Used by: tokio 1.54.1
 ==============================================================================
 
@@ -7609,7 +7624,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[188] MIT License
+[189] MIT License
 Used by: tokio-macros 2.7.2
 ==============================================================================
 
@@ -7637,7 +7652,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[189] MIT License
+[190] MIT License
 Used by: tokio-rustls 0.26.6
 ==============================================================================
 
@@ -7668,7 +7683,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[190] LICENSE
+[191] LICENSE
 Used by: topojson-client 3.1.0
 ==============================================================================
 
@@ -7687,7 +7702,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
 ==============================================================================
-[191] MIT License
+[192] MIT License
 Used by: tower 0.5.3, tower-layer 0.3.3, tower-service 0.3.3
 ==============================================================================
 
@@ -7718,7 +7733,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[192] MIT License
+[193] MIT License
 Used by: tower-http 0.6.11
 ==============================================================================
 
@@ -7749,7 +7764,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[193] MIT License
+[194] MIT License
 Used by: tracing 0.1.44, tracing-attributes 0.1.31, tracing-core 0.1.36, tracing-log 0.2.0, tracing-subscriber 0.3.23
 ==============================================================================
 
@@ -7780,7 +7795,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[194] MIT License
+[195] MIT License
 Used by: tracing-core 0.1.36
 ==============================================================================
 
@@ -7807,7 +7822,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[195] MIT License
+[196] MIT License
 Used by: try-lock 0.2.5
 ==============================================================================
 
@@ -7833,7 +7848,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-[196] LICENSE.txt
+[197] LICENSE.txt
 Used by: tslib 2.3.0
 ==============================================================================
 
@@ -7851,7 +7866,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
 ==============================================================================
-[197] MIT License
+[198] MIT License
 Used by: typenum 1.20.1
 ==============================================================================
 
@@ -7878,7 +7893,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[198] MIT License
+[199] MIT License
 Used by: uds_windows 1.2.1
 ==============================================================================
 
@@ -7905,7 +7920,7 @@ Used by: uds_windows 1.2.1
     SOFTWARE
 
 ==============================================================================
-[199] Unicode License v3
+[200] Unicode License v3
 Used by: unicode-ident 1.0.27
 ==============================================================================
 
@@ -7950,7 +7965,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
 ==============================================================================
-[200] ISC License
+[201] ISC License
 Used by: untrusted 0.9.0
 ==============================================================================
 
@@ -7969,7 +7984,7 @@ Used by: untrusted 0.9.0
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ==============================================================================
-[201] MIT License
+[202] MIT License
 Used by: urlpattern 0.6.0
 ==============================================================================
 
@@ -7996,7 +8011,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[202] MIT License
+[203] MIT License
 Used by: utf_types 1.0.0, utf8_iter 1.1.0
 ==============================================================================
 
@@ -8027,7 +8042,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[203] MIT License
+[204] MIT License
 Used by: uuid 1.29.1
 ==============================================================================
 
@@ -8059,7 +8074,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[204] MIT License
+[205] MIT License
 Used by: want 0.3.2
 ==============================================================================
 
@@ -8084,7 +8099,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-[205] MIT License
+[206] MIT License
 Used by: web-time 1.1.0
 ==============================================================================
 
@@ -8111,7 +8126,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[206] MIT License
+[207] MIT License
 Used by: webkit2gtk 2.0.2
 ==============================================================================
 
@@ -8137,7 +8152,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[207] MIT License
+[208] MIT License
 Used by: webkit2gtk-sys 2.0.2
 ==============================================================================
 
@@ -8161,7 +8176,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[208] MIT License
+[209] MIT License
 Used by: weezl 0.1.12
 ==============================================================================
 
@@ -8188,7 +8203,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[209] MIT License
+[210] MIT License
 Used by: winapi 0.3.9
 ==============================================================================
 
@@ -8213,7 +8228,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[210] MIT License
+[211] MIT License
 Used by: window-vibrancy 0.8.1
 ==============================================================================
 
@@ -8240,7 +8255,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[211] MIT License
+[212] MIT License
 Used by: winnow 0.5.40, winnow 1.0.5
 ==============================================================================
 
@@ -8264,7 +8279,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[212] LICENSE
+[213] LICENSE
 Used by: world-atlas 2.0.2
 ==============================================================================
 
@@ -8283,7 +8298,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
 ==============================================================================
-[213] MIT License
+[214] MIT License
 Used by: wry 0.57.1
 ==============================================================================
 
@@ -8310,7 +8325,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-[214] MIT License
+[215] MIT License
 Used by: zbus 5.19.0, zbus_macros 5.19.0, zbus_names 4.3.5, zvariant 5.15.1, zvariant_derive 5.15.1
 ==============================================================================
 
@@ -8341,7 +8356,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[215] MIT License
+[216] MIT License
 Used by: zcheapstr 1.2.0
 ==============================================================================
 
@@ -8372,7 +8387,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[216] MIT License
+[217] MIT License
 Used by: zeroize 1.9.1
 ==============================================================================
 
@@ -8403,7 +8418,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
-[217] LICENSE
+[218] LICENSE
 Used by: zrender 6.1.0
 ==============================================================================
 
@@ -8438,7 +8453,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-[218] MIT License
+[219] MIT License
 Used by: zune-core 0.5.3, zune-jpeg 0.5.15
 ==============================================================================
 

@@ -37,6 +37,13 @@ ignore = true
 [ring.clarify]
 license = "Apache-2.0 AND ISC"
 
+# LICENSE explains which files are ISC (new code, headers inherited from BoringSSL) and which are
+# Apache-2.0: reproduced with the two license texts it points to.
+[[ring.clarify.files]]
+path = "LICENSE"
+license = "ISC"
+checksum = "b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a"
+
 [[ring.clarify.files]]
 path = "LICENSE-BoringSSL"
 license = "Apache-2.0"

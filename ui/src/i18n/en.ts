@@ -355,7 +355,7 @@ export const en = {
       repeatedCapped: '×{{n}}+',
       moreWarnings_one: '{{count}} more warning not shown',
       moreWarnings_other: '{{count}} more warnings not shown',
-      fullList: 'full list in Sources',
+      fullList: '(<sources>full list in Sources</sources>)',
       cancel: 'Cancel import',
       cancelling: 'Cancelling',
       cancelUnavailable: 'Reading is over: the import can no longer be cancelled',

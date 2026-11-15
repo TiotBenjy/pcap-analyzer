@@ -168,7 +168,9 @@ describe('Import wizard', () => {
     // The backend lists a bounded number of warnings but counts them all.
     stream.emit({ ...progress(50), warnings_found: 40 });
     expect(within(warnings).getByRole('heading')).toHaveTextContent('Warnings (40)');
-    expect(within(warnings).getByText('36 more warnings not shown (full list in Sources)')).toBeInTheDocument();
+    expect(within(warnings).getByText(/^36 more warnings not shown/)).toHaveTextContent(
+      '36 more warnings not shown (full list in Sources)',
+    );
 
     // Closing the wizard keeps the import running; the header indicator reopens it.
     await user.click(within(dialog).getByRole('button', { name: 'Continue in background' }));
@@ -218,6 +220,26 @@ describe('Import wizard', () => {
       expect(router.state.location.pathname).toBe('/sessions/S1/overview');
     });
     expect(screen.queryByTestId('import-indicator')).not.toBeInTheDocument();
+  });
+
+  it('opens the Sources view from the warnings of a finished import', async () => {
+    const stream = mockStream();
+    const { user, router } = await startTwoGroupImport();
+    const dialog = await screen.findByRole('dialog', { name: 'Import progress' });
+    stream.emit({ ...progress(100), warnings_found: 12 });
+    stream.emit({ type: 'warning', id: null, code: 'time_gap', chunk: 3, ts_us: null, detail: { gap_us: 6e6 } });
+    // Running: the full list is not there yet.
+    expect(within(dialog).getByText(/^11 more warnings not shown/)).toHaveTextContent(
+      '11 more warnings not shown (full list in Sources)',
+    );
+    expect(within(dialog).queryByRole('link', { name: 'full list in Sources' })).not.toBeInTheDocument();
+    stream.emit({ type: 'done', state: 'ready', packets: 9000, flows: 120, anomalies: 12, duration_s: 12 });
+    stream.end();
+    await user.click(await within(dialog).findByRole('link', { name: 'full list in Sources' }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/sessions/S1/sources');
+    });
+    expect(screen.queryByRole('dialog', { name: 'Import progress' })).not.toBeInTheDocument();
   });
 
   it('cancels a running import, which ends as an incomplete session', async () => {

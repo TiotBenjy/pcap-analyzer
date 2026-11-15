@@ -149,6 +149,13 @@ export function anomalyWhere(t: TFunction, a: AnomalyInfo): string {
  */
 export const WARNINGS_PER_KIND = 10;
 
+/**
+ * Warnings listed after which the API sends no more repeats of a code already listed, only first
+ * occurrences (`MAX_WARNINGS - RESERVED_FOR_NEW_CODES` in crates/netsift-api/src/imports.rs): past
+ * it, any group may have been cut short.
+ */
+export const REPEAT_LIMIT = 180;
+
 /** Anomalies of the same code and chunk, shown as one line (import warnings). */
 export interface AnomalyGroup {
   /** First anomaly of the group, in arrival order. */
@@ -162,9 +169,10 @@ export interface AnomalyGroup {
 
 /**
  * Groups anomalies of the same code and chunk, in order of first appearance. A repeated group
- * shows its largest backward step ("goes back up to 1.2 ms", "at least" when `truncated` says the
- * API dropped warnings and the group reached its cap) or, for other codes, the detail its members
- * share (none when they differ).
+ * shows its largest backward step ("goes back up to 1.2 ms") or, for other codes, the detail its
+ * members share (none when they differ). When `truncated` says the API dropped warnings, a group
+ * that reached its cap, or any group once the list reached `REPEAT_LIMIT`, is `capped`: its count
+ * and step are lower bounds ("at least").
  */
 export function groupAnomalies(t: TFunction, anomalies: readonly AnomalyInfo[], truncated = false): AnomalyGroup[] {
   const groups = new Map<string, { first: AnomalyInfo; count: number; maxStep: number | null; details: Set<string> }>();
@@ -180,14 +188,15 @@ export function groupAnomalies(t: TFunction, anomalies: readonly AnomalyInfo[], 
     if (step !== null) g.maxStep = Math.max(g.maxStep ?? 0, step);
     if (g.details.size < 2) g.details.add(anomalyDetail(t, a));
   }
+  const cutShort = truncated && anomalies.length >= REPEAT_LIMIT;
   return [...groups.values()].map(({ first, count, maxStep, details }) => {
-    const capped = truncated && count >= WARNINGS_PER_KIND;
+    const capped = cutShort || (truncated && count >= WARNINGS_PER_KIND);
     let detail: string;
-    if (count === 1) detail = anomalyDetail(t, first);
+    if (maxStep !== null && first.code === 'timestamp_backwards' && capped)
+      detail = t('anomalies.backwardsAtLeast', { duration: formatPreciseDuration(maxStep) });
+    else if (count === 1) detail = anomalyDetail(t, first);
     else if (maxStep !== null && first.code === 'timestamp_backwards')
-      detail = t(capped ? 'anomalies.backwardsAtLeast' : 'anomalies.backwardsUpTo', {
-        duration: formatPreciseDuration(maxStep),
-      });
+      detail = t('anomalies.backwardsUpTo', { duration: formatPreciseDuration(maxStep) });
     else detail = details.size === 1 ? ([...details][0] ?? '') : '';
     return { first, count, capped, detail };
   });

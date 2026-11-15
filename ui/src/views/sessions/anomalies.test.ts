@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import i18n from '../../i18n';
 import { anomaly } from '../../test/sessionFixtures';
-import { anomalyDetail, anomalySummary, backwardStepUs, groupAnomalies, WARNINGS_PER_KIND } from './anomalies';
+import {
+  anomalyDetail,
+  anomalySummary,
+  backwardStepUs,
+  groupAnomalies,
+  REPEAT_LIMIT,
+  WARNINGS_PER_KIND,
+} from './anomalies';
 
 const t = i18n.t.bind(i18n);
 const NBSP = ' ';
@@ -85,6 +92,17 @@ describe('groupAnomalies', () => {
     expect(groupAnomalies(t, full, false)).toMatchObject([{ capped: false, detail: `Goes back up to 1${NBSP}ms` }]);
     await i18n.changeLanguage('fr');
     expect(groupAnomalies(t, full, true)[0]?.detail).toBe(`Recule d'au moins 1${NBSP}ms`);
+  });
+
+  it('treats every group as cut short once the API stopped sending repeats', () => {
+    // 176 distinct warnings, then a group of 4 when the list reached the repeat limit.
+    const others = Array.from({ length: REPEAT_LIMIT - 4 }, (_, i) => anomaly('time_gap', i, { gap_us: 6e6 }));
+    const group = [800, 2_000, 1_500, 300].map((step, i) => backwards(500, step, i));
+    const groups = groupAnomalies(t, [...others, ...group], true);
+    expect(groups.at(-1)).toMatchObject({ count: 4, capped: true, detail: `Goes back at least 2${NBSP}ms` });
+    expect(groups[0]).toMatchObject({ count: 1, capped: true, detail: `6${NBSP}s without packets` });
+    // Nothing dropped: exact counts.
+    expect(groupAnomalies(t, [...others, ...group], false).at(-1)).toMatchObject({ count: 4, capped: false });
   });
 
   it('keeps a shared detail of other repeated codes, drops differing ones', () => {

@@ -51,6 +51,8 @@ const MAX_WARNINGS: usize = 200;
 const MAX_WARNINGS_PER_KIND: usize = 10;
 /// Part of [`MAX_WARNINGS`] kept for the first warning of each code: repeats of the codes
 /// already listed stop before it, so that every code (fewer than 20) gets at least one line.
+/// `MAX_WARNINGS - RESERVED_FOR_NEW_CODES` is mirrored by `REPEAT_LIMIT` in
+/// `ui/src/views/sessions/anomalies.ts` (groups cut there read `×N+`).
 const RESERVED_FOR_NEW_CODES: usize = 20;
 /// Finished imports kept in memory for late subscribers.
 const MAX_FINISHED: usize = 32;

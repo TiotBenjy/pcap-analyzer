@@ -951,10 +951,7 @@ acceptée : la remplacer par une nouvelle qui la référence.
 - Décision :
   - **exception DB-IP** : au démarrage, une requête (`HEAD`) vers `download.db-ip.com` vérifie si une
     base plus récente est publiée, **uniquement si l'utilisateur a activé** « Rechercher une nouvelle
-    base GeoIP au démarrage » (désactivé par défaut) et si la base installée n'est pas du mois courant
-    (vérification locale du `build_epoch`). Elle vise le fichier du mois courant, puis, sur 404, celui
-    du mois précédent (deux requêtes au plus, les mois que tente le téléchargement). Le téléchargement
-    reste celui d'ADR-015, sur clic ;
+    base GeoIP au démarrage » (désactivé par défaut). Le téléchargement reste celui d'ADR-015, sur clic ;
   - **exception releases GitHub du dépôt** : la dernière release publiée est lue sur `api.github.com`
     (JSON borné) au démarrage si l'utilisateur a activé « Rechercher les mises à jour au démarrage »
     (désactivé par défaut), ou sur clic du bouton « Rechercher une mise à jour ». Le téléchargement
@@ -1001,3 +998,38 @@ acceptée : la remplacer par une nouvelle qui la référence.
     (Paramètres > En ligne), et son propre dictionnaire i18n ;
   - les tests utilisent un serveur HTTP local ; les requêtes réelles vers DB-IP et GitHub restent
     vérifiées à la main.
+
+## ADR-026 — Vérification DB-IP au démarrage : précisions
+
+- Contexte : P4.9 (proposer la base GeoIP au démarrage) met en œuvre l'exception DB-IP d'ADR-025, qui
+  reste valable ; cette ADR précise quand la requête part et comment la fraîcheur de la base est jugée.
+  ADR-015 (téléchargement sur clic) est inchangée.
+- Décision :
+  - **fraîcheur, sans réseau** (`GET /geoip/status`, `netsift-api/src/geoip/freshness.rs`) : le mois de la
+    base utilisée (copie utilisateur, sinon bundle) est comparé au mois courant UTC. Ce mois est celui du
+    fichier DB-IP téléchargé par l'application, enregistré à côté de la copie utilisateur
+    (`<données>/geoip/dbip-country-lite.month` : mois et `build_epoch` du fichier, écriture atomique) et
+    pris en compte tant que le `build_epoch` de la base installée est le même ; sinon (bundle, fichier
+    importé ou remplacé à la main) le mois UTC du `build_epoch` des métadonnées mmdb. Raison : un fichier
+    publié pour un mois peut avoir été généré le dernier jour du mois précédent ; sans cet enregistrement,
+    le bandeau reviendrait chaque mois après une mise à jour. Base absente ou illisible : « Télécharger » ;
+    mois antérieur : « Mettre à jour » ;
+  - **quand la requête part** : au démarrage seulement, si « Rechercher une nouvelle base GeoIP au
+    démarrage » est activé (désactivé par défaut), jamais sur un serveur `--read-only`, et seulement si la
+    base n'est pas du mois courant. Au plus **deux** `HEAD` : le fichier du mois courant, puis, sur 404,
+    celui du mois précédent (les mois que tente le téléchargement d'ADR-015). Si rien de plus récent que la
+    base n'est publié, aucun bandeau ;
+  - **échecs silencieux** : réseau, statut inattendu ou redirection refusée donnent une ligne de log
+    (`info`, sans URL ni corps de réponse) et le bandeau suit la vérification locale ; jamais de bandeau
+    d'erreur. Pendant la vérification, l'UI attend son résultat (interrogation bornée à environ une minute) ;
+  - **rien en lecture seule** : aucun bandeau ni requête sur un serveur `--read-only` ;
+  - **téléchargement sans base plus récente** (début de mois, fichier du mois pas encore publié) : si, après
+    un téléchargement, la base reste antérieure au mois courant, le serveur masque le bandeau jusqu'au mois
+    suivant (`dismissed_notices`, clé `YYYY-MM`) et l'UI l'indique (« Aucune base plus récente n'est encore
+    publiée »).
+- Conséquences :
+  - le bandeau ne revient ni chaque mois après une mise à jour ni après un téléchargement sans nouveauté ;
+  - une base du bundle générée la veille du mois de sa publication est vue comme du mois précédent tant
+    qu'elle n'a pas été téléchargée par l'application (un téléchargement l'enregistre) ;
+  - les tests utilisent un serveur HTTP local ; la réponse réelle de DB-IP au `HEAD` reste vérifiée à la main
+    (un refus du `HEAD` compterait comme un échec, donc silencieux).

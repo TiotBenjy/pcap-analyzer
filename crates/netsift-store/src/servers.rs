@@ -389,21 +389,18 @@ fn ranked_sql(ranks: &str, condition: &str) -> String {
 /// roles: a role added to the source views is read like the others.
 fn ranked_evidence(conn: &Connection, role: Option<&str>, limit: u32) -> Result<RoleEvidence> {
     let mut stmt;
-    let mut query = match role {
-        Some(role) => {
-            stmt = conn.prepare_cached(&ranked_sql(
-                "server_ranks r",
-                "r.role = ?1 AND r.rank <= ?2",
-            ))?;
-            stmt.query(params![role, limit])?
-        }
-        None => {
-            stmt = conn.prepare_cached(&ranked_sql(
-                "server_ranks r INDEXED BY server_ranks_rank",
-                "r.rank <= ?1",
-            ))?;
-            stmt.query(params![limit])?
-        }
+    let mut query = if let Some(role) = role {
+        stmt = conn.prepare_cached(&ranked_sql(
+            "server_ranks r",
+            "r.role = ?1 AND r.rank <= ?2",
+        ))?;
+        stmt.query(params![role, limit])?
+    } else {
+        stmt = conn.prepare_cached(&ranked_sql(
+            "server_ranks r INDEXED BY server_ranks_rank",
+            "r.rank <= ?1",
+        ))?;
+        stmt.query(params![limit])?
     };
     let mut rows: Vec<(i64, Option<IpAddr>, u64, EvidenceEntry)> = Vec::new();
     while let Some(r) = query.next()? {

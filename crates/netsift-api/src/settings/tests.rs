@@ -367,7 +367,94 @@ async fn a_failed_write_changes_nothing() {
     let (status, json) = env.put(&json!({ "online": { "geoip_check": true } })).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{json}");
     assert_eq!(env.get().await, defaults());
-    assert!(!data_dir.join(TEMP_NAME).exists());
+    assert_eq!(temp_files(&data_dir), Vec::<String>::new());
+}
+
+/// Temporary files of the settings left in `dir`.
+fn temp_files(dir: &Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(FILE_NAME) && Path::new(n).extension() == Some("tmp".as_ref()))
+        .collect()
+}
+
+#[tokio::test]
+async fn malformed_dismissed_notices_only_lose_themselves() {
+    let file = json!({
+        "online": { "geoip_check": true },
+        "dismissed_notices": [
+            { "id": "x" },
+            1,
+            "geoip",
+            null,
+            { "id": 3, "key": "1" },
+            { "id": "update", "key": "0.2.0", "extra": true },
+            [],
+            { "id": "geoip", "key": "2026-11" },
+        ],
+    });
+    let env = Env::new(false, Some(file.to_string().as_bytes()));
+    let settings = env.state.settings.get();
+    assert!(settings.online.geoip_check);
+    assert_eq!(
+        settings
+            .dismissed_notices
+            .iter()
+            .map(|n| (n.id.clone(), n.key.clone()))
+            .collect::<Vec<_>>(),
+        owned(&[("update", "0.2.0"), ("geoip", "2026-11")])
+    );
+
+    // A list that is not an array: no dismissal, online settings kept.
+    for list in [
+        json!(1),
+        json!("geoip"),
+        json!({ "id": "geoip", "key": "1" }),
+    ] {
+        let file = json!({ "online": { "update_check": true }, "dismissed_notices": list });
+        let env = Env::new(false, Some(file.to_string().as_bytes()));
+        let settings = env.state.settings.get();
+        assert!(settings.online.update_check, "{list}");
+        assert!(settings.dismissed_notices.is_empty(), "{list}");
+    }
+}
+
+#[test]
+fn temporary_files_have_unique_names() {
+    let dir = Path::new("/data");
+    let a = temp_path(dir);
+    let b = temp_path(dir);
+    assert_ne!(a, b);
+    for p in [&a, &b] {
+        let name = p.file_name().unwrap().to_str().unwrap();
+        assert!(
+            name.starts_with(&format!("{FILE_NAME}.{}-", std::process::id())),
+            "{name}"
+        );
+        assert_eq!(p.extension(), Some("tmp".as_ref()), "{name}");
+        assert_eq!(p.parent(), Some(dir));
+    }
+}
+
+/// A link planted where the old fixed temporary name was is neither followed nor truncated.
+#[cfg(unix)]
+#[tokio::test]
+async fn writes_never_go_through_a_planted_link() {
+    let env = Env::new(false, None);
+    let dir = env.tmp.path().join("data");
+    std::fs::create_dir_all(&dir).unwrap();
+    let victim = env.tmp.path().join("victim");
+    std::fs::write(&victim, b"keep me").unwrap();
+    std::os::unix::fs::symlink(&victim, dir.join("settings.json.tmp")).unwrap();
+
+    let (status, json) = env.put(&json!({ "online": { "geoip_check": true } })).await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(std::fs::read(&victim).unwrap(), b"keep me");
+    assert!(env.reloaded().online.geoip_check);
+    // The planted link stays; no temporary file of ours is left.
+    assert!(dir.join("settings.json.tmp").is_symlink());
+    assert_eq!(temp_files(&dir), ["settings.json.tmp"]);
 }
 
 #[tokio::test]

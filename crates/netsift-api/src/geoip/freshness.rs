@@ -185,17 +185,17 @@ async fn status(State(state): State<Arc<AppState>>) -> Result<Json<GeoipFreshnes
     )))
 }
 
-/// Month of the database in use, `None` when no database is usable: the recorded DB-IP month of
-/// a downloaded user copy, else the month of its `build_epoch`.
+/// Month of the database in use, `None` when no database is usable: the month of its
+/// `build_epoch`, or the recorded DB-IP month of a downloaded user copy when it is later.
 fn built_month(state: &AppState) -> Option<Month> {
     let (db, info) = state.geoip.current();
     let epoch = db?.build_epoch();
-    if info.source == Some(super::GeoipSource::User)
-        && let Some(month) = recorded_month(&state.geoip.month_path(), epoch)
-    {
-        return Some(month);
-    }
-    Some(download::month_of(i64::try_from(epoch).unwrap_or(i64::MAX)))
+    let built = download::month_of(i64::try_from(epoch).unwrap_or(i64::MAX));
+    let recorded = (info.source == Some(super::GeoipSource::User))
+        .then(|| recorded_month(&state.geoip.month_path(), epoch))
+        .flatten();
+    // The later of the two: a record never makes a database look older than its build date.
+    Some(recorded.map_or(built, |recorded| recorded.max(built)))
 }
 
 /// Contents of the month record of the user copy.
@@ -263,7 +263,10 @@ static RECORD_COUNTER: AtomicU64 = AtomicU64::new(0);
 fn write_record(path: &Path, record: &MonthRecord) -> std::io::Result<()> {
     let bytes = serde_json::to_vec(record).map_err(std::io::Error::other)?;
     let n = RECORD_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    // `.<name>.<pid>-<n>.tmp`: the shape `netsift_geo::remove_orphan_temp_files` removes at
+    // startup when a crash left one behind.
+    let mut name = std::ffi::OsString::from(".");
+    name.push(path.file_name().unwrap_or_default());
     name.push(format!(".{}-{n}.tmp", std::process::id()));
     let temp: PathBuf = path.with_file_name(name);
     let mut file = std::fs::OpenOptions::new()

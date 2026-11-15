@@ -42,6 +42,11 @@ pub(crate) fn routes() -> Router<Arc<AppState>> {
         .merge(freshness::routes())
 }
 
+/// Record of the DB-IP month of the user copy `user` (`dbip-country-lite.month`, next to it).
+pub(crate) fn month_record_path(user: &Path) -> PathBuf {
+    user.with_extension("month")
+}
+
 /// Size, modification time and inode (0 where unknown) of a database file.
 type Stamp = (u64, Option<SystemTime>, u64);
 /// Stamps of the user file and of the bundled one.
@@ -160,9 +165,9 @@ impl Geoip {
         Ok(info)
     }
 
-    /// Record of the DB-IP month of the user copy (`dbip-country-lite.month`, next to it).
+    /// Record of the DB-IP month of the user copy.
     fn month_path(&self) -> PathBuf {
-        self.user_path.with_extension("month")
+        month_record_path(&self.user_path)
     }
 
     fn set_progress(&self, update: GeoipUpdate) {

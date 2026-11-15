@@ -143,21 +143,30 @@ export function anomalyWhere(t: TFunction, a: AnomalyInfo): string {
   return a.chunk === null ? t('anomalies.capture') : t('anomalies.chunk', { chunk: a.chunk });
 }
 
+/**
+ * Warnings the API publishes per code and chunk during an import (`MAX_WARNINGS_PER_KIND` in
+ * crates/netsift-api/src/imports.rs): a group that reached it may have more members.
+ */
+export const WARNINGS_PER_KIND = 10;
+
 /** Anomalies of the same code and chunk, shown as one line (import warnings). */
 export interface AnomalyGroup {
   /** First anomaly of the group, in arrival order. */
   first: AnomalyInfo;
   count: number;
+  /** The API stopped sending this group: `count` and its largest step are lower bounds. */
+  capped: boolean;
   /** Details of the whole group: the largest backward step, or the common detail. */
   detail: string;
 }
 
 /**
  * Groups anomalies of the same code and chunk, in order of first appearance. A repeated group
- * shows its largest backward step ("up to 1.2 ms") or, for other codes, the detail its members
+ * shows its largest backward step ("goes back up to 1.2 ms", "at least" when `truncated` says the
+ * API dropped warnings and the group reached its cap) or, for other codes, the detail its members
  * share (none when they differ).
  */
-export function groupAnomalies(t: TFunction, anomalies: readonly AnomalyInfo[]): AnomalyGroup[] {
+export function groupAnomalies(t: TFunction, anomalies: readonly AnomalyInfo[], truncated = false): AnomalyGroup[] {
   const groups = new Map<string, { first: AnomalyInfo; count: number; maxStep: number | null; details: Set<string> }>();
   for (const a of anomalies) {
     const key = `${a.code}\u0000${a.chunk === null ? '' : String(a.chunk)}`;
@@ -172,12 +181,15 @@ export function groupAnomalies(t: TFunction, anomalies: readonly AnomalyInfo[]):
     if (g.details.size < 2) g.details.add(anomalyDetail(t, a));
   }
   return [...groups.values()].map(({ first, count, maxStep, details }) => {
+    const capped = truncated && count >= WARNINGS_PER_KIND;
     let detail: string;
     if (count === 1) detail = anomalyDetail(t, first);
     else if (maxStep !== null && first.code === 'timestamp_backwards')
-      detail = t('anomalies.backwardsUpTo', { duration: formatPreciseDuration(maxStep) });
-    else detail = details.size === 1 ? [...details][0] ?? '' : '';
-    return { first, count, detail };
+      detail = t(capped ? 'anomalies.backwardsAtLeast' : 'anomalies.backwardsUpTo', {
+        duration: formatPreciseDuration(maxStep),
+      });
+    else detail = details.size === 1 ? ([...details][0] ?? '') : '';
+    return { first, count, capped, detail };
   });
 }
 
@@ -192,6 +204,8 @@ export function anomalySummary(t: TFunction, anomalies: readonly AnomalyInfo[]):
   let overlaps = 0;
   let backwards = 0;
   let largestStep: number | null = null;
+  let reordered = 0;
+  let reorderStep = 0;
   let other = 0;
   for (const a of anomalies) {
     if (a.code === 'missing_sequence') {
@@ -206,6 +220,9 @@ export function anomalySummary(t: TFunction, anomalies: readonly AnomalyInfo[]):
       backwards += 1;
       const step = backwardStepUs(a);
       if (step !== null) largestStep = Math.max(largestStep ?? 0, step);
+    } else if (a.code === 'out_of_order' && (num(a.detail, 'packets') ?? 0) > 0 && (backwardStepUs(a) ?? 0) > 0) {
+      reordered += num(a.detail, 'packets') ?? 0;
+      reorderStep = Math.max(reorderStep, backwardStepUs(a) ?? 0);
     } else {
       other += 1;
     }
@@ -219,6 +236,15 @@ export function anomalySummary(t: TFunction, anomalies: readonly AnomalyInfo[]):
       largestStep === null
         ? t('views.sources.summaryBackwardsCount', { count: backwards })
         : t('views.sources.summaryBackwards', { count: backwards, duration: formatPreciseDuration(largestStep) }),
+    );
+  }
+  if (reordered > 0) {
+    parts.push(
+      t('views.sources.summaryOutOfOrder', {
+        count: reordered,
+        packets: formatCount(reordered),
+        duration: formatPreciseDuration(reorderStep),
+      }),
     );
   }
   if (other > 0) parts.push(t('views.sources.summaryOther', { count: other }));

@@ -164,7 +164,7 @@ describe('Import wizard', () => {
     const warnings = within(dialog).getByRole('region', { name: 'Warnings' });
     const items = within(warnings).getAllByRole('listitem');
     expect(items).toHaveLength(2);
-    expect(items[1]).toHaveTextContent(/^Timestamps going backwards \(Chunk 6\) ×3: Up to 1\.2\sms back$/);
+    expect(items[1]).toHaveTextContent(/^Timestamps going backwards \(Chunk 6\) ×3: Goes back up to 1\.2\sms$/);
     // The backend lists a bounded number of warnings but counts them all.
     stream.emit({ ...progress(50), warnings_found: 40 });
     expect(within(warnings).getByRole('heading')).toHaveTextContent('Warnings (40)');
@@ -183,7 +183,7 @@ describe('Import wizard', () => {
     expect(within(reopened).getByRole('button', { name: 'Cancel import' })).toBeEnabled();
 
     // End-of-import steps: the bar follows the steps, the label names the one running.
-    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'dns', steps_done: 2, steps_total: 8 });
+    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'dns', steps_done: 2, steps_total: 8, warnings_found: 40 });
     expect(within(reopened).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
     expect(within(reopened).getByText('Finalizing: pairing DNS answers')).toBeInTheDocument();
     expect(within(reopened).getByText('Step 3 of 8')).toBeInTheDocument();
@@ -198,7 +198,7 @@ describe('Import wizard', () => {
     expect(cancel).toBeDisabled();
     expect(cancel).toHaveAttribute('title', 'Reading is over: the import can no longer be cancelled');
     // A step unknown to this build gets the generic label.
-    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'future', steps_done: 7, steps_total: 8 });
+    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'future', steps_done: 7, steps_total: 8, warnings_found: 40 });
     expect(within(reopened).getByText('Finalizing the session')).toBeInTheDocument();
     expect(within(reopened).getByText('Step 8 of 8')).toBeInTheDocument();
 
@@ -206,6 +206,13 @@ describe('Import wizard', () => {
     stream.end();
     expect(await within(reopened).findByText('Import finished')).toBeInTheDocument();
     expect(within(reopened).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+    // Finished: no estimate left, the packets only in the outcome, the full list one click away.
+    expect(within(reopened).queryByText('Remaining')).not.toBeInTheDocument();
+    expect(within(reopened).getAllByText('Packets')).toHaveLength(1);
+    expect(within(reopened).getByRole('link', { name: 'full list in Sources' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/sessions/S1/sources'),
+    );
     await user.click(within(reopened).getByRole('button', { name: 'Open session' }));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/sessions/S1/overview');

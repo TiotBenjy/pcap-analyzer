@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import i18n from '../../i18n';
 import { anomaly } from '../../test/sessionFixtures';
-import { anomalyDetail, anomalySummary, backwardStepUs, groupAnomalies } from './anomalies';
+import { anomalyDetail, anomalySummary, backwardStepUs, groupAnomalies, WARNINGS_PER_KIND } from './anomalies';
 
 const t = i18n.t.bind(i18n);
 const NBSP = ' ';
@@ -36,7 +36,7 @@ describe('backward steps', () => {
     expect(anomalyDetail(t, backwards(6, 3_600_000_000))).toBe(`Goes back 1${NBSP}h 00${NBSP}min`);
     expect(anomalyDetail(t, anomaly('timestamp_backwards', 6, {}))).toBe('');
     expect(anomalyDetail(t, anomaly('out_of_order', null, { packets: 1500, max_backstep_us: 2_500_000 }))).toBe(
-      `1,500 packets, going back up to 2.5${NBSP}s`,
+      `1,500 packets, up to 2.5${NBSP}s back`,
     );
     expect(anomalyDetail(t, anomaly('out_of_order', null, { packets: 3 }))).toBe('3 packets');
     await i18n.changeLanguage('fr');
@@ -63,13 +63,28 @@ describe('groupAnomalies', () => {
       ['truncated_tail', 6, 1],
     ]);
     expect(groups.map((g) => g.detail)).toEqual([
-      `Up to 1.2${NBSP}ms back`,
+      `Goes back up to 1.2${NBSP}ms`,
       'Number 13',
       `Goes back 5${NBSP}s`,
       '',
     ]);
     await i18n.changeLanguage('fr');
-    expect(groupAnomalies(t, warnings)[0]?.detail).toBe(`Recul jusqu'à 1,2${NBSP}ms`);
+    expect(groupAnomalies(t, warnings)[0]?.detail).toBe(`Recule jusqu'à 1,2${NBSP}ms`);
+  });
+
+  it('gives lower bounds for a group the API stopped sending', async () => {
+    const full = Array.from({ length: WARNINGS_PER_KIND }, (_, i) => backwards(6, 100 * (i + 1), i));
+    const short = full.slice(1);
+    // Warnings were dropped (`warnings_found` larger than received): the full group is capped.
+    expect(groupAnomalies(t, [...full, backwards(7, 5, 0)], true)).toMatchObject([
+      { count: WARNINGS_PER_KIND, capped: true, detail: `Goes back at least 1${NBSP}ms` },
+      { count: 1, capped: false, detail: `Goes back 5${NBSP}µs` },
+    ]);
+    // Below the cap, or nothing dropped: the count and the maximum are exact.
+    expect(groupAnomalies(t, short, true)).toMatchObject([{ count: WARNINGS_PER_KIND - 1, capped: false }]);
+    expect(groupAnomalies(t, full, false)).toMatchObject([{ capped: false, detail: `Goes back up to 1${NBSP}ms` }]);
+    await i18n.changeLanguage('fr');
+    expect(groupAnomalies(t, full, true)[0]?.detail).toBe(`Recule d'au moins 1${NBSP}ms`);
   });
 
   it('keeps a shared detail of other repeated codes, drops differing ones', () => {
@@ -94,15 +109,18 @@ describe('groupAnomalies', () => {
 describe('anomalySummary', () => {
   it('gives the largest backward step', async () => {
     const list = [backwards(6, 800), backwards(6, 1_200), backwards(9, 40), anomaly('time_gap', 3, { gap_us: 43e6 })];
-    expect(anomalySummary(t, list)).toEqual([`1 time gap of 43${NBSP}s`, `3 timestamps going backwards, up to 1.2${NBSP}ms`]);
-    expect(anomalySummary(t, [backwards(6, 40)])).toEqual([`1 timestamp going back 40${NBSP}µs`]);
+    expect(anomalySummary(t, list)).toEqual([`1 time gap of 43${NBSP}s`, `3 timestamps going backwards (up to 1.2${NBSP}ms)`]);
+    expect(anomalySummary(t, [backwards(6, 40)])).toEqual([`1 timestamp going backwards (40${NBSP}µs)`]);
+    expect(
+      anomalySummary(t, [anomaly('out_of_order', null, { packets: 1500, max_backstep_us: 2_500 }), anomaly('out_of_order', null, { packets: 3 })]),
+    ).toEqual([`1,500 packets out of order (up to 2.5${NBSP}ms back)`, '1 other anomaly']);
     expect(anomalySummary(t, [anomaly('timestamp_backwards', 6, {}), anomaly('timestamp_backwards', 7, {})])).toEqual([
       '2 timestamps going backwards',
     ]);
     await i18n.changeLanguage('fr');
     expect(anomalySummary(t, list)).toEqual([
       `1 trou temporel de 43${NBSP}s`,
-      `3 horodatages qui reculent, jusqu'à 1,2${NBSP}ms`,
+      `3 horodatages qui reculent (jusqu'à 1,2${NBSP}ms)`,
     ]);
   });
 });

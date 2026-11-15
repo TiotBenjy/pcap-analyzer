@@ -58,7 +58,11 @@ describe('formatPreciseDuration', () => {
     expect(formatPreciseDuration(1_234, 'en')).toBe('1.2\u00a0ms');
     expect(formatPreciseDuration(1_234, 'fr')).toBe('1,2\u00a0ms');
     expect(formatPreciseDuration(45_400, 'en')).toBe('45\u00a0ms');
+    expect(formatPreciseDuration(999.4, 'en')).toBe('999\u00a0µs');
+    expect(formatPreciseDuration(999.5, 'en')).toBe('1\u00a0ms');
     expect(formatPreciseDuration(999.7, 'en')).toBe('1\u00a0ms');
+    expect(formatPreciseDuration(999_499, 'en')).toBe('999\u00a0ms');
+    expect(formatPreciseDuration(999_500, 'en')).toBe('1\u00a0s');
     expect(formatPreciseDuration(999_999, 'en')).toBe('1\u00a0s');
     expect(formatPreciseDuration(1_200_000, 'en')).toBe('1.2\u00a0s');
     expect(formatPreciseDuration(725_000_000, 'fr')).toBe('12\u00a0min 05\u00a0s');

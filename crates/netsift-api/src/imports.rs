@@ -47,7 +47,11 @@ const STORED_POLL: Duration = Duration::from_secs(1);
 const MAX_WARNINGS: usize = 200;
 /// Warnings published per (code, chunk): a chunk full of identical anomalies (timestamps going
 /// backwards) must not hide the other kinds behind [`MAX_WARNINGS`] repeats.
+/// Mirrored by `WARNINGS_PER_KIND` in `ui/src/views/sessions/anomalies.ts` (`×10+` lines).
 const MAX_WARNINGS_PER_KIND: usize = 10;
+/// Part of [`MAX_WARNINGS`] kept for the first warning of each code: repeats of the codes
+/// already listed stop before it, so that every code (fewer than 20) gets at least one line.
+const RESERVED_FOR_NEW_CODES: usize = 20;
 /// Finished imports kept in memory for late subscribers.
 const MAX_FINISHED: usize = 32;
 /// Anomalies listed per group, and skipped files listed, by a scan.
@@ -92,14 +96,15 @@ pub(crate) struct ImportHandle {
 struct WarningLog {
     /// Anomalies found so far, published or not.
     found: u64,
-    /// Published warnings per (code, chunk); at most [`MAX_WARNINGS`] keys.
-    per_kind: HashMap<(String, Option<u32>), usize>,
+    /// Published warnings per code, then per chunk; at most [`MAX_WARNINGS`] entries.
+    per_kind: HashMap<String, HashMap<Option<u32>, usize>>,
 }
 
 impl ImportHandle {
     /// Latest progress, plus the anomalies found since the previous callback (at most
-    /// [`MAX_WARNINGS`] over an import and [`MAX_WARNINGS_PER_KIND`] per code and chunk; the
-    /// full list is in the `anomalies` table). The progress counts every anomaly found.
+    /// [`MAX_WARNINGS`] over an import, [`MAX_WARNINGS_PER_KIND`] per code and chunk, and the
+    /// first warning of each code even once repeats filled the list; the full list is in the
+    /// `anomalies` table). The progress counts every anomaly found.
     fn publish(&self, progress: Option<ImportProgress>, anomalies: &[AnomalyRow]) {
         let mut log = lock(&self.log);
         let found = u64::try_from(anomalies.len()).unwrap_or(u64::MAX);
@@ -111,19 +116,30 @@ impl ImportHandle {
             if let Some(p) = s.progress.as_mut() {
                 p.warnings_found = log.found;
             }
-            let mut room = MAX_WARNINGS.saturating_sub(s.warnings.len());
             let mut fresh = Vec::new();
             for a in anomalies {
-                if room == 0 {
+                let listed = s.warnings.len().saturating_add(fresh.len());
+                if listed >= MAX_WARNINGS {
                     break;
                 }
-                let listed = log
-                    .per_kind
-                    .entry((a.kind.clone(), a.chunk_id))
-                    .or_default();
-                if *listed < MAX_WARNINGS_PER_KIND {
-                    *listed += 1;
-                    room -= 1;
+                let publish = match log.per_kind.get_mut(a.kind.as_str()) {
+                    // First warning of a code: always room for it.
+                    None => {
+                        log.per_kind
+                            .insert(a.kind.clone(), HashMap::from([(a.chunk_id, 1)]));
+                        true
+                    }
+                    Some(_) if listed >= MAX_WARNINGS - RESERVED_FOR_NEW_CODES => false,
+                    Some(chunks) => {
+                        let n = chunks.entry(a.chunk_id).or_default();
+                        let room = *n < MAX_WARNINGS_PER_KIND;
+                        if room {
+                            *n += 1;
+                        }
+                        room
+                    }
+                };
+                if publish {
                     fresh.push(convert::anomaly_preview(a.clone(), None));
                 }
             }
@@ -847,17 +863,22 @@ mod tests {
     #[test]
     fn published_warnings_are_bounded() {
         let handle = handle();
-        // 250 rows over two callbacks, each (code, chunk) once: the first 200 are kept.
+        // 250 rows of one code over two callbacks, each chunk once: the first 180 are kept, the
+        // rest of the list is kept for other codes.
         let rows: Vec<_> = (0..250).map(|c| row("time_gap", c)).collect();
         let (first, second) = rows.split_at(150);
         handle.publish(None, first);
         handle.publish(Some(progress()), second);
         let status = handle.status.borrow();
-        assert_eq!(status.warnings.len(), MAX_WARNINGS);
+        let kept = MAX_WARNINGS - RESERVED_FOR_NEW_CODES;
+        assert_eq!(status.warnings.len(), kept);
         let first = &status.warnings[0];
         assert_eq!((first.id.clone(), first.ts_us), (None, Some(5)));
         assert_eq!(first.detail["gap_us"], 7);
-        assert_eq!(status.warnings[199].chunk, Some(199));
+        assert_eq!(
+            status.warnings[kept - 1].chunk,
+            u32::try_from(kept - 1).ok()
+        );
         assert_eq!(
             status.progress.as_ref().map(|p| p.warnings_found),
             Some(250)
@@ -898,6 +919,55 @@ mod tests {
         assert_eq!(
             status.progress.as_ref().map(|p| p.warnings_found),
             Some(333)
+        );
+    }
+
+    #[test]
+    fn every_code_is_listed_once_repeats_fill_the_list() {
+        let handle = handle();
+        // 45 chunks with backward timestamps: their repeats stop before the reserved part.
+        let repeats: Vec<_> = (0..45)
+            .flat_map(|c| vec![row("timestamp_backwards", c); 12])
+            .collect();
+        handle.publish(Some(progress()), &repeats);
+        assert_eq!(
+            handle.status.borrow().warnings.len(),
+            MAX_WARNINGS - RESERVED_FOR_NEW_CODES
+        );
+        // Later codes still get their first occurrence, not their repeats.
+        handle.publish(
+            None,
+            &[
+                row("time_gap", 50),
+                row("time_gap", 51),
+                row("truncated_tail", 50),
+                row("timestamp_backwards", 50),
+            ],
+        );
+        let status = handle.status.borrow();
+        let codes: Vec<_> = status
+            .warnings
+            .iter()
+            .skip(MAX_WARNINGS - RESERVED_FOR_NEW_CODES)
+            .map(|w| (w.code.as_str(), w.chunk))
+            .collect();
+        assert_eq!(
+            codes,
+            [("time_gap", Some(50)), ("truncated_tail", Some(50))]
+        );
+        // The reserved part is bounded too.
+        drop(status);
+        let codes: Vec<_> = (0..50).map(|i| row(&format!("code_{i}"), 1)).collect();
+        handle.publish(None, &codes);
+        assert_eq!(handle.status.borrow().warnings.len(), MAX_WARNINGS);
+        assert_eq!(
+            handle
+                .status
+                .borrow()
+                .progress
+                .as_ref()
+                .map(|p| p.warnings_found),
+            Some(45 * 12 + 4 + 50)
         );
     }
 

@@ -2719,7 +2719,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-analyze"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.23.1",
  "brotli",
@@ -2742,7 +2742,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-api"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "flate2",
@@ -2771,7 +2771,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-capture"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "flate2",
@@ -2784,7 +2784,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -2803,7 +2803,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dirs",
@@ -2824,7 +2824,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-dissect"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "etherparse",
  "insta",
@@ -2835,7 +2835,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "image",
  "insta",
@@ -2854,7 +2854,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-fixtures"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2876,7 +2876,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-flow"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "insta",
  "netsift-dissect",
@@ -2886,7 +2886,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-geo"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flate2",
  "lru",
@@ -2898,7 +2898,7 @@ dependencies = [
 
 [[package]]
 name = "netsift-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "insta",
  "rusqlite",

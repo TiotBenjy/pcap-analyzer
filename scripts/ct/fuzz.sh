@@ -91,12 +91,13 @@ run_one() { # <cible> <durée> : processus libFuzzer, corpus vivant puis graines
 }
 
 # Dernière ligne de statut libFuzzer d'un journal : exécutions, couverture, features, corpus.
+# Une métrique absente (journal vide, crash au démarrage) vaut « ? » sans interrompre le bilan.
 summarize() { # <cible> <journal> <code>
   local t="$1" log="$2" rc="$3" runs cov ft corp status="ok"
-  runs="$(grep -oE 'stat::number_of_executed_units: *[0-9]+' "$log" | grep -oE '[0-9]+$' | tail -1)"
-  cov="$(grep -oE ' cov: [0-9]+' "$log" | tail -1 | grep -oE '[0-9]+')"
-  ft="$(grep -oE ' ft: [0-9]+' "$log" | tail -1 | grep -oE '[0-9]+')"
-  corp="$(grep -oE ' corp: [0-9]+' "$log" | tail -1 | grep -oE '[0-9]+')"
+  runs="$(grep -oE 'stat::number_of_executed_units: *[0-9]+' "$log" | grep -oE '[0-9]+$' | tail -1 || true)"
+  cov="$(grep -oE ' cov: [0-9]+' "$log" | tail -1 | grep -oE '[0-9]+' || true)"
+  ft="$(grep -oE ' ft: [0-9]+' "$log" | tail -1 | grep -oE '[0-9]+' || true)"
+  corp="$(grep -oE ' corp: [0-9]+' "$log" | tail -1 | grep -oE '[0-9]+' || true)"
   if [[ "$rc" != 0 ]] || grep -qE '^==[0-9]+== ?ERROR|^SUMMARY: |panicked at|deadly signal' "$log"; then
     status="CRASH"
   fi

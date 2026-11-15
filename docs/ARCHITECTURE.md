@@ -70,10 +70,11 @@ et de `fixtures` pour son générateur de graines seulement.
   (N = cœurs - 2, min 1). Un flux est toujours traité par le même shard : l'ordre intra-flux est garanti.
 - N workers de flux : défragmentation, réassemblage TCP, appel des analyseurs.
 - 1 thread writer SQLite : reçoit des `Record` par canal borné, insère par lots
-  (transaction toutes les ~50 000 lignes ou 250 ms), met à jour la progression.
-  Après le dernier enregistrement, il exécute les étapes de fin d'import des analyseurs
-  (`SESSION_FINALIZERS` : appariements entre shards, tables dérivées, index FTS), marquées dans `meta`
-  et rejouées à l'ouverture si elles manquent (ADR-014).
+  (transaction toutes les ~200 000 lignes ou 1 s), met à jour la progression. Pendant l'import, la
+  session n'a que ses index uniques : les index secondaires sont notés puis supprimés à l'ouverture.
+  Après le dernier enregistrement, il exécute les étapes de fin d'import
+  (`SESSION_FINALIZERS` : index secondaires, appariements entre shards, tables dérivées et agrégats,
+  index FTS), marquées dans `meta` et rejouées à l'ouverture si elles manquent (ADR-014, ADR-023).
 - Annulation : `CancellationToken` partagé ; progression : octets lus / octets totaux de tous les chunks.
 - Le temps « courant » est celui des paquets, jamais l'horloge murale (timeouts de flux, expiration).
 
@@ -201,5 +202,8 @@ jusqu'à un réimport (ADR-013).
 
 - Ingestion ≥ 80 Mo/s sur 4 cœurs pour du trafic mixte ; 5 Go de chunks en < 2 min.
 - Mémoire résidente < 1,5 Go quelle que soit la taille de la session (tout est borné).
-- Bornes par défaut (configurables) : 16 Mio par flux pour le réassemblage TCP, 64 Mio max pour
-  un objet extrait, timeout de flux TCP 300 s / UDP 60 s en temps paquet, 2 M flux actifs max (LRU).
+- Bornes par défaut (configurables) : 16 Mio par flux et 256 Mio pour l'ensemble des flux pour le
+  réassemblage TCP, 64 Mio max pour un objet extrait, 128 Mio de corps HTTP retenus, timeout de flux
+  TCP 300 s / UDP 60 s en temps paquet, 2 M flux actifs max (LRU). Les bornes globales sont partagées
+  entre les shards (ADR-023).
+- Mesures, outillage (`./x.sh bench`) et suivis : `docs/PERFORMANCE.md`.

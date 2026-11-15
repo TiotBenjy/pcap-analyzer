@@ -20,11 +20,13 @@ OUT=".artifacts/screens"
 TOKEN_FILE="$(mktemp)"
 head -c 32 /dev/urandom | base64 | tr -d '/+=' > "$TOKEN_FILE"
 mkdir -p "$OUT/fr" "$DATA_DIR"
-# Seules les captures de la vue et des langues demandées sont effacées.
-PREFIX="$VIEW-"; [ "$VIEW" = "all" ] && PREFIX=""
+# Seules les captures de la vue et des langues demandées sont effacées. Noms :
+# `<vue>-<largeur>-<thème>.png` ; le motif exige la largeur juste après le nom de la vue, pour que
+# `shots connections` n'efface pas `connections-flows-*` (ni `overview` `overview-export-*`).
+PATTERN="$VIEW-[0-9]*.png"; [ "$VIEW" = "all" ] && PATTERN="*.png"
 if [ "$VIEW" != "desktop" ]; then
-  if [ "$LANGS" != "fr" ]; then rm -f "$OUT/$PREFIX"*.png; fi
-  if [ "$LANGS" != "en" ]; then rm -f "$OUT/fr/$PREFIX"*.png; fi
+  if [ "$LANGS" != "fr" ]; then rm -f "$OUT"/$PATTERN; fi
+  if [ "$LANGS" != "en" ]; then rm -f "$OUT/fr"/$PATTERN; fi
 fi
 
 cleanup() { kill "${API_PID:-}" 2>/dev/null || true; rm -f "$TOKEN_FILE"; }

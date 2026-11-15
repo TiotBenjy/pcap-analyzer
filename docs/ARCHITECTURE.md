@@ -110,6 +110,7 @@ sessions/<session_id>/
 catalog.db            liste des sessions (nom, chemins sources, état, tailles)
 exports/              fichiers exportés (seul dossier que l'UI desktop peut ouvrir)
 geoip/                base GeoIP facultative (téléchargée ou importée depuis l'app), prioritaire sur celle du bundle
+settings.json         réglages côté serveur : vérifications en ligne, bandeaux masqués (ADR-025)
 ```
 
 Les captures sources ne sont **jamais copiées** : la session référence les chemins des chunks
@@ -177,8 +178,17 @@ jusqu'à un réimport (ADR-013).
   est alors remplacée atomiquement et rechargée à chaud par l'API (ADR-015).
 - CSP stricte : `default-src 'self'; connect-src http://127.0.0.1:*; img-src 'self' http://127.0.0.1:* data:`,
   plus `style-src 'self' 'unsafe-inline'` pour le SVG d'ECharts et des directives fermées (détail : ADR-006).
-- Aucune autre fenêtre, aucun accès réseau sortant, sauf le téléchargement de la base GeoIP sur clic de
-  l'utilisateur, fait par l'API Rust et non par la webview (ADR-015).
+- Aucune autre fenêtre, aucun accès réseau sortant, sauf, toujours par l'API Rust et non par la webview,
+  avec le client partagé `netsift-api/src/outbound.rs` (HTTPS, hôtes en liste blanche revérifiée à chaque
+  redirection, délais et tailles bornés, `User-Agent` générique) : le téléchargement de la base GeoIP sur
+  clic (ADR-015), et, sur option désactivée par défaut, les vérifications au démarrage d'une nouvelle base
+  DB-IP et d'une nouvelle release GitHub, la seconde aussi sur clic, avec téléchargement d'un artefact
+  seulement sur clic vers un chemin choisi dans le dialogue natif (ADR-025).
+- Réglages côté serveur : `<données>/settings.json` (vérifications en ligne, bandeaux masqués), lu au
+  démarrage de l'API, défauts sûrs si absent ou invalide, écriture atomique, `GET`/`PUT /settings`.
+  Les vérifications au démarrage sont lancées par l'API (`online::STARTUP_CHECKS`, jamais en
+  `--read-only`) : même comportement en desktop et en mode web dev. Leurs résultats s'affichent dans
+  des bandeaux discrets sous l'en-tête (`ui/src/notices/`), masquables jusqu'au changement de leur clé.
 - Bundles publiés par `release.yml` sur tag `vX.Y.Z` (ADR-011, procédure dans `docs/GIT_WORKFLOW.md`) :
   Linux `.AppImage`, `.deb`, `.rpm` (Ubuntu 22.04 pour la compatibilité glibc), Windows NSIS + MSI
   (`windows-latest`), macOS `.dmg` universel Apple Silicon + Intel (`macos-15`, macOS 11 minimum),
@@ -197,8 +207,12 @@ jusqu'à un réimport (ADR-013).
   pour les bundles (`scripts/ci/geoip.sh`). L'application fonctionne sans (pays inconnu).
 - Mise à jour depuis l'application (ADR-015) : `POST /geoip/download` (DB-IP, mois courant puis précédent,
   HTTPS, tailles bornées) ou `POST /geoip/import { path }` ; validation (`netsift_geo::install`) puis
-  renommage atomique dans `<données>/geoip/` et rechargement à chaud. C'est la **seule** requête réseau
-  sortante de l'application. Les sessions déjà importées gardent leurs pays (ADR-009).
+  renommage atomique dans `<données>/geoip/` et rechargement à chaud. Les sessions déjà importées gardent
+  leurs pays (ADR-009).
+- Vérification en ligne au démarrage (ADR-025) : si l'utilisateur l'a activée dans « Paramètres > En ligne »
+  (désactivée par défaut), une requête `HEAD` vers `download.db-ip.com` confirme qu'une base plus récente
+  est publiée ; échec silencieux. Le téléchargement reste celui d'ADR-015, sur clic. Avec les releases
+  GitHub (ADR-025), ce sont les seules requêtes réseau sortantes de l'application.
 - Classification d'adresses : privée (RFC 1918 / ULA), publique, broadcast, multicast, link-local, loopback,
   CGNAT. Utilisée pour les filtres et légendes (LAN / Public / Broadcast / Multicast / Link-local / Loopback).
 

@@ -38,13 +38,13 @@ jobs:
       - run: bash scripts/tests/release.sh
       - run: bash scripts/tests/cache.sh
       # shellcheck est préinstallé sur les runners Ubuntu.
-      - name: shellcheck (x.sh, wt.sh, scripts de version, de release, de cache, de fuzzing et de bench)
+      - name: shellcheck (x.sh, wt.sh, scripts de version, de release, de cache, de fuzzing, de bench et de licences)
         run: |
           shellcheck --version | head -2
           shellcheck -x scripts/check-version.sh scripts/release.sh scripts/release-status.sh \
             scripts/tests/check-version.sh scripts/tests/release.sh scripts/ct/cliff.sh \
             scripts/lib/cache.sh scripts/ct/cache.sh scripts/tests/cache.sh x.sh scripts/wt.sh \
-            scripts/ct/fuzz.sh scripts/ci/fuzz.sh scripts/ct/bench.sh
+            scripts/ct/fuzz.sh scripts/ci/fuzz.sh scripts/ct/bench.sh scripts/ct/licenses.sh
 
   rust:
     name: Rust (fmt, clippy, tests, bindings)
@@ -100,6 +100,31 @@ jobs:
         with:
           tool: cargo-deny@${{ env.DENY_VERSION }}
       - run: cargo deny check
+
+  licenses:
+    name: Licences tierces (liste à jour)
+    # Liste des crates Rust et paquets npm embarqués (« À propos », THIRD-PARTY-NOTICES.txt des
+    # bundles) : régénérée par le même script que ./x.sh licenses, puis comparée aux fichiers commités.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - working-directory: ui
+        run: npm ci --ignore-scripts
+      # cargo-about, à la version épinglée dans scripts/ct/licenses.sh (source unique), est compilé
+      # par le script dans le répertoire temporaire du runner.
+      - name: Liste régénérée et comparée
+        env:
+          NETSIFT_TOOLS_DIR: ${{ runner.temp }}/tools
+          NETSIFT_TOOLS_TARGET: ${{ runner.temp }}/tools-target
+        run: bash scripts/ct/licenses.sh --check
 
   ui:
     name: UI (lint, typecheck, tests, visuels)

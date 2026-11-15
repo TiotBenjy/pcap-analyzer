@@ -66,6 +66,7 @@ const progress = (done: number): Extract<ImportEvent, { type: 'progress' }> => (
   step: null,
   steps_done: 0,
   steps_total: 0,
+  warnings_found: 0,
 });
 
 async function startTwoGroupImport() {
@@ -148,6 +149,26 @@ describe('Import wizard', () => {
 
     stream.emit({ type: 'warning', id: null, code: 'missing_sequence', chunk: 12, ts_us: null, detail: { first: 13, last: 13 } });
     expect(within(dialog).getByText('1 missing file')).toBeInTheDocument();
+
+    // Identical warnings share one line with their count and largest backward step.
+    for (const step of [800, 1_234, 300]) {
+      stream.emit({
+        type: 'warning',
+        id: null,
+        code: 'timestamp_backwards',
+        chunk: 6,
+        ts_us: 1_000,
+        detail: { offset: 1, previous_us: 1_000 + step, ts_us: 1_000 },
+      });
+    }
+    const warnings = within(dialog).getByRole('region', { name: 'Warnings' });
+    const items = within(warnings).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[1]).toHaveTextContent(/^Timestamps going backwards \(Chunk 6\) ×3: Up to 1\.2\sms back$/);
+    // The backend lists a bounded number of warnings but counts them all.
+    stream.emit({ ...progress(50), warnings_found: 40 });
+    expect(within(warnings).getByRole('heading')).toHaveTextContent('Warnings (40)');
+    expect(within(warnings).getByText('36 more warnings not shown (full list in Sources)')).toBeInTheDocument();
 
     // Closing the wizard keeps the import running; the header indicator reopens it.
     await user.click(within(dialog).getByRole('button', { name: 'Continue in background' }));

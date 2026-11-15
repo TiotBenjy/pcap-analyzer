@@ -12,12 +12,13 @@ import {
   stepNumber,
   type TrackedImport,
   trackImport,
+  warningTotal,
 } from '../../../app/importTracker';
 import { Button } from '../../../components/Button';
 import { ErrorNote } from '../../../components/ErrorNote';
 import { en } from '../../../i18n/en';
 import { colon, formatCount, formatDuration, formatPercent, formatRate } from '../../../lib/format';
-import { anomalyDetail, anomalyLabel, anomalyWhere } from '../anomalies';
+import { anomalyLabel, anomalyWhere, groupAnomalies } from '../anomalies';
 import { SessionStateBadge } from '../SessionStateBadge';
 import { WizardDialog } from './WizardDialog';
 
@@ -35,6 +36,10 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
       : formatPercent(fraction, 0, i18n.language);
 
   // Once reading is over, nothing listens to the cancel request any more: the import ends.
+  // Identical warnings (same code and chunk) on one line, in order of first appearance.
+  const groups = groupAnomalies(t, imp.warnings);
+  const total = warningTotal(imp);
+
   const readingOver = p !== null && (p.phase === 'finishing' || p.phase === 'finalizing');
   const label =
     p === null
@@ -134,32 +139,36 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
 
         <section className="flex min-w-0 flex-col gap-1.5" aria-label={t('views.import.warnings')}>
           <h3 className="text-meta font-medium text-muted">
-            {t('views.import.warnings')} <span className="num">({formatCount(imp.warningCount)})</span>
+            {t('views.import.warnings')} <span className="num">({formatCount(total)})</span>
           </h3>
-          {imp.warnings.length === 0 ? (
+          {groups.length === 0 ? (
             <p className="text-meta text-muted">{t('views.import.noWarnings')}</p>
           ) : (
             <ul className="flex max-h-48 min-w-0 flex-col gap-1 overflow-y-auto rounded-md border border-line p-2 text-meta">
-              {imp.warnings.map((w, i) => {
-                const detail = anomalyDetail(t, w);
-                return (
-                  <li key={i} className="flex min-w-0 items-start gap-2">
-                    <TriangleAlert aria-hidden size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
-                    <span className="min-w-0 [overflow-wrap:anywhere]">
-                      <span className="font-medium">{anomalyLabel(t, w)}</span>
-                      <span className="text-muted">
-                        {' '}
-                        ({anomalyWhere(t, w)}){detail === '' ? '' : `${colon(i18n.language)} ${detail}`}
-                      </span>
+              {groups.map(({ first, count, detail }, i) => (
+                <li key={i} className="flex min-w-0 items-start gap-2">
+                  <TriangleAlert aria-hidden size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
+                  <span className="min-w-0 [overflow-wrap:anywhere]">
+                    <span className="font-medium">{anomalyLabel(t, first)}</span>
+                    <span className="text-muted">
+                      {' '}
+                      ({anomalyWhere(t, first)})
+                      {count > 1 && (
+                        <>
+                          {' '}
+                          <span className="num">{t('views.import.repeated', { n: formatCount(count) })}</span>
+                        </>
+                      )}
+                      {detail === '' ? '' : `${colon(i18n.language)} ${detail}`}
                     </span>
-                  </li>
-                );
-              })}
+                  </span>
+                </li>
+              ))}
             </ul>
           )}
-          {imp.warningCount > imp.warnings.length && (
+          {total > imp.warnings.length && (
             <p className="text-meta text-muted">
-              {t('views.import.moreWarnings', { count: imp.warningCount - imp.warnings.length })}
+              {t('views.import.moreWarnings', { count: total - imp.warnings.length })}
             </p>
           )}
         </section>

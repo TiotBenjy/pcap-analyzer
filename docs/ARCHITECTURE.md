@@ -171,8 +171,10 @@ jusqu'à un réimport (ADR-013).
 - Fermeture (fenêtre ou Cmd+Q sous macOS) : si un import tourne, un dialogue natif demande confirmation.
   À la sortie, l'API annule les imports et attend leur writer pendant au plus `STOP_LIMIT` (environ 15 s) ;
   les sessions annulées passent `incomplete`.
-- Plugins : `dialog` (choix de dossier ou de fichier, `nativePicker()` côté UI), `opener` (limité au
-  dossier `<données>/exports`). Capabilities minimales, sans `core:default`.
+- Plugins : `dialog` (choix de dossier ou de fichier, `nativePicker()` côté UI ; enregistrement d'un
+  installateur de mise à jour, `nativeSavePicker()`), `opener` (limité au dossier `<données>/exports`).
+  Capabilities minimales, sans `core:default` (plus `core:path:allow-resolve-directory` pour ouvrir le
+  dialogue d'enregistrement dans le dossier Téléchargements).
 - GeoIP : `<données>/geoip/dbip-country-lite.mmdb` si présent et lisible, sinon la base du bundle
   (`resources/geoip/`, jamais écrite). L'état est visible dans « Paramètres > À propos » (`GET /server-info`),
   d'où l'utilisateur peut télécharger la dernière base ou importer un fichier : la copie de `<données>/geoip/`
@@ -183,8 +185,11 @@ jusqu'à un réimport (ADR-013).
   avec le client partagé `netsift-api/src/outbound.rs` (HTTPS, hôtes en liste blanche revérifiée à chaque
   redirection, délais et tailles bornés, `User-Agent` générique) : le téléchargement de la base GeoIP sur
   clic (ADR-015), et, sur option désactivée par défaut, les vérifications au démarrage d'une nouvelle base
-  DB-IP et d'une nouvelle release GitHub, la seconde aussi sur clic, avec téléchargement d'un artefact
-  seulement sur clic vers un chemin choisi dans le dialogue natif (ADR-025).
+  DB-IP (ADR-026) et d'une nouvelle release GitHub, la seconde aussi sur clic, avec téléchargement d'un
+  artefact seulement sur clic vers un chemin choisi dans le dialogue natif (ADR-025, ADR-027) : l'installateur
+  du système et du format installé (type de bundle inscrit par Tauri, passé par `Server::with_install_format`), vérifié contre le
+  `SHA256SUMS.txt` de la release avant renommage, jamais installé automatiquement. Hôtes : `api.github.com`
+  (vérification), `github.com` et son stockage d'assets (téléchargement).
 - Réglages côté serveur : `<données>/settings.json` (vérifications en ligne, bandeaux masqués), lu au
   démarrage de l'API, défauts sûrs si absent ou invalide, écriture atomique, `GET`/`PUT /settings`.
   Les vérifications au démarrage sont lancées par l'API (`online::STARTUP_CHECKS`, jamais en
@@ -220,7 +225,7 @@ jusqu'à un réimport (ADR-013).
   (désactivée par défaut) et que la base n'est pas du mois, une requête `HEAD` vers `download.db-ip.com`
   (fichier du mois courant, puis du précédent sur 404, comme le téléchargement) confirme qu'une base plus
   récente est publiée, sinon le bandeau n'est pas affiché ; échec silencieux (bandeau selon la vérification
-  locale). Le téléchargement reste celui d'ADR-015, sur clic. Avec les releases GitHub (ADR-025), ce sont les
+  locale). Le téléchargement reste celui d'ADR-015, sur clic. Avec les releases GitHub (ADR-025, ADR-027), ce sont les
   seules requêtes réseau sortantes de l'application.
 - Classification d'adresses : privée (RFC 1918 / ULA), publique, broadcast, multicast, link-local, loopback,
   CGNAT. Utilisée pour les filtres et légendes (LAN / Public / Broadcast / Multicast / Link-local / Loopback).

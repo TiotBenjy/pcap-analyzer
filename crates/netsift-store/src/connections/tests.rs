@@ -379,12 +379,18 @@ fn conversation_ends_and_flows_are_paged_by_first_seen() {
     use crate::query::conversation_flows_page;
 
     let conn = db();
-    insert(&conn, StoreRecord::Conversation(conv("10.0.0.1", "10.0.0.2", 1, 1, &["tls"])));
+    insert(
+        &conn,
+        StoreRecord::Conversation(conv("10.0.0.1", "10.0.0.2", 1, 1, &["tls"])),
+    );
     let id: i64 = conn
         .query_row("SELECT id FROM conversations", [], |r| r.get(0))
         .unwrap();
     let (src, dst) = conversation_ends(&conn, id).unwrap().unwrap();
-    assert_eq!((src.to_string(), dst.to_string()), ("10.0.0.1".into(), "10.0.0.2".into()));
+    assert_eq!(
+        (src.to_string(), dst.to_string()),
+        ("10.0.0.1".into(), "10.0.0.2".into())
+    );
     assert_eq!(conversation_ends(&conn, id + 1).unwrap(), None);
 
     // Seven flows of the conversation (two with the same first_ts, ordered by id), plus flows
@@ -407,7 +413,15 @@ fn conversation_ends_and_flows_are_paged_by_first_seen() {
     }
     assert_eq!(
         seen,
-        [(10, 101), (20, 105), (30, 102), (30, 103), (50, 100), (60, 106), (70, 104)]
+        [
+            (10, 101),
+            (20, 105),
+            (30, 102),
+            (30, 103),
+            (50, 100),
+            (60, 106),
+            (70, 104)
+        ]
     );
 }
 
@@ -421,7 +435,9 @@ fn conversation_flows_query_uses_its_index() {
         )
         .unwrap();
     let plan = stmt
-        .query_map((("10.0.0.1"), ("10.0.0.2"), 5, 1), |r| r.get::<_, String>(3))
+        .query_map((("10.0.0.1"), ("10.0.0.2"), 5, 1), |r| {
+            r.get::<_, String>(3)
+        })
         .unwrap()
         .map(Result::unwrap)
         .collect::<Vec<_>>()

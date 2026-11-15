@@ -425,6 +425,22 @@ mod tests {
         assert!(output.is_file());
         // Never overwritten.
         assert!(export::run(&command, &CancelToken::new(), &mut Vec::new()).is_err());
+        // A session being imported or whose import failed is refused.
+        for state in [
+            netsift_store::SessionState::Importing,
+            netsift_store::SessionState::Failed,
+        ] {
+            catalog
+                .set_state(&id.parse().unwrap(), state, None)
+                .unwrap();
+            std::fs::remove_file(&output).unwrap_or_default();
+            let err = export::run(&command, &CancelToken::new(), &mut Vec::new()).unwrap_err();
+            assert!(
+                err.to_string().contains("session") || err.to_string().contains("import"),
+                "{err}"
+            );
+            assert!(!output.exists());
+        }
 
         // --flow excludes a range; a range needs both ends.
         let base = ["netsift", "export", "pcap", "--session", "x", "-o", "f"];

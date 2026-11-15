@@ -5,10 +5,10 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use netsift_engine::{CancelToken, ExportError, ExportSelection, plan_export};
-use netsift_store::{Catalog, OpenMode, SessionId};
+use netsift_store::{Catalog, OpenMode, SessionId, SessionState};
 
 #[derive(Debug, Subcommand)]
 pub enum ExportCommand {
@@ -54,6 +54,14 @@ pub fn run(command: &ExportCommand, cancel: &CancelToken, out: &mut dyn Write) -
     let id: SessionId = args.session.parse().context("invalid session id")?;
     let catalog = Catalog::open(&args.data_dir)
         .with_context(|| format!("cannot open the catalog in {}", args.data_dir.display()))?;
+    let info = catalog
+        .get(&id)?
+        .with_context(|| format!("session {id} does not exist"))?;
+    match info.state {
+        SessionState::Ready | SessionState::Incomplete => {}
+        SessionState::Importing => bail!("session {id} is still being imported"),
+        SessionState::Failed => bail!("the import of session {id} failed"),
+    }
     let session = catalog
         .open_session(&id, OpenMode::ReadOnly)
         .with_context(|| format!("cannot open session {id}"))?;
@@ -69,6 +77,13 @@ pub fn run(command: &ExportCommand, cancel: &CancelToken, out: &mut dyn Write) -
                 report.bytes_written,
                 report.chunks_read
             )?;
+            if report.read_errors > 0 {
+                writeln!(
+                    out,
+                    "warning: {} read error(s) in the sources: packets may be missing",
+                    report.read_errors
+                )?;
+            }
             Ok(ExitCode::SUCCESS)
         }
         Err(ExportError::Cancelled) => Ok(ExitCode::from(crate::ingest::EXIT_INCOMPLETE)),

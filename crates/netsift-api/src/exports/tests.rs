@@ -258,6 +258,23 @@ async fn flow_and_range_exports_from_the_connections_listing() {
     assert!(is_server_name(job["file_name"].as_str().unwrap(), "flow-"));
     assert_eq!(job["flow_id"], flow_id);
 
+    // Spellings of the same id (sign, thousands of leading zeros): the job and the file name use
+    // the parsed id.
+    for spelling in [
+        format!("+{flow_id}"),
+        format!("{}{flow_id}", "0".repeat(5000)),
+    ] {
+        let job = env
+            .export(&session, &json!({ "scope": "flow", "flow_id": spelling }))
+            .await;
+        assert_eq!(job["state"], "done", "{job}");
+        assert_eq!(job["flow_id"], flow_id);
+        let name = job["file_name"].as_str().unwrap();
+        assert!(name.contains(&format!("-flow-{flow_id}-")), "{name}");
+        assert!(name.len() < 80, "{name}");
+    }
+    assert_eq!(job["read_errors"], 0);
+
     let (from, to) = (
         flow["first_ts_us"].as_i64().unwrap(),
         flow["last_ts_us"].as_i64().unwrap(),

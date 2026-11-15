@@ -124,6 +124,9 @@ pub struct ExportJob {
     /// Bytes of the source files read so far, out of `bytes_total`.
     pub bytes_read: u64,
     pub bytes_total: u64,
+    /// Read errors met in the source files (a file that ends early, a record skipped): the
+    /// export may lack packets, as the import did.
+    pub read_errors: u64,
     pub error: Option<ExportFailure>,
     /// Wall-clock creation time, microseconds since the epoch.
     pub created_at_us: i64,
@@ -284,17 +287,17 @@ fn selection(request: &ExportRequest) -> Result<ExportSelection, ApiError> {
 
 /// File name chosen by the server: `netsift-<session>-<scope>-<job>.pcapng`, only
 /// `[a-z0-9-]` before the extension (no client text, no traversal).
-fn file_name(session: &SessionId, request: &ExportRequest, job: &str) -> String {
+fn file_name(session: &SessionId, selection: &ExportSelection, job: &str) -> String {
     let session = session.as_str().get(..8).unwrap_or_default().to_lowercase();
     let job = job
         .get(job.len().saturating_sub(8)..)
         .unwrap_or_default()
         .to_lowercase();
-    let scope = match request {
-        ExportRequest::Session => "session".to_owned(),
-        ExportRequest::Range { .. } => "range".to_owned(),
-        // Parsed as a number before: digits only.
-        ExportRequest::Flow { flow_id } => format!("flow-{flow_id}"),
+    let scope = match selection {
+        ExportSelection::Session => "session".to_owned(),
+        ExportSelection::Range { .. } => "range".to_owned(),
+        // The parsed id, never the client's text (`+5`, leading zeros): digits only, bounded.
+        ExportSelection::Flow { id } => format!("flow-{id}"),
     };
     format!("netsift-{session}-{scope}-{job}.pcapng")
 }
@@ -347,7 +350,7 @@ async fn start(
     .await?;
 
     let job_id = SessionId::generate().to_string();
-    let name = file_name(&id, &request, &job_id);
+    let name = file_name(&id, &selection, &job_id);
     let folder = exports_dir(&state);
     let dest = folder.join(&name);
     let (scope, from_us, to_us, flow_id) = match &request {
@@ -355,7 +358,13 @@ async fn start(
         ExportRequest::Range { from_us, to_us } => {
             (ExportScope::Range, Some(*from_us), Some(*to_us), None)
         }
-        ExportRequest::Flow { flow_id } => (ExportScope::Flow, None, None, Some(flow_id.clone())),
+        ExportRequest::Flow { .. } => {
+            let flow_id = match selection {
+                ExportSelection::Flow { id } => Some(id.to_string()),
+                _ => None,
+            };
+            (ExportScope::Flow, None, None, flow_id)
+        }
     };
     let job = Arc::new(Job {
         session: id.to_string(),
@@ -376,6 +385,7 @@ async fn start(
             bytes_written: 0,
             bytes_read: 0,
             bytes_total: plan.total_bytes(),
+            read_errors: 0,
             error: None,
             created_at_us: now_us(),
         }),
@@ -413,6 +423,7 @@ fn run(job: &Job, plan: ExportPlan, running: Running) {
             s.packets = report.packets;
             s.bytes_written = report.bytes_written;
             s.bytes_read = s.bytes_total;
+            s.read_errors = report.read_errors;
             s.path = Some(job.dest.to_string_lossy().into_owned());
         }
         Err(ExportError::Cancelled) => s.state = ExportState::Cancelled,

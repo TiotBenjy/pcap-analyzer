@@ -198,6 +198,7 @@ if (views.length === 0) throw new Error(`unknown view "${selected}"; known: ${Ob
 interface LayoutReport {
   pageOverflow: { scrollWidth: number; innerWidth: number } | null;
   documentScroll: { scrollWidth: number; scrollHeight: number; innerWidth: number; innerHeight: number } | null;
+  bodyScroll: { scrollWidth: number; scrollHeight: number; clientWidth: number; clientHeight: number } | null;
   escaping: string[];
   mainOverflow: { scrollWidth: number; clientWidth: number } | null;
   overlaps: string[];
@@ -222,6 +223,17 @@ async function inspectLayout(page: Page): Promise<LayoutReport> {
               scrollHeight: scroller.scrollHeight,
               innerWidth: window.innerWidth,
               innerHeight: window.innerHeight,
+            }
+          : null,
+      // With overflow hidden on html, body is a scroll container of its own: an in-flow overflow
+      // is clipped there (not counted above) but focus can still scroll it.
+      bodyScroll:
+        document.body.scrollHeight > document.body.clientHeight + TOL || document.body.scrollWidth > document.body.clientWidth + TOL
+          ? {
+              scrollWidth: document.body.scrollWidth,
+              scrollHeight: document.body.scrollHeight,
+              clientWidth: document.body.clientWidth,
+              clientHeight: document.body.clientHeight,
             }
           : null,
       escaping: [],
@@ -451,6 +463,7 @@ for (const lang of LANGS) {
               const r = await inspectLayout(page);
               expect(r.pageOverflow, 'horizontal page overflow (export dialog)').toBeNull();
               expect(r.documentScroll, 'the document scrolls (export dialog)').toBeNull();
+              expect(r.bodyScroll, 'the body scrolls (export dialog)').toBeNull();
               expect(r.escaping, 'absolutely positioned boxes outside their scroll container (export dialog)').toEqual([]);
               expect(r.untitled, 'truncatable elements without title (export dialog)').toEqual([]);
               await page.screenshot({ path: `${shotDir}/credentials-export-dialog-${width}-${theme}.png` });
@@ -612,6 +625,7 @@ for (const lang of LANGS) {
             const r = await inspectLayout(page);
             expect(r.pageOverflow, `horizontal page overflow (${when})`).toBeNull();
             expect(r.documentScroll, `the document scrolls, not only #main (${when})`).toBeNull();
+            expect(r.bodyScroll, `the body scrolls, not only #main (${when})`).toBeNull();
             expect(r.escaping, `absolutely positioned boxes outside their scroll container (${when})`).toEqual([]);
             expect(r.mainOverflow, `horizontal overflow in the main column (${when})`).toBeNull();
             expect(r.overlaps, `overlapping chart labels (${when})`).toEqual([]);

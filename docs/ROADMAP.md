@@ -446,8 +446,65 @@ Hors vague (demande utilisateur du 2026-11-08) :
 
 ---
 
-## Phase 5 — Onglets suivants (specs à rédiger à partir de captures de référence)
+## Phase 5 — Onglets suivants
 
-Documents, FTP, Telnet, SSDP, SIP, ARP, Ethernet, WiFi (beacons, probes, clients, EAPOL -> hc22000),
-Hosts (fiche par hôte agrégeant tout). Puis : ajout de chunks à une session, surveillance de dossier
-en direct, `.zst`/`.lz4`, filtre temporel global (brush de l'Overview appliqué à toutes les vues).
+Découpage validé par l'utilisateur le 2026-11-15. Captures de référence fournies le même jour pour Documents,
+FTP, Telnet, SSDP, SIP, ARP, Ethernet et WiFi (aucune pour Hosts). Chaque branche d'onglet commence par
+écrire sa spec (`docs/specs/<onglet>.md`, gabarit de `docs/specs/README.md`) à partir de ces captures, en
+reprenant les fonctionnalités et non le style (graphes illisibles, emoji, bulles ombrées, bouton « To Details »).
+Au plus 4 agents en parallèle ; les ajouts voisins (navigation, routes, i18n, `shots.spec.ts`) se résolvent
+en gardant les deux côtés.
+
+### Vague 5.0 — Socle commun (séquentiel, avant les nouveaux onglets)
+
+- [ ] **P5.1** `refactor/views-harmonize` — Tâche transverse notée après la vague 3.B : composant `Endpoint`
+      commun, `CopyButton` partagé (16 px, cible 32 px), helper unique de barres horizontales avec valeurs,
+      format d'heure, filtres dans l'en-tête de carte, tableaux en cartes sous `md`.
+- [ ] **P5.2** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
+      toutes les vues (`from_us`/`to_us` dans l'API et l'URL, refetch serveur du zoom Overview, suivi de P4.2).
+      Après P5.1.
+
+### Vague 5.A — Couche 2 et protocoles simples (parallèle, après 5.0)
+
+- [ ] **P5.3** `feat/arp` — Référence `arp.png`. Requêtes, réponses, ARP gratuits (compteurs et filtres),
+      table IP <-> MAC dans le temps, conflits (une IP pour plusieurs MAC) et signes d'usurpation expliqués ;
+      graphe lisible (réutiliser sigma de Network) ou tableau.
+- [ ] **P5.4** `feat/ethernet` — Référence `ethernet.png`. Adresses MAC, constructeur d'après l'OUI (registre
+      IEEE, licence et mode de mise à jour à vérifier, pas de fichier GPL), broadcast/multicast, VLAN, EtherTypes,
+      volumes ; paires source -> cibles. Barres des constructeurs à la place des bulles.
+- [ ] **P5.5** `feat/ssdp` — Référence `ssdp.png`. Messages NOTIFY / M-SEARCH / réponses, appareils UPnP (USN,
+      types NT/ST, `SERVER`, `LOCATION`), émetteurs ; message brut dépliable. Le graphe de la référence est
+      illisible : tableau groupé par appareil, graphe facultatif borné.
+- [ ] **P5.6** `feat/sip` — Référence `sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
+      statut), REGISTER, user-agents (scanners comme `friendly-scanner`), messages bruts dépliables, flux RTP
+      associés sans lecture audio, identifiants SIP Digest vers Credentials.
+- [ ] **P5.7** `feat/compressed-captures` — Lecture `.zst` et `.lz4` (`netsift-capture`), comme `.gz` ; en
+      parallèle de n'importe quelle vague.
+
+### Vague 5.B — Protocoles à flux et fichiers (parallèle, après 5.A)
+
+- [ ] **P5.8** `feat/ftp` — Référence `ftp.png`. Sessions de contrôle en transcription (commandes, réponses,
+      arguments mis en évidence, `PASS` masqué par défaut comme dans Credentials), canal de données associé
+      (PORT/PASV/EPRT/EPSV), fichiers transférés extraits dans `objects` (taille, sens, nom).
+- [ ] **P5.9** `feat/telnet` — Référence `telnet.png`. Sessions en transcription (négociation d'options retirée,
+      échos fusionnés, bornée), identifiants login/password vers Credentials (masqués).
+- [ ] **P5.10** `feat/wifi` — Références `wifi-1.png` à `wifi-5.png`. Onglets : handshakes WPA (export hc22000,
+      format actuel d'hashcat, au lieu de `.hccapx`), points d'accès (BSSID, SSID, canal, chiffrement,
+      constructeur), broadcast, client à client, probe requests ; s'appuie sur le décodage 802.11/radiotap
+      existant et sur l'OUI de P5.4.
+
+### Vague 5.C — Vues d'agrégation (après 5.A et 5.B)
+
+- [ ] **P5.11** `feat/documents` — Référence `documents.png`. Objets hors images (PDF, Office, archives,
+      exécutables) venus d'HTTP, SMB et FTP : liste avec type, taille, origine, empreinte ; téléchargement
+      seulement, jamais rendus dans la webview (ADR-016).
+- [ ] **P5.12** `feat/hosts` — Sans référence. Fiche par hôte agrégeant tout (noms, MAC et constructeur, pays,
+      flux, DNS, services, identifiants, fichiers) ; le composant `Endpoint` ouvre la fiche partout.
+
+### Vague 5.D — Moteur (indépendante des onglets)
+
+- [ ] **P5.13** `feat/append-chunks` — Ajout de chunks à une session existante : l'index de trame et donc les
+      FlowId reprennent où ils s'étaient arrêtés (ADR-022), étapes de fin d'import rejouées (ADR-014, ADR-023).
+- [ ] **P5.14** `feat/watch-folder` — Surveillance d'un dossier en direct, après P5.13.
+
+Ordre suggéré : 5.0, puis 5.A (+ P5.7), puis 5.B, puis 5.C, puis P5.13 et P5.14.

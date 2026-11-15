@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDismissNotice, useSettings } from '../api/settingsQueries';
+import type { DismissedNotice } from '../api/types/DismissedNotice';
 import { MAX_NOTICES, NOTICE_PROVIDERS } from './providers';
 import type { NoticeProvider, NoticeSlotProps } from './types';
 
@@ -51,8 +52,9 @@ export function NoticeArea({ providers = NOTICE_PROVIDERS, max = MAX_NOTICES }: 
   const isDismissed = useCallback(
     (id: string, key: string) => {
       if (hidden[id] === key) return true;
-      const server = settings.data?.dismissed_notices as Keys | undefined;
-      return server?.[id] === key;
+      // Defensive: a server or a test double may answer without the list.
+      const server: unknown = settings.data?.dismissed_notices;
+      return Array.isArray(server) && (server as readonly DismissedNotice[]).some((n) => n.id === id && n.key === key);
     },
     [hidden, settings.data],
   );

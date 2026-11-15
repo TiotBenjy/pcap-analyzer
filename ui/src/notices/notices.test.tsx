@@ -15,7 +15,10 @@ const api = vi.hoisted(() => ({ getSettings: vi.fn(), dismissNotice: vi.fn(), up
 vi.mock('../api/settings', () => api);
 
 function settings(dismissed: Record<string, string> = {}): Settings {
-  return { online: { geoip_check: false, update_check: false }, dismissed_notices: dismissed };
+  return {
+    online: { geoip_check: false, update_check: false },
+    dismissed_notices: Object.entries(dismissed).map(([id, key]) => ({ id, key })),
+  };
 }
 
 /** Example provider (tests only): shows whatever `current[id]` holds. */

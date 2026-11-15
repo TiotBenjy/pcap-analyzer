@@ -36,7 +36,7 @@ vi.mock('../../api/geoip', () => ({
 }));
 vi.mock('../../api/sessions', () => ({ browse: api.browse }));
 vi.mock('../../api/settings', () => ({
-  getSettings: () => Promise.resolve({ online: { geoip_check: false, update_check: false }, dismissed_notices: {} }),
+  getSettings: () => Promise.resolve({ online: { geoip_check: false, update_check: false }, dismissed_notices: [] }),
   updateSettings: vi.fn(),
   dismissNotice: vi.fn(),
 }));

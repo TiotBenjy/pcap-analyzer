@@ -15,6 +15,7 @@ mod dns;
 mod dto;
 mod endpoint;
 mod error;
+mod exports;
 mod extract;
 mod fs;
 mod geoip;
@@ -113,6 +114,8 @@ pub(crate) struct AppState {
     /// Catalog of the request handlers, opened on first use. Imports open their own.
     catalog: Mutex<Option<Catalog>>,
     pub(crate) imports: imports::Registry,
+    /// Save PCAP jobs.
+    pub(crate) exports: exports::Registry,
     /// Options of every import (name, selection and recursion are set per request).
     pub(crate) ingest_template: IngestOptions,
     /// Country database of the imports (hot-swapped by the updates).
@@ -132,6 +135,7 @@ impl AppState {
             if removed > 0 {
                 tracing::info!(removed, "interrupted GeoIP update files removed");
             }
+            exports::remove_orphans(&config.data_dir);
         }
         let geoip = geoip::Geoip::new(user_geoip, config.geoip_fallback_path.clone());
         Self {
@@ -139,6 +143,7 @@ impl AppState {
             roots,
             catalog: Mutex::new(None),
             imports: imports::Registry::new(),
+            exports: exports::Registry::new(),
             ingest_template,
             geoip,
             shutdown: watch::Sender::new(false),
@@ -177,17 +182,21 @@ impl AppState {
         }
     }
 
-    /// Ends the SSE streams and cancels the running imports.
+    /// Ends the SSE streams and cancels the running imports and exports.
     pub(crate) fn begin_shutdown(&self) {
         self.shutdown.send_replace(true);
         self.imports.cancel_all();
+        self.exports.cancel_all();
     }
 
-    /// Waits (at most `limit`) for every import thread to end. True if they all ended.
+    /// Waits (at most `limit`) for every import and export thread to end (a cancelled export
+    /// removes its partial file). True if they all ended.
     pub(crate) async fn wait_imports(&self, limit: Duration) -> bool {
-        tokio::time::timeout(limit, self.imports.wait_idle())
-            .await
-            .is_ok()
+        let idle = async {
+            self.imports.wait_idle().await;
+            self.exports.wait_idle().await;
+        };
+        tokio::time::timeout(limit, idle).await.is_ok()
     }
 }
 
@@ -224,6 +233,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(connections::routes())
         .merge(credentials::routes())
         .merge(dns::routes())
+        .merge(exports::routes())
         .merge(fs::routes())
         .merge(geoip::routes())
         .merge(http::routes())

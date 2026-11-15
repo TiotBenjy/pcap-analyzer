@@ -138,6 +138,34 @@ export function formatTimestamp(us: number, withDate = true): string {
   return `${formatDate(us)} ${time}`;
 }
 
+/**
+ * Microsecond timestamp of a local date and time typed as `formatTimestamp` writes it
+ * (`2026-11-08 14:03:12`, optionally `.123456`, `T` accepted instead of the space), `null` when
+ * the text is not one. `endOfSecond`: without a fraction, the last microsecond of that second
+ * (inclusive end of a range typed to the second).
+ */
+export function parseTimestamp(text: string, endOfSecond = false): number | null {
+  const m = /^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?\s*$/.exec(text);
+  if (m === null) return null;
+  const parts = m.slice(1, 7).map(Number) as [number, number, number, number, number, number];
+  const frac = m[7] ?? '';
+  const date = new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
+  // Rejects rolled-over values (2026-02-30, 25:00:00).
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== parts[0] ||
+    date.getMonth() !== parts[1] - 1 ||
+    date.getDate() !== parts[2] ||
+    date.getHours() !== parts[3] ||
+    date.getMinutes() !== parts[4] ||
+    date.getSeconds() !== parts[5]
+  ) {
+    return null;
+  }
+  const micros = frac === '' ? (endOfSecond ? 999_999 : 0) : Number(frac.padEnd(6, '0'));
+  return date.getTime() * 1000 + micros;
+}
+
 /** Local calendar date of a microsecond timestamp (`2026-11-08`). */
 export function formatDate(us: number): string {
   const d = localDate(us);

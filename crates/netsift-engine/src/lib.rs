@@ -21,6 +21,7 @@
 
 mod blobs;
 mod error;
+pub mod export;
 mod ingest;
 mod options;
 mod pipeline;
@@ -29,6 +30,10 @@ pub mod thumbs;
 pub mod translate;
 
 pub use error::EngineError;
+pub use export::{
+    ExportError, ExportPlan, ExportProgress, ExportReport, Selection as ExportSelection,
+    plan_export,
+};
 pub use ingest::{INTERRUPTED_DETAIL, IngestReport, ingest, recover_interrupted};
 pub use options::{CancelToken, IngestOptions, MAX_SHARDS, Phase, Progress, default_shards};
 pub use pipeline::ANALYZER_PANICKED;

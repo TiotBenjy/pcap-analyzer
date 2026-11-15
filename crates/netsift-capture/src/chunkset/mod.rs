@@ -35,7 +35,7 @@ pub use group::{ChunkGroup, ChunkMember, GroupKind, Grouping, MemberStatus, grou
 pub use inventory::{
     CaptureMeta, DEFAULT_MAX_FILES, EntryKind, FINGERPRINT_LEN, Fingerprint, Inventory,
     InventoryEntry, InventoryOptions, MAX_DEPTH, MIN_CAPTURE_LEN, WalkError, inventory,
-    inventory_with,
+    inventory_with, probe_file,
 };
 pub use merge::{ChunkSetSource, MAX_ANOMALIES, ReadOptions};
 

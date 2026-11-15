@@ -167,6 +167,14 @@ pub fn inventory(path: &Path, options: &InventoryOptions) -> Result<Inventory, C
     inventory_with(path, options, &crate::reader::open)
 }
 
+/// Entry of one file, probed like an inventory does it (size, modification time, fingerprint of
+/// the first [`FINGERPRINT_LEN`] bytes, capture header and first packet), with the default
+/// opener. Never fails: a missing or unreadable file gives [`EntryKind::Unreadable`]. Used to
+/// check that a chunk recorded by an import is unchanged before reading it again (export).
+pub fn probe_file(path: &Path) -> InventoryEntry {
+    probe(path.to_path_buf(), false, &crate::reader::open)
+}
+
 /// Same as [`inventory`] with an injected opener (tests, alternative readers).
 ///
 /// Only an unreadable `path` itself is an error: per-file problems become entries.

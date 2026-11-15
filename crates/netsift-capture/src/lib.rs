@@ -3,7 +3,8 @@
 //! Module ownership (parallel tasks, see docs/ROADMAP.md):
 //! - [`source`]: shared, frozen interface (`PacketSource`, `RawPacket`, ...);
 //! - [`reader`]: single-file readers and format detection (task P1.1);
-//! - [`chunkset`]: folder inventory, grouping, ordering, continuity checks, k-way merge (task P1.2).
+//! - [`chunkset`]: folder inventory, grouping, ordering, continuity checks, k-way merge (task P1.2);
+//! - [`writer`]: pcapng writer of the "Save PCAP" export (task P4.3).
 //!
 //! Captures are hostile input: no panic paths in library code (tests exempted by clippy.toml).
 
@@ -17,6 +18,7 @@
 pub mod chunkset;
 pub mod reader;
 pub mod source;
+pub mod writer;
 
 pub use source::{CaptureError, CaptureFormat, CaptureInfo, PacketSource, RawPacket, ReadWarning};
 

@@ -36,6 +36,7 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
     migration!(200, "http", "0200_http.sql"),
     migration!(300, "tls", "0300_tls.sql"),
     migration!(400, "flows", "0400_flows.sql"),
+    migration!(401, "flows_conversation", "0401_flows_conversation.sql"),
     migration!(500, "smb", "0500_smb.sql"),
     migration!(600, "credentials", "0600_credentials.sql"),
     migration!(700, "objects", "0700_objects.sql"),

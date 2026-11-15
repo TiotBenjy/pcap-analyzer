@@ -268,6 +268,22 @@ pub fn conversations_page(
     keyset_page(conn, &query, &params, request, conversation_entry)
 }
 
+/// Client and server of the conversation with this id, if any.
+pub fn conversation_ends(conn: &Connection, id: i64) -> Result<Option<(IpAddr, IpAddr)>> {
+    use rusqlite::OptionalExtension as _;
+    let ends: Option<(String, String)> = conn
+        .query_row(
+            "SELECT src_ip, dst_ip FROM conversations WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    match ends {
+        None => Ok(None),
+        Some((src, dst)) => Ok(Some((ip(&src, 0)?, ip(&dst, 1)?))),
+    }
+}
+
 /// Number of conversations matching `filter`.
 pub fn count_conversations(conn: &Connection, filter: &ConversationFilter) -> Result<u64> {
     let from = text_filter(filter.from.as_ref());

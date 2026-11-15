@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { CircleAlert, CircleCheck, TriangleAlert, Unplug } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { TFunction } from 'i18next';
@@ -37,8 +37,10 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
 
   // Once reading is over, nothing listens to the cancel request any more: the import ends.
   // Identical warnings (same code and chunk) on one line, in order of first appearance.
-  const groups = groupAnomalies(t, imp.warnings);
   const total = warningTotal(imp);
+  const groups = groupAnomalies(t, imp.warnings, total > imp.warnings.length);
+  // Finished: the outcome gives the packets and nothing remains to estimate.
+  const finished = imp.result !== null;
 
   const readingOver = p !== null && (p.phase === 'finishing' || p.phase === 'finalizing');
   const label =
@@ -130,11 +132,13 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
         </div>
 
         <dl className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-x-4 gap-y-2">
-          <Stat label={t('views.import.packets')}>{p === null ? '' : formatCount(p.packets)}</Stat>
+          {!finished && <Stat label={t('views.import.packets')}>{p === null ? '' : formatCount(p.packets)}</Stat>}
           <Stat label={t('views.import.rate')}>{p === null ? '' : formatRate(p.rate_bps)}</Stat>
-          <Stat label={t('views.import.eta')}>
-            {p === null || !active ? '' : p.eta_s === null ? t('views.import.unknown') : formatDuration(p.eta_s)}
-          </Stat>
+          {active && (
+            <Stat label={t('views.import.eta')}>
+              {p === null ? '' : p.eta_s === null ? t('views.import.unknown') : formatDuration(p.eta_s)}
+            </Stat>
+          )}
         </dl>
 
         <section className="flex min-w-0 flex-col gap-1.5" aria-label={t('views.import.warnings')}>
@@ -145,7 +149,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
             <p className="text-meta text-muted">{t('views.import.noWarnings')}</p>
           ) : (
             <ul className="flex max-h-48 min-w-0 flex-col gap-1 overflow-y-auto rounded-md border border-line p-2 text-meta">
-              {groups.map(({ first, count, detail }, i) => (
+              {groups.map(({ first, count, capped, detail }, i) => (
                 <li key={i} className="flex min-w-0 items-start gap-2">
                   <TriangleAlert aria-hidden size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
                   <span className="min-w-0 [overflow-wrap:anywhere]">
@@ -156,7 +160,11 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
                       {count > 1 && (
                         <>
                           {' '}
-                          <span className="num">{t('views.import.repeated', { n: formatCount(count) })}</span>
+                          <span className="num">
+                            {t(capped ? 'views.import.repeatedCapped' : 'views.import.repeated', {
+                              n: formatCount(count),
+                            })}
+                          </span>
                         </>
                       )}
                       {detail === '' ? '' : `${colon(i18n.language)} ${detail}`}
@@ -168,7 +176,20 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
           )}
           {total > imp.warnings.length && (
             <p className="text-meta text-muted">
-              {t('views.import.moreWarnings', { count: total - imp.warnings.length })}
+              {t('views.import.moreWarnings', { count: total - imp.warnings.length })} (
+              {imp.status === 'done' ? (
+                <Link
+                  to="/sessions/$sessionId/sources"
+                  params={{ sessionId: imp.sessionId }}
+                  className="text-accent hover:underline"
+                  onClick={closeImportWizard}
+                >
+                  {t('views.import.fullList')}
+                </Link>
+              ) : (
+                t('views.import.fullList')
+              )}
+              )
             </p>
           )}
         </section>

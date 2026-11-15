@@ -248,7 +248,8 @@ export function formatPreciseDuration(us: number, lang: string = currentLanguage
     const ms = v / 1000;
     return `${formatNumber(ms, ms < 10 ? 1 : 0, lang)}${NBSP}ms`;
   }
-  return formatDuration(v / 1e6, lang);
+  // From 999.5 ms: at least `1 s`, never `0.999 s`.
+  return formatDuration(Math.max(1, v / 1e6), lang);
 }
 
 /** Last path component (handles `/` and `\` separators). */

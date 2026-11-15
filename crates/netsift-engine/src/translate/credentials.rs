@@ -43,7 +43,7 @@ pub(super) fn credential_row(c: Credential) -> CredentialRow {
         protocol: c.source_protocol.to_owned(),
         kind: c.kind.to_owned(),
         secret_state: c.secret_state.as_str().to_owned(),
-        // Flow ids are non-negative by construction (`FlowId::derive`).
+        // Flow ids are non-negative by construction (`FlowId::from_first_frame`).
         flow_id: c.flow_id.and_then(|f| u64::try_from(f.0).ok()),
         client_ip: c.client.map(|e| e.ip),
         client_port: c.client.map(|e| e.port),

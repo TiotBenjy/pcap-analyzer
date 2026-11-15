@@ -225,6 +225,9 @@ impl TlsSessionRow {
     }
 
     fn insert_rows(&self, conn: &Connection) -> Result<()> {
+        // `id` is the flow id. `DO NOTHING` only absorbs a replay of the same session: an id is
+        // never reused within a session (docs/DECISIONS.md ADR-022), and a reused id would drop
+        // the second session silently.
         let id = id_i64(self.id, "tls_sessions.id")?;
         let leaf = self.certificates.first().map(|c| c.sha256.as_str());
         let inserted = conn

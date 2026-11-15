@@ -1,0 +1,14 @@
+---
+source: crates/netsift-engine/tests/flow_identity.rs
+expression: tables
+---
+# flows (3 rows)
+0 192.168.1.10:50000 -> 203.0.113.80:80 1700000000000000000..1700000000000000000 fwd=4/258 rev=3/210 app=http tcp=established
+7 192.168.1.10:50000 -> 203.0.113.80:8080 1700000000000000000..1700000000000000000 fwd=6/365 rev=4/247 app=http tcp=closed
+17 192.168.1.10:50000 -> 203.0.113.80:80 1700000000000000000..1700000000000000000 fwd=4/253 rev=3/205 app=http tcp=closed
+# http_transactions (3 rows)
+0/0 GET /before 200 resp=6
+7/0 GET /other 204 resp=0
+17/0 GET /after 200 resp=5
+# tls_sessions (0 rows)
+# smb_sessions (0 rows)

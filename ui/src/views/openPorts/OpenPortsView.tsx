@@ -228,7 +228,7 @@ function HostList({ hosts, showNames, filtered }: { hosts: HostOpenPorts[]; show
     );
   }
   return (
-    <div className="min-w-0 overflow-x-auto">
+    <div className="relative min-w-0 overflow-x-auto">
       <table aria-label={t('views.openPorts.table.label')} className="w-full table-fixed border-collapse text-table">
         <thead>
           <tr className="border-b border-line text-left text-meta text-muted">

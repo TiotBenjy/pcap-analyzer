@@ -131,7 +131,7 @@ export function Dialog({ open, onClose, title, description, children, footer, si
             <X aria-hidden size={16} strokeWidth={1.75} />
           </Button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">{children}</div>
+        <div className="relative min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">{children}</div>
         {footer !== undefined && (
           <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-line px-3 py-2.5 sm:px-4">
             {footer}

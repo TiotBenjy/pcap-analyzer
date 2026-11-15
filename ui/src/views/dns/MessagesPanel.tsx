@@ -92,7 +92,7 @@ export function MessagesPanel({ sessionId, pair, filter, wide }: MessagesPanelPr
         <ul
           ref={setScroller}
           aria-label={label}
-          className="flex max-h-[28rem] flex-col divide-y divide-line overflow-y-auto rounded-md border border-line bg-surface"
+          className="relative flex max-h-[28rem] flex-col divide-y divide-line overflow-y-auto rounded-md border border-line bg-surface"
         >
           {items.map((m) => (
             <li key={m.id} className="flex min-w-0 flex-col gap-1 px-2.5 py-2">
@@ -115,7 +115,7 @@ export function MessagesPanel({ sessionId, pair, filter, wide }: MessagesPanelPr
     <div className="min-w-0">
       <div
         ref={setScroller}
-        className="max-h-[28rem] w-full min-w-0 overflow-auto rounded-md border border-line bg-surface"
+        className="relative max-h-[28rem] w-full min-w-0 overflow-auto rounded-md border border-line bg-surface"
       >
         <table aria-label={label} className="w-full table-fixed border-collapse text-table">
           <colgroup>

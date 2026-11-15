@@ -343,7 +343,7 @@ function GeoipFileDialog({ onClose, onPick }: { onClose: () => void; onPick: (pa
             {data?.path ?? ''}
           </span>
         </div>
-        <div className="h-72 min-w-0 overflow-y-auto rounded-md border border-line" aria-busy={listing.isFetching}>
+        <div className="relative h-72 min-w-0 overflow-y-auto rounded-md border border-line" aria-busy={listing.isFetching}>
           {body}
         </div>
         {failed && data !== undefined && (

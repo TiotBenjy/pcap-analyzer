@@ -138,7 +138,8 @@ impl AppState {
         // this path only when none is usable.
         ingest_template.geoip_path = Some(user_geoip.clone());
         if !config.read_only {
-            let removed = netsift_geo::remove_orphan_temp_files(&user_geoip);
+            let removed = netsift_geo::remove_orphan_temp_files(&user_geoip)
+                + netsift_geo::remove_orphan_temp_files(&geoip::month_record_path(&user_geoip));
             if removed > 0 {
                 tracing::info!(removed, "interrupted GeoIP update files removed");
             }

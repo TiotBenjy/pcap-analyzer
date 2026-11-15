@@ -687,6 +687,8 @@ async fn interrupted_update_files_are_removed_at_startup_unless_read_only() {
         std::fs::write(&user, db("FR")).unwrap();
         let orphan = user.with_file_name(format!(".{}.1.2.0.tmp", netsift_geo::DB_FILE_NAME));
         std::fs::write(&orphan, b"partial").unwrap();
+        let record_orphan = user.with_file_name(".dbip-country-lite.month.1-0.tmp");
+        std::fs::write(&record_orphan, b"{").unwrap();
         let config = ApiConfig {
             token: TOKEN.to_owned(),
             data_dir: data,
@@ -699,6 +701,7 @@ async fn interrupted_update_files_are_removed_at_startup_unless_read_only() {
         };
         let _ = build(config, IngestOptions::default());
         assert_eq!(orphan.exists(), read_only, "read_only = {read_only}");
+        assert_eq!(record_orphan.exists(), read_only, "read_only = {read_only}");
         assert_eq!(std::fs::read(&user).unwrap(), db("FR"));
     }
 }
@@ -994,12 +997,17 @@ async fn a_read_only_server_neither_checks_nor_offers() {
 
 /// A database built in the last second of the previous month, published for the current one.
 fn built_last_month() -> Vec<u8> {
+    db_built(last_month_epoch())
+}
+
+/// Last second of the previous month.
+fn last_month_epoch() -> u64 {
     let [_, (y, m)] = download::months(SystemTime::now());
     let mut t = epoch_in_month(y, m);
     while download::month_of(i64::try_from(t + 1).unwrap()) == (y, m) {
         t += 1;
     }
-    db_built(t)
+    t
 }
 
 #[tokio::test]
@@ -1026,6 +1034,16 @@ async fn the_downloaded_month_wins_over_an_earlier_build_date() {
     // Same file again, put back by hand: the record applies again.
     env.install_user_bytes(&built_last_month());
     assert_eq!(env.freshness().await["built_month"], current.as_str());
+    // A record older than the build date never makes the database look older.
+    std::fs::write(
+        &record,
+        format!(
+            r#"{{"month":"2001-01","build_epoch":{}}}"#,
+            last_month_epoch()
+        ),
+    )
+    .unwrap();
+    assert_eq!(env.freshness().await["built_month"], previous.as_str());
     // Malformed records are ignored.
     for bad in ["", "{", r#"{"month":"2026-13","build_epoch":0}"#, "[1]"] {
         std::fs::write(&record, bad).unwrap();

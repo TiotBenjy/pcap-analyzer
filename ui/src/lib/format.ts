@@ -13,7 +13,7 @@ import i18n from '../i18n';
 //   local time zone shown next to them; no month names, so a time is never ambiguous;
 // - durations: compact unit pairs (`12 min 05 s`, `2 d 03 h` / `2 j 03 h`).
 
-const NBSP = ' ';
+const NBSP = '\u00a0';
 
 /** Active language of the UI (`en`, `fr`). */
 export function currentLanguage(): string {
@@ -21,6 +21,9 @@ export function currentLanguage(): string {
 }
 
 const isFrench = (lang: string) => lang.startsWith('fr');
+
+/** `n`, or 0 when it is not a finite number (a bad value never prints `NaN`). */
+const finite = (n: number) => (Number.isFinite(n) ? n : 0);
 
 // Building an `Intl.NumberFormat` costs far more than using one: tables format thousands of cells.
 const numberFormats = new Map<string, Intl.NumberFormat>();
@@ -41,24 +44,22 @@ function numberFormat(lang: string, options: Intl.NumberFormatOptions = {}): Int
 
 /** Integer or count with the grouping of the language (`12,345` / `12 345`). */
 export function formatCount(n: number, lang: string = currentLanguage()): string {
-  return numberFormat(lang).format(n);
+  return numberFormat(lang).format(finite(n));
 }
 
 /** Decimal number with at most `maxDigits` fraction digits (`1.5` / `1,5`). */
 export function formatNumber(n: number, maxDigits = 1, lang: string = currentLanguage()): string {
-  return numberFormat(lang, { maximumFractionDigits: maxDigits }).format(n);
+  return numberFormat(lang, { maximumFractionDigits: maxDigits }).format(finite(n));
 }
 
 /** Short count for axes and tight cards (`12K`, `3.4M` / `12 k`, `3,4 M`). */
 export function formatCompact(n: number, lang: string = currentLanguage()): string {
-  return numberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+  return numberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 }).format(finite(n));
 }
 
 /** Percentage of a fraction in [0, 1] (`12.5%` / `12,5 %`). */
 export function formatPercent(fraction: number, maxDigits = 1, lang: string = currentLanguage()): string {
-  return numberFormat(lang, { style: 'percent', maximumFractionDigits: maxDigits }).format(
-    Number.isFinite(fraction) ? fraction : 0,
-  );
+  return numberFormat(lang, { style: 'percent', maximumFractionDigits: maxDigits }).format(finite(fraction));
 }
 
 /**
@@ -93,7 +94,7 @@ const BYTE_UNITS = {
  */
 export function formatBytes(bytes: number, lang: string = currentLanguage(), trimZeros = false): string {
   const units = isFrench(lang) ? BYTE_UNITS.fr : BYTE_UNITS.en;
-  let value = Math.max(0, Number.isFinite(bytes) ? bytes : 0);
+  let value = Math.max(0, finite(bytes));
   let i = 0;
   while (value >= 1024 && i < units.length - 1) {
     value /= 1024;
@@ -154,7 +155,7 @@ export function sameLocalDay(aUs: number, bUs: number): boolean {
 /** Captured period `start - end` (end without its date when on the same day); empty when unknown. */
 export function formatPeriod(firstUs: number | null, lastUs: number | null): string {
   if (firstUs === null || lastUs === null) return '';
-  return `${formatTimestamp(firstUs)} – ${formatTimestamp(lastUs, !sameLocalDay(firstUs, lastUs))}`;
+  return `${formatTimestamp(firstUs)} \u2013 ${formatTimestamp(lastUs, !sameLocalDay(firstUs, lastUs))}`;
 }
 
 /** IANA name of the display time zone (e.g. `Europe/Paris`, `UTC`). */
@@ -184,7 +185,7 @@ export function formatLongDate(ms: number, utc = false, lang: string = currentLa
 /** Compact duration: `0.4 s`, `43 s`, `12 min 05 s`, `3 h 02 min`, `2 d 03 h` (fr: `j`). */
 export function formatDuration(seconds: number, lang: string = currentLanguage()): string {
   const day = isFrench(lang) ? 'j' : 'd';
-  const s = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  const s = Math.max(0, finite(seconds));
   if (s < 10) return `${formatNumber(s, s < 1 ? 3 : 1, lang)}${NBSP}s`;
   const total = Math.round(s);
   if (total < 60) return `${total}${NBSP}s`;
@@ -201,7 +202,7 @@ export function formatSpan(firstUs: number | null, lastUs: number | null, lang: 
 
 /** Short delay in microseconds: `0.4 ms`, `12 ms`, `1.2 s` (response times). */
 export function formatLatency(us: number, lang: string = currentLanguage()): string {
-  const ms = us / 1000;
+  const ms = Math.max(0, finite(us)) / 1000;
   if (ms >= 1000) return `${formatNumber(ms / 1000, 1, lang)}${NBSP}s`;
   return `${formatNumber(ms, ms < 10 ? 1 : 0, lang)}${NBSP}ms`;
 }

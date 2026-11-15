@@ -79,6 +79,13 @@ describe('numbers', () => {
     expect(formatCompact(12_400, 'en')).toBe('12.4K');
     expect(formatCompact(12_400, 'fr')).toBe('12,4\u00a0k');
   });
+  it('never prints NaN', () => {
+    for (const f of [formatCount, formatCompact, formatLatency, formatBytes, formatDuration]) {
+      expect(f(Number.NaN, 'en')).not.toMatch(/NaN|∞/);
+    }
+    expect(formatNumber(Number.POSITIVE_INFINITY, 1, 'en')).toBe('0');
+    expect(formatPercent(Number.NaN, 1, 'en')).toBe('0%');
+  });
   it('formats percentages and shares', () => {
     expect(formatPercent(0.125, 1, 'en')).toBe('12.5%');
     expect(formatPercent(0.125, 1, 'fr')).toBe('12,5\u00a0%');

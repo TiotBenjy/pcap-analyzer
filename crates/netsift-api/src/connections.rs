@@ -18,7 +18,6 @@ use axum::routing::get;
 use axum::{Json, Router};
 use netsift_store::connections::{
     self as store, ConversationEntry, ConversationFilter, ConversationSort, CountryTraffic,
-    TrafficSide,
 };
 use netsift_store::{PageRequest, SessionId};
 use serde::{Deserialize, Serialize};
@@ -353,9 +352,10 @@ async fn stats(
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
         let conn = session.conn();
+        let (sent, received) = store::country_traffic_both(conn)?;
         Ok(ConnectionStats {
-            sources: CountrySide::of(store::country_traffic(conn, TrafficSide::Sent)?),
-            destinations: CountrySide::of(store::country_traffic(conn, TrafficSide::Received)?),
+            sources: CountrySide::of(sent),
+            destinations: CountrySide::of(received),
         })
     })
     .await

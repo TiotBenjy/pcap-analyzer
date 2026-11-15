@@ -1,12 +1,13 @@
 import type { Page } from '@playwright/test';
 import type { AnomalyInfo } from '../../src/api/types/AnomalyInfo';
+import type { ChunkInfo } from '../../src/api/types/ChunkInfo';
 import type { ImportEvent } from '../../src/api/types/ImportEvent';
 import type { SessionSummary } from '../../src/api/types/SessionSummary';
 
 // Timestamps going backwards, as a real multi-day import reports them: the demo sessions have none.
 //  - `import-progress`: an importing session in the Captures list whose event stream sends a burst
 //    of identical warnings (grouped on one line each) and the end of the import;
-//  - `sources-backwards`: the demo session's anomalies plus backward steps of every magnitude.
+//  - `sources-backwards`: the demo session's anomalies plus backward steps within its chunks.
 
 const IMPORT_ID = '01JZZZZZZZZZZZZZZZZZZZZZZZ';
 const T0 = Date.UTC(2026, 10, 8, 12) * 1000;
@@ -86,20 +87,38 @@ export async function mockImportProgress(page: Page): Promise<void> {
   );
 }
 
-/** Backward steps of every magnitude (µs to minutes) appended to the demo session's anomalies. */
+/**
+ * Backward steps appended to the demo session's anomalies, inside the time range of its chunks
+ * (a few seconds each): microseconds and milliseconds (multi-interface capture, NIC timestamps),
+ * and one clock correction of a few seconds.
+ */
 export async function mockBackwardAnomalies(page: Page): Promise<void> {
-  const extra = [42, 1_234, 45_000, 3_200_000, 754_000_000].map((step, i) => ({
-    ...backwards(i + 2, step, i),
-    id: `backwards-${String(i)}`,
-  }));
+  const STEPS = [42, 180, 1_234, 3_400, 2_100_000];
   await page.route(
     (url) => /^\/api\/v1\/sessions\/[^/]+\/anomalies$/.test(url.pathname),
     async (route) => {
+      const url = new URL(route.request().url());
       const res = await route.fetch();
       const body = (await res.json()) as { items: AnomalyInfo[]; next_cursor: string | null };
       // First page only: the extra rows are not repeated on the following ones.
-      const first = !new URL(route.request().url()).searchParams.has('cursor');
-      return route.fulfill({ response: res, json: { ...body, items: first ? [...body.items, ...extra] : body.items } });
+      if (url.searchParams.has('cursor')) return route.fulfill({ response: res, json: body });
+      const chunksUrl = url.pathname.replace(/\/anomalies$/, '/chunks?limit=1000');
+      const chunks = (await (await page.request.get(chunksUrl)).json()) as { items: ChunkInfo[] };
+      const extra = STEPS.flatMap((step, i): AnomalyInfo[] => {
+        const chunk = chunks.items[i + 2];
+        if (chunk === undefined || chunk.first_ts_us === null || chunk.last_ts_us === null) return [];
+        const ts = Math.round((chunk.first_ts_us + chunk.last_ts_us) / 2);
+        return [
+          {
+            id: `backwards-${String(i)}`,
+            code: 'timestamp_backwards',
+            chunk: chunk.id,
+            ts_us: ts,
+            detail: { offset: 4096 + i * 128, previous_us: ts + step, ts_us: ts },
+          },
+        ];
+      });
+      return route.fulfill({ response: res, json: { ...body, items: [...body.items, ...extra] } });
     },
   );
 }

@@ -13,7 +13,8 @@
 //!   proxy of the environment variables honoured;
 //! - connection, read and total timeouts (`Policy::with_*`); body size bounded by the caller while it is received;
 //! - downloads written to a temporary file of their own next to the target
-//!   (`<name>.<pid>-<n>.part`, created exclusively, never through a link), hashed (SHA-256) on
+//!   (`<name>.<pid>-<n>.part`, created exclusively, never through a link, the next `n` when a
+//!   crashed run left that name), hashed (SHA-256) on
 //!   the fly, renamed to the target once complete and checked, removed on any failure or
 //!   cancellation; an existing `.part` file is never opened nor removed.
 //!
@@ -369,7 +370,8 @@ impl Outbound {
         let expected = expected_sha256
             .map(|h| parse_sha256(h).ok_or(OutboundError::InvalidChecksum))
             .transpose()?;
-        let part_path = part_path(dest)?;
+        // No file name: refused before any request.
+        dest_name(dest)?;
         let url = self.url(url)?;
         let response = self
             .client
@@ -381,7 +383,7 @@ impl Outbound {
         let total = checked_length(&response, max_bytes)?;
         progress(0, total);
 
-        let (mut file, part) = PartFile::create(part_path).await?;
+        let (mut file, part) = PartFile::create_unique(dest).await?;
         let mut hasher = Sha256::new();
         let mut received: u64 = 0;
         while let Some(chunk) = response
@@ -497,19 +499,26 @@ async fn read_body(
 
 /// Downloads started by this process, for unique temporary names.
 static PART_COUNTER: AtomicU64 = AtomicU64::new(0);
+/// Temporary names tried at most by one download: a `.part` file left by a crashed run whose
+/// PID was the same (PID reuse) takes a name, the next one is tried.
+const PART_ATTEMPTS: usize = 16;
 
 /// `<name>.<pid>-<n>.part`, next to `dest`, unique within this process.
 fn part_path(dest: &Path) -> Result<PathBuf, OutboundError> {
-    let Some(name) = dest.file_name() else {
-        return Err(OutboundError::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "the destination has no file name",
-        )));
-    };
+    let name = dest_name(dest)?;
     let n = PART_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut name = name.to_os_string();
     name.push(format!(".{}-{n}.part", std::process::id()));
     Ok(dest.with_file_name(name))
+}
+
+fn dest_name(dest: &Path) -> Result<&std::ffi::OsStr, OutboundError> {
+    dest.file_name().ok_or_else(|| {
+        OutboundError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "the destination has no file name",
+        ))
+    })
 }
 
 /// Partial download created by this download, removed on drop unless kept.
@@ -528,6 +537,22 @@ impl PartFile {
             .open(&path)
             .await?;
         Ok((file, Self { path, keep: false }))
+    }
+
+    /// Creates the next free `<name>.<pid>-<n>.part` next to `dest`: an existing name (left by
+    /// a crashed run, or a link) is skipped and left alone, up to [`PART_ATTEMPTS`] names.
+    async fn create_unique(dest: &Path) -> Result<(tokio::fs::File, Self), OutboundError> {
+        let mut attempt = 1;
+        loop {
+            match Self::create(part_path(dest)?).await {
+                Err(OutboundError::Io(e))
+                    if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < PART_ATTEMPTS =>
+                {
+                    attempt += 1;
+                }
+                other => return other,
+            }
+        }
     }
 
     fn keep(mut self) {

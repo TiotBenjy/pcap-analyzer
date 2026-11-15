@@ -130,12 +130,13 @@ const BEFORE_0600: &str =
 const BEFORE_0700: &str = "DROP VIEW pictures; DROP TABLE objects; \
     DELETE FROM schema_migrations WHERE version = 700; \
     UPDATE meta SET value = replace(value, ',objects:1', '') WHERE key = 'finalizers';";
-/// Undoes migration 0800 (servers), views included: the session looks imported by a build that
-/// predates the Servers view.
-const BEFORE_0800: &str = "DROP VIEW server_roles; DROP VIEW server_evidence; \
+/// Undoes migrations 0800 (servers) and 0801 (materialized roles), views included: the session
+/// looks imported by a build that predates the Servers view.
+const BEFORE_0800: &str = "DROP TABLE server_roles; DROP TABLE server_evidence; \
+    DROP VIEW server_roles_source; DROP VIEW server_evidence_source; \
     DROP INDEX dns_messages_responder; DROP INDEX http_transactions_server; \
     DROP TABLE dhcp_messages; DROP TABLE ntp_responses; DROP TABLE kerberos_replies; \
-    DELETE FROM schema_migrations WHERE version = 800;";
+    DELETE FROM schema_migrations WHERE version IN (800, 801);";
 /// Forgets the core migration: the session looks created by a build that lacked it, and the
 /// upgrade fails because its tables already exist.
 const FORGET_CORE: &str = "DELETE FROM schema_migrations WHERE version = 1;";

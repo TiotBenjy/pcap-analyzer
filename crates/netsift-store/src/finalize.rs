@@ -79,10 +79,11 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     },
     Finalizer {
         id: "servers",
-        version: 1,
+        // 2: materializes the roles (0801).
+        version: 2,
         // After `dns`: when a host reaches MAX_HOST_NAMES, DNS names are kept first, always.
         after: &["indexes", "dns"],
-        fills: &[],
+        fills: &["server_evidence", "server_roles"],
         reads: &["dhcp_messages"],
         run: crate::servers::finalize,
     },

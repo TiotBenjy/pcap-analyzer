@@ -24,10 +24,13 @@ mod http;
 mod imports;
 mod network;
 mod objects;
+mod online;
+mod outbound;
 mod overview;
 mod ports;
 mod servers;
 mod sessions;
+mod settings;
 mod smb;
 mod tls;
 
@@ -120,6 +123,8 @@ pub(crate) struct AppState {
     pub(crate) ingest_template: IngestOptions,
     /// Country database of the imports (hot-swapped by the updates).
     pub(crate) geoip: geoip::Geoip,
+    /// Settings of `<data_dir>/settings.json`, read when the server is built.
+    pub(crate) settings: settings::SettingsStore,
     shutdown: watch::Sender<bool>,
 }
 
@@ -138,6 +143,7 @@ impl AppState {
             exports::remove_orphans(&config.data_dir);
         }
         let geoip = geoip::Geoip::new(user_geoip, config.geoip_fallback_path.clone());
+        let settings = settings::SettingsStore::load(&config.data_dir);
         Self {
             config,
             roots,
@@ -146,6 +152,7 @@ impl AppState {
             exports: exports::Registry::new(),
             ingest_template,
             geoip,
+            settings,
             shutdown: watch::Sender::new(false),
         }
     }
@@ -244,6 +251,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(ports::routes())
         .merge(servers::routes())
         .merge(sessions::routes())
+        .merge(settings::routes())
         .merge(smb::routes())
         .merge(tls::routes())
         .route("/server-info", get(dto::server_info))
@@ -273,7 +281,13 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
 fn cors_layer(origins: &[HeaderValue]) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins.iter().cloned()))
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
         .allow_headers([
             header::AUTHORIZATION,
             header::CONTENT_TYPE,
@@ -370,6 +384,8 @@ pub(crate) async fn serve_with(
         tracing::info!("shutting down: closing streams and cancelling imports");
         on_signal.begin_shutdown();
     };
+    // Online checks enabled by the user (ADR-025), in the background, stopped by the shutdown.
+    online::spawn_startup_checks(&state);
     let shutting_down = state.shutdown_signal();
     let forced = async move {
         shutting_down.await;

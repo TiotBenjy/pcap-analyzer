@@ -855,7 +855,8 @@ acceptée : la remplacer par une nouvelle qui la référence.
     transactions de 200 000 lignes ou 1 s ; les étapes de fin d'import trient avec des fichiers
     temporaires (`temp_store = FILE`) et 4 threads ;
   - **bornes mémoire globales** : rétention de corps HTTP (128 Mio), décodeurs (256, dont 8 brotli) et
-    tampons TCP hors ordre de toutes les connexions (256 Mio, `FlowConfig::max_buffered_bytes`) sont
+    tampons TCP hors ordre de toutes les connexions (256 Mio, `FlowConfig::max_buffered_bytes`, au
+    moins `max_stream_buffer` par shard pour qu'un flux puisse toujours utiliser sa propre borne) sont
     partagés entre les shards par le moteur, comme `max_flows` : le total ne croît plus avec le nombre
     de cœurs, le résultat ne dépend du nombre de shards que lorsqu'une borne est atteinte ;
   - les analyseurs `core`, `connections` et `ports` vident leurs agrégats toutes les heures de temps
@@ -866,10 +867,27 @@ acceptée : la remplacer par une nouvelle qui la référence.
     `finishing` dure environ 44 s, dont 19 s d'index, sans progression publiée (comme toute étape,
     ADR-014) ; 4 requêtes de vue sur 76 dépassent encore 300 ms (18 avant), suivis dans
     `docs/PERFORMANCE.md` ;
-  - une session dont l'import s'arrête avant ses étapes reste sans index secondaires jusqu'à sa
-    prochaine ouverture en écriture (lente mais correcte entre-temps ; un serveur `--read-only` ne la
-    répare pas) ; une définition notée par une ancienne version est recréée telle quelle, même si une
-    migration ultérieure avait supprimé cet index ;
+  - une session dont l'import s'arrête avant ses étapes (ou dont une étape échoue) reste sans index
+    secondaires jusqu'à sa prochaine ouverture en écriture ; un serveur `--read-only` ne la répare
+    pas. Ses vues restent justes, plus lentes : aucune requête ne nomme un index différé
+    (`INDEXED BY` seulement sur les index uniques et ceux des tables remplies par une étape, qui ne
+    sont jamais différés) ; tant que l'étape correspondante n'est pas marquée
+    (`finalize::step_done`), la série temporelle et ses totaux lisent la table à la seconde, les rôles
+    de serveurs les vues `*_source` (vue Servers, compteur du résumé, rôles du graphe), et les
+    recherches HTTP et DNS passent par `LIKE` au lieu des index trigram. Un test d'API compare une
+    session finalisée et la même sans ses étapes, servie en lecture seule. Restent comme avant P4.2,
+    propres aux étapes d'ADR-014 et d'ADR-018 : appariement DNS (`dns_pairs`), graphe Network et
+    objets, vides ou incomplets tant que leur étape n'a pas tourné ;
+  - une définition d'index notée par une ancienne version est recréée telle quelle ; si une migration
+    ultérieure a supprimé sa table ou sa colonne, elle est ignorée avec un avertissement (une migration
+    supprime un index par `DROP INDEX IF EXISTS`, `schema.rs`) ;
+  - après l'échec d'une étape à l'ouverture, les ouvertures suivantes de la session dans le même
+    processus ne la retentent pas avant 10 minutes (`STEP_RETRY_DELAY`) : l'étape `indexes` d'une
+    grosse session coûte une vingtaine de secondes ;
+  - la mémoire ne dépend pas du nombre de cœurs, mais deux imports simultanés (`max_imports` vaut 2)
+    ont chacun leur cache de 256 Mio ; en fin d'import, la construction des index écrit dans le WAL
+    environ la taille des index (plusieurs centaines de Mo sur 5 Go) et ses tris passent par des
+    fichiers temporaires ;
   - les tables matérialisées doublent une partie des données (minutes, heures, rôles) et chaque nouvelle
     source de preuve ou nouvel agrégat demande une nouvelle version de son étape, rejouée à
     l'ouverture des sessions existantes ;

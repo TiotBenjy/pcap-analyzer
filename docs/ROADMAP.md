@@ -316,6 +316,13 @@ Hors vague (demande utilisateur du 2026-11-08) :
       fusionnée (pcapng).
 - [~] **P4.4** `feat/i18n-fr` — Traduction française complète, formats de nombres/dates localisés.
 - [ ] **P4.5** `chore/release-0.1` — Icônes définitives, à propos/licences tierces, tag `v0.1.0`.
+- [ ] **P4.7** `fix/flow-id-collision` — `FlowId::derive(key, first_ts)` (`netsift-flow/src/api.rs`) donne le même
+      id à deux flux successifs de même 5-tuple et même premier horodatage (flux fermé puis nouveau SYN, éviction
+      LRU, capture à horodatages constants ou hostile) : `flows` fusionne les compteurs par max (octets perdus),
+      `http_transactions` rejette le second flux (`UNIQUE (flow_id, seq)`), TLS l'ignore (`DO NOTHING`), SMB
+      fusionne les sessions, sans erreur visible. Piste : faire entrer l'index de trame global du premier paquet,
+      identique entre fichier unique et chunks (test d'équivalence) ; test synthétique : deux connexions HTTP
+      même 5-tuple, ts constant. Trouvé par la revue de P4.1.
 - [x] **P4.6** `ci/release-pipeline` — Releases GitHub publiées par la CI sur tag `vX.Y.Z` : notes
       générées depuis l'historique des commits (Conventional Commits), bundles Linux (AppImage, .deb, .rpm),
       Windows (NSIS .exe, MSI) et macOS (.dmg), sommes SHA-256 ; version unique (workspace, Tauri, UI)

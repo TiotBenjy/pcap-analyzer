@@ -94,6 +94,22 @@ describe('Settings > About > Updates', () => {
       expect(status()).toHaveAttribute('data-status', 'available');
     });
     expect(status()).toHaveTextContent('NetSift 0.2.0 is available.');
+    // The title of the release, as text.
+    const title = screen.getByTestId('update-title');
+    expect(title).toHaveTextContent('<b>Faster</b> imports');
+    expect(title.querySelector('b')).toBeNull();
+  });
+
+  it('shows no title line when the release has none', async () => {
+    setNativeSavePicker(null);
+    api.getUpdates.mockResolvedValue(
+      state(available(release({ name: 'NetSift v0.2.0', title: null })), { can_download: false }),
+    );
+    renderSection();
+    await waitFor(() => {
+      expect(status()).toHaveAttribute('data-status', 'available');
+    });
+    expect(screen.queryByTestId('update-title')).not.toBeInTheDocument();
   });
 
   it('is disabled on a read-only server', async () => {

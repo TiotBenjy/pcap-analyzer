@@ -55,15 +55,18 @@ describe('update notice', () => {
     expect(NOTICE_PROVIDERS).toContainEqual(updateNotice);
   });
 
-  it('shows the version and the notes as plain text', async () => {
+  it('shows the version and the title, the notes only in the dialog, as plain text', async () => {
     setNativeSavePicker(null);
     renderBanner();
     const banner = await screen.findByTestId('notice-update');
     expect(banner).toHaveTextContent('NetSift 0.2.0 is available.');
-    const excerpt = within(banner).getByTestId('update-notes-excerpt');
+    const title = within(banner).getByTestId('update-title');
     // Markup from the network stays text.
-    expect(excerpt).toHaveTextContent('<b>Faster</b> import; Second line');
+    expect(title).toHaveTextContent('<b>Faster</b> imports');
+    expect(title).toHaveAttribute('title', '<b>Faster</b> imports');
     expect(banner.querySelector('b')).toBeNull();
+    // No excerpt of the changelog in the banner.
+    expect(banner).not.toHaveTextContent('Second line');
 
     await setupUser().click(within(banner).getByRole('button', { name: 'Release notes' }));
     const dialog = screen.getByRole('dialog', { name: 'NetSift 0.2.0' });
@@ -71,6 +74,17 @@ describe('update notice', () => {
       '## Fixes\n\n- <b>Faster</b> import\n- Second line',
     );
     expect(dialog.querySelector('b')).toBeNull();
+  });
+
+  it('shows the version alone when the release has no title', async () => {
+    setNativeSavePicker(null);
+    api.getUpdates.mockResolvedValue(state(available(release({ name: null, title: null }))));
+    renderBanner();
+    const banner = await screen.findByTestId('notice-update');
+    expect(banner).toHaveTextContent('NetSift 0.2.0 is available.');
+    expect(within(banner).queryByTestId('update-title')).not.toBeInTheDocument();
+    expect(banner).not.toHaveTextContent('Second line');
+    expect(within(banner).getByRole('button', { name: 'Release notes' })).toBeInTheDocument();
   });
 
   it('shows nothing when up to date, or before any check', async () => {

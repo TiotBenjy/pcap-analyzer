@@ -13,6 +13,7 @@ import {
   formatLongDate,
   formatNumber,
   formatPercent,
+  formatPreciseDuration,
   formatPeriod,
   formatRate,
   formatShare,
@@ -47,6 +48,22 @@ describe('formatDuration', () => {
     expect(formatDuration(725, 'en')).toBe('12\u00a0min 05\u00a0s');
     expect(formatDuration(3 * 3600 + 120, 'en')).toBe('3\u00a0h 02\u00a0min');
     expect(formatDuration(2 * 86_400 + 3 * 3600, 'fr')).toBe('2\u00a0j 03\u00a0h');
+  });
+});
+
+describe('formatPreciseDuration', () => {
+  it('adapts the unit from microseconds to minutes', () => {
+    expect(formatPreciseDuration(0.4, 'en')).toBe('<\u00a01\u00a0µs');
+    expect(formatPreciseDuration(850, 'en')).toBe('850\u00a0µs');
+    expect(formatPreciseDuration(1_234, 'en')).toBe('1.2\u00a0ms');
+    expect(formatPreciseDuration(1_234, 'fr')).toBe('1,2\u00a0ms');
+    expect(formatPreciseDuration(45_400, 'en')).toBe('45\u00a0ms');
+    expect(formatPreciseDuration(999.7, 'en')).toBe('1\u00a0ms');
+    expect(formatPreciseDuration(999_999, 'en')).toBe('1\u00a0s');
+    expect(formatPreciseDuration(1_200_000, 'en')).toBe('1.2\u00a0s');
+    expect(formatPreciseDuration(725_000_000, 'fr')).toBe('12\u00a0min 05\u00a0s');
+    expect(formatPreciseDuration(-5, 'en')).toBe('<\u00a01\u00a0µs');
+    expect(formatPreciseDuration(Number.NaN, 'en')).not.toMatch(/NaN/);
   });
 });
 

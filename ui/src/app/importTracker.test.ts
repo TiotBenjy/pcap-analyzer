@@ -11,6 +11,7 @@ import {
   openImportWizard,
   resetImportTracker,
   trackImport,
+  warningTotal,
 } from './importTracker';
 
 vi.mock('../api/sessions');
@@ -93,6 +94,29 @@ describe('import tracker', () => {
     expect(cur?.warnings).toHaveLength(MAX_WARNINGS);
     expect(cur?.warningCount).toBe(MAX_WARNINGS + 5);
     expect(cur?.status).toBe('done');
+  });
+
+  it('takes the warning total from the progress and the final event', () => {
+    const base = { warningCount: 12, progress: null, result: null };
+    expect(warningTotal(base)).toBe(12);
+    const progress = {
+      bytes_done: 1,
+      bytes_total: 2,
+      chunk_index: 0,
+      chunk_count: 1,
+      chunk_name: '',
+      packets: 0,
+      rate_bps: 0,
+      eta_s: null,
+      phase: 'reading',
+      step: null,
+      steps_done: 0,
+      steps_total: 0,
+      warnings_found: 582,
+    };
+    expect(warningTotal({ ...base, progress })).toBe(582);
+    const result = { type: 'done', state: 'ready', packets: 1, flows: 1, anomalies: 600, duration_s: 1 } as const;
+    expect(warningTotal({ ...base, progress, result })).toBe(600);
   });
 
   it('goes back to running when the cancel request fails', async () => {

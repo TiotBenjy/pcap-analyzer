@@ -14,7 +14,9 @@ suivre l'import et vérifier la continuité des chunks.
 - `POST /api/v1/sessions/import/scan { path }` : inventaire et groupes détectés (sans analyser).
 - `POST /api/v1/sessions/import { path, group_ids, name, options }` -> `{ session_id }`.
 - `GET /api/v1/sessions/{id}/events` (SSE) : `progress { bytes_done, bytes_total, chunk_index, chunk_name,
-  packets, rate_bps, eta_s, phase, step, steps_done, steps_total }`, `warning`, `done`, `failed`. `phase` vaut
+  packets, rate_bps, eta_s, phase, step, steps_done, steps_total, warnings_found }`, `warning`, `done`, `failed`.
+  Les `warning` (anomalies de continuité) sont bornés à 200 par import et 10 par (code, chunk), pour qu'un chunk
+  plein d'horodatages qui reculent ne masque pas les autres types ; `warnings_found` les compte tous. `phase` vaut
   `reading`, `finishing` (dernières lignes écrites) puis `finalizing` (étapes de fin d'import : index, appariement
   DNS, tables dérivées, index de recherche ; `step` nomme l'étape en cours, `steps_done` / `steps_total` les comptent).
 - `DELETE /api/v1/sessions/{id}` (supprime la base et les blobs, jamais les captures sources).
@@ -29,8 +31,9 @@ suivre l'import et vérifier la continuité des chunks.
    - étape 1 : choix du dossier (dialogue natif en desktop ; explorateur limité à `/captures` en mode dev) ;
    - étape 2 : résultat du scan — groupes détectés, pour chacun : motif reconnu (dumpcap, tcpdump -C, ...),
      nombre de fichiers, taille, plage temporelle, anomalies prévues ; choix des groupes ; nom de session ;
-   - étape 3 : progression — barre globale, chunk en cours (n / total), débit, ETA, journal des avertissements,
-     bouton Annuler. Pendant les étapes de fin d'import, la barre suit les étapes faites, le libellé nomme l'étape
+   - étape 3 : progression — barre globale, chunk en cours (n / total), débit, ETA, journal des avertissements
+     (une ligne par type et chunk : « Horodatages qui reculent (Chunk 6) ×10 : recul jusqu'à 1,2 ms », total
+     réel en titre, reste renvoyé à la vue Sources), bouton Annuler. Pendant les étapes de fin d'import, la barre suit les étapes faites, le libellé nomme l'étape
      en cours (« Finalisation : construction des index ») et le pourcentage devient « Étape n sur N ».
      L'utilisateur peut fermer l'assistant, l'import continue (indicateur dans l'en-tête, « Finalisation n/N »
      pendant les étapes).

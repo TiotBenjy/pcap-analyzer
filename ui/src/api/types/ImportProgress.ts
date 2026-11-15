@@ -32,4 +32,9 @@ steps_done: number,
 /**
  * End-of-import steps to run (`finalizing` only, else 0).
  */
-steps_total: number, };
+steps_total: number, 
+/**
+ * Continuity anomalies found so far, including those not sent as `warning` events
+ * (at most 200 per import, 10 per code and chunk).
+ */
+warnings_found: number, };

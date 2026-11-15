@@ -148,7 +148,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
           {groups.length === 0 ? (
             <p className="text-meta text-muted">{t('views.import.noWarnings')}</p>
           ) : (
-            <ul className="flex max-h-48 min-w-0 flex-col gap-1 overflow-y-auto rounded-md border border-line p-2 text-meta">
+            <ul className="relative flex max-h-48 min-w-0 flex-col gap-1 overflow-y-auto rounded-md border border-line p-2 text-meta">
               {groups.map(({ first, count, capped, detail }, i) => (
                 <li key={i} className="flex min-w-0 items-start gap-2">
                   <TriangleAlert aria-hidden size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />

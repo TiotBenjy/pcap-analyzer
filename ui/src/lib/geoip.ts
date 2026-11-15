@@ -2,6 +2,9 @@ import type { TFunction } from 'i18next';
 import { ApiError } from '../api/client';
 import { describeError } from './errors';
 
+/** Host contacted by the download and the startup check (ADR-015, ADR-025). */
+export const DB_IP_HOST = 'download.db-ip.com';
+
 /** Problem types of the GeoIP routes (`netsift-api/src/error.rs`). */
 const GEOIP_PROBLEMS = {
   'urn:netsift:problem:geoip-download-failed': 'views.settings.geoip.errors.downloadFailed',

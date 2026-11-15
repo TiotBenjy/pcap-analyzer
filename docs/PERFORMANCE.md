@@ -233,7 +233,7 @@ Correctifs, par effet mesuré :
 - **`/servers`** (`fdbf13f`) : la requête classait à chaque lecture toutes les lignes de `server_evidence`
   (fonctions de fenêtre, index automatique sur la CTE). L'étape `servers` (version 3) stocke le rang de
   chaque serveur dans son rôle et le nombre de serveurs du rôle (`server_ranks`, migration 0802) ; sans
-  filtre de catégorie, la vue lit les `limit` premiers rangs de chaque rôle par clé primaire, puis leurs
+  filtre de catégorie, la vue lit les `limit` premiers rangs de tous les rôles par l'index des rangs, puis leurs
   preuves par index. Avec un filtre de catégorie (les rangs changent), le classement à la lecture reste.
 - **`/connections?category=`** (`fdbf13f`) : le comptage sondait deux listes d'hôtes pour chacune des
   677 000 conversations (330 ms), la page en construisait deux (140 ms). L'étape `connections` stocke le

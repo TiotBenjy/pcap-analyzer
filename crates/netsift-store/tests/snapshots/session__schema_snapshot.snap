@@ -834,6 +834,9 @@ CREATE TABLE server_ranks (
     PRIMARY KEY (role, rank)
 ) WITHOUT ROWID;
 
+-- index server_ranks_rank
+CREATE INDEX server_ranks_rank ON server_ranks (rank);
+
 -- table server_roles
 CREATE TABLE server_roles (
     role TEXT,

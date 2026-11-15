@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client';
 import type { UpdateDownload } from '../../api/types/UpdateDownload';
 import i18n from '../../i18n';
+import { en } from '../../i18n/en';
+import { fr } from '../../i18n/fr';
 import { setupUser } from '../../test/user';
+import { DOWNLOAD_HOSTS } from '../../updates/hosts';
 import { setNativeSavePicker } from '../../updates/savePicker';
 import { APPIMAGE, available, DEB, IDLE, release, state, UP_TO_DATE } from '../../updates/testing';
 import { ONLINE_EXTENSIONS } from './online/extensions';
@@ -182,9 +185,14 @@ describe('Settings > About > Updates', () => {
     expect(ext?.setting).toBe('update_check');
     if (ext === undefined) return;
     render(<ext.Component enabled={false} readOnly={false} />);
-    expect(screen.getByTestId('online-update-hosts')).toHaveTextContent(
-      /github\.com.*release-assets\.githubusercontent\.com.*objects\.githubusercontent\.com/,
-    );
+    const hosts = screen.getByTestId('online-update-hosts');
+    expect(hosts).toHaveTextContent(/github\.com.*release-assets\.githubusercontent\.com.*objects\.githubusercontent\.com/);
+    // Each host on one line, in both languages.
+    const kept = [...hosts.querySelectorAll('.whitespace-nowrap')].map((e) => e.textContent);
+    expect(kept).toEqual(['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com']);
+    for (const dict of [en, fr]) {
+      for (const host of DOWNLOAD_HOSTS) expect(dict.views.updates.onlineDownloads).toContain(host);
+    }
   });
 
   it('speaks French', async () => {

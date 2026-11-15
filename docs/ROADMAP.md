@@ -391,10 +391,13 @@ Hors vague (demande utilisateur du 2026-11-08) :
       mise à jour » dans « À propos » et réglage « Vérifier les mises à jour au démarrage », désactivé par défaut ;
       requête faite par l'API Rust (jamais la webview) vers la dernière release publiée (`releases/latest`, URL du dépôt
       fixée au build, HTTPS, tailles et redirections bornées, échec réseau silencieux au démarrage). Version plus récente
-      -> bandeau discret avec le numéro et les notes (texte brut) ; « Télécharger » récupère l'artefact adapté à la
-      plateforme et au format installé (AppImage, .deb, .rpm, NSIS/MSI, .dmg), vérifie `SHA256SUMS.txt`, l'enregistre
-      dans `<données>/exports/` (ou un dossier dédié autorisé à l'opener) puis ouvre le dossier ; installation manuelle
-      par l'utilisateur (pas d'auto-installation ni de plugin updater, bundles non signés, ADR-011). Mode web dev :
+      -> bandeau discret avec le numéro et les notes (texte brut). Rien n'est téléchargé sans clic : « Télécharger »
+      ouvre d'abord le dialogue natif d'enregistrement (plugin `dialog`), placé par défaut dans le dossier Téléchargements
+      de l'utilisateur avec le nom de l'artefact adapté à la plateforme et au format installé (AppImage, .deb, .rpm,
+      NSIS/MSI, .dmg) ; l'API Rust télécharge alors vers le chemin choisi (`.part` puis renommage), vérifie
+      `SHA256SUMS.txt` (fichier supprimé si l'empreinte diffère) et affiche le chemin enregistré ; annulation du dialogue
+      = aucun téléchargement. Installation manuelle par l'utilisateur (pas d'auto-installation ni de plugin updater,
+      bundles non signés, ADR-011 ; confirmé par l'utilisateur). Mode web dev :
       lien en texte vers la page de la release. Nouvel ADR pour l'exception GitHub (comme l'exception DB-IP de P4.9),
       reprise dans `CLAUDE.md` / `ARCHITECTURE.md`. À faire après P4.9 (même zone : Paramètres, client HTTP), avant
       la publication de 0.1.0. Demandé par l'utilisateur le 2026-11-15.

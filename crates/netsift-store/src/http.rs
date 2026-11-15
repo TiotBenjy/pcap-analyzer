@@ -496,9 +496,12 @@ pub fn transactions_page(
 ) -> Result<Page<HttpEntry>> {
     let conditions = conditions(filter, crate::finalize::step_done(conn, "http")?)?;
     let where_sql = conditions.sql();
+    // The page is chosen on `http_transactions` alone, then its rows are read with the hosts of
+    // both ends (P4.8): joining `hosts` before the sort cost two searches per matching
+    // transaction (12 000 for a common search word: about 190 ms of 340).
     let query = Keyset {
-        from: ENTRY_FROM,
-        select: ENTRY_COLUMNS,
+        from: "http_transactions t",
+        select: "t.id",
         sort: match sort {
             HttpSort::Time => "t.ts",
             HttpSort::Size => "t.resp_body_len",
@@ -508,13 +511,30 @@ pub fn transactions_page(
         descending,
         filter: where_sql.as_deref(),
     };
-    keyset_page(
-        conn,
-        &query,
-        &conditions.params(),
-        request,
-        HttpEntry::from_row,
-    )
+    let page = keyset_page(conn, &query, &conditions.params(), request, |r| {
+        r.get::<_, i64>(0)
+    })?;
+    Ok(Page {
+        items: entries(conn, &page.items)?,
+        next_cursor: page.next_cursor,
+    })
+}
+
+/// The transactions with these ids, in the order of `ids` (absent ids skipped).
+fn entries(conn: &Connection, ids: &[i64]) -> Result<Vec<HttpEntry>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn.prepare_cached(&format!(
+        "SELECT {ENTRY_COLUMNS} FROM json_each(?1) p \
+         JOIN http_transactions t ON t.id = p.value \
+         LEFT JOIN hosts hc ON hc.ip = t.client_ip LEFT JOIN hosts hs ON hs.ip = t.server_ip"
+    ))?;
+    let mut by_id: std::collections::HashMap<i64, HttpEntry> = stmt
+        .query_map([serde_json::to_string(ids)?], HttpEntry::from_row)?
+        .map(|e| e.map(|e| (e.id, e)))
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
 }
 
 /// Number of transactions matching `filter`.

@@ -11,7 +11,7 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use netsift_api::{ApiConfig, Server, ServerMonitor};
+use netsift_api::{ApiConfig, PackageFormat, Server, ServerMonitor};
 use serde::Serialize;
 use tokio::sync::oneshot;
 
@@ -65,14 +65,19 @@ pub struct EmbeddedApi {
 
 impl EmbeddedApi {
     /// Binds the loopback listener synchronously (the port is known before the window opens)
-    /// and hands the server task to `spawn` (a tokio runtime).
-    pub fn start(config: ApiConfig, spawn: impl FnOnce(ServerTask)) -> Result<Self> {
+    /// and hands the server task to `spawn` (a tokio runtime). `install`: package format the app
+    /// was installed from, when known (installer offered first by the update check).
+    pub fn start(
+        config: ApiConfig,
+        install: Option<PackageFormat>,
+        spawn: impl FnOnce(ServerTask),
+    ) -> Result<Self> {
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
             .context("cannot open a local port for the API")?;
         listener.set_nonblocking(true)?;
         let addr = listener.local_addr()?;
         let token = config.token.clone();
-        let server = Server::new(config);
+        let server = Server::new(config).with_install_format(install);
         let monitor = server.monitor();
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
         let (done_tx, done_rx) = mpsc::channel::<()>();
@@ -160,7 +165,7 @@ mod tests {
     fn serves_on_loopback_then_stops_within_the_limit() {
         let rt = runtime();
         let tmp = tempfile::tempdir().unwrap();
-        let api = EmbeddedApi::start(config(tmp.path()), |task| {
+        let api = EmbeddedApi::start(config(tmp.path()), None, |task| {
             rt.spawn(task);
         })
         .unwrap();

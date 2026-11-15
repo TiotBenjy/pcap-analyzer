@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { en } from '../../src/i18n/en';
 import { fr } from '../../src/i18n/fr';
+import { mockUpdate } from './updateMocks';
 
 // Screenshots + automated layout assertions from docs/UI_GUIDELINES.md ("Tests visuels"):
 //   1. PNG per view, width and theme in .artifacts/screens/<view>-<width>-<theme>.png
@@ -45,6 +46,9 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'settings-geoip-outdated': '/settings',
   'settings-licenses': '/settings',
   'settings-licenses-initial': '/settings',
+  'settings-notices-both': '/settings',
+  'settings-update': '/settings',
+  'settings-update-notes': '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
   'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
@@ -93,6 +97,7 @@ async function demoSessionId(page: Page): Promise<string> {
 const GEOIP_NOTICE: Record<string, 'missing' | 'outdated'> = {
   'captures-geoip-missing': 'missing',
   'settings-geoip-outdated': 'outdated',
+  'settings-notices-both': 'outdated',
 };
 
 /** `YYYY-MM` of the month `back` months before the current one (UTC). */
@@ -276,6 +281,8 @@ for (const lang of LANGS) {
           const path = typeof target === 'string' ? target : await target(page);
           const geoipNotice = GEOIP_NOTICE[view];
           if (geoipNotice !== undefined) await mockGeoipNotice(page, geoipNotice);
+          // Mocked server answers of some views (online checks: no network in screenshots).
+          if (view.startsWith('settings-update') || view === 'settings-notices-both') await mockUpdate(page);
           await page.goto(`/#${path}`);
           await page.locator('#main h1').first().waitFor();
           await page.waitForLoadState('networkidle');
@@ -523,6 +530,27 @@ for (const lang of LANGS) {
               await expect(toggle).toHaveAttribute('aria-checked', 'false');
               await expect(toggle).toBeDisabled();
             }
+          }
+          if (view === 'settings-update' || view === 'settings-update-notes') {
+            // Newer release (mocked): banner with the notes as text, result in About, release page
+            // link in web mode (no download from the screenshot server).
+            const banner = page.getByTestId('notice-update');
+            await expect(banner).toContainText(pattern(D.views.updates.available.replace('{{version}}', '0.2.0'), { anywhere: true }));
+            await expect(banner.getByTestId('update-release-page')).toBeVisible();
+            await expect(page.getByTestId('update-status')).toHaveAttribute('data-status', 'available');
+            await expect(page.getByTestId('update-section').getByTestId('update-release-page')).toBeVisible();
+          }
+          if (view === 'settings-notices-both') {
+            // MAX_NOTICES = 2: the GeoIP and update banners stack under the header, in registry order.
+            const area = page.getByTestId('notice-area');
+            await expect(area.getByTestId('notice-geoip')).toBeVisible();
+            await expect(area.getByTestId('notice-update')).toBeVisible();
+            await expect(area.locator('[data-testid^="notice-"]')).toHaveCount(2);
+          }
+          if (view === 'settings-update-notes') {
+            await page.getByTestId('update-section').getByRole('button', { name: D.views.updates.notes }).click();
+            const dialog = page.getByRole('dialog', { name: filled(D.views.updates.notesTitle, { version: '0.2.0' }) });
+            await expect(dialog.locator('pre')).toContainText('<b>Markup stays text</b>');
           }
           if (view === 'settings-licenses' || view === 'settings-licenses-initial') {
             // Third-party licenses: the dialog as it opens (groups closed), then, for

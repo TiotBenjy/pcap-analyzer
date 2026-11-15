@@ -33,6 +33,7 @@ mod sessions;
 mod settings;
 mod smb;
 mod tls;
+mod updates;
 
 use std::future::{Future, IntoFuture};
 use std::path::{Path, PathBuf};
@@ -52,6 +53,8 @@ pub use dto::{GeoipInfo, GeoipSource, GeoipStatus, HealthResponse};
 pub use error::ApiError;
 /// Location of the country database: the desktop app resolves it, the server reports it.
 pub use netsift_geo::{DB_FILE_NAME as GEOIP_FILE_NAME, default_path as default_geoip_path};
+/// Package format the desktop app was installed from ([`Server::with_install_format`]).
+pub use updates::PackageFormat;
 
 /// Crate name, used by smoke tests and diagnostics.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
@@ -200,12 +203,13 @@ impl AppState {
         self.exports.cancel_all();
     }
 
-    /// Waits (at most `limit`) for every import and export thread to end (a cancelled export
-    /// removes its partial file). True if they all ended.
+    /// Waits (at most `limit`) for every import and export thread, and the update download, to
+    /// end (a cancelled export or download removes its partial file). True if they all ended.
     pub(crate) async fn wait_imports(&self, limit: Duration) -> bool {
         let idle = async {
             self.imports.wait_idle().await;
             self.exports.wait_idle().await;
+            updates::wait_download(self).await;
         };
         tokio::time::timeout(limit, idle).await.is_ok()
     }
@@ -258,6 +262,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(settings::routes())
         .merge(smb::routes())
         .merge(tls::routes())
+        .merge(updates::routes())
         .route("/server-info", get(dto::server_info))
         .route_layer(axum::middleware::from_fn_with_state(
             Arc::clone(&state),
@@ -310,6 +315,14 @@ impl Server {
     pub fn new(config: ApiConfig) -> Self {
         let (app, state) = build(config, default_ingest_options());
         Self { app, state }
+    }
+
+    /// Package format the application was installed from (desktop: `AppImage`, `.deb`, MSI...),
+    /// so that a new release offers the matching installer first. Unknown by default.
+    #[must_use]
+    pub fn with_install_format(self, format: Option<PackageFormat>) -> Self {
+        updates::set_install_format(&self.state, format);
+        self
     }
 
     /// Read-only view of the server state, usable from any thread.

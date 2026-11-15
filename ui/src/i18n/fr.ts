@@ -5,6 +5,7 @@ import { geoipPromptFr } from './geoipPrompt';
 import { onlineFr } from './online';
 import { picturesFr } from './pictures';
 import { tlsFr } from './tls';
+import { updatesFr } from './updates';
 
 // French dictionary. Typed against the English shape: a missing or extra key fails typecheck.
 export const fr: Dictionary = {
@@ -982,6 +983,7 @@ export const fr: Dictionary = {
     online: onlineFr,
     pictures: picturesFr,
     tls: tlsFr,
+    updates: updatesFr,
   },
   common: {
     all: 'Tout',

@@ -1033,3 +1033,51 @@ acceptée : la remplacer par une nouvelle qui la référence.
     qu'elle n'a pas été téléchargée par l'application (un téléchargement l'enregistre) ;
   - les tests utilisent un serveur HTTP local ; la réponse réelle de DB-IP au `HEAD` reste vérifiée à la main
     (un refus du `HEAD` compterait comme un échec, donc silencieux).
+
+## ADR-027 — Vérification et téléchargement des mises à jour (releases GitHub)
+
+- Contexte : P4.10, demandée par l'utilisateur le 2026-11-15 ; met en œuvre l'exception « releases GitHub
+  du dépôt » d'ADR-025 (inchangée), avec le client sortant partagé et ses règles (HTTPS, liste blanche
+  revérifiée à chaque redirection, délais et tailles bornés, `User-Agent` générique, aucune donnée
+  utilisateur). Bundles non signés (ADR-011) : pas de plugin updater ni d'installation automatique.
+- Décision :
+  - **vérification** (`netsift-api/src/updates.rs`) : `GET https://api.github.com/repos/<dépôt>/releases/latest`,
+    dépôt fixé au build (`[workspace.package] repository`), `Accept: application/vnd.github+json`, JSON
+    borné à 1 Mio ; au démarrage si `online.update_check` est activé (échec silencieux, une ligne de log),
+    ou sur clic de « Rechercher une mise à jour » (`POST /updates/check`, échec rapporté). Brouillons,
+    prereleases (drapeau ou suffixe SemVer) et versions égales ou plus anciennes (précédence SemVer,
+    métadonnées de build ignorées) = « à jour » ; 404 (aucune release) = « à jour ». Notes en texte brut
+    (caractères de contrôle et bidirectionnels retirés, 8 000 caractères au plus), jamais rendues en HTML
+    ou Markdown. Résultat gardé en mémoire (`GET /updates`) pour le bandeau, masquable par version ;
+  - **URL lues dans le JSON** : analysées (`Url`), schéma, hôte et port de la release attendue, chemin
+    comparé segment par segment après normalisation (propriétaire et dépôt sans tenir compte de la casse),
+    refusées avec `..`, `.` ou leurs formes encodées, une requête ou un fragment ; les assets sous
+    `https://github.com/<dépôt>/releases/download/`, la page sous `.../releases/` ;
+  - **installateurs proposés** : ceux du système et de l'architecture en cours, le format installé en
+    premier. Ce format vient du type de bundle que Tauri inscrit dans le binaire
+    (`tauri::utils::platform::bundle_type()`, variable `APPIMAGE` en repli), passé à l'API par
+    `Server::with_install_format` ; inconnu (build de dev) : AppImage, NSIS ou dmg d'abord, et l'UI
+    laisse choisir le format ;
+  - **téléchargement, desktop seulement** (`allow_any_path`) : le dialogue natif d'enregistrement s'ouvre
+    d'abord dans le dossier Téléchargements avec le nom exact de l'asset (capabilities `dialog:allow-save`
+    et `core:path:allow-resolve-directory`, toujours sans `core:default`) ; annulation = aucune requête.
+    `POST /updates/download { asset, path }` n'accepte qu'un nom d'installateur de la dernière release
+    vérifiée (jamais une URL) et un chemin absolu, sans `..`, dont le dossier existe et qui n'est pas un
+    dossier. L'API lit `SHA256SUMS.txt` de la même release (64 Kio au plus, formats `hash  nom` et
+    `hash *nom`), puis télécharge vers le chemin choisi (`.part` puis renommage, empreinte vérifiée avant ;
+    absente ou différente = erreur et aucun fichier), taille bornée par celle annoncée dans le JSON plus
+    1 Mio (2 Gio au plus), délai total d'une heure. Un téléchargement à la fois, progression par
+    `GET /updates/download`, tâche attendue (bornée) à l'arrêt du serveur pour que le `.part` soit supprimé ;
+    l'utilisateur installe lui-même le fichier. Mode web dev : lien vers la page de la release ;
+  - **hôtes** : `api.github.com` (vérification) ; `github.com` et l'hôte de stockage des assets vers lequel
+    il redirige, `release-assets.githubusercontent.com` et `objects.githubusercontent.com`
+    (`DOWNLOAD_HOSTS`). Les URL signées de ce stockage n'apparaissent jamais dans les logs
+    (erreurs reqwest sans URL) ;
+  - **noms de fichiers temporaires** : un `.part` laissé par un plantage avec le même PID est sauté
+    (16 noms au plus), jamais ouvert ni supprimé.
+- Conséquences :
+  - la liste des hôtes de stockage suit GitHub : s'il en change, elle (et cette ADR) doit être mise à
+    jour ; seul un téléchargement réel depuis une release publiée la vérifie, comme la détection du format
+    installé dans un vrai bundle et les noms d'assets de Tauri (`_amd64`, `.x86_64`, `_x64-setup.exe`,
+    `_x64_en-US.msi`, `_universal.dmg`) ;
+  - les tests utilisent un serveur HTTP local.

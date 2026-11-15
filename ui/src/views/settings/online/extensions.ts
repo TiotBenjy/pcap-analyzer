@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import type { OnlineSettings } from '../../../api/types/OnlineSettings';
 import { GeoipCheckStatus } from './GeoipCheckStatus';
+import { UpdateHosts } from './UpdateHosts';
 
 // Settings > Online: each online feature may show its own content (state, last result, button)
 // under the switch of its setting.
@@ -26,4 +27,5 @@ export interface OnlineExtension {
  */
 export const ONLINE_EXTENSIONS: readonly OnlineExtension[] = [
   { id: 'geoip', setting: 'geoip_check', Component: GeoipCheckStatus },
+  { id: 'update', setting: 'update_check', Component: UpdateHosts },
 ];

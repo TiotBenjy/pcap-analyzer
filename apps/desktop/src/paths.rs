@@ -5,8 +5,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use netsift_api::ApiConfig;
+use netsift_api::{ApiConfig, PackageFormat};
 use tauri::http::HeaderValue;
+use tauri::utils::config::BundleType;
 
 /// Name of the data directory under the local data directory. The opener scope of
 /// `capabilities/default.json` (`$LOCALDATA/NetSift/exports`) depends on it.
@@ -44,6 +45,23 @@ pub fn bundled_geoip(resource_dir: Option<&Path>) -> Option<PathBuf> {
         .join(GEOIP_RESOURCE_DIR)
         .join(netsift_api::GEOIP_FILE_NAME);
     bundled.is_file().then_some(bundled)
+}
+
+/// Package format the application was installed from: the bundle type Tauri writes into the
+/// binary when it bundles it, or, when unknown, an `AppImage` if the `APPIMAGE` variable (set by
+/// the `AppImage` runtime) is present. `None` in development builds: the update check then offers
+/// the default installer of the system and lets the user choose.
+pub fn install_format(bundle: Option<&BundleType>, appimage_env: bool) -> Option<PackageFormat> {
+    match bundle {
+        Some(BundleType::Deb) => Some(PackageFormat::Deb),
+        Some(BundleType::Rpm) => Some(PackageFormat::Rpm),
+        Some(BundleType::AppImage) => Some(PackageFormat::AppImage),
+        Some(BundleType::Msi) => Some(PackageFormat::Msi),
+        Some(BundleType::Nsis) => Some(PackageFormat::Nsis),
+        // macOS: `App` for any bundled app; only the .dmg is published.
+        Some(BundleType::App | BundleType::Dmg) => Some(PackageFormat::Dmg),
+        None => appimage_env.then_some(PackageFormat::AppImage),
+    }
 }
 
 /// Imports allowed at the same time: each import already uses every core and up to its memory
@@ -195,6 +213,36 @@ mod tests {
     }
 
     #[test]
+    fn the_install_format_follows_the_tauri_bundle_type() {
+        assert_eq!(
+            install_format(Some(&BundleType::Deb), false),
+            Some(PackageFormat::Deb)
+        );
+        assert_eq!(
+            install_format(Some(&BundleType::Rpm), true),
+            Some(PackageFormat::Rpm)
+        );
+        assert_eq!(
+            install_format(Some(&BundleType::AppImage), false),
+            Some(PackageFormat::AppImage)
+        );
+        assert_eq!(
+            install_format(Some(&BundleType::Msi), false),
+            Some(PackageFormat::Msi)
+        );
+        assert_eq!(
+            install_format(Some(&BundleType::Nsis), false),
+            Some(PackageFormat::Nsis)
+        );
+        assert_eq!(
+            install_format(Some(&BundleType::App), false),
+            Some(PackageFormat::Dmg)
+        );
+        assert_eq!(install_format(None, true), Some(PackageFormat::AppImage));
+        assert_eq!(install_format(None, false), None);
+    }
+
+    #[test]
     fn opener_scope_is_the_exports_folder_only() {
         let caps: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
@@ -215,5 +263,16 @@ mod tests {
         assert_eq!(paths, [expected.clone(), format!("{expected}/**")]);
         // No blanket permission set.
         assert!(!perms.iter().any(|p| p == "core:default"));
+        // Plain permissions: dialogs, and the path of the Downloads folder (default location of
+        // the save dialog of an update), nothing else of the path plugin.
+        let plain: Vec<_> = perms.iter().filter_map(|p| p.as_str()).collect();
+        assert_eq!(
+            plain,
+            [
+                "core:path:allow-resolve-directory",
+                "dialog:allow-open",
+                "dialog:allow-save"
+            ]
+        );
     }
 }

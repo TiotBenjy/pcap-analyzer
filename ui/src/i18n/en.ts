@@ -6,6 +6,7 @@ import { geoipPromptEn } from './geoipPrompt';
 import { onlineEn } from './online';
 import { picturesEn } from './pictures';
 import { tlsEn } from './tls';
+import { updatesEn } from './updates';
 
 export const en = {
   app: {
@@ -982,6 +983,7 @@ export const en = {
     online: onlineEn,
     pictures: picturesEn,
     tls: tlsEn,
+    updates: updatesEn,
   },
   common: {
     all: 'All',

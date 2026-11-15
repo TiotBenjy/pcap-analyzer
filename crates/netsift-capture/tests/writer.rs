@@ -76,5 +76,5 @@ fn empty_export_is_a_valid_capture() {
         .unwrap();
     let (source, read) = read_all(file);
     assert_eq!(source.info().format, CaptureFormat::PcapNg);
-    assert!(read.is_empty());
+    assert_eq!(read.len(), 0);
 }

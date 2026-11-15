@@ -49,7 +49,8 @@ export function Chart({
 }: ChartProps) {
   const { t } = useTranslation();
   // Loaded while the data is fetched (ECharts chunk, on demand).
-  const ready = useChartRendererReady();
+  // Only a chart with something to draw reports a failed load (error boundary).
+  const ready = useChartRendererReady(loading !== true && (error ?? null) === null && empty !== true);
   if (loading === true) return <Skeleton height={height} />;
   if (error !== undefined && error !== null) {
     return (

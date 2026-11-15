@@ -5,7 +5,7 @@ import { loadChartRenderer, preloadChartRenderer, useChartRendererReady } from '
 vi.mock('./EChartsRenderer', () => ({ default: () => <div data-testid="renderer" /> }));
 
 function Probe() {
-  return <span>{useChartRendererReady() ? 'ready' : 'loading'}</span>;
+  return <span>{useChartRendererReady(true) ? 'ready' : 'loading'}</span>;
 }
 
 describe('chart renderer loading', () => {

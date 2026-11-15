@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImportHost } from '../app/ImportHost';
 import { findNavItem } from '../app/nav';
+import { NoticeArea } from '../notices/NoticeArea';
 import { readPref, writePref } from '../lib/storage';
 import { useTheme } from '../theme/theme';
 import { Button } from './Button';
@@ -158,6 +159,7 @@ export function AppShell() {
             </Button>
           </div>
         </header>
+        <NoticeArea />
 
         <main id="main" className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1600px] p-3 sm:p-4 lg:p-6">

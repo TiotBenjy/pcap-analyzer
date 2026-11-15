@@ -2,6 +2,7 @@
 // Rules: short, factual labels; no emoji, no decorative characters, no exclamation marks.
 import { credentialsEn } from './credentials';
 import { exportsEn } from './exports';
+import { onlineEn } from './online';
 import { picturesEn } from './pictures';
 import { tlsEn } from './tls';
 
@@ -899,7 +900,7 @@ export const en = {
       },
     },
     settings: {
-      subtitle: 'Display preferences, stored on this device',
+      subtitle: 'Display, online checks and information about NetSift',
       appearance: 'Appearance',
       about: 'About',
       backend: 'Backend',
@@ -976,6 +977,7 @@ export const en = {
     // --- analysis views kept in their own module: one line each, sorted ---
     credentials: credentialsEn,
     exportPcap: exportsEn,
+    online: onlineEn,
     pictures: picturesEn,
     tls: tlsEn,
   },
@@ -1000,6 +1002,10 @@ export const en = {
     back: 'Back',
     loadMore: 'Load more',
     shownOf: '{{shown}} of {{total}}',
+  },
+  notices: {
+    region: 'Application notices',
+    dismiss: 'Dismiss',
   },
   secret: {
     hidden_one: 'Hidden ({{count}} character)',

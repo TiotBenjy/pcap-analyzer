@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { en } from '../../src/i18n/en';
 import { fr } from '../../src/i18n/fr';
+import { mockBackwardAnomalies, mockImportProgress } from './anomalyMocks';
 import { mockUpdate } from './updateMocks';
 
 // Screenshots + automated layout assertions from docs/UI_GUIDELINES.md ("Tests visuels"):
@@ -35,6 +36,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   dns: async (page) => `/sessions/${await demoSessionId(page)}/dns`,
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
+  'import-progress': '/captures',
   network: async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'network-detail': async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
@@ -54,6 +56,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
   'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
+  'sources-backwards': async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
 };
 
@@ -333,6 +336,8 @@ for (const lang of LANGS) {
           if (geoipNotice !== undefined) await mockGeoipNotice(page, geoipNotice);
           // Mocked server answers of some views (online checks: no network in screenshots).
           if (view.startsWith('settings-update') || view === 'settings-notices-both') await mockUpdate(page);
+          if (view === 'import-progress') await mockImportProgress(page);
+          if (view === 'sources-backwards') await mockBackwardAnomalies(page);
           await page.goto(`/#${path}`);
           await page.locator('#main h1').first().waitFor();
           await page.waitForLoadState('networkidle');
@@ -373,6 +378,17 @@ for (const lang of LANGS) {
           if (view === 'sources' && !path.includes(NO_SESSION)) {
             await expect(page.getByRole('img', { name: pattern(D.views.sources.coverageLabel_other) })).toBeVisible();
             await expect(page.getByRole('table', { name: D.views.sources.chunksLabel })).toBeVisible();
+          }
+
+          if (view === 'import-progress') {
+            // Grouped warnings of a finished import, reopened from the importing row (mocked stream).
+            await page.getByRole('button', { name: filled(D.views.captures.progress, { name: 'office-ring-buffer' }) }).click();
+            const dialog = page.getByRole('dialog', { name: D.views.import.titleProgress });
+            await expect(dialog.getByText(D.views.import.done, { exact: true })).toBeVisible();
+            await expect(dialog.getByRole('region', { name: D.views.import.warnings }).getByRole('listitem')).toHaveCount(6);
+          }
+          if (view === 'sources-backwards' && !path.includes(NO_SESSION)) {
+            await expect(page.getByTestId('anomaly-summary')).toContainText(pattern(D.views.sources.summaryBackwards_other, { anywhere: true }));
           }
 
           if (view === 'overview' && !path.includes(NO_SESSION)) {
@@ -661,6 +677,9 @@ for (const lang of LANGS) {
           const hidden = await page.evaluate(() =>
             [...document.querySelectorAll('[data-shot-visible]')]
               .filter((el) => {
+                // Behind an open modal dialog (import progress), the page is covered on purpose.
+                const modal = document.querySelector('[aria-modal="true"]');
+                if (modal !== null && !modal.contains(el)) return false;
                 const r = el.getBoundingClientRect();
                 if (r.width === 0 || r.right > window.innerWidth || r.bottom > window.innerHeight) return true;
                 const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);

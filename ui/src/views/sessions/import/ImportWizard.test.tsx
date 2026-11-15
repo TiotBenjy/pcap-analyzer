@@ -66,6 +66,7 @@ const progress = (done: number): Extract<ImportEvent, { type: 'progress' }> => (
   step: null,
   steps_done: 0,
   steps_total: 0,
+  warnings_found: 0,
 });
 
 async function startTwoGroupImport() {
@@ -149,6 +150,28 @@ describe('Import wizard', () => {
     stream.emit({ type: 'warning', id: null, code: 'missing_sequence', chunk: 12, ts_us: null, detail: { first: 13, last: 13 } });
     expect(within(dialog).getByText('1 missing file')).toBeInTheDocument();
 
+    // Identical warnings share one line with their count and largest backward step.
+    for (const step of [800, 1_234, 300]) {
+      stream.emit({
+        type: 'warning',
+        id: null,
+        code: 'timestamp_backwards',
+        chunk: 6,
+        ts_us: 1_000,
+        detail: { offset: 1, previous_us: 1_000 + step, ts_us: 1_000 },
+      });
+    }
+    const warnings = within(dialog).getByRole('region', { name: 'Warnings' });
+    const items = within(warnings).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[1]).toHaveTextContent(/^Timestamps going backwards \(Chunk 6\) ×3: Goes back up to 1\.2\sms$/);
+    // The backend lists a bounded number of warnings but counts them all.
+    stream.emit({ ...progress(50), warnings_found: 40 });
+    expect(within(warnings).getByRole('heading')).toHaveTextContent('Warnings (40)');
+    expect(within(warnings).getByText(/^36 more warnings not shown/)).toHaveTextContent(
+      '36 more warnings not shown (full list in Sources)',
+    );
+
     // Closing the wizard keeps the import running; the header indicator reopens it.
     await user.click(within(dialog).getByRole('button', { name: 'Continue in background' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -162,7 +185,7 @@ describe('Import wizard', () => {
     expect(within(reopened).getByRole('button', { name: 'Cancel import' })).toBeEnabled();
 
     // End-of-import steps: the bar follows the steps, the label names the one running.
-    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'dns', steps_done: 2, steps_total: 8 });
+    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'dns', steps_done: 2, steps_total: 8, warnings_found: 40 });
     expect(within(reopened).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
     expect(within(reopened).getByText('Finalizing: pairing DNS answers')).toBeInTheDocument();
     expect(within(reopened).getByText('Step 3 of 8')).toBeInTheDocument();
@@ -177,7 +200,7 @@ describe('Import wizard', () => {
     expect(cancel).toBeDisabled();
     expect(cancel).toHaveAttribute('title', 'Reading is over: the import can no longer be cancelled');
     // A step unknown to this build gets the generic label.
-    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'future', steps_done: 7, steps_total: 8 });
+    stream.emit({ ...progress(100), phase: 'finalizing', eta_s: null, step: 'future', steps_done: 7, steps_total: 8, warnings_found: 40 });
     expect(within(reopened).getByText('Finalizing the session')).toBeInTheDocument();
     expect(within(reopened).getByText('Step 8 of 8')).toBeInTheDocument();
 
@@ -185,11 +208,38 @@ describe('Import wizard', () => {
     stream.end();
     expect(await within(reopened).findByText('Import finished')).toBeInTheDocument();
     expect(within(reopened).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+    // Finished: no estimate left, the packets only in the outcome, the full list one click away.
+    expect(within(reopened).queryByText('Remaining')).not.toBeInTheDocument();
+    expect(within(reopened).getAllByText('Packets')).toHaveLength(1);
+    expect(within(reopened).getByRole('link', { name: 'full list in Sources' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/sessions/S1/sources'),
+    );
     await user.click(within(reopened).getByRole('button', { name: 'Open session' }));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/sessions/S1/overview');
     });
     expect(screen.queryByTestId('import-indicator')).not.toBeInTheDocument();
+  });
+
+  it('opens the Sources view from the warnings of a finished import', async () => {
+    const stream = mockStream();
+    const { user, router } = await startTwoGroupImport();
+    const dialog = await screen.findByRole('dialog', { name: 'Import progress' });
+    stream.emit({ ...progress(100), warnings_found: 12 });
+    stream.emit({ type: 'warning', id: null, code: 'time_gap', chunk: 3, ts_us: null, detail: { gap_us: 6e6 } });
+    // Running: the full list is not there yet.
+    expect(within(dialog).getByText(/^11 more warnings not shown/)).toHaveTextContent(
+      '11 more warnings not shown (full list in Sources)',
+    );
+    expect(within(dialog).queryByRole('link', { name: 'full list in Sources' })).not.toBeInTheDocument();
+    stream.emit({ type: 'done', state: 'ready', packets: 9000, flows: 120, anomalies: 12, duration_s: 12 });
+    stream.end();
+    await user.click(await within(dialog).findByRole('link', { name: 'full list in Sources' }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/sessions/S1/sources');
+    });
+    expect(screen.queryByRole('dialog', { name: 'Import progress' })).not.toBeInTheDocument();
   });
 
   it('cancels a running import, which ends as an incomplete session', async () => {

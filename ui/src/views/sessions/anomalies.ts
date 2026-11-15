@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import type { AnomalyInfo } from '../../api/types/AnomalyInfo';
 import { en } from '../../i18n/en';
-import { formatCount, formatDuration } from '../../lib/format';
+import { formatCount, formatDuration, formatPreciseDuration } from '../../lib/format';
 
 // Human-readable anomalies (codes and `detail` shapes: netsift-engine/src/translate.rs).
 
@@ -44,6 +44,28 @@ export function detailSeconds(detail: Record<string, unknown>, name: string): nu
   if (us !== null) return us / 1e6;
   const ns = num(detail, `${name}_ns`);
   return ns === null ? null : ns / 1e9;
+}
+
+/** Microseconds of a `<name>_us` (or legacy `<name>_ns`) detail field. */
+function detailUs(detail: Record<string, unknown>, name: string): number | null {
+  const us = num(detail, `${name}_us`);
+  if (us !== null) return us;
+  const ns = num(detail, `${name}_ns`);
+  return ns === null ? null : ns / 1e3;
+}
+
+/**
+ * How far the clock went back, in microseconds: `previous - ts` of a `timestamp_backwards`
+ * anomaly, the largest step of an `out_of_order` one; `null` for other codes or without detail.
+ * Microseconds or milliseconds usually come from a multi-interface capture or NIC timestamping;
+ * seconds or more, from a clock correction (docs/CHUNKED_CAPTURES.md).
+ */
+export function backwardStepUs(a: Pick<AnomalyInfo, 'code' | 'detail'>): number | null {
+  if (a.code === 'out_of_order') return detailUs(a.detail, 'max_backstep');
+  if (a.code !== 'timestamp_backwards') return null;
+  const previous = detailUs(a.detail, 'previous');
+  const ts = detailUs(a.detail, 'ts');
+  return previous === null || ts === null ? null : Math.max(0, previous - ts);
 }
 
 /** Missing sequence numbers `first..=last` of a `missing_sequence` anomaly. */
@@ -89,9 +111,17 @@ export function anomalyDetail(t: TFunction, a: AnomalyInfo): string {
       const current = text(d, 'current');
       return previous === null || current === null ? '' : t('anomalies.change', { previous, current });
     }
+    case 'timestamp_backwards': {
+      const step = backwardStepUs(a);
+      return step === null ? '' : t('anomalies.backwards', { duration: formatPreciseDuration(step) });
+    }
     case 'out_of_order': {
       const packets = num(d, 'packets');
-      return packets === null ? '' : t('anomalies.packets', { packets: formatCount(packets) });
+      if (packets === null) return '';
+      const step = backwardStepUs(a);
+      return step === null || step <= 0
+        ? t('anomalies.packets', { packets: formatCount(packets) })
+        : t('anomalies.packetsBackwards', { packets: formatCount(packets), duration: formatPreciseDuration(step) });
     }
     case 'limit_reached':
     case 'merge_fanout_limit': {
@@ -114,6 +144,65 @@ export function anomalyWhere(t: TFunction, a: AnomalyInfo): string {
 }
 
 /**
+ * Warnings the API publishes per code and chunk during an import (`MAX_WARNINGS_PER_KIND` in
+ * crates/netsift-api/src/imports.rs): a group that reached it may have more members.
+ */
+export const WARNINGS_PER_KIND = 10;
+
+/**
+ * Warnings listed after which the API sends no more repeats of a code already listed, only first
+ * occurrences (`MAX_WARNINGS - RESERVED_FOR_NEW_CODES` in crates/netsift-api/src/imports.rs): past
+ * it, any group may have been cut short.
+ */
+export const REPEAT_LIMIT = 180;
+
+/** Anomalies of the same code and chunk, shown as one line (import warnings). */
+export interface AnomalyGroup {
+  /** First anomaly of the group, in arrival order. */
+  first: AnomalyInfo;
+  count: number;
+  /** The API stopped sending this group: `count` and its largest step are lower bounds. */
+  capped: boolean;
+  /** Details of the whole group: the largest backward step, or the common detail. */
+  detail: string;
+}
+
+/**
+ * Groups anomalies of the same code and chunk, in order of first appearance. A repeated group
+ * shows its largest backward step ("goes back up to 1.2 ms") or, for other codes, the detail its
+ * members share (none when they differ). When `truncated` says the API dropped warnings, a group
+ * that reached its cap, or any group once the list reached `REPEAT_LIMIT`, is `capped`: its count
+ * and step are lower bounds ("at least").
+ */
+export function groupAnomalies(t: TFunction, anomalies: readonly AnomalyInfo[], truncated = false): AnomalyGroup[] {
+  const groups = new Map<string, { first: AnomalyInfo; count: number; maxStep: number | null; details: Set<string> }>();
+  for (const a of anomalies) {
+    const key = `${a.code}\u0000${a.chunk === null ? '' : String(a.chunk)}`;
+    let g = groups.get(key);
+    if (g === undefined) {
+      g = { first: a, count: 0, maxStep: null, details: new Set() };
+      groups.set(key, g);
+    }
+    g.count += 1;
+    const step = backwardStepUs(a);
+    if (step !== null) g.maxStep = Math.max(g.maxStep ?? 0, step);
+    if (g.details.size < 2) g.details.add(anomalyDetail(t, a));
+  }
+  const cutShort = truncated && anomalies.length >= REPEAT_LIMIT;
+  return [...groups.values()].map(({ first, count, maxStep, details }) => {
+    const capped = cutShort || (truncated && count >= WARNINGS_PER_KIND);
+    let detail: string;
+    if (maxStep !== null && first.code === 'timestamp_backwards' && capped)
+      detail = t('anomalies.backwardsAtLeast', { duration: formatPreciseDuration(maxStep) });
+    else if (count === 1) detail = anomalyDetail(t, first);
+    else if (maxStep !== null && first.code === 'timestamp_backwards')
+      detail = t('anomalies.backwardsUpTo', { duration: formatPreciseDuration(maxStep) });
+    else detail = details.size === 1 ? ([...details][0] ?? '') : '';
+    return { first, count, capped, detail };
+  });
+}
+
+/**
  * Short summary such as "2 missing files in the sequence, 1 time gap of 43 s"
  * (docs/CHUNKED_CAPTURES.md, "Ce que l'UI montre").
  */
@@ -122,6 +211,10 @@ export function anomalySummary(t: TFunction, anomalies: readonly AnomalyInfo[]):
   let gaps = 0;
   let longestGap = 0;
   let overlaps = 0;
+  let backwards = 0;
+  let largestStep: number | null = null;
+  let reordered = 0;
+  let reorderStep = 0;
   let other = 0;
   for (const a of anomalies) {
     if (a.code === 'missing_sequence') {
@@ -132,6 +225,13 @@ export function anomalySummary(t: TFunction, anomalies: readonly AnomalyInfo[]):
       longestGap = Math.max(longestGap, detailSeconds(a.detail, 'gap') ?? 0);
     } else if (a.code === 'overlap') {
       overlaps += 1;
+    } else if (a.code === 'timestamp_backwards') {
+      backwards += 1;
+      const step = backwardStepUs(a);
+      if (step !== null) largestStep = Math.max(largestStep ?? 0, step);
+    } else if (a.code === 'out_of_order' && (num(a.detail, 'packets') ?? 0) > 0 && (backwardStepUs(a) ?? 0) > 0) {
+      reordered += num(a.detail, 'packets') ?? 0;
+      reorderStep = Math.max(reorderStep, backwardStepUs(a) ?? 0);
     } else {
       other += 1;
     }
@@ -140,6 +240,22 @@ export function anomalySummary(t: TFunction, anomalies: readonly AnomalyInfo[]):
   if (missing > 0) parts.push(t('views.sources.summaryMissing', { count: missing }));
   if (gaps > 0) parts.push(t('views.sources.summaryGap', { count: gaps, duration: formatDuration(longestGap) }));
   if (overlaps > 0) parts.push(t('views.sources.summaryOverlap', { count: overlaps }));
+  if (backwards > 0) {
+    parts.push(
+      largestStep === null
+        ? t('views.sources.summaryBackwardsCount', { count: backwards })
+        : t('views.sources.summaryBackwards', { count: backwards, duration: formatPreciseDuration(largestStep) }),
+    );
+  }
+  if (reordered > 0) {
+    parts.push(
+      t('views.sources.summaryOutOfOrder', {
+        count: reordered,
+        packets: formatCount(reordered),
+        duration: formatPreciseDuration(reorderStep),
+      }),
+    );
+  }
   if (other > 0) parts.push(t('views.sources.summaryOther', { count: other }));
   return parts;
 }

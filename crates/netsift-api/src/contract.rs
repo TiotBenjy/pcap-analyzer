@@ -200,6 +200,9 @@ pub struct ImportProgress {
     pub steps_done: u32,
     /// End-of-import steps to run (`finalizing` only, else 0).
     pub steps_total: u32,
+    /// Continuity anomalies found so far, including those not sent as `warning` events
+    /// (at most 200 per import, 10 per code and chunk).
+    pub warnings_found: u64,
 }
 
 /// Events of `GET /sessions/{id}/events`. The SSE event name is the `type` tag.

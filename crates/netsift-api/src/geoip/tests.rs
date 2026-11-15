@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime};
 use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::extract::{Path as UrlPath, State};
-use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -67,13 +67,17 @@ struct Upstream {
     replies: Mutex<HashMap<String, Reply>>,
     /// Requested file names and request headers.
     hits: Mutex<Vec<(String, HeaderMap)>>,
+    /// Methods of the requests, in order.
+    methods: Mutex<Vec<Method>>,
 }
 
 async fn upstream_file(
+    method: Method,
     UrlPath(name): UrlPath<String>,
     headers: HeaderMap,
     State(up): State<Arc<Upstream>>,
 ) -> Response {
+    up.methods.lock().unwrap().push(method);
     up.hits.lock().unwrap().push((name.clone(), headers));
     let reply = up.replies.lock().unwrap().get(&name).cloned();
     match reply {
@@ -121,8 +125,25 @@ struct Env {
 
 impl Env {
     async fn new(read_only: bool, bundled: Option<Vec<u8>>) -> Self {
+        Self::with_settings(read_only, bundled, None).await
+    }
+
+    /// Server whose data directory holds `settings` as `settings.json` (none if `None`).
+    async fn with_settings(
+        read_only: bool,
+        bundled: Option<Vec<u8>>,
+        settings: Option<&str>,
+    ) -> Self {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("captures")).unwrap();
+        if let Some(settings) = settings {
+            std::fs::create_dir_all(tmp.path().join("data")).unwrap();
+            std::fs::write(
+                tmp.path().join("data").join(crate::settings::FILE_NAME),
+                settings,
+            )
+            .unwrap();
+        }
         let bundled_path = bundled.map(|bytes| {
             let path = tmp.path().join("bundle").join(netsift_geo::DB_FILE_NAME);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -669,4 +690,323 @@ async fn interrupted_update_files_are_removed_at_startup_unless_read_only() {
         assert_eq!(orphan.exists(), read_only, "read_only = {read_only}");
         assert_eq!(std::fs::read(&user).unwrap(), db("FR"));
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Freshness: local check and startup check of download.db-ip.com (P4.9)
+
+const CHECK_ON: &str = r#"{"online":{"geoip_check":true}}"#;
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+/// Country database built at `epoch` (seconds).
+fn db_built(epoch: u64) -> Vec<u8> {
+    MmdbBuilder::new()
+        .build_epoch(epoch)
+        .network(ip("8.8.8.0"), 24, "DE")
+        .network(ip("81.0.0.0"), 8, "DE")
+        .build()
+}
+
+/// `YYYY-MM` of the current month and of the previous one.
+fn month_keys() -> [String; 2] {
+    download::months(SystemTime::now()).map(|(y, m)| format!("{y:04}-{m:02}"))
+}
+
+impl Env {
+    async fn freshness(&self) -> Value {
+        let (status, _, json) = self.call("GET", "/api/v1/geoip/status", &Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{json}");
+        json
+    }
+
+    /// Runs the startup checks enabled by the settings; returns how many ran.
+    async fn run_startup_checks(&self) -> usize {
+        let handles = crate::online::spawn_startup_checks(&self.state);
+        let n = handles.len();
+        for h in handles {
+            h.await.unwrap();
+        }
+        n
+    }
+
+    fn methods(&self) -> Vec<Method> {
+        self.up.methods.lock().unwrap().clone()
+    }
+
+    fn requested(&self) -> Vec<String> {
+        self.up
+            .hits
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    fn install_user_bytes(&self, bytes: &[u8]) {
+        let path = self.user_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, bytes).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn the_local_check_reads_the_month_of_the_database_in_use() {
+    let [current, _] = month_keys();
+    // No database at all.
+    let env = Env::new(false, None).await;
+    let s = env.freshness().await;
+    assert_eq!(s["state"], "missing", "{s}");
+    assert_eq!(s["offer"], "download");
+    assert_eq!(s["online"], "off");
+    assert_eq!(s["built_month"], Value::Null);
+    assert_eq!(s["current_month"], current.as_str());
+
+    // An old database (2023-11), then one built now.
+    env.install_user_bytes(&db_built(1_700_000_000));
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["offer"].clone()),
+        (json!("outdated"), json!("update"))
+    );
+    assert_eq!(s["built_month"], "2023-11");
+    env.install_user_bytes(&db_built(now_secs()));
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["offer"].clone()),
+        (json!("current"), Value::Null)
+    );
+    assert_eq!(s["built_month"], current.as_str());
+
+    // An unreadable user copy: the bundled one is used, else nothing.
+    let env = Env::new(false, Some(db_built(1_700_000_000))).await;
+    assert_eq!(env.freshness().await["state"], "outdated");
+    env.install_user_bytes(b"not a database");
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["built_month"].clone()),
+        (json!("outdated"), json!("2023-11"))
+    );
+    let env = Env::new(false, None).await;
+    env.install_user_bytes(b"not a database");
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["offer"].clone()),
+        (json!("missing"), json!("download"))
+    );
+    assert_eq!(env.requested(), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn nothing_is_requested_while_the_setting_is_off() {
+    for settings in [
+        None,
+        Some("{}"),
+        Some(r#"{"online":{"update_check":true}}"#),
+    ] {
+        let env = Env::with_settings(false, None, settings).await;
+        env.reply(&month_files()[0], Reply::Body(gzip(&db_built(now_secs()))));
+        env.run_startup_checks().await;
+        assert_eq!(env.requested(), Vec::<String>::new(), "{settings:?}");
+        let s = env.freshness().await;
+        assert_eq!(
+            (s["online"].clone(), s["offer"].clone()),
+            (json!("off"), json!("download"))
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_startup_check_sends_one_head_request_for_the_current_month() {
+    let [current, _] = month_keys();
+    let env = Env::with_settings(false, Some(db_built(1_700_000_000)), Some(CHECK_ON)).await;
+    env.reply(&month_files()[0], Reply::Body(gzip(&db_built(now_secs()))));
+    assert_eq!(env.run_startup_checks().await, 1);
+    assert_eq!(env.requested(), [month_files()[0].clone()]);
+    assert_eq!(env.methods(), [Method::HEAD]);
+    // Same generic identity as the download, nothing else.
+    let (_, headers) = env.up.hits.lock().unwrap()[0].clone();
+    assert_eq!(headers[header::USER_AGENT], crate::outbound::USER_AGENT);
+    assert!(headers.get(header::COOKIE).is_none());
+    let s = env.freshness().await;
+    assert_eq!(s["online"], "published");
+    assert_eq!(s["published_month"], current.as_str());
+    assert_eq!(s["offer"], "update");
+}
+
+#[tokio::test]
+async fn the_startup_check_falls_back_to_the_previous_month() {
+    let [_, previous] = month_keys();
+    // Previous month published: newer than a 2023 database.
+    let env = Env::with_settings(false, None, Some(CHECK_ON)).await;
+    env.install_user_bytes(&db_built(1_700_000_000));
+    env.reply(&month_files()[1], Reply::Status(StatusCode::OK));
+    env.run_startup_checks().await;
+    assert_eq!(env.requested(), month_files());
+    assert_eq!(env.methods(), [Method::HEAD, Method::HEAD]);
+    let s = env.freshness().await;
+    assert_eq!(s["published_month"], previous.as_str());
+    assert_eq!(s["offer"], "update");
+
+    // Nothing newer than a database of the previous month: no offer.
+    let [_, (y, m)] = download::months(SystemTime::now());
+    let mid_previous = MmdbBuilder::new()
+        .build_epoch(epoch_in_month(y, m))
+        .network(ip("8.8.8.0"), 24, "DE")
+        .build();
+    let env = Env::with_settings(false, Some(mid_previous), Some(CHECK_ON)).await;
+    env.reply(&month_files()[1], Reply::Status(StatusCode::OK));
+    env.run_startup_checks().await;
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["offer"].clone()),
+        (json!("outdated"), Value::Null)
+    );
+
+    // Neither month published: the download would fail, no offer.
+    let env = Env::with_settings(false, None, Some(CHECK_ON)).await;
+    env.run_startup_checks().await;
+    assert_eq!(env.requested(), month_files());
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["online"].clone(), s["offer"].clone()),
+        (json!("not_published"), Value::Null)
+    );
+}
+
+/// A time (seconds) within `year-month` (UTC), walking back from now.
+fn epoch_in_month(year: i64, month: u32) -> u64 {
+    // Walk back from now to a day of that month: at most ~62 days.
+    let mut t = now_secs();
+    loop {
+        let (y, m) = download::month_of(i64::try_from(t).unwrap());
+        if (y, m) == (year, month) {
+            return t;
+        }
+        t -= 86_400;
+    }
+}
+
+#[tokio::test]
+async fn startup_check_failures_are_silent_and_fall_back_to_the_local_check() {
+    // Server error.
+    let env = Env::with_settings(false, Some(db_built(1_700_000_000)), Some(CHECK_ON)).await;
+    env.reply(
+        &month_files()[0],
+        Reply::Status(StatusCode::INTERNAL_SERVER_ERROR),
+    );
+    env.run_startup_checks().await;
+    assert_eq!(env.requested(), [month_files()[0].clone()]);
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["online"].clone(), s["offer"].clone()),
+        (json!("failed"), json!("update"))
+    );
+
+    // Nobody listening.
+    let env = Env::with_settings(false, None, Some(CHECK_ON)).await;
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap()
+    };
+    env.state.geoip.set_source(source(closed));
+    env.run_startup_checks().await;
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["online"].clone(), s["offer"].clone()),
+        (json!("failed"), json!("download"))
+    );
+
+    // Redirection to another host: refused, silent too.
+    let env = Env::with_settings(false, None, Some(CHECK_ON)).await;
+    env.reply(
+        &month_files()[0],
+        Reply::Redirect("http://example.com/x".to_owned()),
+    );
+    env.run_startup_checks().await;
+    assert_eq!(env.freshness().await["online"], "failed");
+}
+
+#[tokio::test]
+async fn no_offer_while_the_startup_check_runs() {
+    // A server that accepts connections and never answers.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let mut open = Vec::new();
+        while let Ok((stream, _)) = listener.accept().await {
+            open.push(stream);
+        }
+    });
+    let env = Env::with_settings(false, None, Some(CHECK_ON)).await;
+    env.state.geoip.set_source(source(addr));
+    let handles = crate::online::spawn_startup_checks(&env.state);
+    assert_eq!(handles.len(), 1);
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["online"].clone(), s["offer"].clone()),
+        (json!("pending"), Value::Null)
+    );
+    env.state.begin_shutdown();
+    for h in handles {
+        tokio::time::timeout(Duration::from_secs(5), h)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a_current_database_needs_no_request() {
+    let env = Env::with_settings(false, Some(db_built(now_secs())), Some(CHECK_ON)).await;
+    assert_eq!(env.run_startup_checks().await, 1);
+    assert_eq!(env.requested(), Vec::<String>::new());
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["online"].clone(), s["offer"].clone()),
+        (json!("current"), json!("off"), Value::Null)
+    );
+}
+
+#[tokio::test]
+async fn a_read_only_server_neither_checks_nor_offers() {
+    let env = Env::with_settings(true, None, Some(CHECK_ON)).await;
+    env.reply(&month_files()[0], Reply::Status(StatusCode::OK));
+    assert_eq!(env.run_startup_checks().await, 0);
+    assert_eq!(env.requested(), Vec::<String>::new());
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["offer"].clone()),
+        (json!("missing"), Value::Null)
+    );
+}
+
+#[tokio::test]
+async fn the_offer_ends_once_the_database_is_downloaded() {
+    let env = Env::new(false, Some(db_built(1_700_000_000))).await;
+    assert_eq!(env.freshness().await["offer"], "update");
+    env.reply(&month_files()[0], Reply::Body(gzip(&db_built(now_secs()))));
+    let (status, _, json) = env.download().await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["offer"].clone()),
+        (json!("current"), Value::Null)
+    );
+}
+
+#[tokio::test]
+async fn the_status_requires_the_token() {
+    let env = Env::new(false, None).await;
+    let req = Request::get("/api/v1/geoip/status")
+        .body(Body::empty())
+        .unwrap();
+    let res = env.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }

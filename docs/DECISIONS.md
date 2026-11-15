@@ -648,3 +648,39 @@ acceptée : la remplacer par une nouvelle qui la référence.
     dans LDAP et SMTP, Telnet et les poignées de main Wi-Fi ne sont pas encore émis ; `handshakes` vaut 0 ;
   - sessions mises à niveau (ADR-013) : la table créée à l'ouverture est vide, l'Overview affiche le module
     « non analysé » et `GET /credentials/stats` répond `analyzed: false`.
+
+## ADR-020 — Fuzzing : crate `fuzz/` hors workspace, feature `fuzzing`, outils épinglés dans le cache
+
+- Contexte : P4.1. Les captures sont des entrées hostiles ; chaque parseur et chaque analyseur doit être
+  fuzzé (cargo-fuzz, libFuzzer), ce qui exige une nightly et des drapeaux d'instrumentation, alors que le
+  workspace est épinglé sur la stable 1.99.1. Beaucoup de parseurs sont privés à leur module (NTLMSSP,
+  PDU SMB, datagrammes NetBIOS, communautés SNMP, identifiants HTTP). L'image de dev n'a pas de nightly,
+  son `RUSTUP_HOME` n'est pas inscriptible par l'utilisateur du conteneur et le conteneur est éphémère.
+- Décision :
+  - **crate `fuzz/` hors workspace** (`exclude` du `Cargo.toml` racine, son propre `[workspace]` et son
+    `Cargo.lock`) : 17 cibles au niveau de l'API la plus basse et pure possible, plus des cibles qui
+    pilotent les analyseurs par leur interface publique `Analyzer`, comme le moteur (`on_stream` direct
+    ou table de flux alimentée par des trames forgées), et une cible de bout en bout sans SQLite. Il
+    dépend de `analyze`, `capture`, `engine`, `geo` ; `fixtures` en dépendance de développement pour le
+    générateur de graines (`examples/gen_corpus.rs`), qui reproduit les formats d'entrée des cibles :
+    aucun corpus binaire n'est commité. `./x.sh check` n'est pas concerné ;
+  - **feature `fuzzing` comme seule porte** vers les parseurs privés : `netsift_analyze::fuzz`, module
+    `#[doc(hidden)]` compilé seulement avec la feature (et en test), qui enveloppe chaque parseur
+    (`ntlmssp`, `smb`, `snmp`, `http_auth`) sans rien renvoyer d'interne ; les modules concernés passent
+    `pub(crate)`. Jamais activée par l'application ; compilée par le clippy du gate (`--all-features`),
+    donc maintenue. Une nouvelle cible sur un parseur privé ajoute une fonction à ce module plutôt que
+    d'élargir l'API publique ;
+  - **outils épinglés dans le cache** : `scripts/ct/fuzz.sh` fixe `NIGHTLY` et `CARGO_FUZZ_VERSION`
+    (source unique, lue aussi par la CI), installés une fois dans `/cache/tools` (un `RUSTUP_HOME` à part,
+    la stable de l'image n'est pas touchée), builds instrumentés dans `<target du worktree>/fuzz`, sans
+    sccache ; `--target x86_64-unknown-linux-gnu` forcé (le cargo-fuzz précompilé est musl). Campagnes par
+    `./x.sh fuzz all <durée>` : un processus par cible, cœurs - 2 à la fois, bilan dans `.artifacts/fuzz/` ;
+  - **CI facultative** : job `fuzz` de `ci.yml`, sur `main` et à la demande seulement (60 s par cible,
+    même script hors conteneur via `scripts/ci/fuzz.sh`) ; il ne ralentit pas la validation des branches.
+- Conséquences :
+  - un crash se corrige dans le parseur (commit `fix(<scope>)` séparé) avec un test unitaire de
+    régression sur l'entrée minimisée (`./x.sh fuzz tmin`) ; le corpus vivant reste local ;
+  - changer de nightly ou de cargo-fuzz se fait dans `scripts/ct/fuzz.sh` seulement ; une nightly trop
+    ancienne pour l'édition ou les fonctions utilisées par le workspace casse les cibles, pas le gate ;
+  - le crate `fuzz/` n'est pas couvert par `cargo fmt --all` ni par le clippy du gate : à formater avec
+    `./x.sh cargo fmt --manifest-path fuzz/Cargo.toml`. Procédure et résultats : `docs/FUZZING.md`.

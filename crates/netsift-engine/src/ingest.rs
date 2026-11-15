@@ -482,7 +482,9 @@ impl RunCtx<'_> {
         let mut flow = o.flow;
         flow.max_flows = (flow.max_flows / shards.max(1)).max(1);
         flow.max_defrag_bytes = (flow.max_defrag_bytes / shards.max(1)).max(MIN_DEFRAG_BYTES);
-        flow.max_buffered_bytes /= shards.max(1);
+        // At least one full stream per table: a shard can always reassemble its largest flow.
+        flow.max_buffered_bytes =
+            (flow.max_buffered_bytes / shards.max(1)).max(flow.max_stream_buffer);
         // So are the memory bounds of the HTTP analyzer (P4.2): retained bodies and content
         // decoders, whose total no longer grows with the number of cores.
         let http = &mut registry.config_mut().http;

@@ -244,6 +244,8 @@ pub fn run(packets: &[Packet], config: FlowConfig) -> Recorder {
     feed(&mut table, packets, &mut rec);
     table.finish(&mut rec);
     assert_eq!(table.active_flows(), 0);
+    // Every buffered byte is accounted back once its flow ends.
+    assert_eq!(table.buffered_bytes(), 0);
     rec.assert_ends_once();
     rec
 }

@@ -442,6 +442,11 @@ impl FlowTable {
         self.defrag.clear();
     }
 
+    /// Out-of-order bytes buffered by the TCP streams of the table (memory reporting, tests).
+    pub fn buffered_bytes(&self) -> usize {
+        self.buffered
+    }
+
     /// Number of flows currently tracked (for progress and memory reporting).
     pub fn active_flows(&self) -> usize {
         self.flows.len()

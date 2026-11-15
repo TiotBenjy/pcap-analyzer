@@ -497,6 +497,10 @@ pub struct FlowRow {
 
 impl FlowRow {
     fn insert(&self, conn: &Connection) -> Result<()> {
+        // The conflict clause only makes the insert idempotent (replay) and order-independent
+        // (records arrive from the shards in any order). It is not a way to merge two flows:
+        // an id is never reused within a session (it is the global index of the flow's first
+        // frame, docs/DECISIONS.md ADR-022), and a reused id would merge two flows silently.
         conn.prepare_cached(concat!(
             "INSERT INTO flows (id, transport, src_ip, src_port, dst_ip, dst_port, first_ts, \
              last_ts, bytes_fwd, bytes_rev, packets_fwd, packets_rev, app_proto, tcp_state) \

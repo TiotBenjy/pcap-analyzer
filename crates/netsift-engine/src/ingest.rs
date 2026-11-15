@@ -247,6 +247,8 @@ fn join_rest(
 
 /// Smallest per-shard defragmentation buffer (one maximal IP datagram).
 const MIN_DEFRAG_BYTES: usize = 64 * 1024;
+/// Smallest per-shard HTTP retention budget (a body preview and a small image).
+const MIN_RETAINED_BYTES: usize = 256 * 1024;
 
 /// See [`RunCtx::parts`].
 struct Parts {
@@ -480,6 +482,13 @@ impl RunCtx<'_> {
         let mut flow = o.flow;
         flow.max_flows = (flow.max_flows / shards.max(1)).max(1);
         flow.max_defrag_bytes = (flow.max_defrag_bytes / shards.max(1)).max(MIN_DEFRAG_BYTES);
+        flow.max_buffered_bytes /= shards.max(1);
+        // So are the memory bounds of the HTTP analyzer (P4.2): retained bodies and content
+        // decoders, whose total no longer grows with the number of cores.
+        let http = &mut registry.config_mut().http;
+        http.max_retained_bytes = (http.max_retained_bytes / shards.max(1)).max(MIN_RETAINED_BYTES);
+        http.max_decoders = (http.max_decoders / shards.max(1)).max(1);
+        http.max_brotli_decoders = (http.max_brotli_decoders / shards.max(1)).max(1);
         Parts {
             capacity: o.channel_batches.max(1),
             limits: BatchLimits {

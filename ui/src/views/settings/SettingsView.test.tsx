@@ -33,6 +33,15 @@ vi.mock('../../api/geoip', () => ({
   downloadGeoip: api.downloadGeoip,
   importGeoip: api.importGeoip,
   getGeoipUpdate: api.getGeoipUpdate,
+  getGeoipStatus: () =>
+    Promise.resolve({
+      state: 'missing',
+      built_month: null,
+      current_month: '2026-11',
+      online: 'off',
+      published_month: null,
+      offer: 'download',
+    }),
 }));
 vi.mock('../../api/sessions', () => ({ browse: api.browse }));
 vi.mock('../../api/settings', () => ({

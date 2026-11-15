@@ -156,6 +156,22 @@ impl SettingsStore {
     }
 }
 
+impl SettingsStore {
+    /// Hides the notice `id` until its key differs from `key` (blocking). `id` and `key` must be
+    /// valid (checked by the route; constants of the server otherwise).
+    pub(crate) fn dismiss(&self, id: String, key: String) -> Result<Settings, ApiError> {
+        self.update(|settings| {
+            let list = &mut settings.dismissed_notices;
+            list.retain(|n| n.id != id);
+            list.push(DismissedNotice { id, key });
+            // Least recently dismissed first: forget the oldest ones.
+            let excess = list.len().saturating_sub(MAX_DISMISSED);
+            list.drain(..excess);
+            Ok(())
+        })
+    }
+}
+
 /// `GET /settings`.
 async fn get_settings(State(state): State<Arc<AppState>>) -> Json<Settings> {
     Json(state.settings.get())
@@ -196,18 +212,7 @@ async fn dismiss_notice(
     if !valid_key(&body.key) {
         return Err(ApiError::BadRequest("invalid notice key".to_owned()));
     }
-    let settings = blocking(&state, move |s| {
-        s.settings.update(|settings| {
-            let list = &mut settings.dismissed_notices;
-            list.retain(|n| n.id != id);
-            list.push(DismissedNotice { id, key: body.key });
-            // Least recently dismissed first: forget the oldest ones.
-            let excess = list.len().saturating_sub(MAX_DISMISSED);
-            list.drain(..excess);
-            Ok(())
-        })
-    })
-    .await?;
+    let settings = blocking(&state, move |s| s.settings.dismiss(id, body.key)).await?;
     Ok(Json(settings))
 }
 

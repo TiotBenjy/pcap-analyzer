@@ -138,9 +138,15 @@ impl Geoip {
     }
 
     /// Validates and installs `bytes` (decoded database) as the user copy, then makes it the
-    /// database of the next imports.
-    fn install(&self, bytes: Vec<u8>) -> Result<GeoipInfo, ApiError> {
+    /// database of the next imports. `month`: DB-IP month of a downloaded file, recorded next to
+    /// it (none for an imported file: the record is removed).
+    fn install(
+        &self,
+        bytes: Vec<u8>,
+        month: Option<freshness::Month>,
+    ) -> Result<GeoipInfo, ApiError> {
         let db = netsift_geo::install(&self.user_path, bytes).map_err(install_error)?;
+        freshness::record_month(&self.month_path(), month, db.build_epoch());
         let key = self.key();
         let info = key.0.map_or_else(GeoipInfo::missing, |stamp| {
             info(&db, GeoipSource::User, stamp)
@@ -152,6 +158,11 @@ impl Geoip {
         };
         tracing::info!(built_at_us = ?info.built_at_us, "GeoIP database updated");
         Ok(info)
+    }
+
+    /// Record of the DB-IP month of the user copy (`dbip-country-lite.month`, next to it).
+    fn month_path(&self) -> PathBuf {
+        self.user_path.with_extension("month")
     }
 
     fn set_progress(&self, update: GeoipUpdate) {
@@ -192,11 +203,13 @@ impl Drop for UpdateGuard {
 }
 
 /// `POST /geoip/download`: downloads the latest DB-IP database (ADR-015) and installs it.
-async fn download_latest(State(state): State<Arc<AppState>>) -> Result<Json<GeoipInfo>, ApiError> {
+async fn download_latest(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<freshness::GeoipDownload>, ApiError> {
     let guard = UpdateGuard::begin(&state, GeoipUpdatePhase::Downloading)?;
     let source = state.geoip.source();
     let progress = Arc::clone(&state);
-    let raw = download::fetch(
+    let (raw, month) = download::fetch(
         &source,
         SystemTime::now(),
         netsift_geo::MAX_COMPRESSED_BYTES,
@@ -225,7 +238,9 @@ async fn download_latest(State(state): State<Arc<AppState>>) -> Result<Json<Geoi
             ..GeoipUpdate::idle()
         });
         let bytes = netsift_geo::decode_database(raw).map_err(install_error)?;
-        s.geoip.install(bytes)
+        let before = s.geoip.current().0.map(|db| db.build_epoch());
+        let info = s.geoip.install(bytes, Some(month))?;
+        Ok(freshness::after_download(s, before, info, month))
     })
     .await?;
     Ok(Json(info))
@@ -251,7 +266,7 @@ async fn import_file(
             }
             other => install_error(other),
         })?;
-        s.geoip.install(bytes)
+        s.geoip.install(bytes, None)
     })
     .await?;
     Ok(Json(info))

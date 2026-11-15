@@ -241,9 +241,17 @@ impl Env {
     }
 
     fn install_user(&self, code: &str) {
+        self.install_user_bytes(&db(code));
+    }
+
+    /// Replaces the user copy as an installation does (new file renamed over it): the change is
+    /// noticed by its inode, whatever the size and the modification time.
+    fn install_user_bytes(&self, bytes: &[u8]) {
         let path = self.user_path();
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, db(code)).unwrap();
+        let temp = path.with_extension("test-tmp");
+        std::fs::write(&temp, bytes).unwrap();
+        std::fs::rename(&temp, &path).unwrap();
     }
 }
 
@@ -275,17 +283,20 @@ async fn downloads_the_current_month_with_a_generic_user_agent() {
     env.reply(&current, Reply::Body(gzip(&db("FR"))));
     assert_eq!(env.next_import_country(), None);
 
-    let (status, _, json) = env.download().await;
-    assert_eq!(status, StatusCode::OK, "{json}");
+    let (status, _, body) = env.download().await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let json = &body["info"];
     assert_eq!(json["status"], "available");
     assert_eq!(json["source"], "user");
     assert_eq!(json["built_at_us"], 1_700_000_000_000_000_i64);
     assert_eq!(json["size_bytes"], db("FR").len());
     assert!(json["installed_at_us"].is_i64());
+    assert_eq!(body["month"], month_keys()[0].as_str());
+    assert_eq!(body["newer"], true);
     assert_eq!(std::fs::read(env.user_path()).unwrap(), db("FR"));
     // Hot reload: the next import gets the new database, and /server-info agrees.
     assert_eq!(env.next_import_country().as_deref(), Some("FR"));
-    assert_eq!(env.server_geoip().await, json);
+    assert_eq!(&env.server_geoip().await, json);
 
     let hits = env.up.hits.lock().unwrap();
     assert_eq!(hits.len(), 1);
@@ -412,7 +423,7 @@ async fn the_body_size_is_bounded_while_receiving() {
         .unwrap()
         .insert(current.clone(), Reply::Body(vec![0; 2_000]));
     assert!(matches!(fetch(1_000).await, Err(DownloadError::TooLarge)));
-    assert_eq!(fetch(2_000).await.unwrap().len(), 2_000);
+    assert_eq!(fetch(2_000).await.unwrap().0.len(), 2_000);
 
     // No announced size: stopped as soon as the bound is crossed.
     let (tx, rx) = mpsc::channel(4);
@@ -748,12 +759,6 @@ impl Env {
             .map(|(name, _)| name.clone())
             .collect()
     }
-
-    fn install_user_bytes(&self, bytes: &[u8]) {
-        let path = self.user_path();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, bytes).unwrap();
-    }
 }
 
 #[tokio::test]
@@ -970,7 +975,7 @@ async fn a_current_database_needs_no_request() {
     let s = env.freshness().await;
     assert_eq!(
         (s["state"].clone(), s["online"].clone(), s["offer"].clone()),
-        (json!("current"), json!("off"), Value::Null)
+        (json!("current"), json!("not_needed"), Value::Null)
     );
 }
 
@@ -985,6 +990,107 @@ async fn a_read_only_server_neither_checks_nor_offers() {
         (s["state"].clone(), s["offer"].clone()),
         (json!("missing"), Value::Null)
     );
+}
+
+/// A database built in the last second of the previous month, published for the current one.
+fn built_last_month() -> Vec<u8> {
+    let [_, (y, m)] = download::months(SystemTime::now());
+    let mut t = epoch_in_month(y, m);
+    while download::month_of(i64::try_from(t + 1).unwrap()) == (y, m) {
+        t += 1;
+    }
+    db_built(t)
+}
+
+#[tokio::test]
+async fn the_downloaded_month_wins_over_an_earlier_build_date() {
+    let [current, previous] = month_keys();
+    let env = Env::new(false, None).await;
+    env.reply(&month_files()[0], Reply::Body(gzip(&built_last_month())));
+    let (status, _, body) = env.download().await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["month"], current.as_str());
+    assert_eq!(body["dismissed"], false);
+    let s = env.freshness().await;
+    assert_eq!(
+        (s["state"].clone(), s["offer"].clone()),
+        (json!("current"), Value::Null)
+    );
+    assert_eq!(s["built_month"], current.as_str());
+    let record = env.user_path().with_extension("month");
+    assert!(record.is_file());
+
+    // The record only applies to the file it was written for.
+    env.install_user_bytes(&db_built(1_700_000_000));
+    assert_eq!(env.freshness().await["built_month"], "2023-11");
+    // Same file again, put back by hand: the record applies again.
+    env.install_user_bytes(&built_last_month());
+    assert_eq!(env.freshness().await["built_month"], current.as_str());
+    // Malformed records are ignored.
+    for bad in ["", "{", r#"{"month":"2026-13","build_epoch":0}"#, "[1]"] {
+        std::fs::write(&record, bad).unwrap();
+        assert_eq!(
+            env.freshness().await["built_month"],
+            previous.as_str(),
+            "{bad}"
+        );
+    }
+
+    // An imported file removes the record.
+    env.reply(&month_files()[0], Reply::Body(gzip(&built_last_month())));
+    assert_eq!(env.download().await.0, StatusCode::OK);
+    assert!(record.is_file());
+    let file = env.captures().join("imported.mmdb");
+    std::fs::write(&file, built_last_month()).unwrap();
+    assert_eq!(env.import(&file).await.0, StatusCode::OK);
+    assert!(!record.exists());
+    assert_eq!(env.freshness().await["built_month"], previous.as_str());
+    // The bundled database never uses the record.
+    let env = Env::new(false, Some(built_last_month())).await;
+    std::fs::create_dir_all(env.user_path().parent().unwrap()).unwrap();
+    std::fs::write(record_path(&env), r#"{"month":"2099-01","build_epoch":0}"#).unwrap();
+    assert_eq!(env.freshness().await["built_month"], previous.as_str());
+}
+
+fn record_path(env: &Env) -> PathBuf {
+    env.user_path().with_extension("month")
+}
+
+#[tokio::test]
+async fn a_download_with_nothing_newer_dismisses_the_notice_for_the_month() {
+    let [current, previous] = month_keys();
+    // Start of month: only the previous month is published, and already installed.
+    let env = Env::new(false, None).await;
+    env.reply(&month_files()[1], Reply::Body(gzip(&built_last_month())));
+    let (status, _, body) = env.download().await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["month"], previous.as_str());
+    assert_eq!(
+        (body["newer"].clone(), body["dismissed"].clone()),
+        (json!(true), json!(true))
+    );
+    let dismissed = env.state.settings.get().dismissed_notices;
+    assert_eq!(dismissed.len(), 1);
+    assert_eq!(
+        (dismissed[0].id.as_str(), dismissed[0].key.as_str()),
+        ("geoip", current.as_str())
+    );
+    assert_eq!(env.freshness().await["state"], "outdated");
+
+    // Again: the same database, not newer.
+    let (_, _, body) = env.download().await;
+    assert_eq!(
+        (body["newer"].clone(), body["dismissed"].clone()),
+        (json!(false), json!(true))
+    );
+    assert_eq!(env.state.settings.get().dismissed_notices.len(), 1);
+
+    // A current database dismisses nothing.
+    let env = Env::new(false, None).await;
+    env.reply(&month_files()[0], Reply::Body(gzip(&db_built(now_secs()))));
+    let (_, _, body) = env.download().await;
+    assert_eq!(body["dismissed"], false);
+    assert_eq!(env.state.settings.get().dismissed_notices, []);
 }
 
 #[tokio::test]

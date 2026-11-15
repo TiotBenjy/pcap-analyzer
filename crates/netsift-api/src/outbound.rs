@@ -180,6 +180,7 @@ pub(crate) enum OutboundError {
     TooManyRedirects,
     #[error("request timed out")]
     Timeout,
+    /// Transport failure, without the URL of the request (see `from_reqwest`).
     #[error("request failed: {0}")]
     Network(reqwest::Error),
     #[error("unexpected HTTP status {0}")]
@@ -217,7 +218,9 @@ impl OutboundError {
         if e.is_timeout() {
             Self::Timeout
         } else {
-            Self::Network(e)
+            // Without its URL: a redirection target may carry a signed query (asset storage),
+            // which must never reach the logs.
+            Self::Network(e.without_url())
         }
     }
 }

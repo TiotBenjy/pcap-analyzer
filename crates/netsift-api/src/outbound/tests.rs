@@ -716,6 +716,31 @@ async fn concurrent_downloads_to_one_target_never_mix() {
     assert_eq!(part_files(env.tmp.path()), Vec::<PathBuf>::new());
 }
 
+#[tokio::test]
+async fn network_errors_never_carry_the_url() {
+    // A port nothing listens on (bound, then closed).
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap().port()
+    };
+    let signed = format!("http://127.0.0.1:{closed}/asset?sig=secret-marker&jwt=secret-marker");
+    let client = local_client();
+    let err = client.get_bytes(&signed, 100, |_, _| {}).await.unwrap_err();
+    assert!(matches!(err, OutboundError::Network(_)), "{err}");
+    assert!(!format!("{err} {err:?}").contains("secret-marker"));
+
+    // Same after a redirection to a signed storage URL.
+    let env = Env::new().await;
+    env.up.reply("asset", Reply::Redirect(signed));
+    let dest = env.tmp.path().join("asset.bin");
+    let err = client
+        .download_to(&env.url("asset"), &dest, 100, None, |_, _| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutboundError::Network(_)), "{err}");
+    assert!(!format!("{err} {err:?}").contains("secret-marker"));
+}
+
 #[test]
 fn sha256_digests_parse_in_either_case() {
     let lower = sha256_hex(b"abc");

@@ -10,6 +10,10 @@ import { frozenPrototype } from './vite-plugins/frozenPrototype';
 const apiUrl = process.env.NETSIFT_API_URL ?? 'http://127.0.0.1:7878';
 const apiToken = process.env.NETSIFT_API_TOKEN ?? '';
 
+// Libraries every page needs at startup. Lazily used ones (virtual lists, tables) keep their own chunks.
+const VENDOR =
+  /node_modules\/(react|react-dom|scheduler|i18next|react-i18next|@tanstack\/(history|store|router-core|react-router|query-core|react-query))\//;
+
 export default defineConfig({
   plugins: [frozenPrototype(), react(), tailwindcss()],
   // Relative asset paths: required by the Tauri custom protocol.
@@ -28,12 +32,18 @@ export default defineConfig({
     // No data: URIs for fonts/assets: the desktop CSP only allows data: for images.
     assetsInlineLimit: 0,
     sourcemap: false,
+    // The echarts chunk (about 700 kB minified) is already tree-shaken (`echarts/core` plus the
+    // charts and components in use) and only loaded with the first chart, from the local bundle.
+    // Every other chunk stays below the default 500 kB.
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         // Heavy libraries get their own chunks; they are only reached through dynamic imports.
+        // The framework libraries loaded at startup go to `vendor`, out of the application chunk.
         manualChunks(id) {
           if (id.includes('node_modules/echarts') || id.includes('node_modules/zrender')) return 'echarts';
           if (id.includes('node_modules/sigma') || id.includes('node_modules/graphology')) return 'graph';
+          if (VENDOR.test(id)) return 'vendor';
           return undefined;
         },
       },

@@ -3,6 +3,7 @@
 #[cfg(any(feature = "demo", test))]
 #[cfg_attr(not(feature = "demo"), allow(dead_code))]
 mod demo;
+mod export;
 mod ingest;
 
 use std::io::IsTerminal;
@@ -31,6 +32,9 @@ struct Cli {
 enum Command {
     /// Import a capture file or a folder of chunks into a new session.
     Ingest(ingest::IngestArgs),
+    /// Export data of a session (`pcap`: packets to a pcapng file).
+    #[command(subcommand)]
+    Export(export::ExportCommand),
     /// Serve the HTTP API (used by `./x.sh dev`, screenshots, and for debugging with curl).
     Serve(ServeArgs),
     /// Generate synthetic demo captures and import them (screenshots, previews).
@@ -149,17 +153,23 @@ async fn shutdown_signal() {
     }
 }
 
-/// Runs an import on the current thread; Ctrl-C or SIGTERM cancels it (session incomplete).
-fn ingest_command(
-    runtime: &tokio::runtime::Runtime,
-    args: &ingest::IngestArgs,
-) -> Result<ExitCode> {
+/// Token cancelled on Ctrl-C or SIGTERM.
+fn signal_token(runtime: &tokio::runtime::Runtime) -> CancelToken {
     let cancel = CancelToken::new();
     let on_signal = cancel.clone();
     runtime.spawn(async move {
         shutdown_signal().await;
         on_signal.cancel();
     });
+    cancel
+}
+
+/// Runs an import on the current thread; Ctrl-C or SIGTERM cancels it (session incomplete).
+fn ingest_command(
+    runtime: &tokio::runtime::Runtime,
+    args: &ingest::IngestArgs,
+) -> Result<ExitCode> {
+    let cancel = signal_token(runtime);
     let interactive = std::io::stderr().is_terminal();
     ingest::run(
         args,
@@ -185,6 +195,9 @@ fn main() -> Result<ExitCode> {
         .build()?;
     match cli.command {
         Command::Ingest(args) => ingest_command(&runtime, &args),
+        Command::Export(command) => {
+            export::run(&command, &signal_token(&runtime), &mut std::io::stdout())
+        }
         Command::Serve(args) => runtime.block_on(serve(args)).map(|()| ExitCode::SUCCESS),
         #[cfg(feature = "demo")]
         Command::DemoSession(args) => {
@@ -358,5 +371,60 @@ mod tests {
             &mut Vec::new(),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn export_pcap_writes_a_session_flow_or_range() {
+        use netsift_fixtures::scenarios::{Kind, generate};
+        use netsift_fixtures::{Encoding, write_file};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let input = tmp.path().join("in.pcapng");
+        let packets = generate(Kind::Demo, 2, 1);
+        write_file(&input, &packets, &Encoding::pcapng()).unwrap();
+        let data = tmp.path().join("data");
+        let args = parse_ingest(&[
+            "netsift",
+            "ingest",
+            input.to_str().unwrap(),
+            "--out",
+            data.to_str().unwrap(),
+        ]);
+        ingest::run(&args, &CancelToken::new(), false, &mut Vec::new(), &mut Vec::new()).unwrap();
+        let catalog = netsift_store::Catalog::open(&data).unwrap();
+        let id = catalog.list().unwrap()[0].id.to_string();
+
+        let output = tmp.path().join("all.pcapng");
+        let cli = Cli::try_parse_from([
+            "netsift",
+            "export",
+            "pcap",
+            "--data-dir",
+            data.to_str().unwrap(),
+            "--session",
+            &id,
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .unwrap();
+        let Command::Export(command) = cli.command else {
+            panic!("not an export command");
+        };
+        let mut out = Vec::new();
+        let code = export::run(&command, &CancelToken::new(), &mut out).unwrap();
+        assert_eq!(code, ExitCode::SUCCESS);
+        let out = String::from_utf8(out).unwrap();
+        assert!(out.contains(&format!("{} packets", packets.len())), "{out}");
+        assert!(output.is_file());
+        // Never overwritten.
+        assert!(export::run(&command, &CancelToken::new(), &mut Vec::new()).is_err());
+
+        // --flow excludes a range; a range needs both ends.
+        let base = ["netsift", "export", "pcap", "--session", "x", "-o", "f"];
+        let with = |extra: &[&str]| Cli::try_parse_from(base.iter().chain(extra));
+        assert!(with(&["--flow", "1"]).is_ok());
+        assert!(with(&["--from-ns", "1", "--to-ns", "2"]).is_ok());
+        assert!(with(&["--from-ns", "1"]).is_err());
+        assert!(with(&["--flow", "1", "--from-ns", "1", "--to-ns", "2"]).is_err());
     }
 }

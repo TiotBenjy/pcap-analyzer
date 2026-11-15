@@ -41,6 +41,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'servers-empty': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   'servers-filter': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   settings: '/settings',
+  'settings-licenses': '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
   'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
@@ -457,6 +458,16 @@ for (const lang of LANGS) {
             // /server-info is authenticated: "Read-only" proves the proxy injects a valid token.
             await expect(page.getByTestId('backend-status')).toContainText(D.views.settings.backendOk.split(',')[0] ?? '');
             await expect(page.getByTestId('server-mode')).toHaveText(D.views.settings.readOnly);
+          }
+          if (view === 'settings-licenses') {
+            // Third-party licenses: dialog open, a search, one package and its license text shown.
+            await page.getByRole('button', { name: D.views.settings.thirdParty.open }).click();
+            const dialog = page.getByRole('dialog', { name: D.views.settings.thirdParty.title });
+            await expect(dialog.getByTestId('licenses-count')).toBeVisible();
+            await dialog.getByRole('searchbox').fill('tauri');
+            await dialog.getByRole('button', { name: D.views.settings.thirdParty.showText }).first().click();
+            await expect(dialog.locator('pre').first()).toBeVisible();
+            await settled(page);
           }
 
           const check = async (when: string) => {

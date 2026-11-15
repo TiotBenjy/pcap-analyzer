@@ -1,13 +1,19 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { license as PROJECT_LICENSE, version as APP_VERSION } from '../../../package.json';
 import { useHealth, useServerInfo } from '../../api/queries';
 import { Badge } from '../../components/Badge';
+import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { type LanguagePref, readLanguagePref, setLanguagePref } from '../../i18n';
 import { type ThemePref, useTheme } from '../../theme/theme';
 import { GeoipSection } from './GeoipSection';
+import { ThirdPartyLicensesDialog } from './licenses/ThirdPartyLicenses';
+
+/** Shown as text only: the application never opens external URLs (no network, opener limited to exports/). */
+const REPOSITORY_URL = 'https://github.com/TiotBenjy/pcap-analyzer';
 
 export default function SettingsView() {
   const { t } = useTranslation();
@@ -53,6 +59,7 @@ function AboutCard() {
   const { t } = useTranslation();
   const health = useHealth();
   const info = useServerInfo();
+  const [licensesOpen, setLicensesOpen] = useState(false);
 
   let backend;
   if (health.isPending) backend = <span className="text-muted">{t('views.settings.checking')}</span>;
@@ -62,6 +69,18 @@ function AboutCard() {
   return (
     <Card title={t('views.settings.about')}>
       <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] items-center gap-x-4 gap-y-3">
+        <dt className="text-muted">{t('views.settings.version')}</dt>
+        <dd className="num min-w-0" data-testid="app-version">
+          {APP_VERSION}
+        </dd>
+        <dt className="text-muted">{t('views.settings.license')}</dt>
+        <dd className="min-w-0 break-words" data-testid="app-license">
+          {PROJECT_LICENSE}
+        </dd>
+        <dt className="text-muted">{t('views.settings.sourceCode')}</dt>
+        <dd className="min-w-0 break-all select-all" data-testid="app-repository">
+          {REPOSITORY_URL}
+        </dd>
         <dt className="text-muted">{t('views.settings.backend')}</dt>
         <dd className="min-w-0" data-testid="backend-status">
           {backend}
@@ -80,7 +99,25 @@ function AboutCard() {
         <dd className="col-span-2 min-w-0 sm:col-span-1">
           <GeoipSection info={info.data} infoError={info.isError} />
         </dd>
+        <dt className="col-span-2 self-start text-muted sm:col-span-1">{t('views.settings.thirdParty.label')}</dt>
+        <dd className="col-span-2 flex min-w-0 flex-col items-start gap-2 sm:col-span-1">
+          <span className="break-words text-meta text-muted">{t('views.settings.thirdParty.description')}</span>
+          <Button
+            onClick={() => {
+              setLicensesOpen(true);
+            }}
+          >
+            {t('views.settings.thirdParty.open')}
+          </Button>
+        </dd>
       </dl>
+      {licensesOpen && (
+        <ThirdPartyLicensesDialog
+          onClose={() => {
+            setLicensesOpen(false);
+          }}
+        />
+      )}
     </Card>
   );
 }

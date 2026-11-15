@@ -96,7 +96,7 @@ export default function SmbView() {
           <OsChart query={stats} />
         </Card>
         <div className="flex flex-col gap-3">
-          <div className="min-w-0 overflow-x-auto">
+          <div className="relative min-w-0 overflow-x-auto">
             <SegmentedControl
               hideLabel
               label={t('nav.items.smb')}

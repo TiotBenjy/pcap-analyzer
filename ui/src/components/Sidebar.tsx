@@ -40,7 +40,8 @@ export function Sidebar({ collapsed, onToggleCollapsed, onClose, counts }: Sideb
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto py-2">
+      {/* Positioned: the `sr-only` labels of a collapsed sidebar stay inside this scroll area. */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto py-2">
         {NAV_GROUPS.map((group) => (
           <div key={group} className="mb-2">
             {!collapsed && (

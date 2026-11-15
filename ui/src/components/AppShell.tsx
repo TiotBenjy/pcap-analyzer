@@ -21,6 +21,11 @@ const DESKTOP_QUERY = '(min-width: 1024px)';
  *
  * The main column never hides horizontal overflow: a view that overflows is a bug that the
  * screenshot tests must see (docs/UI_GUIDELINES.md).
+ *
+ * Only `#main` (and the sidebar list) scroll, never the document. Both are positioned
+ * (`relative`): otherwise an absolutely positioned descendant without a positioned ancestor of its
+ * own (every `sr-only` label) would take the viewport as containing block, escape the scroll
+ * container at its static position far down a long view and make the whole document scroll.
  */
 export function AppShell() {
   const { t } = useTranslation();
@@ -161,7 +166,7 @@ export function AppShell() {
         </header>
         <NoticeArea />
 
-        <main id="main" className="min-h-0 flex-1 overflow-y-auto">
+        <main id="main" className="relative min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1600px] p-3 sm:p-4 lg:p-6">
             <Outlet />
           </div>

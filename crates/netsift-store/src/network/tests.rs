@@ -1414,6 +1414,8 @@ fn host_roles_come_from_the_servers_view() {
         .iter()
         .map(|ip| ip.parse().unwrap())
         .collect();
+    // The roles are materialized by the end-of-import step `servers` (0801).
+    crate::servers::finalize(&conn).unwrap();
     let roles = host_roles(&conn, &ips).unwrap();
     assert_eq!(roles.len(), 1, "only the asked hosts having a role");
     assert_eq!(roles[&ips[0]], ["dns", "kerberos", "ldap"]);

@@ -686,8 +686,23 @@ CREATE TABLE schema_migrations (
     applied_ns INTEGER NOT NULL
 );
 
--- view server_evidence
-CREATE VIEW server_evidence (role, ip, kind, count, clients, first_ts, last_ts, example) AS
+-- table server_evidence
+CREATE TABLE server_evidence (
+    role     TEXT,
+    ip       TEXT,
+    kind     TEXT,
+    count    INTEGER,
+    clients  INTEGER,
+    first_ts INTEGER,
+    last_ts  INTEGER,
+    example  TEXT
+);
+
+-- index server_evidence_role_ip
+CREATE INDEX server_evidence_role_ip ON server_evidence (role, ip);
+
+-- view server_evidence_source
+CREATE VIEW server_evidence_source (role, ip, kind, count, clients, first_ts, last_ts, example) AS
 WITH srv AS (
     -- SRV answers that locate LDAP, global catalog and Kerberos services: owner and target
     -- (the last word of the value `priority weight port target`).
@@ -789,8 +804,20 @@ FROM http_transactions
 WHERE resp_ts IS NOT NULL
 GROUP BY server_ip;
 
--- view server_roles
-CREATE VIEW server_roles (role, ip) AS
+-- table server_roles
+CREATE TABLE server_roles (
+    role TEXT,
+    ip   TEXT
+);
+
+-- index server_roles_ip
+CREATE INDEX server_roles_ip ON server_roles (ip, role);
+
+-- index server_roles_role
+CREATE INDEX server_roles_role ON server_roles (role, ip);
+
+-- view server_roles_source
+CREATE VIEW server_roles_source (role, ip) AS
 WITH srv AS (
     SELECT owner, lower(substr(v, length(rtrim(v, replace(v, ' ', ''))) + 1)) AS target
     FROM (SELECT lower(json_extract(a.value, '$.n')) AS owner, json_extract(a.value, '$.v') AS v

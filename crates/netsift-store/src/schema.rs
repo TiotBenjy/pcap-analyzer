@@ -47,6 +47,7 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
     migration!(600, "credentials", "0600_credentials.sql"),
     migration!(700, "objects", "0700_objects.sql"),
     migration!(800, "servers", "0800_servers.sql"),
+    migration!(801, "servers_materialized", "0801_servers_materialized.sql"),
     migration!(900, "network", "0900_network.sql"),
 ];
 

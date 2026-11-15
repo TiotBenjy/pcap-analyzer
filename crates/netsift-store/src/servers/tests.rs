@@ -148,8 +148,10 @@ fn insert(conn: &Connection, rows: &[ServerRow]) {
     }
 }
 
-/// Every piece of evidence of up to 1000 servers per role.
+/// Every piece of evidence of up to 1000 servers per role (roles materialized first, as at the
+/// end of an import).
 fn all(conn: &Connection, role: Option<&str>) -> Vec<EvidenceEntry> {
+    materialize_roles(conn).unwrap();
     let q = EvidenceQuery {
         role,
         categories: None,
@@ -210,7 +212,23 @@ fn evidence_of_every_role() {
         .query_row("SELECT count(*) FROM server_roles", [], |r| r.get(0))
         .unwrap();
     assert_eq!(roles, 8);
-    // The light view of the Overview counter agrees with the evidence view.
+    // The light view of the Overview counter agrees with the evidence view, and the tables with
+    // their source views.
+    for (table, cols) in [
+        (
+            "server_evidence",
+            "role, ip, kind, count, clients, first_ts, last_ts, example",
+        ),
+        ("server_roles", "role, ip"),
+    ] {
+        let q = |t: &str| {
+            rows(
+                &conn,
+                &format!("SELECT json_array({cols}) FROM {t} ORDER BY 1"),
+            )
+        };
+        assert_eq!(q(table), q(&format!("{table}_source")));
+    }
     assert_eq!(
         rows(
             &conn,
@@ -243,6 +261,7 @@ fn many_servers_of_one_role_never_hide_another_role() {
         categories: None,
         limit: 50,
     };
+    materialize_roles(&conn).unwrap();
     let got = evidence(&conn, &q).unwrap();
     assert_eq!(
         got.totals,
@@ -275,6 +294,7 @@ fn the_category_filter_applies_before_the_limit() {
         categories: Some(&private),
         limit: 1,
     };
+    materialize_roles(&conn).unwrap();
     let got = evidence(&conn, &q).unwrap();
     // The weakest server is the only private one; 203.0.113.9 has no host row: kept for the
     // caller, which decides from the address.
@@ -407,7 +427,7 @@ fn an_upgraded_session_is_not_analyzed() {
         crate::traffic::count_rows(&conn, "server_roles").unwrap(),
         None
     );
-    conn.execute_batch("DROP VIEW server_roles; DROP VIEW server_evidence")
+    conn.execute_batch("DROP TABLE server_roles; DROP TABLE server_evidence")
         .unwrap();
     assert!(!analyzed(&conn).unwrap());
 }

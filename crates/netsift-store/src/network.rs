@@ -1081,7 +1081,8 @@ pub fn node_detail(conn: &Connection, ip: IpAddr) -> Result<Option<NodeDetail>> 
     Ok(Some(detail))
 }
 
-/// Server roles of hosts (`?1`, JSON array of addresses), from the `server_roles` view (ADR-017).
+/// Server roles of hosts (`?1`, JSON array of addresses), from the `server_roles` table (ADR-017,
+/// materialized at the end of the import, 0801).
 const HOST_ROLES: &str = "SELECT DISTINCT ip, role FROM server_roles \
     WHERE ip IN (SELECT value FROM json_each(?1)) ORDER BY ip, role";
 

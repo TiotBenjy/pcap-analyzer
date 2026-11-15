@@ -2,10 +2,12 @@
 //! responses, KDC replies), the end-of-import step that feeds DHCP host names into
 //! `hosts.names`, and the read query of the Servers view.
 //!
-//! The roles are never stored: the `server_evidence` view derives them at read time from these
-//! tables and from those of the DNS, ports, SMB and HTTP analyzers. A session upgraded after its
-//! import lists the view in `meta.schema.tables_added_after_import` (ADR-013): [`analyzed`] is
-//! then false and the view is shown as not run, not as empty.
+//! The roles are derived from these tables and from those of the DNS, ports, SMB and HTTP
+//! analyzers by the `server_evidence_source` and `server_roles_source` views (ADR-017), copied by
+//! the end-of-import step into the `server_evidence` and `server_roles` tables that the views
+//! read (`0801_servers_materialized.sql`, P4.2). A session upgraded after its import lists
+//! `server_evidence` in `meta.schema.tables_added_after_import` (ADR-013): [`analyzed`] is then
+//! false and the view is shown as not run, not as empty.
 
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -16,7 +18,7 @@ use crate::error::Result;
 use crate::records::{MAX_HOST_NAMES, conversion, format_mac};
 use crate::session::tables_added_after_import;
 
-/// View of the derived roles.
+/// Table of the derived roles (a view before migration 0801).
 pub const EVIDENCE_VIEW: &str = "server_evidence";
 
 /// A row of the `servers` analyzer.
@@ -211,7 +213,8 @@ impl KerberosRow {
 
 // --- End of import ----------------------------------------------------------------------------
 
-/// End-of-import step `servers` (ADR-014): adds the DHCP host names to `hosts.names`.
+/// End-of-import step `servers` (ADR-014): adds the DHCP host names to `hosts.names`, then
+/// materializes the derived roles (they read the host names).
 ///
 /// A name sent by a client (option 12, usually in a broadcast DISCOVER or REQUEST) is paired
 /// with the address of the ACK of the same transaction (xid, client MAC): the two messages travel
@@ -253,6 +256,20 @@ pub fn finalize(conn: &Connection) -> Result<()> {
             update.execute(params![ip, serde_json::to_string(&names)?])?;
         }
     }
+    materialize_roles(conn)
+}
+
+/// Replaces the content of `server_evidence` and `server_roles` with their source views (P4.2):
+/// one evaluation per import instead of one per read.
+fn materialize_roles(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "DELETE FROM server_evidence;
+         INSERT INTO server_evidence (role, ip, kind, count, clients, first_ts, last_ts, example)
+             SELECT role, ip, kind, count, clients, first_ts, last_ts, example
+             FROM server_evidence_source;
+         DELETE FROM server_roles;
+         INSERT INTO server_roles (role, ip) SELECT role, ip FROM server_roles_source;",
+    )?;
     Ok(())
 }
 
@@ -263,7 +280,7 @@ pub fn finalize(conn: &Connection) -> Result<()> {
 pub fn analyzed(conn: &Connection) -> Result<bool> {
     let exists = conn
         .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type = 'view' AND name = ?1",
+            "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?1",
             [EVIDENCE_VIEW],
             |_| Ok(()),
         )

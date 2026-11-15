@@ -494,6 +494,13 @@ acceptée : la remplacer par une nouvelle qui la référence.
     lors d'un `ALTER TABLE ... RENAME`) ; une migration qui supprime une de ces tables doit aussi supprimer
     ou recréer la vue.
 
+- Mise à jour P4.2 (ADR-023) : la vue dérivait les rôles à chaque lecture (1,1 s pour la vue Servers,
+  250 ms pour les rôles du graphe et 320 ms de chaque résumé de session sur 8,9 M paquets). Depuis la
+  migration 0801, les deux vues gardent leur SQL sous les noms `server_evidence_source` et
+  `server_roles_source`, et l'étape de fin d'import `servers` (version 2) les copie dans des tables qui
+  portent les anciens noms : les lectures sont inchangées, une source de preuve ajoutée plus tard
+  demande une nouvelle version de l'étape.
+
 ## ADR-018 — Graphe Network : graphe borné, replié en fin d'import, disposition en Web Worker
 
 - Contexte : P3.9. Une session peut compter des milliers d'hôtes ; sigma.js (WebGL) reste fluide jusqu'à
@@ -816,3 +823,56 @@ acceptée : la remplacer par une nouvelle qui la référence.
     constant, 1 à 7 tables, propriété « jamais deux fois le même identifiant » sur du trafic hostile,
     `netsift-flow/tests/identity.rs`) et bout en bout HTTP, TLS, SMB et éviction, fichier unique,
     chunks qui se chevauchent avec un doublon, 1 à 7 shards (`netsift-engine/tests/flow_identity.rs`).
+
+## ADR-023 — Index et agrégats construits en fin d'import
+
+- Contexte : P4.2. Le banc de 5 Go de trafic mixte synthétique (`./x.sh bench`, `docs/PERFORMANCE.md`)
+  importait à 9,2 Mo/s sur 4 cœurs (578 s), le writer SQLite occupé à 94 % et les shards à 5 %, et
+  18 requêtes de vue sur 76 dépassaient 300 ms sur la session obtenue (8,9 M paquets). Le writer
+  passait l'essentiel de son temps à entretenir, ligne à ligne et dans le désordre, les index
+  secondaires (dix sur `flows`) et les deux index trigram HTTP, puis à réécrire leurs pages à chaque
+  commit ; les vues lisaient des agrégats recalculés à chaque requête (série temporelle d'une semaine,
+  rôles de serveurs, totaux).
+- Décision :
+  - **index secondaires différés** (`netsift_store::deferred`) : une session ouverte en mode `Import`
+    supprime tous ses index non uniques après avoir noté leur définition dans `meta`
+    (`import.deferred_indexes`) ; la première étape de fin d'import, `indexes`, les recrée (un tri
+    chacun) avant les étapes qui les lisent (`dns`, `servers`, `objects`, `network` la citent dans
+    `after`). Les index uniques et ceux des clés primaires et contraintes `UNIQUE` restent : les
+    upserts en ont besoin. Seules des instructions `CREATE INDEX` sont exécutées depuis `meta` ;
+  - **index de recherche HTTP en fin d'import** (0201) : plus de déclencheurs ; l'étape `http`
+    reconstruit `http_transactions_fts` et `http_headers_fts`. Le `SAVEPOINT` du writer autour de
+    chaque transaction HTTP forçait FTS5 à écrire puis fusionner un segment par transaction ;
+  - **agrégats matérialisés** : `timeseries_minute` et `timeseries_hour` plus les totaux dans `meta`
+    (0002, étape `timeseries` ; `resample` lit la table la plus grossière dont la largeur divise celle
+    du pas, repli sur la table à la seconde tant que l'étape n'a pas tourné) ; rôles de serveurs
+    (0801, ADR-017 mis à jour) ;
+  - **filtres actifs seulement** (`query::Conditions`) : une condition `?n IS NULL OR col = ?n` est
+    évaluée ligne à ligne et SQLite ne peut pas utiliser l'index d'un filtre peut-être inactif ; les
+    listes HTTP, DNS, Connections et Open Ports ne composent plus que les fragments constants des
+    filtres actifs (jamais de saisie dans le texte SQL), chacun vérifié contre l'ancien SQL ;
+  - **réglages d'import** : cache de pages de 256 Mio, point de contrôle du WAL tous les 128 Mio,
+    transactions de 200 000 lignes ou 1 s ; les étapes de fin d'import trient avec des fichiers
+    temporaires (`temp_store = FILE`) et 4 threads ;
+  - **bornes mémoire globales** : rétention de corps HTTP (128 Mio), décodeurs (256, dont 8 brotli) et
+    tampons TCP hors ordre de toutes les connexions (256 Mio, `FlowConfig::max_buffered_bytes`) sont
+    partagés entre les shards par le moteur, comme `max_flows` : le total ne croît plus avec le nombre
+    de cœurs, le résultat ne dépend du nombre de shards que lorsqu'une borne est atteinte ;
+  - les analyseurs `core`, `connections` et `ports` vident leurs agrégats toutes les heures de temps
+    paquet (au lieu de chaque minute) ; la mémoire reste bornée par `max_pending`.
+- Conséquences :
+  - import de 5 Go sur 4 cœurs en 95 s au lieu de 578 (56 Mo/s au total, 104 Mo/s pendant la lecture),
+    mémoire résidente de 375 Mio (440 Mio sur 20 shards, cache de pages compris) ; la phase
+    `finishing` dure environ 44 s, dont 19 s d'index, sans progression publiée (comme toute étape,
+    ADR-014) ; 4 requêtes de vue sur 76 dépassent encore 300 ms (18 avant), suivis dans
+    `docs/PERFORMANCE.md` ;
+  - une session dont l'import s'arrête avant ses étapes reste sans index secondaires jusqu'à sa
+    prochaine ouverture en écriture (lente mais correcte entre-temps ; un serveur `--read-only` ne la
+    répare pas) ; une définition notée par une ancienne version est recréée telle quelle, même si une
+    migration ultérieure avait supprimé cet index ;
+  - les tables matérialisées doublent une partie des données (minutes, heures, rôles) et chaque nouvelle
+    source de preuve ou nouvel agrégat demande une nouvelle version de son étape, rejouée à
+    l'ouverture des sessions existantes ;
+  - garde-fous dans la CI : plans de requête sans `SCAN` ni `TEMP B-TREE` pour les lectures corrigées,
+    équivalence ancien et nouveau calcul (séries, filtres, rôles), instruction de l'upsert d'hôtes
+    jamais préparée de nouveau ; les mesures restent hors du gate (`./x.sh bench`).

@@ -188,25 +188,84 @@ fn json_strings(raw: Option<String>, col: usize) -> rusqlite::Result<Vec<String>
     }
 }
 
+/// End-of-import step `ports` ([`crate::finalize::SESSION_FINALIZERS`]): the number of open
+/// ports and the category of every host with open ports, into `open_port_hosts`, in the
+/// transaction of the caller. Grouped in the order of the primary key of `open_ports` (no sort),
+/// inserted in the order of the primary key of the table. Idempotent.
+pub(crate) fn finalize(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "DELETE FROM open_port_hosts;
+         INSERT INTO open_port_hosts (ip, ports, category)
+             SELECT o.ip, count(*), coalesce((SELECT h.category FROM hosts h WHERE h.ip = o.ip), '')
+             FROM open_ports o GROUP BY o.ip;",
+    )?;
+    Ok(())
+}
+
+/// True when the hosts of `filter` can be read from `open_port_hosts` (P4.8): no filter but the
+/// categories, and the step `ports` done.
+fn per_host_table(conn: &Connection, filter: &PortFilter) -> Result<bool> {
+    let only_categories = PortFilter {
+        categories: filter.categories.clone(),
+        ..PortFilter::default()
+    };
+    Ok(*filter == only_categories && crate::finalize::step_done(conn, "ports")?)
+}
+
+/// Condition of the category filter on `open_port_hosts g`.
+fn host_categories(filter: &PortFilter) -> Result<Conditions> {
+    let mut c = Conditions::new();
+    if let Some(categories) = filter
+        .categories
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?
+    {
+        c.push(
+            "g.category IN (SELECT value FROM json_each(?))",
+            [Value::Text(categories)],
+        );
+    }
+    Ok(c)
+}
+
 /// One page of hosts with open ports: most ports first, then by address (descending).
 pub fn hosts_page(
     conn: &Connection,
     filter: &PortFilter,
     request: &PageRequest,
 ) -> Result<Page<HostPorts>> {
-    let cond = conditions(filter)?;
-    let from = hosts_from(&cond);
-    let query = Keyset {
-        from: &from,
-        select: "g.ip",
-        sort: "g.ports",
-        tiebreak: "g.ip",
-        descending: true,
-        filter: None,
+    let mut cond = conditions(filter)?;
+    let per_host = per_host_table(conn, filter)?;
+    let page = if per_host {
+        // In key order of `open_port_hosts_rank`, category covered: stops at the page size.
+        let hosts = host_categories(filter)?;
+        let where_sql = hosts.sql();
+        let query = Keyset {
+            from: "open_port_hosts g INDEXED BY open_port_hosts_rank",
+            select: "g.ip",
+            sort: "g.ports",
+            tiebreak: "g.ip",
+            descending: true,
+            filter: where_sql.as_deref(),
+        };
+        keyset_page(conn, &query, &hosts.params(), request, |r| {
+            r.get::<_, String>(0)
+        })?
+    } else {
+        let from = hosts_from(&cond);
+        let query = Keyset {
+            from: &from,
+            select: "g.ip",
+            sort: "g.ports",
+            tiebreak: "g.ip",
+            descending: true,
+            filter: None,
+        };
+        keyset_page(conn, &query, &cond.params(), request, |r| {
+            r.get::<_, String>(0)
+        })?
     };
-    let page = keyset_page(conn, &query, &cond.params(), request, |r| {
-        r.get::<_, String>(0)
-    })?;
     if page.items.is_empty() {
         return Ok(Page {
             items: Vec::new(),
@@ -214,6 +273,11 @@ pub fn hosts_page(
         });
     }
     let ips = serde_json::to_string(&page.items)?;
+    if per_host {
+        // Only a category filter: every port of a listed host matches (no list of the hosts of
+        // the categories to build for the ports of the page).
+        cond = Conditions::new();
+    }
 
     let mut hosts: Vec<HostPorts> = Vec::with_capacity(page.items.len());
     {
@@ -289,6 +353,20 @@ pub fn hosts_page(
 
 /// Number of hosts with open ports matching the filter.
 pub fn count_hosts(conn: &Connection, filter: &PortFilter) -> Result<u64> {
+    if per_host_table(conn, filter)? {
+        let hosts = host_categories(filter)?;
+        let n: i64 = conn.query_row(
+            &format!(
+                "SELECT count(*) FROM open_port_hosts g{}",
+                hosts
+                    .sql()
+                    .map_or_else(String::new, |w| format!(" WHERE {w}"))
+            ),
+            hosts.params().as_slice(),
+            |r| r.get(0),
+        )?;
+        return Ok(u64::try_from(n).unwrap_or(0));
+    }
     let cond = conditions(filter)?;
     let n: i64 = conn.query_row(
         &format!(

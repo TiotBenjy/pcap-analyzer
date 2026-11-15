@@ -305,77 +305,135 @@ fn active_filters_match_the_former_condition() {
             insert(&conn, StoreRecord::OpenPort(p));
         }
     }
-    let categories = [None, Some(vec!["public".to_owned()])];
+    let categories = [
+        None,
+        Some(vec!["public".to_owned()]),
+        Some(vec!["private".to_owned(), "public".to_owned()]),
+        Some(Vec::new()),
+    ];
     let ports = [None, Some(80_u16), Some(53)];
     let services_q = [None, Some("ssh"), Some(" HTTP ")];
     let texts = [None, Some("box1"), Some("10.0.2"), Some("443"), Some("dom")];
     let mut checked = 0;
-    for cats in &categories {
-        for port_q in ports {
-            for service in services_q {
-                for text in texts {
-                    let filter = PortFilter {
-                        categories: cats.clone(),
-                        port: port_q,
-                        service: service.map(str::to_owned),
-                        text: text.map(str::to_owned),
-                    };
-                    let norm = |v: Option<&str>| {
-                        v.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty())
-                    };
-                    let p = (
-                        cats.as_ref().map(|c| serde_json::to_string(c).unwrap()),
-                        port_q,
-                        norm(service),
-                        norm(text),
-                    );
-                    let former = |sql: &str| -> Vec<(String, i64)> {
-                        conn.prepare(sql)
-                            .unwrap()
-                            .query_map(params![p.0, p.1, p.2, p.3], |r| Ok((r.get(0)?, r.get(1)?)))
-                            .unwrap()
-                            .map(Result::unwrap)
-                            .collect()
-                    };
-                    // Hosts and their number of matching ports.
-                    let want = former(&format!(
-                        "SELECT o.ip, count(*) FROM open_ports o LEFT JOIN hosts h ON h.ip = o.ip \
+    // At read time, then from `open_port_hosts` once the step `ports` ran (P4.8).
+    for step in [false, true] {
+        if step {
+            finalize(&conn).unwrap();
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('finalizers', 'ports:1')",
+                [],
+            )
+            .unwrap();
+            let hosts: i64 = conn
+                .query_row("SELECT count(*) FROM open_port_hosts", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(hosts, 25);
+        }
+        for cats in &categories {
+            for port_q in ports {
+                for service in services_q {
+                    for text in texts {
+                        let filter = PortFilter {
+                            categories: cats.clone(),
+                            port: port_q,
+                            service: service.map(str::to_owned),
+                            text: text.map(str::to_owned),
+                        };
+                        let norm = |v: Option<&str>| {
+                            v.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty())
+                        };
+                        let p = (
+                            cats.as_ref().map(|c| serde_json::to_string(c).unwrap()),
+                            port_q,
+                            norm(service),
+                            norm(text),
+                        );
+                        let former = |sql: &str| -> Vec<(String, i64)> {
+                            conn.prepare(sql)
+                                .unwrap()
+                                .query_map(params![p.0, p.1, p.2, p.3], |r| {
+                                    Ok((r.get(0)?, r.get(1)?))
+                                })
+                                .unwrap()
+                                .map(Result::unwrap)
+                                .collect()
+                        };
+                        // Hosts and their number of matching ports.
+                        let want = former(&format!(
+                            "SELECT o.ip, count(*) FROM open_ports o LEFT JOIN hosts h ON h.ip = o.ip \
                          WHERE {FORMER_CONDITION} GROUP BY o.ip ORDER BY count(*) DESC, o.ip DESC"
-                    ));
-                    let got: Vec<(String, i64)> = all(&conn, &filter, 4)
-                        .iter()
-                        .map(|h| (h.ip.to_string(), i64::try_from(h.ports.len()).unwrap()))
-                        .collect();
-                    assert_eq!(got, want, "{filter:?}");
-                    assert_eq!(
-                        count_hosts(&conn, &filter).unwrap(),
-                        u64::try_from(want.len()).unwrap()
-                    );
-                    // Port ranking.
-                    let want_stats = former(&format!(
-                        "SELECT CAST(o.transport * 65536 + o.port AS TEXT), count(*) AS hosts \
+                        ));
+                        let got: Vec<(String, i64)> = all(&conn, &filter, 4)
+                            .iter()
+                            .map(|h| (h.ip.to_string(), i64::try_from(h.ports.len()).unwrap()))
+                            .collect();
+                        assert_eq!(got, want, "{filter:?}");
+                        assert_eq!(
+                            count_hosts(&conn, &filter).unwrap(),
+                            u64::try_from(want.len()).unwrap()
+                        );
+                        // Port ranking.
+                        let want_stats = former(&format!(
+                            "SELECT CAST(o.transport * 65536 + o.port AS TEXT), count(*) AS hosts \
                          FROM open_ports o \
                          LEFT JOIN hosts h ON h.ip = o.ip WHERE {FORMER_CONDITION} \
                          GROUP BY o.transport, o.port ORDER BY hosts DESC, o.port, o.transport"
-                    ));
-                    let (top, distinct, total) = port_stats(&conn, &filter, 100).unwrap();
-                    let got_stats: Vec<(String, i64)> = top
-                        .iter()
-                        .map(|s| {
-                            (
-                                (i64::from(s.transport) * 65_536 + i64::from(s.port)).to_string(),
-                                i64::try_from(s.hosts).unwrap(),
-                            )
-                        })
-                        .collect();
-                    assert_eq!(got_stats, want_stats, "{filter:?}");
-                    assert_eq!(distinct, u64::try_from(want_stats.len()).unwrap());
-                    let ports_total: i64 = want_stats.iter().map(|(_, n)| n).sum();
-                    assert_eq!(total, u64::try_from(ports_total).unwrap());
-                    checked += usize::from(!want.is_empty());
+                        ));
+                        let (top, distinct, total) = port_stats(&conn, &filter, 100).unwrap();
+                        let got_stats: Vec<(String, i64)> = top
+                            .iter()
+                            .map(|s| {
+                                (
+                                    (i64::from(s.transport) * 65_536 + i64::from(s.port))
+                                        .to_string(),
+                                    i64::try_from(s.hosts).unwrap(),
+                                )
+                            })
+                            .collect();
+                        assert_eq!(got_stats, want_stats, "{filter:?}");
+                        assert_eq!(distinct, u64::try_from(want_stats.len()).unwrap());
+                        let ports_total: i64 = want_stats.iter().map(|(_, n)| n).sum();
+                        assert_eq!(total, u64::try_from(ports_total).unwrap());
+                        checked += usize::from(!want.is_empty());
+                    }
                 }
             }
         }
     }
-    assert!(checked > 20, "too few non-empty cases: {checked}");
+    assert!(checked > 40, "too few non-empty cases: {checked}");
+}
+
+#[test]
+fn the_per_host_table_is_read_in_key_order() {
+    let conn = db();
+    let plan = |sql: &str| -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        stmt.query_map(["[\"public\"]"], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    // Page (first and next): the rank index backwards, category covered, stops at the page size.
+    for cursor in ["", " AND (g.ports, g.ip) < (3, '10.0.0.1')"] {
+        let p = plan(&format!(
+            "SELECT g.ip, g.ports, g.ip FROM open_port_hosts g INDEXED BY open_port_hosts_rank \
+             WHERE (g.category IN (SELECT value FROM json_each(?1))){cursor} \
+             ORDER BY g.ports DESC, g.ip DESC LIMIT 51"
+        ));
+        assert!(
+            p.contains("USING COVERING INDEX open_port_hosts_rank"),
+            "{p}"
+        );
+        assert!(!p.contains("TEMP B-TREE"), "{p}");
+    }
+    // Count: the category index.
+    let p = plan(
+        "SELECT count(*) FROM open_port_hosts g WHERE g.category IN (SELECT value FROM json_each(?1))",
+    );
+    assert!(
+        p.contains("SEARCH g USING COVERING INDEX open_port_hosts_category (category=?)"),
+        "{p}"
+    );
+    assert!(!p.contains("TEMP B-TREE"), "{p}");
 }

@@ -93,10 +93,43 @@ export function importFraction(done: number, total: number): number {
   return total > 0 ? Math.min(1, Math.max(0, done / total)) : 0;
 }
 
+/** True while the end-of-import steps run (indexes, pairing, derived tables). */
+export function isFinalizing(p: ImportProgress): boolean {
+  return p.phase === 'finalizing' && p.steps_total > 0;
+}
+
+/**
+ * Fraction shown by the progress bar: bytes read, then the share of end-of-import steps
+ * finished once they run (the bar would otherwise stay full while they last).
+ */
+export function progressFraction(p: ImportProgress | null): number {
+  if (p === null) return 0;
+  if (isFinalizing(p)) return importFraction(p.steps_done, p.steps_total);
+  return importFraction(p.bytes_done, p.bytes_total);
+}
+
+/** 1-based number of the step running (the last one once all are finished). */
+export function stepNumber(p: ImportProgress): number {
+  return Math.min(p.steps_total, p.steps_done + (p.step === null ? 0 : 1));
+}
+
 function onEvent(sessionId: string, ev: ImportEvent): void {
   switch (ev.type) {
     case 'progress': {
-      const { bytes_done, bytes_total, chunk_index, chunk_count, chunk_name, packets, rate_bps, eta_s, phase } = ev;
+      const {
+        bytes_done,
+        bytes_total,
+        chunk_index,
+        chunk_count,
+        chunk_name,
+        packets,
+        rate_bps,
+        eta_s,
+        phase,
+        step,
+        steps_done,
+        steps_total,
+      } = ev;
       const progress: ImportProgress = {
         bytes_done,
         bytes_total,
@@ -107,6 +140,9 @@ function onEvent(sessionId: string, ev: ImportEvent): void {
         rate_bps,
         eta_s,
         phase,
+        step,
+        steps_done,
+        steps_total,
       };
       update(sessionId, () => ({ progress }));
       break;

@@ -17,6 +17,19 @@ rate_bps: number,
  */
 eta_s: number | null, 
 /**
- * `reading`, `finishing`.
+ * `reading`, `finishing` (last rows written), `finalizing` (end-of-import steps).
  */
-phase: string, };
+phase: string, 
+/**
+ * End-of-import step running (`finalizing` only): `indexes`, `timeseries`, `dns`,
+ * `servers`, `objects`, `http`, `network`...; `null` otherwise and after the last step.
+ */
+step: string | null, 
+/**
+ * End-of-import steps finished (`finalizing` only, else 0).
+ */
+steps_done: number, 
+/**
+ * End-of-import steps to run (`finalizing` only, else 0).
+ */
+steps_total: number, };

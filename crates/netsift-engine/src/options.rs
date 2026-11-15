@@ -169,6 +169,9 @@ pub enum Phase {
     Reading,
     /// Reading is over: flows are flushed and the last rows written.
     Finishing,
+    /// Every row is written: the end-of-import steps run (indexes, pairing, derived tables,
+    /// search indexes; ADR-014). [`Progress::finalize`] tells which one and how many are done.
+    Finalizing,
     /// Everything is written (last callback).
     Done,
 }
@@ -201,6 +204,8 @@ pub struct Progress {
     /// once every chunk is read; analyzer failures are only stored). Bounded over an import by
     /// `netsift_capture::chunkset::MAX_ANOMALIES`.
     pub new_anomalies: Vec<AnomalyRow>,
+    /// End-of-import steps: done, total and the step running ([`Phase::Finalizing`] only).
+    pub finalize: Option<netsift_store::StepProgress>,
 }
 
 impl Progress {

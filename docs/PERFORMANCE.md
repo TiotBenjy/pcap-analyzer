@@ -212,7 +212,7 @@ retiré : moins de 30 ms de gain.
 
 Même machine, même jeu (`captures/bench/mix-5G`, régénéré à l'identique : 8 894 735 paquets), mêmes
 commandes : `BENCH_FULL=0 ./x.sh bench ingest`, `./x.sh bench queries`, `./x.sh bench ui`. Avant :
-`918ea73` (fin de P4.2) ; après : `5cce708`. Plans examinés avec `netsift bench sql`, rendu de l'Overview
+`918ea73` (fin de P4.2) ; après : `f13fc22`. Plans examinés avec `netsift bench sql`, rendu de l'Overview
 profilé par le profileur CPU de Chromium (CDP) et des repères posés dans la page.
 
 ### Requêtes de vue
@@ -230,12 +230,12 @@ Plus aucune requête au-dessus de 300 ms (4 avant). Toutes celles qui changent d
 
 Correctifs, par effet mesuré :
 
-- **`/servers`** (`ae3ffa3`) : la requête classait à chaque lecture toutes les lignes de `server_evidence`
+- **`/servers`** (`fdbf13f`) : la requête classait à chaque lecture toutes les lignes de `server_evidence`
   (fonctions de fenêtre, index automatique sur la CTE). L'étape `servers` (version 3) stocke le rang de
   chaque serveur dans son rôle et le nombre de serveurs du rôle (`server_ranks`, migration 0802) ; sans
   filtre de catégorie, la vue lit les `limit` premiers rangs de chaque rôle par clé primaire, puis leurs
   preuves par index. Avec un filtre de catégorie (les rangs changent), le classement à la lecture reste.
-- **`/connections?category=`** (`ae3ffa3`) : le comptage sondait deux listes d'hôtes pour chacune des
+- **`/connections?category=`** (`fdbf13f`) : le comptage sondait deux listes d'hôtes pour chacune des
   677 000 conversations (330 ms), la page en construisait deux (140 ms). L'étape `connections` stocke le
   nombre de conversations par paire de catégories de leurs extrémités (`conversation_categories`, 0402,
   quelques dizaines de lignes) : le total d'un filtre de catégorie seul y est lu. Ces comptes choisissent
@@ -243,16 +243,16 @@ Correctifs, par effet mesuré :
   couvrent beaucoup de conversations (page en 0,3 ms pour `public`), recherche par index des conversations
   de leurs hôtes sinon. Avec le plan unique d'avant, une catégorie rare (`multicast`) parcourait toute la
   table pour une page vide (750 ms) ; avec le mauvais des deux nouveaux plans, 1,3 à 2,7 s.
-- **`/open-ports?category=`** (`ae3ffa3`) : la page groupait tous les ports ouverts par hôte puis triait
+- **`/open-ports?category=`** (`fdbf13f`) : la page groupait tous les ports ouverts par hôte puis triait
   (125 ms) et le comptage sondait la liste des hôtes de la catégorie (110 ms). L'étape `ports` stocke le
   nombre de ports et la catégorie de chaque hôte (`open_port_hosts`, 0402) : la page parcourt l'index
   `(ports, ip, category)` dans l'ordre et s'arrête à sa taille, le comptage lit l'index de catégorie. Le
   reste (40 ms) compte les clients des ports de la page dans `flows`.
-- **`/http/transactions?q=`** (`5a531c7`) : 12 000 transactions contiennent « news » ; la liste joignait
+- **`/http/transactions?q=`** (`8746c37`) : 12 000 transactions contiennent « news » ; la liste joignait
   `hosts` pour les deux extrémités de chacune avant de trier (190 ms). La page est maintenant choisie sur
   `http_transactions` seule, puis ses lignes sont lues avec leurs hôtes par identifiant. Restent le
   comptage (56 ms, une recherche par clé primaire par correspondance) et le tri des correspondances.
-- **`/connections/stats`** (`49e5ff2`) : un seul `GROUP BY` sur `host_traffic` pour les deux sens.
+- **`/connections/stats`** (`4402b98`) : un seul `GROUP BY` sur `host_traffic` pour les deux sens.
 
 L'ouverture de la session importée avant ces changements (migrations 0402 et 0802, étapes `servers` v3,
 `connections` et `ports` rejouées, ADR-013 et ADR-014) a pris 2,6 s.
@@ -269,7 +269,7 @@ L'ouverture de la session importée avant ces changements (migrations 0402 et 08
 | taille de la session | 1 643 Mo | 1 651 Mo |
 
 Les trois étapes ajoutées coûtent 1 s en tout (rang des serveurs 0,2 s, comptes par catégorie 0,6 s,
-ports par hôte 0,2 s). La fin d'import publie maintenant sa progression (`44fe1d0`) : le writer note
+ports par hôte 0,2 s). La fin d'import publie maintenant sa progression (`0965af1`) : le writer note
 l'étape en cours et le nombre d'étapes faites (`FinalizeWatch`), le moteur les publie à chaque
 intervalle dans une phase `Phase::Finalizing` (et toujours une fois à leur fin), l'événement SSE porte
 `phase = finalizing`, `step`, `steps_done` et `steps_total`, et l'assistant d'import comme l'indicateur
@@ -280,7 +280,7 @@ de l'en-tête affichent l'étape et « Étape n sur N » (en et fr). La durée d
 
 Avec le critère « tracé de série dessiné » (le critère de P4.2 donnait le même jour 623 et 632 ms avant) :
 
-| Affichage de l'Overview | Avant (`918ea73`) | Chargement hors React | Après (`5cce708`) |
+| Affichage de l'Overview | Avant (`918ea73`) | Chargement hors React | Après (`f13fc22`) |
 |---|---|---|---|
 | clic 1 s après l'ouverture : réponses | 142 | 136 | 134 |
 | clic 1 s après l'ouverture : graphique dessiné, résumé affiché | 635 | 325 | **298** |
@@ -291,12 +291,12 @@ Avec le critère « tracé de série dessiné » (le critère de P4.2 donnait le
 passées dans le navigateur, environ 240 ms d'attente sans calcul, puis 130 ms de `setOption` d'ECharts,
 30 ms de redimensionnement, le reste dans React et dans les requêtes de Playwright.
 
-- **Attente** (`5cce708`) : le moteur de rendu ECharts était un composant `React.lazy` monté à l'arrivée
+- **Attente** (`f13fc22`) : le moteur de rendu ECharts était un composant `React.lazy` monté à l'arrivée
   des données ; il suspendait alors, et React ne révèle un contenu suspendu qu'au moins 300 ms après
   l'apparition de son repli (« fallback throttling »). Le moteur est maintenant chargé hors de React, au
   repos dès qu'une session s'ouvre et au montage d'un graphique (en parallèle de ses données), puis rendu
   directement : 635 → 325 ms.
-- **Rendu** (`5cce708`) : la première notification du `ResizeObserver`, à la même taille, redessinait
+- **Rendu** (`f13fc22`) : la première notification du `ResizeObserver`, à la même taille, redessinait
   toutes les séries ; les valeurs par défaut du thème étaient dessinées seules avant l'option (désormais
   `lazyUpdate`) ; le côté de la légende est lu sur l'élément à la création : 325 → 298 ms.
 - Essayés et écartés : moins de points (250 au lieu de 500 : `setOption` inchangé, son coût est fixe sur

@@ -46,6 +46,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'settings-geoip-outdated': '/settings',
   'settings-licenses': '/settings',
   'settings-licenses-initial': '/settings',
+  'settings-notices-both': '/settings',
   'settings-update': '/settings',
   'settings-update-notes': '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
@@ -96,6 +97,7 @@ async function demoSessionId(page: Page): Promise<string> {
 const GEOIP_NOTICE: Record<string, 'missing' | 'outdated'> = {
   'captures-geoip-missing': 'missing',
   'settings-geoip-outdated': 'outdated',
+  'settings-notices-both': 'outdated',
 };
 
 /** `YYYY-MM` of the month `back` months before the current one (UTC). */
@@ -280,7 +282,7 @@ for (const lang of LANGS) {
           const geoipNotice = GEOIP_NOTICE[view];
           if (geoipNotice !== undefined) await mockGeoipNotice(page, geoipNotice);
           // Mocked server answers of some views (online checks: no network in screenshots).
-          if (view.startsWith('settings-update')) await mockUpdate(page);
+          if (view.startsWith('settings-update') || view === 'settings-notices-both') await mockUpdate(page);
           await page.goto(`/#${path}`);
           await page.locator('#main h1').first().waitFor();
           await page.waitForLoadState('networkidle');
@@ -537,6 +539,13 @@ for (const lang of LANGS) {
             await expect(banner.getByTestId('update-release-page')).toBeVisible();
             await expect(page.getByTestId('update-status')).toHaveAttribute('data-status', 'available');
             await expect(page.getByTestId('update-section').getByTestId('update-release-page')).toBeVisible();
+          }
+          if (view === 'settings-notices-both') {
+            // MAX_NOTICES = 2: the GeoIP and update banners stack under the header, in registry order.
+            const area = page.getByTestId('notice-area');
+            await expect(area.getByTestId('notice-geoip')).toBeVisible();
+            await expect(area.getByTestId('notice-update')).toBeVisible();
+            await expect(area.locator('[data-testid^="notice-"]')).toHaveCount(2);
           }
           if (view === 'settings-update-notes') {
             await page.getByTestId('update-section').getByRole('button', { name: D.views.updates.notes }).click();

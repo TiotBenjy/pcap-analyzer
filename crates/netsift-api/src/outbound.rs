@@ -5,14 +5,17 @@
 //! Every request goes through [`Outbound`], built from a [`Policy`] given by the caller:
 //!
 //! - HTTPS only (rustls with the `ring` provider, certificates checked against the trust store of
-//!   the operating system), default port only, no credentials in the URL;
+//!   the operating system), default port only, host names only (no IP literal), no credentials
+//!   in the URL;
 //! - hosts restricted to the caller's allow list, checked before the first request and again at
 //!   every redirection, with at most [`MAX_REDIRECTS`] redirections by default;
 //! - generic `User-Agent` (`NetSift/<version>`), no cookie, no identifier, nothing else sent;
 //!   proxy of the environment variables honoured;
-//! - connection, read and total timeouts; body size bounded by the caller while it is received;
-//! - downloads written to `<dest>.part`, hashed (SHA-256) on the fly, renamed to `<dest>` once
-//!   complete, removed on any failure or cancellation.
+//! - connection, read and total timeouts (`Policy::with_*`); body size bounded by the caller while it is received;
+//! - downloads written to a temporary file of their own next to the target
+//!   (`<name>.<pid>-<n>.part`, created exclusively, never through a link), hashed (SHA-256) on
+//!   the fly, renamed to the target once complete and checked, removed on any failure or
+//!   cancellation; an existing `.part` file is never opened nor removed.
 //!
 //! Errors never carry a response body (not even in the logs).
 //!
@@ -27,6 +30,7 @@ mod tests;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use reqwest::header::{ACCEPT, CONTENT_LENGTH, HeaderMap};
@@ -34,6 +38,8 @@ use reqwest::{Client, Response, StatusCode, Url, redirect};
 use serde::de::DeserializeOwned;
 use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt as _;
+
+use crate::ApiError;
 
 /// Redirections followed at most, by default.
 pub(crate) const MAX_REDIRECTS: usize = 3;
@@ -51,12 +57,12 @@ pub(crate) struct Policy {
     /// Host names (exact, ASCII case-insensitive) of the first request and of every redirection.
     allowed_hosts: Arc<[String]>,
     /// Redirections followed at most.
-    pub(crate) max_redirects: usize,
-    pub(crate) connect_timeout: Duration,
+    max_redirects: usize,
+    connect_timeout: Duration,
     /// Longest wait between two reads (headers, then each part of the body).
-    pub(crate) read_timeout: Duration,
+    read_timeout: Duration,
     /// Longest duration of a whole request, body included.
-    pub(crate) total_timeout: Duration,
+    total_timeout: Duration,
     /// Plain HTTP to any port of the allowed hosts, without proxy.
     #[cfg(test)]
     local_http: bool,
@@ -80,6 +86,31 @@ impl Policy {
         }
     }
 
+    /// Redirections followed at most (default [`MAX_REDIRECTS`]).
+    pub(crate) fn with_max_redirects(mut self, n: usize) -> Self {
+        self.max_redirects = n;
+        self
+    }
+
+    /// Longest wait for the connection (default 15 s).
+    pub(crate) fn with_connect_timeout(mut self, d: Duration) -> Self {
+        self.connect_timeout = d;
+        self
+    }
+
+    /// Longest wait between two reads: headers, then each part of the body (default 30 s).
+    pub(crate) fn with_read_timeout(mut self, d: Duration) -> Self {
+        self.read_timeout = d;
+        self
+    }
+
+    /// Longest duration of a whole request, body included (default 300 s): raise it for large
+    /// files.
+    pub(crate) fn with_total_timeout(mut self, d: Duration) -> Self {
+        self.total_timeout = d;
+        self
+    }
+
     /// Tests only: also accept plain HTTP on any port (a local server), without proxy.
     #[cfg(test)]
     pub(crate) fn local_http_for_tests(mut self) -> Self {
@@ -98,11 +129,19 @@ impl Policy {
         false
     }
 
-    /// The URL may be requested: allowed scheme, host and port, no credentials.
+    /// The URL may be requested: allowed scheme, port and host name (never an IP literal), no
+    /// credentials.
     fn check(&self, url: &Url) -> Result<(), Refusal> {
-        let scheme_ok = url.scheme() == "https" || (self.local_http() && url.scheme() == "http");
-        let port_ok = self.local_http() || url.port_or_known_default() == Some(HTTPS_PORT);
-        if !scheme_ok || !port_ok || !url.username().is_empty() || url.password().is_some() {
+        let local = self.local_http();
+        let scheme_ok = url.scheme() == "https" || (local && url.scheme() == "http");
+        let port_ok = local || url.port_or_known_default() == Some(HTTPS_PORT);
+        let named = local || url.domain().is_some();
+        if !scheme_ok
+            || !port_ok
+            || !named
+            || !url.username().is_empty()
+            || url.password().is_some()
+        {
             return Err(Refusal::Url);
         }
         let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
@@ -117,7 +156,7 @@ impl Policy {
 /// Why a URL or a redirection was refused (carried through reqwest's redirect error).
 #[derive(Debug, thiserror::Error)]
 enum Refusal {
-    #[error("URL refused: scheme, port or credentials")]
+    #[error("URL refused: scheme, port, IP literal or credentials")]
     Url,
     #[error("host not allowed: {0}")]
     Host(String),
@@ -130,7 +169,7 @@ enum Refusal {
 pub(crate) enum OutboundError {
     #[error("cannot set up the HTTP client: {0}")]
     Client(String),
-    /// Unparsable URL, scheme other than HTTPS, other port, credentials in the URL.
+    /// Unparsable URL, scheme other than HTTPS, other port, IP literal, credentials in the URL.
     #[error("URL refused")]
     UrlRefused,
     /// First request or redirection to a host outside the allow list.
@@ -178,6 +217,26 @@ impl OutboundError {
             Self::Timeout
         } else {
             Self::Network(e)
+        }
+    }
+}
+
+impl OutboundError {
+    /// API problem of a failed request, for the routes of an online feature: problem type
+    /// `urn:netsift:problem:<kind>` and `title` chosen by the feature, status 504 on timeout,
+    /// 500 for local failures (client set-up, file system), 502 otherwise. The error itself is
+    /// logged (never a response body), the client only sees the kind.
+    pub(crate) fn into_problem(self, kind: &'static str, title: &'static str) -> ApiError {
+        let status = match &self {
+            Self::Timeout => StatusCode::GATEWAY_TIMEOUT,
+            Self::Client(_) | Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            _ => StatusCode::BAD_GATEWAY,
+        };
+        tracing::warn!(kind, "outbound request failed: {self}");
+        ApiError::Feature {
+            status,
+            kind,
+            title,
         }
     }
 }
@@ -291,10 +350,14 @@ impl Outbound {
         read_body(success(response)?, max_bytes, progress).await
     }
 
-    /// `GET url` streamed to `<dest>.part`, then renamed to `dest` (replacing it) once the body
-    /// is complete, flushed to disk and, when `expected_sha256` is given (hexadecimal), checked.
-    /// On any failure, and if the future is dropped, the `.part` file is removed and `dest` is
-    /// left untouched. The parent directory of `dest` must exist.
+    /// `GET url` streamed to a temporary file next to `dest`, then renamed to `dest` (replacing
+    /// it) once the body is complete, flushed to disk and, when `expected_sha256` is given
+    /// (hexadecimal), checked. The temporary file has a name of its own
+    /// (`<name>.<pid>-<n>.part`), created exclusively (never an existing file, never through a
+    /// symbolic link) once the response is accepted: concurrent downloads to the same `dest`
+    /// never share it, and the result is one of them, whole and checked. On any failure, and if
+    /// the future is dropped, that file is removed and `dest` is left untouched. The parent
+    /// directory of `dest` must exist.
     pub(crate) async fn download_to(
         &self,
         url: &str,
@@ -306,7 +369,7 @@ impl Outbound {
         let expected = expected_sha256
             .map(|h| parse_sha256(h).ok_or(OutboundError::InvalidChecksum))
             .transpose()?;
-        let part = PartFile::new(part_path(dest)?);
+        let part_path = part_path(dest)?;
         let url = self.url(url)?;
         let response = self
             .client
@@ -318,7 +381,7 @@ impl Outbound {
         let total = checked_length(&response, max_bytes)?;
         progress(0, total);
 
-        let mut file = tokio::fs::File::create(&part.path).await?;
+        let (mut file, part) = PartFile::create(part_path).await?;
         let mut hasher = Sha256::new();
         let mut received: u64 = 0;
         while let Some(chunk) = response
@@ -432,7 +495,10 @@ async fn read_body(
     Ok(body)
 }
 
-/// `<dest>.part`, next to `dest`.
+/// Downloads started by this process, for unique temporary names.
+static PART_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// `<name>.<pid>-<n>.part`, next to `dest`, unique within this process.
 fn part_path(dest: &Path) -> Result<PathBuf, OutboundError> {
     let Some(name) = dest.file_name() else {
         return Err(OutboundError::Io(std::io::Error::new(
@@ -440,20 +506,28 @@ fn part_path(dest: &Path) -> Result<PathBuf, OutboundError> {
             "the destination has no file name",
         )));
     };
+    let n = PART_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut name = name.to_os_string();
-    name.push(".part");
+    name.push(format!(".{}-{n}.part", std::process::id()));
     Ok(dest.with_file_name(name))
 }
 
-/// Partial download, removed on drop unless kept.
+/// Partial download created by this download, removed on drop unless kept.
 struct PartFile {
     path: PathBuf,
     keep: bool,
 }
 
 impl PartFile {
-    fn new(path: PathBuf) -> Self {
-        Self { path, keep: false }
+    /// Creates `path` exclusively (`O_CREAT | O_EXCL`: fails on any existing file or link).
+    /// Only a file created here is ever removed.
+    async fn create(path: PathBuf) -> Result<(tokio::fs::File, Self), OutboundError> {
+        let file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .await?;
+        Ok((file, Self { path, keep: false }))
     }
 
     fn keep(mut self) {

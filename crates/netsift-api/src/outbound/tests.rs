@@ -305,8 +305,25 @@ async fn production_policies_accept_only_https_on_the_default_port() {
         check("https://download.example.org.evil.test/x"),
         Err(Refusal::Host(_))
     ));
+    // Trailing dot: another name for the resolver, refused.
+    assert!(matches!(
+        check("https://download.example.org./x"),
+        Err(Refusal::Host(h)) if h == "download.example.org."
+    ));
+    // IP literals, even when listed.
+    let ips = Policy::new(&["93.184.216.34", "[2001:db8::1]", "2001:db8::1"]);
+    for url in [
+        "https://93.184.216.34/x",
+        "https://[2001:db8::1]/x",
+        "https://0x5db8d822/x",
+    ] {
+        assert!(
+            matches!(ips.check(&Url::parse(url).unwrap()), Err(Refusal::Url)),
+            "{url}"
+        );
+    }
     // The production client builds without any network access.
-    Outbound::new(policy).unwrap();
+    Outbound::new(policy.with_connect_timeout(Duration::from_secs(5))).unwrap();
 }
 
 #[tokio::test]
@@ -354,11 +371,7 @@ async fn redirections_are_checked_against_the_allow_list_and_bounded() {
     assert_eq!(followed, 1 + MAX_REDIRECTS, "first request + redirections");
 
     // A lower bound from the caller.
-    let strict = Outbound::new(Policy {
-        max_redirects: 0,
-        ..local_policy()
-    })
-    .unwrap();
+    let strict = Outbound::new(local_policy().with_max_redirects(0)).unwrap();
     env.up.reply("start", Reply::Redirect(env.url("mirror")));
     let err = strict.head(&env.url("start")).await.unwrap_err();
     assert!(matches!(err, OutboundError::TooManyRedirects), "{err}");
@@ -370,11 +383,8 @@ async fn redirections_are_checked_against_the_allow_list_and_bounded() {
 #[tokio::test]
 async fn slow_servers_time_out() {
     let env = Env::new().await;
-    let quick = Outbound::new(Policy {
-        read_timeout: Duration::from_millis(200),
-        ..local_policy()
-    })
-    .unwrap();
+    let quick =
+        Outbound::new(local_policy().with_read_timeout(Duration::from_millis(200))).unwrap();
 
     // Headers late.
     env.up.reply("slow", Reply::Slow(Duration::from_secs(5)));
@@ -391,11 +401,8 @@ async fn slow_servers_time_out() {
     assert!(matches!(err, OutboundError::Timeout), "{err}");
 
     // Total duration.
-    let bounded = Outbound::new(Policy {
-        total_timeout: Duration::from_millis(300),
-        ..local_policy()
-    })
-    .unwrap();
+    let bounded =
+        Outbound::new(local_policy().with_total_timeout(Duration::from_millis(300))).unwrap();
     let err = bounded.head(&env.url("slow")).await.unwrap_err();
     assert!(matches!(err, OutboundError::Timeout), "{err}");
     drop(tx);
@@ -513,7 +520,6 @@ async fn a_cancelled_download_removes_its_part_file() {
     let tx = env.stream("stream");
     tx.send(Bytes::from(vec![1; 100])).await.unwrap();
     let dest = env.tmp.path().join("asset.bin");
-    let part = env.tmp.path().join("asset.bin.part");
     let client = local_client();
     let url = env.url("stream");
     let target = dest.clone();
@@ -524,7 +530,10 @@ async fn a_cancelled_download_removes_its_part_file() {
     });
     // Wait for the first part to be on disk, then drop the download.
     tokio::time::timeout(Duration::from_secs(10), async {
-        while std::fs::metadata(&part).map_or(0, |m| m.len()) < 100 {
+        while part_files(env.tmp.path())
+            .iter()
+            .all(|p| std::fs::metadata(p).map_or(0, |m| m.len()) < 100)
+        {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
@@ -532,9 +541,113 @@ async fn a_cancelled_download_removes_its_part_file() {
     .unwrap();
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());
-    assert!(!part.exists());
+    assert_eq!(part_files(env.tmp.path()), Vec::<PathBuf>::new());
     assert!(!dest.exists());
     drop(tx);
+}
+
+/// Temporary download files in `dir`.
+fn part_files(dir: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|e| e == "part"))
+        .collect()
+}
+
+#[tokio::test]
+async fn temporary_files_are_unique_and_never_reuse_an_existing_one() {
+    let env = Env::new().await;
+    env.up.reply("asset", Reply::Body(b"new".to_vec()));
+    let dest = env.tmp.path().join("asset.bin");
+    // Files a previous run or another program left there, including a link.
+    let stale = env.tmp.path().join("asset.bin.part");
+    std::fs::write(&stale, b"stale").unwrap();
+    let victim = env.tmp.path().join("victim.txt");
+    std::fs::write(&victim, b"victim").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&victim, env.tmp.path().join("link.part")).unwrap();
+
+    // Refused URL, then 404: nothing touched.
+    let client = local_client();
+    let err = client
+        .download_to(&env.other_host_url("asset"), &dest, 100, None, |_, _| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutboundError::HostNotAllowed(_)));
+    let err = client
+        .download_to(&env.url("missing"), &dest, 100, None, |_, _| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutboundError::Status(StatusCode::NOT_FOUND)));
+    assert_eq!(std::fs::read(&stale).unwrap(), b"stale");
+
+    // A successful download uses a name of its own.
+    client
+        .download_to(&env.url("asset"), &dest, 100, None, |_, _| {})
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), b"new");
+    assert_eq!(std::fs::read(&stale).unwrap(), b"stale");
+    assert_eq!(std::fs::read(&victim).unwrap(), b"victim");
+    let a = part_path(&dest).unwrap();
+    let b = part_path(&dest).unwrap();
+    assert_ne!(a, b);
+    let name = a.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(
+        name.starts_with(&format!("asset.bin.{}-", std::process::id())),
+        "{name}"
+    );
+
+    // Exclusive creation: an existing path (file or link) is refused, and left alone.
+    assert!(PartFile::create(stale.clone()).await.is_err());
+    assert_eq!(std::fs::read(&stale).unwrap(), b"stale");
+    #[cfg(unix)]
+    {
+        assert!(
+            PartFile::create(env.tmp.path().join("link.part"))
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&victim).unwrap(), b"victim");
+    }
+}
+
+#[tokio::test]
+async fn concurrent_downloads_to_one_target_never_mix() {
+    let env = Env::new().await;
+    let dest = env.tmp.path().join("NetSift.AppImage");
+    let (a, b) = (vec![b'a'; 3_000], vec![b'b'; 3_000]);
+    let (sum_a, sum_b) = (sha256_hex(&a), sha256_hex(&b));
+    let tx_a = env.stream("a");
+    let tx_b = env.stream("b");
+    let start = |name: &str, sum: String| {
+        let (client, url, target) = (local_client(), env.url(name), dest.clone());
+        tokio::spawn(async move {
+            client
+                .download_to(&url, &target, 10_000, Some(&sum), |_, _| {})
+                .await
+        })
+    };
+    let task_a = start("a", sum_a.clone());
+    let task_b = start("b", sum_b.clone());
+    // Interleaved parts: both downloads are writing at the same time.
+    for i in 0..3 {
+        let range = i * 1_000..(i + 1) * 1_000;
+        tx_a.send(Bytes::copy_from_slice(&a[range.clone()]))
+            .await
+            .unwrap();
+        tx_b.send(Bytes::copy_from_slice(&b[range])).await.unwrap();
+        tokio::task::yield_now().await;
+    }
+    drop((tx_a, tx_b));
+    let done_a = task_a.await.unwrap().unwrap();
+    let done_b = task_b.await.unwrap().unwrap();
+    assert_eq!(done_a.sha256, sum_a);
+    assert_eq!(done_b.sha256, sum_b);
+    let result = std::fs::read(&dest).unwrap();
+    assert!(result == a || result == b, "mixed file");
+    assert_eq!(part_files(env.tmp.path()), Vec::<PathBuf>::new());
 }
 
 #[test]
@@ -551,4 +664,24 @@ fn sha256_digests_parse_in_either_case() {
     assert_eq!(parse_sha256(&format!("{}g", &lower[1..])), None);
     assert_eq!(parse_sha256(&format!("{lower}00")), None);
     assert_eq!(parse_sha256(""), None);
+}
+
+#[test]
+fn failures_map_to_feature_problems_without_details() {
+    let problem = OutboundError::Timeout.into_problem("update-check-failed", "Update check failed");
+    assert_eq!(problem.status(), 504);
+    let (kind, detail) = problem.problem();
+    assert_eq!(kind, "urn:netsift:problem:update-check-failed");
+    assert_eq!(detail, None);
+    assert_eq!(problem.title(), "Update check failed");
+    let problem = OutboundError::Json { line: 1, column: 2 }.into_problem("k", "t");
+    assert_eq!(problem.status(), 502);
+    let problem = OutboundError::Io(std::io::Error::other("disk")).into_problem("k", "t");
+    assert_eq!(problem.status(), 500);
+    assert_eq!(
+        OutboundError::ChecksumMismatch
+            .into_problem("k", "t")
+            .status(),
+        502
+    );
 }

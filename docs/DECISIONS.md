@@ -687,3 +687,49 @@ acceptée : la remplacer par une nouvelle qui la référence.
     suit la version des crates `netsift-*` (mis à jour par `scripts/release.sh`). À formater avec
     `./x.sh cargo fmt --manifest-path fuzz/Cargo.toml`. Procédure et résultats : `docs/FUZZING.md` ;
   - le job `fuzz` de la CI rend `main` rouge si une cible plante en 60 s : assumé, comme un test cassé.
+
+## ADR-022 — Identifiant de flux = index de trame global de son premier paquet
+
+- Contexte : P4.7, trouvé par la revue de P4.1. `FlowId::derive(clé, premier_ts)` (FNV-1a 63 bits de
+  la clé orientée et de l'horodatage du premier paquet) donnait le même identifiant à deux instances
+  successives d'un même 5-tuple ayant le même premier horodatage : connexion fermée puis nouveau SYN,
+  éviction LRU puis reprise, capture à horodatages constants ou forgée. Sans erreur visible, `flows`
+  fusionnait les compteurs par maximum, `http_transactions` rejetait le second flux
+  (`UNIQUE (flow_id, seq)`), `tls_sessions` l'ignorait (`DO NOTHING`) et `smb_sessions` fusionnait les
+  sessions. Ajouter l'index de trame au hachage aurait laissé des collisions 63 bits, rares mais
+  provocables par une entrée hostile (FNV n'est pas résistant aux collisions), donc un traitement de
+  repli à concevoir.
+- Décision :
+  - **l'identifiant d'un flux est l'index de trame global de la trame qui l'a créé**
+    (`FlowId::from_first_frame`, `PacketCtx::frame` de son premier paquet ; pour un flux ouvert par un
+    datagramme IP réassemblé, la trame du fragment qui l'a complété), sans hachage. Le lecteur du
+    moteur numérote les trames une seule fois, dans l'ordre de lecture et avant la répartition en
+    shards ; une trame crée au plus un flux (`FlowTable::handle` n'appelle `create` qu'une fois). Deux
+    instances distinctes ont donc toujours des identifiants distincts et **aucune collision n'est
+    possible** : il n'y a ni détection au writer ni identifiant de repli à prévoir. Contrat de
+    `FlowTable::process` : un index de trame distinct par appel (le moteur, les tests et `fuzz/` le
+    respectent) ;
+  - **déterminisme** : l'index est celui du flux de paquets délivré par `ChunkSetSource`, après
+    l'exclusion des chunks en double (jamais lus) et la fusion k-voies des chunks qui se chevauchent
+    (ordre `(ts, chunk, offset)`). Il ne dépend pas du nombre de shards. Il est identique entre un
+    fichier unique et le même trafic découpé en chunks dès que les deux délivrent les paquets dans le
+    même ordre, ce qui est déjà la condition pour que l'analyse soit la même (réassemblage TCP,
+    appariements) : découpage séquentiel, chunks qui se chevauchent sans égalité d'horodatage entre
+    fichiers, chunks d'horodatage constant (départage par numéro de chunk) ;
+  - **pas de migration** : les sessions déjà importées gardent leurs identifiants hachés ; aucun code
+    ne recalcule un `FlowId` depuis la base (les tables le stockent, l'API le lit). Les deux schémas
+    d'identifiants coexistent sans conflit puisqu'un identifiant n'est comparé qu'à l'intérieur d'une
+    session.
+- Conséquences :
+  - les identifiants deviennent petits et suivent l'ordre de création des flux (insertions plus
+    locales dans l'index de `flows`) ; le tri par `flow_id` utilisé pour départager (objets, identifiants)
+    reste déterministe ;
+  - l'identifiant change si l'ordre délivré change : import d'un sous-ensemble des chunks, horodatages
+    égaux entre chunks qui se chevauchent rangés autrement que dans le fichier unique, dépassement de
+    `ReadOptions::max_open` (paquets délivrés hors ordre). L'ancien schéma résistait à ces
+    réordonnancements entre flux mais pas aux collisions ; l'identifiant n'a pas à être stable d'un
+    import à l'autre ;
+  - tests : dérivation (`netsift-flow/src/api.rs`), table de flux (réouverture et éviction à horodatage
+    constant, 1 à 7 tables, propriété « jamais deux fois le même identifiant » sur du trafic hostile,
+    `netsift-flow/tests/identity.rs`) et bout en bout HTTP, TLS, SMB et éviction, fichier unique,
+    chunks qui se chevauchent avec un doublon, 1 à 7 shards (`netsift-engine/tests/flow_identity.rs`).

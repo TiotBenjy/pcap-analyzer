@@ -591,3 +591,211 @@ fn conversation_flows_query_uses_its_index() {
     assert!(!plan.contains("TEMP B-TREE"), "{plan}");
     assert!(!plan.contains("SCAN"), "{plan}");
 }
+
+/// 600 conversations between private, public and multicast hosts and hosts absent from `hosts`,
+/// with many equal sort keys (deterministic pseudo-random).
+fn mixed_categories(conn: &Connection) {
+    let mut seed: u64 = 0x2545_F491;
+    let mut next = move |n: u64| {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) % n
+    };
+    let end = |kind: u64, i: u64| match kind {
+        0 => format!("10.0.{}.{}", i / 200, i % 200),
+        1 => format!("81.0.{}.{}", i / 200, i % 200),
+        2 => format!("224.0.0.{}", i % 20),
+        _ => format!("100.64.0.{}", i % 50),
+    };
+    for _ in 0..600 {
+        // Mostly private clients, mostly public servers; a few multicast and unknown ends.
+        let src = end(
+            [0, 0, 0, 0, 0, 0, 1, 3][usize::try_from(next(8)).unwrap()],
+            next(120),
+        );
+        let dst = end(
+            [1, 1, 1, 1, 0, 2, 3, 1][usize::try_from(next(8)).unwrap()],
+            next(400),
+        );
+        let mut row = conv(
+            &src,
+            &dst,
+            next(5) * 100,
+            next(3),
+            &[["dns", "tls", "http"][usize::try_from(next(3)).unwrap()]],
+        );
+        row.first_ts = i64::try_from(next(10)).unwrap();
+        row.last_ts = 100 + i64::try_from(next(10)).unwrap();
+        row.flows = next(4);
+        insert(conn, StoreRecord::Conversation(row));
+    }
+    for i in 0..400 {
+        for (kind, category) in [(0, "private"), (1, "public"), (2, "multicast")] {
+            insert(
+                conn,
+                StoreRecord::Host(host(&end(kind, i), category, None, &[])),
+            );
+        }
+    }
+}
+
+fn every_page(
+    conn: &Connection,
+    filter: &ConversationFilter,
+    sort: ConversationSort,
+    descending: bool,
+    plan: CategoryPlan,
+) -> Vec<i64> {
+    let mut out = Vec::new();
+    let mut request = PageRequest::first(7);
+    loop {
+        let page = page_with(conn, filter, sort, descending, &request, plan).unwrap();
+        out.extend(page.items.iter().map(|e| e.id));
+        match page.next_cursor {
+            Some(c) => request.cursor = Some(c),
+            None => return out,
+        }
+    }
+}
+
+#[test]
+fn stored_category_counts_and_plans_read_the_same_conversations() {
+    let conn = db();
+    mixed_categories(&conn);
+    finalize(&conn).unwrap();
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES ('finalizers', 'connections:1')",
+        [],
+    )
+    .unwrap();
+    let sets: [&[&str]; 7] = [
+        &[],
+        &["private"],
+        &["public"],
+        &["multicast"],
+        &["loopback"],
+        &["private", "multicast"],
+        &["public", "private", "multicast", "cgnat"],
+    ];
+    let sorts = [
+        ConversationSort::Bytes,
+        ConversationSort::Packets,
+        ConversationSort::Flows,
+        ConversationSort::FirstTs,
+        ConversationSort::LastTs,
+    ];
+    for set in sets {
+        let categories = Some(set.iter().map(|c| (*c).to_owned()).collect::<Vec<_>>());
+        let only = ConversationFilter {
+            categories: categories.clone(),
+            ..ConversationFilter::default()
+        };
+        let with_protocol = ConversationFilter {
+            protocol: Some("tls".to_owned()),
+            ..only.clone()
+        };
+        let want = count_at_read_time(&conn, &only).unwrap();
+        assert_eq!(count_conversations(&conn, &only).unwrap(), want, "{set:?}");
+        assert_eq!(
+            count_conversations(&conn, &with_protocol).unwrap(),
+            count_at_read_time(&conn, &with_protocol).unwrap()
+        );
+        for filter in [&only, &with_protocol] {
+            for sort in sorts {
+                for descending in [true, false] {
+                    let want = every_page(&conn, filter, sort, descending, CategoryPlan::Lists);
+                    assert_eq!(
+                        usize::try_from(count_at_read_time(&conn, filter).unwrap()).unwrap(),
+                        want.len()
+                    );
+                    for plan in [CategoryPlan::Probe, CategoryPlan::Lookup] {
+                        let got = every_page(&conn, filter, sort, descending, plan);
+                        assert_eq!(got, want, "{set:?} {sort:?} {descending} {plan:?}");
+                    }
+                }
+            }
+        }
+    }
+    // The plan follows the share of matching conversations.
+    let plan = |set: &[&str], limit| {
+        let filter = ConversationFilter {
+            categories: Some(set.iter().map(|c| (*c).to_owned()).collect()),
+            ..ConversationFilter::default()
+        };
+        category_plan(&conn, &filter, limit).unwrap()
+    };
+    assert_eq!(plan(&["public"], 50), CategoryPlan::Probe);
+    assert_eq!(plan(&["multicast"], 50), CategoryPlan::Lookup);
+    assert_eq!(plan(&["loopback"], 50), CategoryPlan::Lookup);
+    // Before the step: the lists, and the count at read time.
+    conn.execute("DELETE FROM meta WHERE key = 'finalizers'", [])
+        .unwrap();
+    conn.execute("DELETE FROM conversation_categories", [])
+        .unwrap();
+    assert_eq!(plan(&["public"], 50), CategoryPlan::Lists);
+    let public = ConversationFilter {
+        categories: Some(vec!["public".to_owned()]),
+        ..ConversationFilter::default()
+    };
+    assert!(count_conversations(&conn, &public).unwrap() > 300);
+}
+
+#[test]
+fn category_plans_use_their_indexes() {
+    let conn = db();
+    mixed_categories(&conn);
+    let plan = |plan: CategoryPlan| -> String {
+        let filter = ConversationFilter {
+            categories: Some(vec!["public".to_owned()]),
+            ..ConversationFilter::default()
+        };
+        let c = conditions_with(&filter, plan).unwrap();
+        let sql = format!(
+            "EXPLAIN QUERY PLAN SELECT c.id FROM {CONVERSATION_FROM} WHERE {} \
+             ORDER BY c.bytes_total DESC, c.id DESC LIMIT 51",
+            c.sql().unwrap()
+        );
+        let mut stmt = conn.prepare(&sql).unwrap();
+        stmt.query_map(c.params().as_slice(), |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    // Probe: the sort index, one primary key search per end, no list of hosts.
+    let p = plan(CategoryPlan::Probe);
+    assert!(p.contains("SCAN c USING INDEX conversations_bytes"), "{p}");
+    assert!(
+        p.contains("SEARCH h USING INDEX sqlite_autoindex_hosts_1 (ip=?)"),
+        "{p}"
+    );
+    assert!(
+        !p.contains("hosts_category") && !p.contains("TEMP B-TREE"),
+        "{p}"
+    );
+    // Lookup: the conversations of the hosts of the category, by index, then sorted.
+    let p = plan(CategoryPlan::Lookup);
+    assert!(p.contains("MULTI-INDEX OR"), "{p}");
+    assert!(p.contains("conversations_dst_ip"), "{p}");
+    assert!(p.contains("hosts_category"), "{p}");
+    assert!(!p.contains("SCAN c"), "{p}");
+    // The stored counts: a few dozen rows at most, never `conversations`.
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN SELECT coalesce(sum(conversations) FILTER (WHERE src_category IN \
+             (SELECT value FROM json_each(?1)) OR dst_category IN (SELECT value FROM json_each(?1))), 0), \
+             coalesce(sum(conversations), 0) FROM conversation_categories",
+        )
+        .unwrap();
+    let p = stmt
+        .query_map(["[\"public\"]"], |r| r.get::<_, String>(3))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !p.contains("conversations ") && !p.contains("TEMP B-TREE"),
+        "{p}"
+    );
+}

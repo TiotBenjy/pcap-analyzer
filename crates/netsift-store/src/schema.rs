@@ -48,11 +48,17 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
     migration!(301, "tls_stats_indexes", "0301_tls_stats_indexes.sql"),
     migration!(400, "flows", "0400_flows.sql"),
     migration!(401, "flows_conversation", "0401_flows_conversation.sql"),
+    migration!(
+        402,
+        "flows_category_counts",
+        "0402_flows_category_counts.sql"
+    ),
     migration!(500, "smb", "0500_smb.sql"),
     migration!(600, "credentials", "0600_credentials.sql"),
     migration!(700, "objects", "0700_objects.sql"),
     migration!(800, "servers", "0800_servers.sql"),
     migration!(801, "servers_materialized", "0801_servers_materialized.sql"),
+    migration!(802, "servers_ranks", "0802_servers_ranks.sql"),
     migration!(900, "network", "0900_network.sql"),
 ];
 

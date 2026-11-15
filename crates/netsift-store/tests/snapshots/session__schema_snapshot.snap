@@ -49,6 +49,14 @@ CREATE INDEX chunks_seq ON chunks (seq);
 -- index chunks_status
 CREATE INDEX chunks_status ON chunks (status);
 
+-- table conversation_categories
+CREATE TABLE conversation_categories (
+    src_category  TEXT NOT NULL,
+    dst_category  TEXT NOT NULL,
+    conversations INTEGER NOT NULL,
+    PRIMARY KEY (src_category, dst_category)
+) WITHOUT ROWID;
+
 -- table conversations
 CREATE TABLE conversations (
     id            INTEGER PRIMARY KEY,
@@ -659,6 +667,19 @@ CREATE INDEX objects_size ON objects (size, id);
 -- index objects_thumb
 CREATE INDEX objects_thumb ON objects (thumb, id);
 
+-- table open_port_hosts
+CREATE TABLE open_port_hosts (
+    ip       TEXT PRIMARY KEY NOT NULL,
+    ports    INTEGER NOT NULL,
+    category TEXT NOT NULL
+) WITHOUT ROWID;
+
+-- index open_port_hosts_category
+CREATE INDEX open_port_hosts_category ON open_port_hosts (category);
+
+-- index open_port_hosts_rank
+CREATE INDEX open_port_hosts_rank ON open_port_hosts (ports, ip, category);
+
 -- table open_ports
 CREATE TABLE open_ports (
     ip        TEXT NOT NULL,
@@ -803,6 +824,15 @@ SELECT 'http', server_ip, 'http_response', count(*), count(DISTINCT client_ip), 
 FROM http_transactions
 WHERE resp_ts IS NOT NULL
 GROUP BY server_ip;
+
+-- table server_ranks
+CREATE TABLE server_ranks (
+    role    TEXT NOT NULL,
+    rank    INTEGER NOT NULL,
+    ip      TEXT NOT NULL,
+    servers INTEGER NOT NULL,
+    PRIMARY KEY (role, rank)
+) WITHOUT ROWID;
 
 -- table server_roles
 CREATE TABLE server_roles (

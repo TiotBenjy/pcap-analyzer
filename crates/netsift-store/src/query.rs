@@ -33,7 +33,7 @@ impl PageRequest {
         }
     }
 
-    fn effective_limit(&self) -> u32 {
+    pub(crate) fn effective_limit(&self) -> u32 {
         if self.limit == 0 {
             100
         } else {

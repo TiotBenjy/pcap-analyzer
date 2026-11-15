@@ -80,11 +80,11 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
     },
     Finalizer {
         id: "servers",
-        // 2: materializes the roles (0801).
-        version: 2,
+        // 2: materializes the roles (0801). 3: ranks the servers of each role (0802).
+        version: 3,
         // After `dns`: when a host reaches MAX_HOST_NAMES, DNS names are kept first, always.
         after: &["indexes", "dns"],
-        fills: &["server_evidence", "server_roles"],
+        fills: &["server_evidence", "server_roles", "server_ranks"],
         reads: &["dhcp_messages"],
         run: crate::servers::finalize,
     },
@@ -123,6 +123,24 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         ],
         reads: &["conversations", "hosts", "host_traffic"],
         run: crate::network::finalize,
+    },
+    Finalizer {
+        id: "connections",
+        version: 1,
+        // Reads by primary key only; after `indexes` because the category filter it serves
+        // looks rare categories up in `conversations_dst_ip` (deferred).
+        after: &["indexes"],
+        fills: &["conversation_categories"],
+        reads: &["conversations", "hosts"],
+        run: crate::connections::finalize,
+    },
+    Finalizer {
+        id: "ports",
+        version: 1,
+        after: &[],
+        fills: &["open_port_hosts"],
+        reads: &["open_ports", "hosts"],
+        run: crate::ports::finalize,
     },
 ];
 
@@ -179,6 +197,16 @@ pub fn step_done(conn: &Connection, id: &str) -> Result<bool> {
         return Ok(false);
     };
     Ok(finalizers_done(conn)?.contains(&step.marker()))
+}
+
+/// True when step `id` is recorded as done in version `version` or a later one: for the readers
+/// of a table that a later version of the step still fills the same way (the roles of `servers`
+/// since version 2), so that a session waiting for the replay of a newer version keeps reading it.
+pub fn step_done_since(conn: &Connection, id: &str, version: u32) -> Result<bool> {
+    Ok(finalizers_done(conn)?.iter().any(|m| {
+        m.split_once(':')
+            .is_some_and(|(step, v)| step == id && v.parse::<u32>().is_ok_and(|v| v >= version))
+    }))
 }
 
 /// True when every registered step is recorded as done.

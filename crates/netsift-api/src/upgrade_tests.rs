@@ -378,7 +378,8 @@ const BEFORE_STEPS: &str = "DELETE FROM meta WHERE key IN \
     INSERT INTO http_transactions_fts (http_transactions_fts) VALUES ('delete-all'); \
     INSERT INTO http_headers_fts (http_headers_fts) VALUES ('delete-all'); \
     INSERT INTO dns_fts (dns_fts) VALUES ('delete-all'); \
-    DELETE FROM server_evidence; DELETE FROM server_roles; \
+    DELETE FROM server_evidence; DELETE FROM server_roles; DELETE FROM server_ranks; \
+    DELETE FROM conversation_categories; DELETE FROM open_port_hosts; \
     DELETE FROM timeseries_minute; DELETE FROM timeseries_hour;";
 
 /// Removes every `id` key (session ids differ between the two imports).
@@ -429,6 +430,16 @@ async fn an_import_without_its_steps_reads_the_same_data_read_only() {
     };
     let finished = import();
     let interrupted = import();
+    // The finished session reads the tables of its steps (not empty, so the comparison holds).
+    let session = Session::open(env.catalog().session_dir(&finished), OpenMode::ReadOnly).unwrap();
+    for table in ["server_ranks", "conversation_categories", "open_port_hosts"] {
+        let rows: i64 = session
+            .conn()
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert!(rows > 0, "{table}");
+    }
+    drop(session);
     let session =
         Session::open(env.catalog().session_dir(&interrupted), OpenMode::ReadWrite).unwrap();
     let conn = session.conn();
@@ -437,7 +448,7 @@ async fn an_import_without_its_steps_reads_the_same_data_read_only() {
         .prepare(
             "SELECT name FROM sqlite_master WHERE type = 'index' AND sql NOT LIKE 'CREATE UNIQUE%' \
              AND tbl_name NOT LIKE 'network\\_%' ESCAPE '\\' AND tbl_name NOT IN \
-             ('dns_pairs', 'server_evidence', 'server_roles')",
+             ('dns_pairs', 'server_evidence', 'server_roles', 'open_port_hosts')",
         )
         .unwrap()
         .query_map([], |r| r.get(0))
@@ -457,6 +468,8 @@ async fn an_import_without_its_steps_reads_the_same_data_read_only() {
         "tls/stats",
         "tls/sessions?limit=100",
         "servers",
+        "servers?role=http&limit=1",
+        "servers?category=private",
         "network/graph",
         "network/node/192.168.1.1",
         "http/stats",
@@ -464,7 +477,12 @@ async fn an_import_without_its_steps_reads_the_same_data_read_only() {
         "http/headers?limit=100&q=nginx",
         "dns/messages?limit=100&q=example",
         "connections?limit=100&category=private",
+        "connections?limit=3&category=public",
+        "connections?limit=3&category=multicast,broadcast&sort=first_ts",
+        "connections?limit=100&category=private&protocol=dns",
         "open-ports?limit=100",
+        "open-ports?limit=2&category=private",
+        "open-ports?limit=100&category=public,multicast",
     ] {
         let uri = |id: &SessionId| format!("/api/v1/sessions/{id}/{path}");
         let (status, _, want) = env.get(&uri(&finished)).await;

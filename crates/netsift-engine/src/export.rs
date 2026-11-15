@@ -27,6 +27,14 @@
 //! The flow is found by its 5-tuple and time span, never by recomputing its id. Limit: two
 //! successive flows with the same 5-tuple whose spans overlap (port reused at once, identical
 //! timestamps) cannot be told apart: exporting either gives the packets of both.
+//!
+//! Timestamps going backwards: [`ChunkSetSource`] delivers each file in file order, so when the
+//! import did not read the packets in timestamp order (`read_in_time_order`: `out_of_order`,
+//! `timestamp_backwards` or `merge_fanout_limit` anomaly, truncated anomaly list, or no
+//! end-of-import statistics), the read never stops early and a flow has no lower time bound
+//! (its `first_ts` is the time of its first packet *read*, not the smallest): the chunk window
+//! and the 5-tuple select the packets, which may then include an earlier flow with the same
+//! 5-tuple in the chunks read.
 
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
@@ -37,12 +45,12 @@ use std::time::{Duration, Instant};
 
 use netsift_analyze::dissect::{self, Transport, decode_transport};
 use netsift_capture::chunkset::{
-    ChunkGroup, ChunkMember, ChunkSetSource, EntryKind, GroupKind, InventoryEntry, MemberStatus,
-    ReadOptions, probe_file,
+    AnomalyKind, ChunkGroup, ChunkMember, ChunkSetSource, EntryKind, GroupKind, InventoryEntry,
+    MemberStatus, ReadOptions, probe_file,
 };
 use netsift_capture::writer::{PcapNgWriter, WriteError};
-use netsift_capture::{CaptureError, PacketSource, RawPacket};
-use netsift_store::query::{PageRequest, chunks_page, flow_by_id};
+use netsift_capture::{CaptureError, PacketSource, RawPacket, ReadWarning};
+use netsift_store::query::{PageRequest, chunks_page, flow_by_id, read_in_time_order};
 use netsift_store::{ChunkRow, ChunkStatus, FlowRow, Session, StoreError};
 
 use crate::options::CancelToken;
@@ -91,6 +99,9 @@ pub struct ExportReport {
     pub bytes_written: u64,
     /// Source chunks read.
     pub chunks_read: usize,
+    /// Read errors met in the sources (a chunk that stops early, a record skipped): the file
+    /// may lack packets. The import met the same errors on the same files.
+    pub read_errors: u64,
 }
 
 /// Errors of [`plan_export`] and [`ExportPlan::run`].
@@ -134,6 +145,9 @@ pub struct ExportPlan {
     /// Inclusive bounds of the packet timestamps read.
     window: (i64, i64),
     filter: Option<FlowFilter>,
+    /// The import read the packets in timestamp order (`read_in_time_order`): the read may stop
+    /// at the first packet after the window.
+    ordered: bool,
 }
 
 impl std::fmt::Debug for ExportPlan {
@@ -142,12 +156,14 @@ impl std::fmt::Debug for ExportPlan {
             .field("chunks", &self.needed.len())
             .field("window", &self.window)
             .field("flow", &self.filter.is_some())
+            .field("ordered", &self.ordered)
             .finish_non_exhaustive()
     }
 }
 
 /// Reads what `selection` needs from the session database and checks the source chunks.
 pub fn plan_export(session: &Session, selection: &Selection) -> Result<ExportPlan, ExportError> {
+    let ordered = read_in_time_order(session.conn())?;
     let (window, filter) = match *selection {
         Selection::Session => ((i64::MIN, i64::MAX), None),
         Selection::Range { from_ns, to_ns } => {
@@ -158,14 +174,15 @@ pub fn plan_export(session: &Session, selection: &Selection) -> Result<ExportPla
         }
         Selection::Flow { id } => {
             let flow = flow_by_id(session.conn(), id)?.ok_or(ExportError::FlowNotFound(id))?;
-            let filter = FlowFilter::new(&flow);
-            (
-                (
-                    flow.first_ts.saturating_sub(FRAGMENT_SLACK_NS),
-                    flow.last_ts,
-                ),
-                Some(filter),
-            )
+            let filter = FlowFilter::new(&flow, ordered);
+            // Out of order, a packet of the flow can be older than `first_ts` (the time of the
+            // first packet read, not the smallest): no lower bound then.
+            let from = if ordered {
+                flow.first_ts.saturating_sub(FRAGMENT_SLACK_NS)
+            } else {
+                i64::MIN
+            };
+            ((from, flow.last_ts), Some(filter))
         }
     };
     let rows = all_chunks(session)?;
@@ -202,6 +219,7 @@ pub fn plan_export(session: &Session, selection: &Selection) -> Result<ExportPla
         needed,
         window,
         filter,
+        ordered,
     })
 }
 
@@ -251,14 +269,26 @@ impl ExportPlan {
             if cancel.is_cancelled() {
                 return Err(ExportError::Cancelled);
             }
+            // Before any `continue`: skipped packets move the progress too.
+            if last_report.elapsed() >= PROGRESS_EVERY {
+                last_report = Instant::now();
+                progress(&ExportProgress {
+                    bytes_read: source.bytes_read().min(total),
+                    bytes_total: total,
+                    packets: writer.packets(),
+                    bytes_written: writer.bytes_written(),
+                });
+            }
             let Some(packet) = source.next_packet()? else {
                 break;
             };
-            // The merge delivers packets in timestamp order: nothing later can be in range.
-            // (Timestamps going backwards inside one file are the exception; the import reports
-            // them as an `out_of_order` anomaly.)
             if packet.ts_ns > to {
-                break;
+                // In timestamp order, nothing later can be in range. Otherwise (a file whose
+                // timestamps go backwards), an older packet may still come.
+                if self.ordered {
+                    break;
+                }
+                continue;
             }
             if packet.ts_ns < from {
                 continue;
@@ -276,20 +306,23 @@ impl ExportPlan {
                 packet.orig_len,
                 &packet.data,
             )?;
-            if last_report.elapsed() >= PROGRESS_EVERY {
-                last_report = Instant::now();
-                progress(&ExportProgress {
-                    bytes_read: source.bytes_read().min(total),
-                    bytes_total: total,
-                    packets: writer.packets(),
-                    bytes_written: writer.bytes_written(),
-                });
-            }
         }
+        let read_errors = source
+            .anomalies()
+            .iter()
+            .filter(|a| {
+                matches!(
+                    a.kind,
+                    AnomalyKind::ReadError { .. }
+                        | AnomalyKind::Read(ReadWarning::SkippedRecord { .. })
+                )
+            })
+            .count();
         let report = ExportReport {
             packets: writer.packets(),
             bytes_written: writer.bytes_written(),
             chunks_read: self.needed.len(),
+            read_errors: u64::try_from(read_errors).unwrap_or(u64::MAX),
         };
         let file = writer
             .into_inner()?
@@ -467,17 +500,20 @@ struct FlowFilter {
     a: (IpAddr, u16),
     b: (IpAddr, u16),
     first_ts: i64,
+    /// Packets older than `first_ts` are rejected (only when the session was read in order).
+    strict_start: bool,
     /// Fragmented datagrams whose first fragment matched: (source, destination, id).
     fragments: HashSet<(IpAddr, IpAddr, u32)>,
 }
 
 impl FlowFilter {
-    fn new(flow: &FlowRow) -> Self {
+    fn new(flow: &FlowRow, strict_start: bool) -> Self {
         Self {
             proto: flow.transport,
             a: (flow.src_ip, flow.src_port),
             b: (flow.dst_ip, flow.dst_port),
             first_ts: flow.first_ts,
+            strict_start,
             fragments: HashSet::new(),
         }
     }
@@ -493,8 +529,8 @@ impl FlowFilter {
         };
         let Some(fragment) = ip.fragment else {
             // Same conditions as the flow table: decoded without error, ports or 0.
-            if decoded.error.is_some() || packet.ts_ns < self.first_ts || ip.protocol != self.proto
-            {
+            let too_early = self.strict_start && packet.ts_ns < self.first_ts;
+            if decoded.error.is_some() || too_early || ip.protocol != self.proto {
                 return false;
             }
             let (sport, dport) = decoded.ports().unwrap_or((0, 0));

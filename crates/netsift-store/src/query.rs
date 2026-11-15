@@ -317,6 +317,25 @@ pub fn flow_by_id(conn: &Connection, id: u64) -> Result<Option<FlowRow>> {
         .optional()?)
 }
 
+/// Anomaly kinds after which the packets of the session were not read in timestamp order.
+const UNORDERED_KINDS: &str =
+    "'out_of_order', 'merge_fanout_limit', 'timestamp_backwards', 'limit_reached'";
+
+/// True when the import read every packet in timestamp order: no `out_of_order`,
+/// `merge_fanout_limit` or `timestamp_backwards` anomaly, an anomaly list that was not cut
+/// (`limit_reached`), and the end-of-import statistics present (an import stopped by a crash
+/// never wrote its anomalies: unknown order, so false).
+pub fn read_in_time_order(conn: &Connection) -> Result<bool> {
+    Ok(conn.query_row(
+        &format!(
+            "SELECT NOT EXISTS (SELECT 1 FROM anomalies WHERE kind IN ({UNORDERED_KINDS})) \
+             AND EXISTS (SELECT 1 FROM meta WHERE key = 'stats.anomalies')"
+        ),
+        [],
+        |r| r.get(0),
+    )?)
+}
+
 /// One page of the flows of a conversation (`src_ip` client, `dst_ip` server, as in
 /// `conversations`), by first timestamp then id.
 pub fn conversation_flows_page(

@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { ArrowUp, File, Folder } from 'lucide-react';
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useGeoipUpdate, type GeoipUpdateRequest } from '../../api/geoipQueries';
+import { useGeoipStatus, useGeoipUpdate, type GeoipUpdateRequest } from '../../api/geoipQueries';
 import { browse } from '../../api/sessions';
 import type { BrowseResponse } from '../../api/types/BrowseResponse';
 import type { GeoipInfo } from '../../api/types/GeoipInfo';
@@ -30,12 +30,14 @@ export function GeoipSection({ info, infoError }: GeoipSectionProps) {
   const [browsing, setBrowsing] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
 
-  const { mutation: update, downloading, progress } = useGeoipUpdate();
+  const { mutation: update, busy, downloading, progress } = useGeoipUpdate();
+  const freshness = useGeoipStatus();
+  // A newer database is offered (notice, Settings > Online): the state is not shown as fine.
+  const outdated = freshness.data?.offer === 'update';
 
   const desktop = nativePicker() !== null;
   const readOnly = info?.read_only ?? true;
   const canImport = desktop || (info?.can_browse ?? false);
-  const busy = update.isPending;
 
   const start = (req: GeoipUpdateRequest) => {
     setPickError(null);
@@ -75,7 +77,7 @@ export function GeoipSection({ info, infoError }: GeoipSectionProps) {
         ))}
       {info !== undefined && (
         <div className="flex min-w-0 flex-col gap-0.5">
-          <GeoipStatus geoip={info.geoip} />
+          <GeoipStatus geoip={info.geoip} outdated={outdated} />
           <GeoipDetails geoip={info.geoip} />
         </div>
       )}
@@ -107,6 +109,7 @@ export function GeoipSection({ info, infoError }: GeoipSectionProps) {
             progress={progress}
             error={update.isError ? geoipUpdateErrorMessage(t, update.error) : pickError}
             success={update.isSuccess}
+            notNewer={update.data?.newer === false}
           />
           {readOnly && <p className="break-words text-meta text-muted">{t('views.settings.geoip.readOnly')}</p>}
           {!readOnly && !canImport && (
@@ -139,12 +142,13 @@ export function GeoipSection({ info, infoError }: GeoipSectionProps) {
   );
 }
 
-function GeoipStatus({ geoip }: { geoip: GeoipInfo }) {
+function GeoipStatus({ geoip, outdated }: { geoip: GeoipInfo; outdated: boolean }) {
   const { t, i18n } = useTranslation();
   let text: string;
   let tone: string;
   if (geoip.status === 'available') {
-    tone = 'text-success';
+    // Neutral, not green, when a newer database is offered.
+    tone = outdated ? 'text-fg' : 'text-success';
     text =
       geoip.built_at_us === null
         ? t('views.settings.geoip.availableUndated')
@@ -152,6 +156,7 @@ function GeoipStatus({ geoip }: { geoip: GeoipInfo }) {
             // Build date of the database in UTC: the publisher's calendar, not local time.
             date: formatLongDate(geoip.built_at_us / 1000, true, i18n.language),
           });
+    if (outdated) text = `${text}. ${t('views.geoipPrompt.newerAvailable')}`;
   } else if (geoip.status === 'invalid') {
     tone = 'text-danger';
     text = t('views.settings.geoip.invalid');

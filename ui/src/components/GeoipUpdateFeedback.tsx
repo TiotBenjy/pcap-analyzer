@@ -11,9 +11,18 @@ export interface GeoipUpdateFeedbackProps {
   progress: GeoipUpdate | undefined;
   error: string | null;
   success: boolean;
+  /** The download succeeded but brought nothing newer than the previous database. */
+  notNewer?: boolean;
 }
 
-export function GeoipUpdateFeedback({ pending, downloading, progress, error, success }: GeoipUpdateFeedbackProps) {
+export function GeoipUpdateFeedback({
+  pending,
+  downloading,
+  progress,
+  error,
+  success,
+  notNewer = false,
+}: GeoipUpdateFeedbackProps) {
   const { t, i18n } = useTranslation();
   if (pending) {
     // Only the phase is announced (role="status"); the byte counter changes twice a second and
@@ -57,6 +66,13 @@ export function GeoipUpdateFeedback({ pending, downloading, progress, error, suc
     return (
       <p role="alert" className="break-words text-meta text-danger">
         {error}
+      </p>
+    );
+  }
+  if (success && notNewer) {
+    return (
+      <p role="status" className="break-words text-meta">
+        {t('views.geoipPrompt.notNewer')}
       </p>
     );
   }

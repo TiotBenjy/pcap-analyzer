@@ -1,4 +1,5 @@
 import { apiGet, apiSend } from './client';
+import type { GeoipDownload } from './types/GeoipDownload';
 import type { GeoipFreshness } from './types/GeoipFreshness';
 import type { GeoipInfo } from './types/GeoipInfo';
 import type { GeoipUpdate } from './types/GeoipUpdate';
@@ -6,9 +7,12 @@ import type { GeoipUpdate } from './types/GeoipUpdate';
 // Updates of the country database (Settings > About). The download is done by the backend
 // (ADR-015): the webview itself never contacts any outside host.
 
-/** Downloads the latest DB-IP database and installs it; resolves to the new state. */
-export function downloadGeoip(): Promise<GeoipInfo> {
-  return apiSend<GeoipInfo>('POST', '/geoip/download');
+/**
+ * Downloads the latest DB-IP database and installs it; resolves to the new state, the month
+ * fetched and whether it is newer than the previous database.
+ */
+export function downloadGeoip(): Promise<GeoipDownload> {
+  return apiSend<GeoipDownload>('POST', '/geoip/download');
 }
 
 /** Installs a `.mmdb` or `.mmdb.gz` file chosen by the user; resolves to the new state. */

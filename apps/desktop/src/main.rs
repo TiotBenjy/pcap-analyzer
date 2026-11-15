@@ -68,7 +68,12 @@ fn start(app: &App) -> Result<()> {
     }
     let cores = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
     let config = paths::api_config(paths::random_token()?, data_dir, geoip, cores);
-    let api = EmbeddedApi::start(config, |task| {
+    let install = paths::install_format(
+        tauri::utils::platform::bundle_type().as_ref(),
+        std::env::var_os("APPIMAGE").is_some(),
+    );
+    tracing::info!(?install, "installed package format");
+    let api = EmbeddedApi::start(config, install, |task| {
         tauri::async_runtime::spawn(task);
     })?;
     // Managed before the window exists: its first `get_api_endpoint` call always succeeds.

@@ -44,6 +44,11 @@ function initialTab(): string | null {
   return new URLSearchParams(query).get('tab');
 }
 
+/** Tab label with its count, once the count is known. */
+function tabLabel(label: string, count: number | undefined): string {
+  return count === undefined ? label : `${label} (${formatCount(count)})`;
+}
+
 const MD_QUERY = '(min-width: 768px)';
 /** Container width from which the OS legend sits beside the donut instead of below it. */
 const LEGEND_SIDE_MIN_WIDTH = 1024;
@@ -97,8 +102,12 @@ export default function SmbView() {
               label={t('nav.items.smb')}
               value={tab}
               options={[
-                { value: 'announces', label: `${t('views.smb.tabs.announces')} (${formatCount(stats.data?.announce_count ?? 0)})` },
-                { value: 'auth', label: `${t('views.smb.tabs.auth')} (${formatCount(stats.data?.auth_count ?? 0)})` },
+                // Counts once known: a pending query must not read as "(0)".
+                {
+                  value: 'announces',
+                  label: tabLabel(t('views.smb.tabs.announces'), stats.data?.announce_count),
+                },
+                { value: 'auth', label: tabLabel(t('views.smb.tabs.auth'), stats.data?.auth_count) },
               ]}
               onChange={setTab}
             />

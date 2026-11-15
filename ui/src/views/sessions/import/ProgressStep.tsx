@@ -130,7 +130,7 @@ export function ProgressStep({ imp }: { imp: TrackedImport }) {
                   <li key={i} className="flex min-w-0 items-start gap-2">
                     <TriangleAlert aria-hidden size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-warning" />
                     <span className="min-w-0 [overflow-wrap:anywhere]">
-                      <span className="font-medium">{anomalyLabel(t, w.code)}</span>
+                      <span className="font-medium">{anomalyLabel(t, w)}</span>
                       <span className="text-muted">
                         {' '}
                         ({anomalyWhere(t, w)}){detail === '' ? '' : `${colon(i18n.language)} ${detail}`}

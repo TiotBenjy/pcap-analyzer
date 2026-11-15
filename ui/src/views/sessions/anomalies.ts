@@ -12,9 +12,16 @@ function isKnown(code: string): code is KnownCode {
   return KNOWN.has(code);
 }
 
-/** Translated label of an anomaly code, with a generic fallback for codes added later. */
-export function anomalyLabel(t: TFunction, code: string): string {
-  return isKnown(code) ? t(`anomalies.codes.${code}`) : t('anomalies.unknown', { code });
+/**
+ * Translated label of an anomaly, with a generic fallback for codes added later. Missing files
+ * are counted when the range is known (`1 missing file`, `3 missing files`).
+ */
+export function anomalyLabel(t: TFunction, a: Pick<AnomalyInfo, 'code' | 'detail'>): string {
+  if (a.code === 'missing_sequence') {
+    const r = missingRange(a);
+    if (r !== null) return t('anomalies.missingFiles', { count: Math.max(1, r.last - r.first + 1) });
+  }
+  return isKnown(a.code) ? t(`anomalies.codes.${a.code}`) : t('anomalies.unknown', { code: a.code });
 }
 
 function num(detail: Record<string, unknown>, key: string): number | null {
@@ -40,7 +47,7 @@ export function detailSeconds(detail: Record<string, unknown>, name: string): nu
 }
 
 /** Missing sequence numbers `first..=last` of a `missing_sequence` anomaly. */
-export function missingRange(a: AnomalyInfo): { first: number; last: number } | null {
+export function missingRange(a: Pick<AnomalyInfo, 'detail'>): { first: number; last: number } | null {
   const first = num(a.detail, 'first');
   const last = num(a.detail, 'last') ?? first;
   return first === null || last === null ? null : { first, last };

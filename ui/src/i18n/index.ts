@@ -32,7 +32,9 @@ export function setLanguagePref(pref: LanguagePref): void {
   void i18n.changeLanguage(resolveLanguage(pref, navigator.languages));
 }
 
-type Tree = { readonly [key: string]: string | Tree };
+interface Tree {
+  readonly [key: string]: string | Tree;
+}
 
 /**
  * French plural forms for i18next: CLDR gives French a `many` category (1,000,000 and above,

@@ -216,7 +216,7 @@ export const tlsFr: Widen<typeof tlsEn> = {
   stat: {
     sessions: 'Sessions',
     weak: 'Suites faibles',
-    certIssues: 'Certificats problématiques',
+    certIssues: 'Certificats à risque',
     encrypted: 'Sessions TLS 1.3',
     encryptedHint: 'Certificats chiffrés',
     certificates: 'Certificats distincts',
@@ -241,7 +241,7 @@ export const tlsFr: Widen<typeof tlsEn> = {
     anyVersion: 'Toutes les versions',
     anySuite: 'Toutes les suites',
     weak: 'Suites faibles uniquement',
-    certIssues: 'Certificats problématiques uniquement',
+    certIssues: 'Certificats à risque uniquement',
     clear: 'Effacer les filtres',
   },
   table: {

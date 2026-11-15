@@ -77,8 +77,8 @@ export const picturesFr: typeof picturesEn = {
     host: 'Hôte',
     anyHost: 'Tous les hôtes',
     sort: 'Ordre',
-    sortTime: 'Première apparition',
-    sortSize: "Plus grandes d'abord",
+    sortTime: "Ordre d'apparition",
+    sortSize: 'Taille',
     clear: 'Effacer les filtres',
   },
   tile: {

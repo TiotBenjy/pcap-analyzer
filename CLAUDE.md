@@ -110,10 +110,11 @@ porté (Wireshark, NetworkMiner, etc.) : on s'appuie sur les RFC et specs publiq
   hôtes en liste blanche et sans aucune donnée utilisateur :
   - téléchargement de la base GeoIP sur clic de l'utilisateur (ADR-015) ;
   - vérification DB-IP d'une nouvelle base au démarrage, si l'utilisateur l'a activée (désactivée
-    par défaut, ADR-025) ;
+    par défaut, ADR-025, ADR-026) ;
   - releases GitHub du dépôt : vérification au démarrage sur option (désactivée par défaut) ou sur
-    clic, téléchargement d'un artefact seulement sur clic vers un chemin choisi par l'utilisateur
-    (ADR-025). Échecs silencieux au démarrage.
+    clic (`api.github.com`), téléchargement d'un artefact seulement sur clic vers un chemin choisi par
+    l'utilisateur (`github.com` et son stockage d'assets), vérifié par `SHA256SUMS.txt`, jamais
+    installé automatiquement (ADR-025, ADR-027). Échecs silencieux au démarrage.
 - Contenus extraits (HTML, SVG, scripts) jamais rendus tels quels dans la webview :
   miniatures générées côté Rust, SVG servis en téléchargement uniquement.
 - `captures/`, `.data/`, `.artifacts/`, `dist/`, `*.pcap*` sont ignorés par git.

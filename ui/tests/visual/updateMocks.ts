@@ -2,7 +2,8 @@ import type { Page } from '@playwright/test';
 import type { UpdateState } from '../../src/api/types/UpdateState';
 
 // Update check of the `settings-update*` views: the screenshot server never contacts GitHub, so
-// `GET /api/v1/updates` answers a newer release with long notes (banner and Settings > About).
+// `GET /api/v1/updates` answers a newer release with a title and long notes (banner and
+// Settings > About).
 
 const REPO = 'https://github.com/TiotBenjy/pcap-analyzer';
 const commit = (id: string) => `([${id}](${REPO}/commit/${id}0000000000000000000000000000000))`;
@@ -43,6 +44,8 @@ export const UPDATE_STATE: UpdateState = {
     checked_at_us: 1_794_139_200_000_000,
     release: {
       version: '0.2.0',
+      name: 'NetSift v0.2.0 — Update check from Settings, and a newer GeoIP database offered at startup',
+      title: 'Update check from Settings, and a newer GeoIP database offered at startup',
       notes: NOTES,
       notes_truncated: false,
       html_url: `${REPO}/releases/tag/v0.2.0`,

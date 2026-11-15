@@ -15,6 +15,10 @@ use crate::outbound::parse_sha256;
 pub(crate) const MAX_ASSETS: usize = 64;
 /// Characters of release notes kept at most; the rest is cut.
 pub(crate) const MAX_NOTES_CHARS: usize = 8_000;
+/// Characters of a release name kept at most (`release.yml` writes at most about 110).
+pub(crate) const MAX_NAME_CHARS: usize = 120;
+/// Product name at the start of the release names written by `release.yml`.
+const PRODUCT: &str = "NetSift";
 /// Longest asset name accepted (also the default file name of the save dialog).
 const MAX_ASSET_NAME: usize = 200;
 /// Longest URL kept from the JSON.
@@ -28,6 +32,10 @@ pub(crate) struct GhRelease {
     pub(crate) draft: bool,
     #[serde(default)]
     pub(crate) prerelease: bool,
+    /// Release name: `NetSift vX.Y.Z` or `NetSift vX.Y.Z — <title>` (`release.yml`), possibly
+    /// edited by hand on GitHub.
+    #[serde(default)]
+    pub(crate) name: Option<String>,
     #[serde(default)]
     pub(crate) body: Option<String>,
     #[serde(default)]
@@ -300,6 +308,67 @@ pub(crate) fn plain_notes(body: Option<&str>) -> (String, bool) {
     (out, truncated)
 }
 
+/// Release name as one line of plain text: control and bidirectional formatting characters
+/// dropped (line breaks and tabs become spaces), runs of spaces collapsed, at most
+/// [`MAX_NAME_CHARS`] characters. Empty: none.
+pub(crate) fn plain_name(name: Option<&str>) -> Option<String> {
+    let mut out = String::new();
+    let mut count = 0;
+    let mut space = false;
+    for c in name.unwrap_or_default().chars() {
+        let c = if c.is_whitespace() { ' ' } else { c };
+        if c.is_control() || is_bidi_control(c) {
+            continue;
+        }
+        if c == ' ' {
+            space = !out.is_empty();
+            continue;
+        }
+        let needed = if space { 2 } else { 1 };
+        if count + needed > MAX_NAME_CHARS {
+            break;
+        }
+        if space {
+            out.push(' ');
+            space = false;
+        }
+        out.push(c);
+        count += needed;
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Title of a release, from its (plain) name: what follows the version in
+/// `NetSift vX.Y.Z — <title>` (em dash, en dash, hyphen, colon or nothing as separator), the
+/// whole name when it was written by hand without that prefix, none for the default name
+/// (`NetSift vX.Y.Z`) or a name that is only the tag.
+pub(crate) fn release_title(name: &str, tag: &str) -> Option<String> {
+    let name = name.trim();
+    if name.is_empty() || name.eq_ignore_ascii_case(tag.trim()) || tag_version(name).is_some() {
+        return None;
+    }
+    let after_product = name
+        .get(..PRODUCT.len())
+        .filter(|p| p.eq_ignore_ascii_case(PRODUCT))
+        .and_then(|_| name.get(PRODUCT.len()..))
+        .filter(|rest| rest.starts_with(char::is_whitespace));
+    let Some(rest) = after_product.map(str::trim_start) else {
+        return Some(name.to_owned());
+    };
+    let end = rest
+        .find(|c: char| c.is_whitespace() || c == ':')
+        .unwrap_or(rest.len());
+    let (version, title) = rest.split_at(end);
+    if tag_version(version).is_none() {
+        return Some(name.to_owned());
+    }
+    let title = title
+        .trim_start()
+        .trim_start_matches(['\u{2014}', '\u{2013}', '-', ':', '|'])
+        .trim();
+    (!title.is_empty()).then(|| title.to_owned())
+}
+
 fn is_bidi_control(c: char) -> bool {
     matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
 }
@@ -338,6 +407,7 @@ mod tests {
             tag_name: tag.to_owned(),
             draft: false,
             prerelease: false,
+            name: None,
             body: None,
             html_url: None,
             assets: Vec::new(),
@@ -576,6 +646,82 @@ mod tests {
         assert_eq!(expected_sha256(twice.as_bytes(), "f"), None);
         let same = format!("{a}  f\n{a} *f\n");
         assert_eq!(expected_sha256(same.as_bytes(), "f"), Some(a));
+    }
+
+    #[test]
+    fn names_are_one_bounded_line() {
+        assert_eq!(plain_name(None), None);
+        assert_eq!(plain_name(Some("")), None);
+        assert_eq!(plain_name(Some(" \n\t\u{202e}\u{1b} ")), None);
+        assert_eq!(
+            plain_name(Some(
+                "  NetSift v0.2.0 \u{2014}\r\n <b>Fast</b>\u{1b}[31m\u{2066}import  "
+            )),
+            Some("NetSift v0.2.0 \u{2014} <b>Fast</b>[31mimport".to_owned())
+        );
+        let long = format!("NetSift v0.2.0 \u{2014} {}", "é".repeat(200));
+        let cut = plain_name(Some(&long)).unwrap();
+        assert_eq!(cut.chars().count(), MAX_NAME_CHARS);
+        // Never ends with the space before a word that does not fit.
+        let words = "ab ".repeat(100);
+        let cut = plain_name(Some(&words)).unwrap();
+        assert!(cut.chars().count() <= MAX_NAME_CHARS);
+        assert!(!cut.ends_with(' '));
+    }
+
+    #[test]
+    fn the_title_follows_the_version_in_the_name() {
+        let title = |name: &str| release_title(name, "v0.2.0");
+        // Default names of release.yml, the tag alone, nothing: no title.
+        for name in [
+            "NetSift v0.2.0",
+            "NetSift 0.2.0",
+            "netsift V0.2.0 ",
+            "NetSift v0.2.0 \u{2014} ",
+            "NetSift v0.2.0:",
+            "v0.2.0",
+            "0.2.0",
+            "",
+            "  ",
+        ] {
+            assert_eq!(title(name), None, "{name:?}");
+        }
+        // release.yml with a title, and the usual hand-written separators.
+        for name in [
+            "NetSift v0.2.0 \u{2014} Faster imports",
+            "NetSift 0.2.0 - Faster imports",
+            "NetSift v0.2.0 \u{2013} Faster imports",
+            "NetSift v0.2.0: Faster imports",
+            "NetSift v0.2.0 : Faster imports",
+            "NetSift v0.2.0 | Faster imports",
+            "NetSift v0.2.0 Faster imports",
+            "NETSIFT v0.2.0 \u{2014} Faster imports",
+        ] {
+            assert_eq!(title(name).as_deref(), Some("Faster imports"), "{name:?}");
+        }
+        // Dashes inside the title are kept.
+        assert_eq!(
+            title("NetSift v0.2.0 \u{2014} Import - faster, \u{2014} safer").as_deref(),
+            Some("Import - faster, \u{2014} safer")
+        );
+        // Another version in the name (edited by hand): still a title after it.
+        assert_eq!(
+            title("NetSift v0.2.1 \u{2014} Hotfix").as_deref(),
+            Some("Hotfix")
+        );
+        // Names edited by hand without the prefix: the whole name.
+        for name in [
+            "Faster imports",
+            "NetSift: faster imports",
+            "NetSift faster imports",
+            "NetSiftv0.2.0 faster",
+            "Version 0.2.0",
+        ] {
+            assert_eq!(title(name).as_deref(), Some(name), "{name:?}");
+        }
+        // Hostile names go through plain_name first: what is left is text.
+        let name = plain_name(Some("NetSift v0.2.0 \u{2014} \u{202e}<script>\u{1b}x\n")).unwrap();
+        assert_eq!(title(&name).as_deref(), Some("<script>x"));
     }
 
     #[test]

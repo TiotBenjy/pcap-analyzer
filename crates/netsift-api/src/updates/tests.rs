@@ -203,6 +203,7 @@ impl Env {
             "draft": false,
             "prerelease": false,
             "html_url": format!("http://{}/o/r/releases/tag/{tag}", self.addr),
+            "name": format!("NetSift {tag} \u{2014} Faster\u{202e} imports\n"),
             "body": "## Fixes\n\n- <b>one</b>",
             "assets": assets,
             "author": { "login": "someone" },
@@ -323,6 +324,12 @@ async fn a_newer_release_is_reported_with_its_installers_and_plain_notes() {
     // Plain text, as published: never rendered by the UI.
     assert_eq!(release["notes"], "## Fixes\n\n- <b>one</b>");
     assert_eq!(release["notes_truncated"], false);
+    // The title of the release name, without its control characters.
+    assert_eq!(
+        release["name"],
+        format!("NetSift {NEWER} \u{2014} Faster imports")
+    );
+    assert_eq!(release["title"], "Faster imports");
     assert_eq!(
         release["html_url"],
         format!("http://{}/o/r/releases/tag/{NEWER}", env.addr)
@@ -449,6 +456,9 @@ async fn foreign_urls_in_the_release_are_dropped() {
     assert_eq!(body["status"], "available");
     assert_eq!(body["release"]["html_url"], Value::Null);
     assert_eq!(body["release"]["installers"], json!([]));
+    // No name in the JSON: no title either.
+    assert_eq!(body["release"]["name"], Value::Null);
+    assert_eq!(body["release"]["title"], Value::Null);
 }
 
 // ---------------------------------------------------------------------------------------------

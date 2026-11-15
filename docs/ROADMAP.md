@@ -414,7 +414,7 @@ Hors vague (demande utilisateur du 2026-11-08) :
       masquage du mois par le serveur quand rien de plus récent). Suivis : la base du bundle n'a pas d'enregistrement de
       mois (bandeau « Mettre à jour » possible une fois si DB-IP l'a générée la veille ; `scripts/ci/geoip.sh` pourrait
       l'écrire) ; réponse réelle de DB-IP au `HEAD` non vérifiée à la main.
-- [~] **P4.10** `feat/update-check` — Nouvelle version depuis les releases GitHub du dépôt. Bouton « Rechercher une
+- [x] **P4.10** `feat/update-check` — Nouvelle version depuis les releases GitHub du dépôt. Bouton « Rechercher une
       mise à jour » dans « À propos » et réglage « Vérifier les mises à jour au démarrage », désactivé par défaut ;
       requête faite par l'API Rust (jamais la webview) vers la dernière release publiée (`releases/latest`, URL du dépôt
       fixée au build, HTTPS, tailles et redirections bornées, échec réseau silencieux au démarrage). Version plus récente
@@ -427,6 +427,11 @@ Hors vague (demande utilisateur du 2026-11-08) :
       bundles non signés, ADR-011 ; confirmé par l'utilisateur). Mode web dev :
       lien en texte vers la page de la release. Exception GitHub, client HTTP, réglages et bandeau fournis par P4.11
       (dépendance) ; en parallèle de P4.9, avant la publication de 0.1.0. Demandé par l'utilisateur le 2026-11-15.
+      Fusionné le 2026-11-15 (ADR-027). À vérifier sur la première release publiée après 0.1.0 : hôte réel de
+      redirection des assets GitHub, détection du format installé (`bundle_type()`, AppImage/.deb/.rpm, NSIS/MSI),
+      dialogue d'enregistrement et `downloadDir()` sur les trois systèmes. Suivis mineurs : lien de release coupé au
+      trait d'union (`break-all` dans `ui/src/updates/parts.tsx`, mode web) ; `wait_imports` partage une seule borne
+      `IMPORT_GRACE` entre imports et téléchargement.
 - [x] **P4.6** `ci/release-pipeline` — Releases GitHub publiées par la CI sur tag `vX.Y.Z` : notes
       générées depuis l'historique des commits (Conventional Commits), bundles Linux (AppImage, .deb, .rpm),
       Windows (NSIS .exe, MSI) et macOS (.dmg), sommes SHA-256 ; version unique (workspace, Tauri, UI)

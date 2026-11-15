@@ -43,7 +43,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
     css: false,
     // Hang detector, not a speed limit: above Testing Library's asyncUtilTimeout (5 s,
     // src/test/setup.ts) so that a missing element reports its query. The slowest test takes

@@ -212,9 +212,12 @@ fn conditions(filter: &ConversationFilter) -> Result<Conditions> {
         );
     }
     if let Some(categories) = json_list(filter.categories.as_deref())? {
+        // `+`: no index for these terms. A category matches a large part of the hosts; looking
+        // up their conversations one by one in two indexes (multi-index OR) took 2 s for the
+        // first page, against a scan in sort order that stops at the page size.
         c.push(
-            "c.src_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?))) \
-             OR c.dst_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?)))",
+            "+c.src_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?))) \
+             OR +c.dst_ip IN (SELECT ip FROM hosts WHERE category IN (SELECT value FROM json_each(?)))",
             [Value::Text(categories.clone()), Value::Text(categories)],
         );
     }

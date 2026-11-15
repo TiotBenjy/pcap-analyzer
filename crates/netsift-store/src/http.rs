@@ -718,10 +718,11 @@ pub fn stats(conn: &Connection) -> Result<HttpStats> {
         )?,
         &STATUS_CLASSES,
     );
+    // `status_key` is the status, or -1 without one: its index serves the grouping (P4.2).
     let statuses = counts(
         conn,
-        "SELECT status, count(*) c FROM http_transactions WHERE status IS NOT NULL \
-         GROUP BY status ORDER BY c DESC, status LIMIT ?1",
+        "SELECT status_key, count(*) c FROM http_transactions WHERE status_key >= 0 \
+         GROUP BY status_key ORDER BY c DESC, status_key LIMIT ?1",
         TOP_STATUSES,
     )?;
     let content_types = counts(

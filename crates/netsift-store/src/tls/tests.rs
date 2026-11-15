@@ -367,3 +367,30 @@ fn blob_paths_are_validated() {
         assert!(blob_relpath(bad).is_none(), "{bad}");
     }
 }
+
+#[test]
+fn stats_queries_read_indexes_only() {
+    let conn = db();
+    let plan = |sql: &str| -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        let rows = stmt.query_map([], |r| r.get::<_, String>(3)).unwrap();
+        rows.map(Result::unwrap).collect::<Vec<_>>().join("\n")
+    };
+    for sql in [
+        "SELECT (SELECT count(*) FROM tls_sessions WHERE cipher_weak IS NOT NULL), \
+         (SELECT coalesce(sum(cert_issues != 0), 0) \
+          FROM tls_sessions INDEXED BY tls_sessions_cert_status), \
+         (SELECT count(*) FROM tls_sessions WHERE cert_status = 'encrypted'), \
+         (SELECT count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL)",
+        "SELECT cipher_suite, max(cipher_name), max(cipher_weak), count(*) AS n FROM tls_sessions \
+         WHERE cipher_suite IS NOT NULL GROUP BY cipher_suite ORDER BY n DESC, cipher_suite LIMIT 10",
+        "SELECT version, cipher_suite, count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL \
+         GROUP BY version, cipher_suite",
+    ] {
+        let p = plan(sql);
+        // Every read of tls_sessions goes through an index (no row lookup, no full table scan).
+        for line in p.lines().filter(|l| l.contains("tls_sessions")) {
+            assert!(line.contains("COVERING INDEX"), "{sql}\n{p}");
+        }
+    }
+}

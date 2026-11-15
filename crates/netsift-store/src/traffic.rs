@@ -92,8 +92,10 @@ fn too_long() -> StoreError {
 
 /// First and last one-second buckets of the time series, `None` when it is empty.
 pub fn traffic_bounds(conn: &Connection) -> Result<Option<(i64, i64)>> {
+    // Two sub-queries: SQLite reads a lone min() or max() from one end of the primary key, but
+    // scans a whole index for both in one query (50 ms on a week-long session, P4.2).
     let (first, last): (Option<i64>, Option<i64>) = conn.query_row(
-        "SELECT min(bucket_s), max(bucket_s) FROM timeseries",
+        "SELECT (SELECT min(bucket_s) FROM timeseries), (SELECT max(bucket_s) FROM timeseries)",
         [],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
@@ -549,6 +551,20 @@ mod tests {
     #[test]
     fn rollup_reads_use_the_primary_key() {
         let conn = db();
+        let bounds: Vec<String> = conn
+            .prepare(
+                "EXPLAIN QUERY PLAN SELECT (SELECT min(bucket_s) FROM timeseries), \
+                 (SELECT max(bucket_s) FROM timeseries)",
+            )
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(
+            bounds.iter().all(|l| !l.starts_with("SCAN timeseries")),
+            "bounds read from the ends of the key: {bounds:?}"
+        );
         for table in ["timeseries_minute", "timeseries_hour"] {
             let plan: Vec<String> = conn
                 .prepare(&format!(

@@ -1053,6 +1053,9 @@ CREATE TABLE tls_sessions (
 -- index tls_sessions_cert_issues
 CREATE INDEX tls_sessions_cert_issues ON tls_sessions (ts, id) WHERE cert_issues != 0;
 
+-- index tls_sessions_cert_status
+CREATE INDEX tls_sessions_cert_status ON tls_sessions (cert_status, cert_issues);
+
 -- index tls_sessions_cipher_suite
 CREATE INDEX tls_sessions_cipher_suite ON tls_sessions (cipher_suite, ts);
 
@@ -1064,6 +1067,9 @@ CREATE INDEX tls_sessions_server_ip ON tls_sessions (server_ip);
 
 -- index tls_sessions_sni
 CREATE INDEX tls_sessions_sni ON tls_sessions (sni);
+
+-- index tls_sessions_suite_version
+CREATE INDEX tls_sessions_suite_version ON tls_sessions (cipher_suite, version, cipher_name, cipher_weak);
 
 -- index tls_sessions_ts
 CREATE INDEX tls_sessions_ts ON tls_sessions (ts, id);

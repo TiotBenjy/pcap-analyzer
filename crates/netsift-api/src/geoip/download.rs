@@ -96,13 +96,14 @@ pub(crate) fn file_name((year, month): (i64, u32)) -> String {
 }
 
 /// Downloads the compressed database of the current month, or of the previous one when the
-/// current one answers 404. `progress(received, total)` is called as the body arrives.
+/// current one answers 404. `progress(received, total)` is called as the body arrives. Returns
+/// the body and the month of the file fetched.
 pub(crate) async fn fetch(
     source: &Source,
     now: SystemTime,
     max_bytes: u64,
     mut progress: impl FnMut(u64, Option<u64>),
-) -> Result<Vec<u8>, DownloadError> {
+) -> Result<(Vec<u8>, (i64, u32)), DownloadError> {
     let client = Outbound::new(source.policy.clone())?;
     let [current, previous] = months(now);
     for month in [current, previous] {
@@ -110,7 +111,7 @@ pub(crate) async fn fetch(
         match client.get_bytes(&url, max_bytes, &mut progress).await {
             Ok(body) => {
                 tracing::info!(%url, bytes = body.len(), "GeoIP database downloaded");
-                return Ok(body);
+                return Ok((body, month));
             }
             Err(OutboundError::Status(StatusCode::NOT_FOUND)) => {
                 tracing::info!(%url, "GeoIP database not published yet");

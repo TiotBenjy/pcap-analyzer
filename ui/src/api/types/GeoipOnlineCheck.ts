@@ -3,4 +3,4 @@
 /**
  * Online check of this start.
  */
-export type GeoipOnlineCheck = "off" | "pending" | "published" | "not_published" | "failed";
+export type GeoipOnlineCheck = "off" | "not_needed" | "pending" | "published" | "not_published" | "failed";

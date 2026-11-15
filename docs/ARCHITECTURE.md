@@ -64,7 +64,8 @@ et de `fixtures` pour son générateur de graines seulement.
 ## Modèle d'exécution du pipeline
 
 - 1 thread lecteur (`capture`) : produit des `RawPacket { ts_ns, chunk_id, offset, linktype, data: Bytes }`
-  dans un canal borné (backpressure).
+  dans un canal borné (backpressure), numérotés dans l'ordre de lecture (index de trame global) ;
+  l'identifiant d'un flux est l'index de la trame qui l'a ouvert (ADR-022).
 - 1 thread décodeur L2/L3 qui calcule la clé de flux et distribue par hash vers N shards
   (N = cœurs - 2, min 1). Un flux est toujours traité par le même shard : l'ordre intra-flux est garanti.
 - N workers de flux : défragmentation, réassemblage TCP, appel des analyseurs.

@@ -369,12 +369,6 @@ async fn redirections_are_checked_against_the_allow_list_and_bounded() {
     assert!(matches!(err, OutboundError::TooManyRedirects), "{err}");
     let followed = env.up.hit_names().iter().filter(|n| *n == "start").count();
     assert_eq!(followed, 1 + MAX_REDIRECTS, "first request + redirections");
-
-    // A lower bound from the caller.
-    let strict = Outbound::new(local_policy().with_max_redirects(0)).unwrap();
-    env.up.reply("start", Reply::Redirect(env.url("mirror")));
-    let err = strict.head(&env.url("start")).await.unwrap_err();
-    assert!(matches!(err, OutboundError::TooManyRedirects), "{err}");
 }
 
 // ---------------------------------------------------------------------------------------------

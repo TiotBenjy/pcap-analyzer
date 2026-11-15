@@ -1,5 +1,6 @@
 import type { Dictionary } from './en';
 import { credentialsFr } from './credentials';
+import { exportsFr } from './exports';
 import { picturesFr } from './pictures';
 import { tlsFr } from './tls';
 
@@ -935,6 +936,7 @@ export const fr: Dictionary = {
     },
     // --- analysis views kept in their own module: one line each, sorted ---
     credentials: credentialsFr,
+    exportPcap: exportsFr,
     pictures: picturesFr,
     tls: tlsFr,
   },
@@ -979,6 +981,9 @@ export const fr: Dictionary = {
     notFound: "Introuvable\u00a0: l'élément a peut-être été supprimé",
     conflict: 'Conflit avec une opération en cours',
     tooManyImports: "Trop d'imports en cours\u00a0; attendez la fin de l'un d'eux.",
+    tooManyExports: "Trop d'exports en cours\u00a0; attendez la fin de l'un d'eux.",
+    exportSourceMissing: "Un fichier de capture de la session est absent ou illisible\u00a0: remettez-le à l'endroit d'où il a été importé.",
+    exportSourceModified: "Un fichier de capture de la session a changé depuis l'import\u00a0: l'export ne correspondrait plus à l'analyse.",
     sessionTooNew: "Cette session a été créée par une version plus récente de NetSift. Mettez l'application à jour pour l'ouvrir.",
     sessionUpgradeFailed:
       "Cette session n'a pas pu être mise à niveau pour cette version. Vérifiez que le dossier de données est accessible en écriture, ou importez à nouveau la capture.",

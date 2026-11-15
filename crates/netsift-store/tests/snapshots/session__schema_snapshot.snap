@@ -290,6 +290,9 @@ CREATE INDEX flows_app_proto ON flows (app_proto);
 -- index flows_bytes_total
 CREATE INDEX flows_bytes_total ON flows (bytes_total);
 
+-- index flows_conversation
+CREATE INDEX flows_conversation ON flows (src_ip, dst_ip, first_ts);
+
 -- index flows_dst_ip
 CREATE INDEX flows_dst_ip ON flows (dst_ip);
 

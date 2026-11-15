@@ -40,6 +40,13 @@ pub enum ApiError {
     GeoipTooLarge,
     #[error("GeoIP update already running")]
     GeoipUpdateRunning,
+    #[error("too many exports running")]
+    TooManyExports,
+    /// Detail: the file name of the chunk (never its full path).
+    #[error("export source missing: {0}")]
+    ExportSourceMissing(String),
+    #[error("export source modified: {0}")]
+    ExportSourceModified(String),
     #[error("internal error")]
     Internal,
 }
@@ -117,6 +124,21 @@ impl ApiError {
                 "geoip-update-running",
                 "A GeoIP update is already running",
             ),
+            Self::TooManyExports => (
+                StatusCode::CONFLICT,
+                "too-many-exports",
+                "Too many exports running; wait for one to end",
+            ),
+            Self::ExportSourceMissing(_) => (
+                StatusCode::CONFLICT,
+                "export-source-missing",
+                "A capture file of the session is missing or unreadable",
+            ),
+            Self::ExportSourceModified(_) => (
+                StatusCode::CONFLICT,
+                "export-source-modified",
+                "A capture file of the session changed since the import",
+            ),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",
@@ -126,16 +148,38 @@ impl ApiError {
     }
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let (status, kind, title) = self.parts();
-        let detail = match &self {
-            Self::BadRequest(d) | Self::Conflict(d) => Some(d.clone()),
+impl ApiError {
+    /// Problem type URI (`urn:netsift:problem:<kind>`) and detail, as sent in the response.
+    pub(crate) fn problem(&self) -> (String, Option<String>) {
+        let (_, kind, _) = self.parts();
+        let detail = match self {
+            Self::BadRequest(d)
+            | Self::Conflict(d)
+            | Self::ExportSourceMissing(d)
+            | Self::ExportSourceModified(d) => Some(d.clone()),
             Self::Forbidden(d) => Some((*d).to_owned()),
             _ => None,
         };
+        (format!("urn:netsift:problem:{kind}"), detail)
+    }
+
+    /// Title of the problem (fixed text of its type).
+    pub(crate) fn title(&self) -> &'static str {
+        self.parts().2
+    }
+
+    /// HTTP status of the problem.
+    pub(crate) fn status(&self) -> u16 {
+        self.parts().0.as_u16()
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (status, _, title) = self.parts();
+        let (kind, detail) = self.problem();
         let body = Problem {
-            kind: &format!("urn:netsift:problem:{kind}"),
+            kind: &kind,
             title,
             status: status.as_u16(),
             detail,

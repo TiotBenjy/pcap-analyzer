@@ -303,6 +303,60 @@ pub fn flows_page(
     keyset_page(conn, &query, &[], request, FlowRow::from_row)
 }
 
+/// The flow with this id, if any (the export reads its 5-tuple and time span).
+pub fn flow_by_id(conn: &Connection, id: u64) -> Result<Option<FlowRow>> {
+    let Ok(id) = i64::try_from(id) else {
+        return Ok(None);
+    };
+    Ok(conn
+        .query_row(
+            &format!("SELECT {FLOW_COLUMNS} FROM flows WHERE id = ?1"),
+            [id],
+            FlowRow::from_row,
+        )
+        .optional()?)
+}
+
+/// Anomaly kinds after which the packets of the session were not read in timestamp order.
+const UNORDERED_KINDS: &str =
+    "'out_of_order', 'merge_fanout_limit', 'timestamp_backwards', 'limit_reached'";
+
+/// True when the import read every packet in timestamp order: no `out_of_order`,
+/// `merge_fanout_limit` or `timestamp_backwards` anomaly, an anomaly list that was not cut
+/// (`limit_reached`), and the end-of-import statistics present (an import stopped by a crash
+/// never wrote its anomalies: unknown order, so false).
+pub fn read_in_time_order(conn: &Connection) -> Result<bool> {
+    Ok(conn.query_row(
+        &format!(
+            "SELECT NOT EXISTS (SELECT 1 FROM anomalies WHERE kind IN ({UNORDERED_KINDS})) \
+             AND EXISTS (SELECT 1 FROM meta WHERE key = 'stats.anomalies')"
+        ),
+        [],
+        |r| r.get(0),
+    )?)
+}
+
+/// One page of the flows of a conversation (`src_ip` client, `dst_ip` server, as in
+/// `conversations`), by first timestamp then id.
+pub fn conversation_flows_page(
+    conn: &Connection,
+    src: std::net::IpAddr,
+    dst: std::net::IpAddr,
+    request: &PageRequest,
+) -> Result<Page<FlowRow>> {
+    let query = Keyset {
+        from: "flows",
+        select: FLOW_COLUMNS,
+        sort: "first_ts",
+        tiebreak: "id",
+        descending: false,
+        filter: Some("src_ip = ? AND dst_ip = ?"),
+    };
+    let (src, dst) = (src.to_string(), dst.to_string());
+    let params: [&dyn ToSql; 2] = [&src, &dst];
+    keyset_page(conn, &query, &params, request, FlowRow::from_row)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

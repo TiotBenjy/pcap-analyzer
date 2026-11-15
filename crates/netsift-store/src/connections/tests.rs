@@ -354,3 +354,95 @@ fn country_sums_saturate_instead_of_failing() {
     assert_eq!(sent[0].bytes, i64::MAX as u64);
     assert_eq!(sent[0].hosts, 2);
 }
+
+fn flow(id: u64, src: &str, dst: &str, first_ts: i64) -> StoreRecord {
+    StoreRecord::Flow(crate::records::FlowRow {
+        id,
+        transport: 6,
+        src_ip: src.parse().unwrap(),
+        src_port: 40_000,
+        dst_ip: dst.parse().unwrap(),
+        dst_port: 443,
+        first_ts,
+        last_ts: first_ts + 10,
+        bytes_fwd: 1,
+        bytes_rev: 1,
+        packets_fwd: 1,
+        packets_rev: 1,
+        app_proto: None,
+        tcp_state: None,
+    })
+}
+
+#[test]
+fn conversation_ends_and_flows_are_paged_by_first_seen() {
+    use crate::query::conversation_flows_page;
+
+    let conn = db();
+    insert(
+        &conn,
+        StoreRecord::Conversation(conv("10.0.0.1", "10.0.0.2", 1, 1, &["tls"])),
+    );
+    let id: i64 = conn
+        .query_row("SELECT id FROM conversations", [], |r| r.get(0))
+        .unwrap();
+    let (src, dst) = conversation_ends(&conn, id).unwrap().unwrap();
+    assert_eq!(
+        (src.to_string(), dst.to_string()),
+        ("10.0.0.1".into(), "10.0.0.2".into())
+    );
+    assert_eq!(conversation_ends(&conn, id + 1).unwrap(), None);
+
+    // Seven flows of the conversation (two with the same first_ts, ordered by id), plus flows
+    // of the reverse orientation and of another pair, which never show up.
+    for (i, ts) in [50, 10, 30, 30, 70, 20, 60].into_iter().enumerate() {
+        insert(&conn, flow(100 + i as u64, "10.0.0.1", "10.0.0.2", ts));
+    }
+    insert(&conn, flow(1, "10.0.0.2", "10.0.0.1", 5));
+    insert(&conn, flow(2, "10.0.0.1", "10.0.0.3", 5));
+    let mut seen = Vec::new();
+    let mut request = PageRequest::first(3);
+    loop {
+        let page = conversation_flows_page(&conn, src, dst, &request).unwrap();
+        assert!(page.items.len() <= 3);
+        seen.extend(page.items.iter().map(|f| (f.first_ts, f.id)));
+        match page.next_cursor {
+            Some(c) => request.cursor = Some(c),
+            None => break,
+        }
+    }
+    assert_eq!(
+        seen,
+        [
+            (10, 101),
+            (20, 105),
+            (30, 102),
+            (30, 103),
+            (50, 100),
+            (60, 106),
+            (70, 104)
+        ]
+    );
+}
+
+#[test]
+fn conversation_flows_query_uses_its_index() {
+    let conn = db();
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN SELECT id FROM flows WHERE (src_ip = ? AND dst_ip = ?) \
+             AND (first_ts, id) > (?, ?) ORDER BY first_ts ASC, id ASC LIMIT 51",
+        )
+        .unwrap();
+    let plan = stmt
+        .query_map((("10.0.0.1"), ("10.0.0.2"), 5, 1), |r| {
+            r.get::<_, String>(3)
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(plan.contains("flows_conversation"), "{plan}");
+    assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+    assert!(!plan.contains("SCAN"), "{plan}");
+}

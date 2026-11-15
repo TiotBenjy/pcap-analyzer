@@ -82,7 +82,7 @@ function VirtualGrid({ sessionId, items, onOpen }: PictureGridProps) {
 
   return (
     <div ref={widthRef} className="min-w-0">
-      <div ref={scrollRef} className="overflow-y-auto overscroll-contain" style={{ maxHeight: VIRTUAL_HEIGHT }}>
+      <div ref={scrollRef} className="relative overflow-y-auto overscroll-contain" style={{ maxHeight: VIRTUAL_HEIGHT }}>
         <ul aria-label={t('views.pictures.gridLabel')} className="relative" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().flatMap((row) =>
             items.slice(row.index * columns, row.index * columns + columns).map((item, col) => {

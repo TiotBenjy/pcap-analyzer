@@ -91,7 +91,7 @@ export function DataTable<T>({
   const colCount = table.getVisibleLeafColumns().length;
 
   return (
-    <div ref={scrollRef} className="w-full min-w-0 overflow-auto" style={{ maxHeight }} data-testid="datatable">
+    <div ref={scrollRef} className="relative w-full min-w-0 overflow-auto" style={{ maxHeight }} data-testid="datatable">
       <table
         aria-label={ariaLabel}
         aria-rowcount={rows.length + 1}

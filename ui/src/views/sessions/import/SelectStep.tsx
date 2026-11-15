@@ -172,7 +172,7 @@ function BrowserSelect({ kind, onPick }: SelectStepProps) {
             </span>
           </div>
 
-          <div className="h-80 min-w-0 overflow-y-auto rounded-md border border-line" aria-busy={listing.isFetching}>
+          <div className="relative h-80 min-w-0 overflow-y-auto rounded-md border border-line" aria-busy={listing.isFetching}>
             {data === undefined ? (
               <div className="flex flex-col gap-2 p-2">
                 <Skeleton height={28} />

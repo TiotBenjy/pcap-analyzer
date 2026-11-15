@@ -51,7 +51,7 @@ function Tabs({ value, onChange, labels }: { value: Tab; onChange: (t: Tab) => v
     refs.current[next]?.focus();
   };
   return (
-    <div role="tablist" className="flex min-w-0 gap-0.5 overflow-x-auto border-b border-line sm:gap-1" onKeyDown={onKey}>
+    <div role="tablist" className="relative flex min-w-0 gap-0.5 overflow-x-auto border-b border-line sm:gap-1" onKeyDown={onKey}>
       {TABS.map((tab) => (
         <button
           key={tab}

@@ -129,7 +129,7 @@ function PairsContent({ sessionId, filter, enabled, hasTraffic, wide }: PairsLis
 
   return (
     <>
-      <div className="w-full min-w-0 overflow-x-auto">
+      <div className="relative w-full min-w-0 overflow-x-auto">
         <table aria-label={t('views.dns.table.label')} className="w-full table-fixed border-collapse text-table">
           <colgroup>
             <col className="w-10" />

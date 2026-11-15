@@ -171,7 +171,7 @@ export function ReviewStep({ kind, path, onBack }: ReviewStepProps) {
                 <summary className="cursor-pointer text-muted">
                   {t('views.import.skipped', { count: scan.data.skipped.length })}
                 </summary>
-                <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto">
+                <ul className="relative mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto">
                   {scan.data.skipped.map((s) => (
                     <li key={s.name} className="flex min-w-0 items-center gap-2 text-meta">
                       <span data-testid="truncatable" title={s.name} className="min-w-0 flex-1 truncate font-mono">

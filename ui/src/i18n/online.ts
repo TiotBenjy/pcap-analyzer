@@ -4,7 +4,7 @@
 export const onlineEn = {
   title: 'Online',
   description:
-    'NetSift works offline. These checks are off by default. When on, NetSift sends one request at startup, with no personal data, and stays silent if it fails.',
+    'NetSift works offline. These checks are off by default. When on, NetSift sends a request at startup, with no personal data, and stays silent if it fails.',
   geoipCheck: 'Check for a new GeoIP database at startup',
   geoipCheckHint: 'Asks download.db-ip.com whether a newer database is published.',
   updateCheck: 'Check for updates at startup',

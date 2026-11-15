@@ -10,11 +10,17 @@
 //!   fail silently: log at `debug` or `info`, keep their result in their own state, never show
 //!   an error to the user.
 //! - Requests go through [`crate::outbound`], with the feature's own allow list.
+//! - State: each feature keeps its own (last result, source of its tests...) in
+//!   `AppState::online`, an [`OnlineStates`] holding one value per type: the feature defines a
+//!   `Default` type in its module and reads it with `state.online.get::<MyState>()`, without
+//!   touching `AppState`.
 
 // The registry is empty until the first online feature registers a check.
 #![cfg_attr(not(test), allow(dead_code))]
 
-use std::sync::Arc;
+use std::any::{Any, TypeId};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use futures_util::future::BoxFuture;
 use tokio::task::JoinHandle;
@@ -30,6 +36,31 @@ pub(crate) struct StartupCheck {
     pub(crate) enabled: fn(&OnlineSettings) -> bool,
     /// The check itself.
     pub(crate) run: fn(Arc<AppState>) -> BoxFuture<'static, ()>,
+}
+
+/// States of the online features, one slot per state type (`TypeId`), created on first use
+/// with `Default`. Shared by the startup checks and the routes of the feature.
+#[derive(Default)]
+pub(crate) struct OnlineStates {
+    slots: Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
+}
+
+impl OnlineStates {
+    /// The state of type `T`, created with `T::default()` on first use. Always the same value
+    /// for a given type: wrap mutable parts in a `Mutex` or atomics.
+    pub(crate) fn get<T: Any + Default + Send + Sync>(&self) -> Arc<T> {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        let slot = slots
+            .entry(TypeId::of::<T>())
+            .or_insert_with(|| Arc::new(T::default()));
+        if let Ok(state) = Arc::clone(slot).downcast::<T>() {
+            return state;
+        }
+        // Unreachable (the key is the type), but never panic: start again from the default.
+        let state = Arc::new(T::default());
+        *slot = Arc::clone(&state) as Arc<dyn Any + Send + Sync>;
+        state
+    }
 }
 
 /// Registration point: one line per feature, sorted by id.
@@ -130,6 +161,24 @@ mod tests {
     }
 
     #[test]
+    fn each_feature_gets_its_own_state() {
+        #[derive(Default)]
+        struct Geoip(AtomicUsize);
+        #[derive(Default)]
+        struct Update(Mutex<Option<String>>);
+
+        let states = OnlineStates::default();
+        states.get::<Geoip>().0.fetch_add(2, Ordering::SeqCst);
+        *states.get::<Update>().0.lock().unwrap() = Some("0.2.0".to_owned());
+        assert_eq!(states.get::<Geoip>().0.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            states.get::<Update>().0.lock().unwrap().as_deref(),
+            Some("0.2.0")
+        );
+        assert!(Arc::ptr_eq(&states.get::<Geoip>(), &states.get::<Geoip>()));
+    }
+
+    #[test]
     fn production_registry_is_sorted_by_id() {
         let ids: Vec<_> = STARTUP_CHECKS.iter().map(|c| c.id).collect();
         let mut sorted = ids.clone();
@@ -171,6 +220,9 @@ mod tests {
     async fn checks_stop_at_shutdown() {
         let tmp = tempfile::TempDir::new().unwrap();
         let s = state(tmp.path(), false, "{}");
+        // The state of the server holds the slots of the features.
+        s.online.get::<AtomicUsize>().fetch_add(1, Ordering::SeqCst);
+        assert_eq!(s.online.get::<AtomicUsize>().load(Ordering::SeqCst), 1);
         let handles = spawn_checks(&s, STUCK);
         assert_eq!(handles.len(), 1);
         s.begin_shutdown();

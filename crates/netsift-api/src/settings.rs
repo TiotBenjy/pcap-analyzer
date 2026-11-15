@@ -10,13 +10,14 @@
 //!   below, one change at a time.
 //!
 //! Routes: `GET /settings`, `PUT /settings` (fields omitted are left unchanged) and
-//! `PUT /settings/notices/{id}` (notice dismissed until its key changes). Refused in read-only
+//! `PUT /settings/notices/{id}` (notice dismissed until its key changes; the least recently
+//! dismissed is forgotten past [`MAX_DISMISSED`]). Refused in read-only
 //! mode like every mutating route.
 
 #[cfg(test)]
 mod tests;
 
-use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -35,7 +36,7 @@ pub(crate) const FILE_NAME: &str = "settings.json";
 const TEMP_NAME: &str = "settings.json.tmp";
 /// Larger files are not read (the real file is well under 1 KiB).
 const MAX_FILE_BYTES: u64 = 64 * 1024;
-/// Dismissed notices kept at most.
+/// Dismissed notices kept at most: past it, the least recently dismissed is forgotten.
 pub(crate) const MAX_DISMISSED: usize = 32;
 const MAX_ID_LEN: usize = 64;
 const MAX_KEY_LEN: usize = 64;
@@ -46,9 +47,19 @@ const MAX_KEY_LEN: usize = 64;
 #[ts(export)]
 pub struct Settings {
     pub online: OnlineSettings,
-    /// Notices hidden by the user: notice id -> key it was hidden for (for example the month of
-    /// a database or a version number). A notice shows again once its key changes.
-    pub dismissed_notices: BTreeMap<String, String>,
+    /// Notices hidden by the user, least recently dismissed first, one entry per notice id.
+    pub dismissed_notices: Vec<DismissedNotice>,
+}
+
+/// A notice hidden until its key changes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DismissedNotice {
+    /// Id of the notice (`NoticeProvider.id` in the UI).
+    pub id: String,
+    /// Key it was hidden for, for example the month of a database or a version number. The
+    /// notice shows again once its key changes.
+    pub key: String,
 }
 
 /// Network requests made at startup, each off until the user enables it (ADR-025).
@@ -185,13 +196,12 @@ async fn dismiss_notice(
     }
     let settings = blocking(&state, move |s| {
         s.settings.update(|settings| {
-            let map = &mut settings.dismissed_notices;
-            if !map.contains_key(&id) && map.len() >= MAX_DISMISSED {
-                return Err(ApiError::BadRequest(
-                    "too many dismissed notices".to_owned(),
-                ));
-            }
-            map.insert(id, body.key);
+            let list = &mut settings.dismissed_notices;
+            list.retain(|n| n.id != id);
+            list.push(DismissedNotice { id, key: body.key });
+            // Least recently dismissed first: forget the oldest ones.
+            let excess = list.len().saturating_sub(MAX_DISMISSED);
+            list.drain(..excess);
             Ok(())
         })
     })
@@ -250,14 +260,19 @@ fn read_file(path: &Path) -> Settings {
     }
 }
 
-/// Drops the invalid dismissed notices (and those beyond [`MAX_DISMISSED`]).
+/// Drops the invalid dismissed notices, the repeated ids (the last one wins) and the oldest
+/// ones beyond [`MAX_DISMISSED`].
 fn sanitize(mut settings: Settings) -> Settings {
     let before = settings.dismissed_notices.len();
-    settings.dismissed_notices = std::mem::take(&mut settings.dismissed_notices)
+    let mut seen = HashSet::new();
+    let mut kept: Vec<DismissedNotice> = std::mem::take(&mut settings.dismissed_notices)
         .into_iter()
-        .filter(|(id, key)| valid_id(id) && valid_key(key))
+        .rev()
+        .filter(|n| valid_id(&n.id) && valid_key(&n.key) && seen.insert(n.id.clone()))
         .take(MAX_DISMISSED)
         .collect();
+    kept.reverse();
+    settings.dismissed_notices = kept;
     let dropped = before - settings.dismissed_notices.len();
     if dropped > 0 {
         tracing::warn!(

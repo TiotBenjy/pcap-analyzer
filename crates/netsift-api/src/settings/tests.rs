@@ -106,7 +106,7 @@ fn config(data_dir: PathBuf, read_only: bool) -> ApiConfig {
 fn defaults() -> Value {
     json!({
         "online": { "geoip_check": false, "update_check": false },
-        "dismissed_notices": {},
+        "dismissed_notices": [],
     })
 }
 
@@ -202,15 +202,38 @@ async fn unusable_files_fall_back_to_the_defaults_and_are_replaced() {
     }
 }
 
+/// `[id, key]` pairs of a dismissal list, in order.
+fn pairs(list: &Value) -> Vec<(String, String)> {
+    list.as_array()
+        .unwrap()
+        .iter()
+        .map(|n| {
+            (
+                n["id"].as_str().unwrap().to_owned(),
+                n["key"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+fn owned(list: &[(&str, &str)]) -> Vec<(String, String)> {
+    list.iter()
+        .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
+        .collect()
+}
+
 #[tokio::test]
 async fn valid_files_keep_their_valid_parts() {
-    let mut notices = serde_json::Map::new();
-    notices.insert("geoip".into(), json!("2026-11"));
-    notices.insert("Bad Id".into(), json!("1"));
-    notices.insert("update".into(), json!("v 1"));
+    let mut notices = vec![
+        json!({ "id": "geoip", "key": "2026-10" }),
+        json!({ "id": "Bad Id", "key": "1" }),
+        json!({ "id": "update", "key": "v 1" }),
+    ];
     for i in 0..40 {
-        notices.insert(format!("n{i:02}"), json!("k"));
+        notices.push(json!({ "id": format!("n{i:02}"), "key": "k" }));
     }
+    // Repeated id: the last entry wins.
+    notices.push(json!({ "id": "geoip", "key": "2026-11" }));
     let file = json!({
         "online": { "update_check": true },
         "dismissed_notices": notices,
@@ -220,11 +243,14 @@ async fn valid_files_keep_their_valid_parts() {
     let settings = env.state.settings.get();
     assert!(settings.online.update_check);
     assert!(!settings.online.geoip_check);
-    let map = &settings.dismissed_notices;
-    assert_eq!(map.len(), MAX_DISMISSED);
-    assert_eq!(map.get("geoip").map(String::as_str), Some("2026-11"));
-    assert!(!map.contains_key("Bad Id"));
-    assert!(!map.contains_key("update"));
+    let list = &settings.dismissed_notices;
+    assert_eq!(list.len(), MAX_DISMISSED);
+    // The most recent ones are kept, in order.
+    let last = list.last().unwrap();
+    assert_eq!((last.id.as_str(), last.key.as_str()), ("geoip", "2026-11"));
+    assert_eq!(list.first().unwrap().id, "n09");
+    assert_eq!(list.iter().filter(|n| n.id == "geoip").count(), 1);
+    assert!(!list.iter().any(|n| n.id == "Bad Id" || n.id == "update"));
 }
 
 #[tokio::test]
@@ -232,18 +258,24 @@ async fn notices_stay_dismissed_until_their_key_changes() {
     let env = Env::new(false, None);
     let (status, json) = env.dismiss("geoip", "2026-11").await;
     assert_eq!(status, StatusCode::OK, "{json}");
-    assert_eq!(json["dismissed_notices"], json!({ "geoip": "2026-11" }));
-    let (_, json) = env.dismiss("update", "0.2.0").await;
-    let (_, json2) = env.dismiss("geoip", "2026-12").await;
-    assert_eq!(json["dismissed_notices"]["update"], "0.2.0");
     assert_eq!(
-        json2["dismissed_notices"],
-        json!({ "geoip": "2026-12", "update": "0.2.0" })
+        pairs(&json["dismissed_notices"]),
+        owned(&[("geoip", "2026-11")])
+    );
+    env.dismiss("update", "0.2.0").await;
+    let (_, json) = env.dismiss("geoip", "2026-12").await;
+    // A new dismissal moves the notice to the end (most recent).
+    assert_eq!(
+        pairs(&json["dismissed_notices"]),
+        owned(&[("update", "0.2.0"), ("geoip", "2026-12")])
     );
     assert_eq!(env.reloaded().dismissed_notices.len(), 2);
     // Dismissals and online settings do not overwrite each other.
     env.put(&json!({ "online": { "geoip_check": true } })).await;
-    assert_eq!(env.file()["dismissed_notices"]["geoip"], "2026-12");
+    assert_eq!(
+        pairs(&env.file()["dismissed_notices"]),
+        owned(&[("update", "0.2.0"), ("geoip", "2026-12")])
+    );
     assert_eq!(env.file()["online"]["geoip_check"], true);
 
     for (id, key) in [
@@ -267,16 +299,47 @@ async fn notices_stay_dismissed_until_their_key_changes() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
 
-    // Bounded.
-    for i in 0..MAX_DISMISSED - 2 {
+#[tokio::test]
+async fn the_least_recently_dismissed_notice_is_forgotten_past_the_bound() {
+    let env = Env::new(false, None);
+    for i in 0..MAX_DISMISSED {
         assert_eq!(env.dismiss(&format!("n{i}"), "1").await.0, StatusCode::OK);
     }
+    // Dismissed again: becomes the most recent, so n1 is now the oldest.
+    env.dismiss("n0", "2").await;
+    let (status, json) = env.dismiss("one-more", "1").await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    let list = pairs(&json["dismissed_notices"]);
+    assert_eq!(list.len(), MAX_DISMISSED);
+    assert!(!list.iter().any(|(id, _)| id == "n1"));
+    assert_eq!(list.first().unwrap().0, "n2");
     assert_eq!(
-        env.dismiss("one-more", "1").await.0,
-        StatusCode::BAD_REQUEST
+        list[MAX_DISMISSED - 2..],
+        owned(&[("n0", "2"), ("one-more", "1")])
     );
-    assert_eq!(env.dismiss("geoip", "2027-01").await.0, StatusCode::OK);
+    assert_eq!(env.reloaded().dismissed_notices.len(), MAX_DISMISSED);
+}
+
+#[tokio::test]
+async fn settings_routes_require_the_token() {
+    let env = Env::new(false, None);
+    for (method, uri) in [
+        ("GET", "/api/v1/settings"),
+        ("PUT", "/api/v1/settings"),
+        ("PUT", "/api/v1/settings/notices/geoip"),
+    ] {
+        let req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(r#"{"key":"1"}"#))
+            .unwrap();
+        let res = env.app.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{method} {uri}");
+    }
+    assert!(!env.path().exists());
 }
 
 #[tokio::test]

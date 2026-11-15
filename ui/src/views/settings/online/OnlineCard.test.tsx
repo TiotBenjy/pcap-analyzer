@@ -16,7 +16,7 @@ vi.mock('../../../api/queries', () => ({
 const api = vi.hoisted(() => ({ getSettings: vi.fn(), updateSettings: vi.fn(), dismissNotice: vi.fn() }));
 vi.mock('../../../api/settings', () => api);
 
-const DEFAULTS: Settings = { online: { geoip_check: false, update_check: false }, dismissed_notices: {} };
+const DEFAULTS: Settings = { online: { geoip_check: false, update_check: false }, dismissed_notices: [] };
 
 function renderCard(extensions: readonly OnlineExtension[] = ONLINE_EXTENSIONS) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });

@@ -522,6 +522,38 @@ mod tests {
     }
 
     #[test]
+    fn a_step_is_done_since_a_version_when_any_later_version_is_recorded() {
+        let (_dir, session) = session();
+        let conn = session.conn();
+        let set = |markers: &str| {
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?1, ?2) \
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![MARKER_KEY, markers],
+            )
+            .unwrap();
+        };
+        assert!(!step_done_since(conn, "servers", 2).unwrap(), "no marker");
+        set("dns:1,servers:2,objects:1");
+        assert!(step_done_since(conn, "servers", 2).unwrap());
+        assert!(step_done_since(conn, "servers", 1).unwrap());
+        assert!(!step_done_since(conn, "servers", 3).unwrap());
+        assert!(
+            !step_done(conn, "servers").unwrap(),
+            "the current version is 3"
+        );
+        set("servers:10");
+        assert!(
+            step_done_since(conn, "servers", 3).unwrap(),
+            "compared as numbers"
+        );
+        // Another step with the same prefix, a malformed version: not this step.
+        set("servers_extra:5,servers:x,servers");
+        assert!(!step_done_since(conn, "servers", 1).unwrap());
+        assert!(!step_done_since(conn, "nope", 0).unwrap());
+    }
+
+    #[test]
     fn the_writer_publishes_the_progress_of_its_steps() {
         use crate::writer::{StoreWriter, WriterConfig};
         let dir = tempfile::tempdir().unwrap();

@@ -459,10 +459,11 @@ fn tied_servers(conn: &Connection) {
 fn stored_ranks_read_the_same_evidence_as_ranking_at_read_time() {
     let conn = db();
     tied_servers(&conn);
-    // Every role of the source views is in the role list of the ranked query.
-    for role in rows(&conn, "SELECT DISTINCT role FROM server_evidence_source") {
-        assert!(ROLES.contains(&role.as_str()), "{role}");
-    }
+    // Every role of the source views is in the fixture, so that each is compared below.
+    assert_eq!(
+        rows(&conn, "SELECT DISTINCT role FROM server_ranks ORDER BY 1"),
+        ["dhcp", "dns", "http", "kerberos", "ldap", "ntp", "smb"]
+    );
     let http: i64 = conn
         .query_row(
             "SELECT count(*) FROM server_ranks WHERE role = 'http'",
@@ -509,38 +510,38 @@ fn stored_ranks_read_the_same_evidence_as_ranking_at_read_time() {
 fn the_ranked_query_reads_ranks_and_evidence_by_key() {
     let conn = db();
     tied_servers(&conn);
-    let mut stmt = conn
-        .prepare(
-            "EXPLAIN QUERY PLAN SELECT e.role, e.ip, e.kind, e.count, e.clients, e.first_ts,
-                    e.last_ts, e.example, h.names, h.category, h.country, r.servers, r.rank
-             FROM server_ranks r
-             JOIN server_evidence e INDEXED BY server_evidence_role_ip
-                  ON e.role = r.role AND e.ip = r.ip
-             LEFT JOIN hosts h ON h.ip = e.ip
-             WHERE r.role IN (SELECT value FROM json_each(?1)) AND r.rank <= ?2
-             ORDER BY r.role, r.rank",
-        )
-        .unwrap();
-    let plan = stmt
-        .query_map(params!["[\"dns\",\"http\"]", 10], |r| r.get::<_, String>(3))
-        .unwrap()
-        .map(Result::unwrap)
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        plan.contains("SEARCH r USING PRIMARY KEY (role=? AND rank<?)"),
-        "{plan}"
+    let plan = |sql: &str, params: &[&dyn rusqlite::ToSql]| -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        stmt.query_map(params, |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let every = plan(
+        &ranked_sql(
+            "server_ranks r INDEXED BY server_ranks_rank",
+            "r.rank <= ?1",
+        ),
+        &[&10],
     );
     assert!(
-        plan.contains("SEARCH e USING INDEX server_evidence_role_ip"),
-        "{plan}"
+        every.contains("SEARCH r USING INDEX server_ranks_rank (rank<?)"),
+        "{every}"
     );
-    // Only the role list (a JSON array of at most 7 roles) is scanned.
+    let one = plan(
+        &ranked_sql("server_ranks r", "r.role = ?1 AND r.rank <= ?2"),
+        &[&"http", &10],
+    );
     assert!(
-        plan.lines()
-            .filter(|l| l.contains("SCAN"))
-            .all(|l| l.contains("json_each")),
-        "{plan}"
+        one.contains("SEARCH r USING PRIMARY KEY (role=? AND rank<?)"),
+        "{one}"
     );
-    assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+    for p in [every, one] {
+        assert!(
+            p.contains("SEARCH e USING INDEX server_evidence_role_ip"),
+            "{p}"
+        );
+        assert!(!p.contains("SCAN") && !p.contains("TEMP B-TREE"), "{p}");
+    }
 }

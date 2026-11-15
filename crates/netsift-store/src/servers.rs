@@ -369,34 +369,48 @@ pub fn evidence(conn: &Connection, q: &EvidenceQuery<'_>) -> Result<RoleEvidence
     ranking_evidence(conn, q, limit)
 }
 
-/// Roles of the source views: the `role IN` list of [`ranked_evidence`] (a primary key search per
-/// role instead of a scan of `server_ranks`).
-const ROLES: [&str; 7] = ["dhcp", "dns", "http", "kerberos", "ldap", "ntp", "smb"];
-
-/// [`evidence`] without category filter, from the ranks stored by the step `servers` (P4.8): the
-/// `limit` first ranks of each role by primary key, their evidence by index, then the order of
-/// the evidence of a server sorted here (a few rows per server).
-fn ranked_evidence(conn: &Connection, role: Option<&str>, limit: u32) -> Result<RoleEvidence> {
-    let roles = match role {
-        Some(r) => serde_json::to_string(&[r])?,
-        None => serde_json::to_string(&ROLES)?,
-    };
-    let mut stmt = conn.prepare_cached(
+/// Query of [`ranked_evidence`] over `server_ranks r` read with `ranks` (index choice), then
+/// the condition.
+fn ranked_sql(ranks: &str, condition: &str) -> String {
+    format!(
         "SELECT e.role, e.ip, e.kind, e.count, e.clients, e.first_ts, e.last_ts, e.example,
                 h.names, h.category, h.country, r.servers, r.rank
-         FROM server_ranks r
-         JOIN server_evidence e INDEXED BY server_evidence_role_ip ON e.role = r.role AND e.ip = r.ip
+         FROM {ranks}
+         JOIN server_evidence e INDEXED BY server_evidence_role_ip
+              ON e.role = r.role AND e.ip = r.ip
          LEFT JOIN hosts h ON h.ip = e.ip
-         WHERE r.role IN (SELECT value FROM json_each(?1)) AND r.rank <= ?2
-         ORDER BY r.role, r.rank",
-    )?;
+         WHERE {condition}"
+    )
+}
+
+/// [`evidence`] without category filter, from the ranks stored by the step `servers` (P4.8): the
+/// `limit` first ranks of every role by the rank index (of one role by primary key), their
+/// evidence by index, then sorted here (`limit` servers per role, a few rows each). No list of
+/// roles: a role added to the source views is read like the others.
+fn ranked_evidence(conn: &Connection, role: Option<&str>, limit: u32) -> Result<RoleEvidence> {
+    let mut stmt;
+    let mut query = match role {
+        Some(role) => {
+            stmt = conn.prepare_cached(&ranked_sql(
+                "server_ranks r",
+                "r.role = ?1 AND r.rank <= ?2",
+            ))?;
+            stmt.query(params![role, limit])?
+        }
+        None => {
+            stmt = conn.prepare_cached(&ranked_sql(
+                "server_ranks r INDEXED BY server_ranks_rank",
+                "r.rank <= ?1",
+            ))?;
+            stmt.query(params![limit])?
+        }
+    };
     let mut rows: Vec<(i64, Option<IpAddr>, u64, EvidenceEntry)> = Vec::new();
-    let mut query = stmt.query(params![roles, limit])?;
     while let Some(r) = query.next()? {
         let (ip, servers, entry) = evidence_row(r)?;
         rows.push((r.get(12)?, ip, servers, entry));
     }
-    // Rows come by role then rank: sort the evidence of each server as the ranking query does.
+    // In the order of the ranking query: role, rank, then the evidence of each server.
     rows.sort_by(|a, b| {
         a.3.role
             .cmp(&b.3.role)

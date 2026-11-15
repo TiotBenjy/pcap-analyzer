@@ -82,13 +82,15 @@ jobs:
           persist-credentials: false
       # Pour un événement de tag, actions/checkout remplace le tag annoté par une référence légère
       # vers le commit : on récupère l'objet tag pour lire son message (titre de la release).
+      # Le titre ne fait jamais échouer la publication : à défaut, nom « NetSift vX.Y.Z ».
       - name: Nom de la release (titre du tag annoté)
         id: name
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          git fetch --no-tags --force origin "+refs/tags/$TAG:refs/tags/$TAG"
-          name="$(bash scripts/ci/release-name.sh "$TAG")"
+          git fetch --no-tags --force origin "+refs/tags/$TAG:refs/tags/$TAG" \
+            || echo "::warning::objet tag $TAG non récupéré : release sans titre"
+          name="$(bash scripts/ci/release-name.sh "$TAG")" || name="NetSift $TAG"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "Nom de la release : $name"
       - name: Notes (git-cliff, commits depuis le tag précédent)

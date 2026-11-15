@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for scripts/release.sh (sourced, main is not run): SemVer ordering, release kind (bump or
 # publication of the current version), GitHub remote parsing, workspace version rewrite, argument
-# validation, and the version bump itself (apply_version) on a throwaway repository: Cargo.lock,
+# validation, the guards of a rerun (release already merged on main, tag on origin), and the
+# version bump itself (apply_version) on a throwaway repository: Cargo.lock,
 # fuzz/Cargo.lock and the UI lockfile follow the new version. That last part needs cargo and npm
 # (gate container, CI runners) and is skipped without them; it never touches this repository.
 #
@@ -67,6 +68,32 @@ check "rejects non-SemVer" not quiet bash "$ROOT/scripts/release.sh" 1.2 --dry-r
 check "rejects unknown option" not quiet bash "$ROOT/scripts/release.sh" 1.2.3 --force
 check "--no-push no longer exists" not quiet bash "$ROOT/scripts/release.sh" 1.2.3 --no-push
 check "rejects missing version" not quiet bash "$ROOT/scripts/release.sh" --dry-run
+
+# --- Rerun after a partial failure: release already merged, tag on origin ---------------
+GITREPO="$TMP/git"
+gc() { git -C "$GITREPO" -c user.name=t -c user.email=t@example.invalid "$@"; }
+git init -q -b main "$GITREPO"
+gc commit -q --allow-empty -m "feat: start"
+check "no release merged yet" test -z "$(release_merged "$GITREPO" 0.1.0)"
+gc checkout -q -b chore/release-0.1.0
+gc commit -q --allow-empty -m "chore(release): v0.1.0"
+gc checkout -q main
+gc merge -q --no-ff -m "merge(chore/release-0.1.0): intégration" chore/release-0.1.0
+check "merged release: its merge commit" test "$(release_merged "$GITREPO" 0.1.0)" = "$(gc rev-parse main)"
+check "another version is not merged" test -z "$(release_merged "$GITREPO" 0.1.1)"
+gc commit -q --allow-empty -m "chore(release): v0.2.0"
+check "release commit without merge commit" test "$(release_merged "$GITREPO" 0.2.0)" = "$(gc rev-parse main)"
+gc commit -q --allow-empty -m "chore(release): v0.3.0-rc.1"
+check "a prerelease is not its release" test -z "$(release_merged "$GITREPO" 0.3.0)"
+
+git init -q --bare "$TMP/origin.git"
+gc remote add origin "$TMP/origin.git"
+check "tag absent from origin" test "$(remote_tag_state "$GITREPO" v0.1.0)" = absent
+gc tag v0.1.0 main
+gc push -q origin refs/tags/v0.1.0
+check "tag present on origin" test "$(remote_tag_state "$GITREPO" v0.1.0)" = present
+gc remote set-url origin "$TMP/missing.git"
+check "unreachable origin is an error" test "$(remote_tag_state "$GITREPO" v0.1.0)" = error
 
 # --- apply_version on a throwaway repository ------------------------------------------
 # Same layout as this repository: a workspace of netsift-* crates, fuzz/ outside it with its own

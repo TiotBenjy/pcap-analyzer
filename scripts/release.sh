@@ -83,6 +83,31 @@ release_kind() {
   fi
 }
 
+# remote_tag_state ROOT TAG : « present », « absent » ou « error » (git ls-remote sur origin).
+remote_tag_state() {
+  local rc=0
+  git -C "$1" ls-remote --exit-code --tags origin "refs/tags/$2" >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0) echo present ;;
+    2) echo absent ;;
+    *) echo error ;;
+  esac
+}
+
+# release_merged ROOT VERSION : commit de main qui contient déjà la release VERSION (fusion
+# « merge(chore/release-VERSION): intégration », à défaut le commit « chore(release): vVERSION »),
+# vide sinon.
+release_merged() {
+  local root="$1" version="$2" found
+  found="$(git -C "$root" log main --first-parent --format='%H %s' \
+    | awk -v s="merge(chore/release-$version): intégration" 'substr($0, index($0, " ") + 1) == s { print $1; exit }')"
+  if [[ -z "$found" ]]; then
+    found="$(git -C "$root" log main --format='%H %s' \
+      | awk -v s="chore(release): v$version" 'substr($0, index($0, " ") + 1) == s { print $1; exit }')"
+  fi
+  echo "$found"
+}
+
 # Remplace la version de [workspace.package] dans un Cargo.toml (fichier modifié sur place).
 set_workspace_version() {
   local file="$1" version="$2"
@@ -155,14 +180,18 @@ main() {
   kind="$(release_kind "$current" "$version")" \
     || die "$version est inférieure à la version actuelle ($current)"
 
-  git -C "$root" rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "le tag $tag existe déjà en local"
-  local rc=0
-  git -C "$root" ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 || rc=$?
-  case "$rc" in
-    0) die "le tag $tag existe déjà sur origin" ;;
-    2) ;;
-    *) die "impossible d'interroger les tags d'origin (git ls-remote, code $rc)" ;;
+  case "$(remote_tag_state "$root" "$tag")" in
+    present) die "le tag $tag existe déjà sur origin : $tag est publiée (suivi : scripts/release-status.sh $tag)" ;;
+    absent) ;;
+    *) die "impossible d'interroger les tags d'origin (git ls-remote)" ;;
   esac
+  git -C "$root" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
+    && die "le tag $tag existe en local mais pas sur origin. Pour terminer :"$'\n'"  git -C $root push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
+  # Relance après un échec partiel (fusion faite, tag non créé) : jamais de seconde fusion.
+  local merged
+  merged="$(release_merged "$root" "$version")"
+  [[ -z "$merged" ]] \
+    || die "main contient déjà la release $tag (commit ${merged:0:12}) ; ne pas la fusionner une seconde fois. Il ne manque que le tag :"$'\n'"  git -C $root tag -a $tag -m \"NetSift $tag\" $merged && git -C $root push origin $tag"$'\n'"  scripts/release-status.sh $tag --wait"
   git -C "$root" show-ref --verify --quiet "refs/heads/$br" && die "la branche $br existe déjà"
   [[ ! -e "$wt" ]] || die "le worktree $wt existe déjà"
 
@@ -250,6 +279,9 @@ main() {
   fi
   bash "$root/scripts/check-version.sh" -C "$wt" "$tag" >/dev/null
   "$root/x.sh" -C "$wt" cliff --tag "$tag" --output CHANGELOG.md
+  # Second garde-fou contre une release vide (déjà fusionnée) : rien à committer.
+  [[ -n "$(git -C "$wt" status --porcelain)" ]] \
+    || die "aucun changement (CHANGELOG.md identique) : $tag semble déjà fusionnée sur main. Créer et pousser le tag :"$'\n'"  git -C $root push origin $tag (après git tag -a sur la fusion), puis scripts/release-status.sh $tag --wait"
 
   local unexpected
   unexpected="$(git -C "$wt" status --porcelain \

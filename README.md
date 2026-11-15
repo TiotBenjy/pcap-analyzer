@@ -81,6 +81,8 @@ x.sh / x.ps1 pilote de la toolchain conteneurisée
 
 ## Licences et données
 
-Code sous licence permissive (MIT/Apache-2.0, voir `deny.toml`). Aucun code sous licence copyleft
-n'est porté. GeoIP : base DB-IP IP-to-Country Lite (CC BY 4.0), attribution dans « À propos ».
+NetSift est distribué sous double licence MIT ou Apache-2.0, au choix (`LICENSE-MIT`,
+`LICENSE-APACHE`). Dépendances sous licences permissives uniquement (`deny.toml`) ; leur liste, avec
+les textes de licence, est consultable dans « Paramètres > À propos » et livrée avec les bundles
+(`THIRD-PARTY-NOTICES.txt`). Aucun code sous licence copyleft n'est porté. GeoIP : base DB-IP IP-to-Country Lite (CC BY 4.0), attribution dans « À propos ».
 Les captures analysées ne quittent jamais la machine ; l'application n'émet aucun trafic réseau.

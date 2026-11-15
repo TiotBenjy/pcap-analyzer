@@ -1,8 +1,10 @@
 import '../../i18n';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client';
+import type { GeoipDownload } from '../../api/types/GeoipDownload';
+import type { GeoipFreshness } from '../../api/types/GeoipFreshness';
 import type { GeoipInfo } from '../../api/types/GeoipInfo';
 import i18n from '../../i18n';
 import { setupUser } from '../../test/user';
@@ -33,7 +35,17 @@ vi.mock('../../api/geoip', () => ({
   downloadGeoip: api.downloadGeoip,
   importGeoip: api.importGeoip,
   getGeoipUpdate: api.getGeoipUpdate,
+  getGeoipStatus: () => Promise.resolve(freshness),
 }));
+
+let freshness: GeoipFreshness = {
+  state: 'missing',
+  built_month: null,
+  current_month: '2026-11',
+  online: 'off',
+  published_month: null,
+  offer: 'download',
+};
 vi.mock('../../api/sessions', () => ({ browse: api.browse }));
 vi.mock('../../api/settings', () => ({
   getSettings: () => Promise.resolve({ online: { geoip_check: false, update_check: false }, dismissed_notices: [] }),
@@ -61,6 +73,7 @@ const AVAILABLE: GeoipInfo = {
 describe('SettingsView', () => {
   afterEach(async () => {
     geoip = MISSING;
+    freshness = { ...freshness, state: 'missing', built_month: null, offer: 'download' };
     readOnly = true;
     canBrowse = false;
     infoError = false;
@@ -179,9 +192,9 @@ describe('SettingsView', () => {
 
   it('downloads on click only, says which host it contacts, and reports success', async () => {
     readOnly = false;
-    let finish: (info: GeoipInfo) => void = () => undefined;
+    let finish: (result: GeoipDownload) => void = () => undefined;
     api.downloadGeoip.mockReturnValue(
-      new Promise<GeoipInfo>((resolve) => {
+      new Promise<GeoipDownload>((resolve) => {
         finish = resolve;
       }),
     );
@@ -203,9 +216,59 @@ describe('SettingsView', () => {
     // One update at a time.
     expect(screen.getByRole('button', { name: 'Download latest version' })).toBeDisabled();
 
-    finish(AVAILABLE);
+    finish({ info: AVAILABLE, month: '2026-11', newer: true, dismissed: false });
     expect(await screen.findByText('Database updated. New imports use it.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download latest version' })).toBeEnabled();
+  });
+
+  it('says when a download brings nothing newer', async () => {
+    readOnly = false;
+    api.downloadGeoip.mockResolvedValue({ info: AVAILABLE, month: '2026-10', newer: false, dismissed: true });
+    renderView();
+    await setupUser().click(screen.getByRole('button', { name: 'Download latest version' }));
+    expect(await screen.findByText('No newer database published yet.')).toBeInTheDocument();
+    expect(screen.queryByText('Database updated. New imports use it.')).not.toBeInTheDocument();
+  });
+
+  it('does not show the database as fine while a newer one is offered', async () => {
+    geoip = AVAILABLE;
+    renderView();
+    const status = screen.getByTestId('geoip-status');
+    expect(status).toHaveClass('text-success');
+    cleanup();
+
+    // Local check only: neutral, no claim about DB-IP.
+    freshness = { ...freshness, state: 'outdated', built_month: '2026-10', offer: 'update' };
+    renderView();
+    await waitFor(() => {
+      expect(screen.getByTestId('geoip-status')).not.toHaveClass('text-success');
+    });
+    expect(screen.getByTestId('geoip-status')).toHaveTextContent(/^Database installed, built Nov 1, 2026$/);
+    cleanup();
+
+    // Confirmed by the startup check.
+    freshness = { ...freshness, online: 'published', published_month: '2026-11' };
+    renderView();
+    await waitFor(() => {
+      expect(screen.getByTestId('geoip-status')).toHaveTextContent(
+        'Database installed, built Nov 1, 2026. A newer database is available.',
+      );
+    });
+    expect(screen.getByTestId('geoip-status')).not.toHaveClass('text-success');
+  });
+
+  it('stops claiming a newer database once a download found nothing newer', async () => {
+    readOnly = false;
+    geoip = AVAILABLE;
+    freshness = { ...freshness, state: 'outdated', built_month: '2026-10', online: 'published', published_month: '2026-11', offer: 'update' };
+    api.downloadGeoip.mockResolvedValue({ info: AVAILABLE, month: '2026-10', newer: false, dismissed: true });
+    renderView();
+    await waitFor(() => {
+      expect(screen.getByTestId('geoip-status')).toHaveTextContent('A newer database is available.');
+    });
+    await setupUser().click(screen.getByRole('button', { name: 'Download latest version' }));
+    expect(await screen.findByText('No newer database published yet.')).toBeInTheDocument();
+    expect(screen.getByTestId('geoip-status')).toHaveTextContent(/^Database installed, built Nov 1, 2026$/);
   });
 
   it('translates the update errors', async () => {

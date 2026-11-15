@@ -62,13 +62,18 @@ pub(crate) fn months(now: SystemTime) -> [(i64, u32); 2] {
     let secs = now
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
-    let (year, month) = year_month(secs.div_euclid(86_400));
+    let (year, month) = month_of(secs);
     let previous = if month == 1 {
         (year - 1, 12)
     } else {
         (year, month - 1)
     };
     [(year, month), previous]
+}
+
+/// Year and month (UTC) of a time in seconds since the Unix epoch.
+pub(crate) fn month_of(secs: i64) -> (i64, u32) {
+    year_month(secs.div_euclid(86_400))
 }
 
 /// Civil year and month of a day count since 1970-01-01 (proleptic Gregorian calendar,
@@ -91,13 +96,14 @@ pub(crate) fn file_name((year, month): (i64, u32)) -> String {
 }
 
 /// Downloads the compressed database of the current month, or of the previous one when the
-/// current one answers 404. `progress(received, total)` is called as the body arrives.
+/// current one answers 404. `progress(received, total)` is called as the body arrives. Returns
+/// the body and the month of the file fetched.
 pub(crate) async fn fetch(
     source: &Source,
     now: SystemTime,
     max_bytes: u64,
     mut progress: impl FnMut(u64, Option<u64>),
-) -> Result<Vec<u8>, DownloadError> {
+) -> Result<(Vec<u8>, (i64, u32)), DownloadError> {
     let client = Outbound::new(source.policy.clone())?;
     let [current, previous] = months(now);
     for month in [current, previous] {
@@ -105,7 +111,7 @@ pub(crate) async fn fetch(
         match client.get_bytes(&url, max_bytes, &mut progress).await {
             Ok(body) => {
                 tracing::info!(%url, bytes = body.len(), "GeoIP database downloaded");
-                return Ok(body);
+                return Ok((body, month));
             }
             Err(OutboundError::Status(StatusCode::NOT_FOUND)) => {
                 tracing::info!(%url, "GeoIP database not published yet");

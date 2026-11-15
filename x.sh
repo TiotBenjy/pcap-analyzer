@@ -387,6 +387,11 @@ case "$CMD" in
       echo "== clippy =="       && cargo clippy --workspace --all-targets --all-features -- -D warnings
       echo "== cargo-deny =="   && (cargo deny check || true)   # avertit sans bloquer au début du projet
       echo "== tests Rust =="   && cargo nextest run --workspace
+      # fuzz/ est hors workspace (nightly pour fuzzer) : format, typage de toutes ses cibles et tests
+      # de sa bibliothèque sur la stable : un changement des API des crates ne le casse pas en silence.
+      echo "== fuzz/ =="        && cargo fmt --manifest-path fuzz/Cargo.toml --check \
+        && cargo check -q --locked --manifest-path fuzz/Cargo.toml --all-targets \
+        && cargo test -q --locked --manifest-path fuzz/Cargo.toml --lib
       echo "== bindings TS =="  && cargo test -q -p netsift-api export_bindings >/dev/null \
         && { ! git rev-parse --git-dir >/dev/null 2>&1 `# worktree : .git hors du montage` \
              || git diff --quiet -- ui/src/api/types \

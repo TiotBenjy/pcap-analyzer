@@ -71,6 +71,15 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - run: cargo nextest run --locked --workspace
+      # fuzz/ (hors workspace, nightly pour fuzzer) : format, typage des cibles et tests de sa
+      # bibliothèque sur la stable, dans le target du workspace (mis en cache).
+      - name: fuzz/ (format, compilation, tests de la bibliothèque)
+        env:
+          CARGO_TARGET_DIR: target
+        run: |
+          cargo fmt --manifest-path fuzz/Cargo.toml --check
+          cargo check --locked --manifest-path fuzz/Cargo.toml --all-targets
+          cargo test --locked --manifest-path fuzz/Cargo.toml --lib
       - name: Bindings TS à jour (générés par ts-rs, jamais édités à la main)
         run: |
           cargo test --locked -p netsift-api export_bindings
@@ -146,15 +155,22 @@ jobs:
       - name: Versions de la nightly et de cargo-fuzz
         id: pins
         run: |
-          echo "nightly=$(sed -n 's/^NIGHTLY="\(.*\)"$/\1/p' scripts/ct/fuzz.sh)" >> "$GITHUB_OUTPUT"
+          nightly="$(sed -n 's/^NIGHTLY="\(.*\)"$/\1/p' scripts/ct/fuzz.sh)"
+          echo "nightly=$nightly" >> "$GITHUB_OUTPUT"
           echo "cargo_fuzz=$(sed -n 's/^CARGO_FUZZ_VERSION="\(.*\)"$/\1/p' scripts/ct/fuzz.sh)" >> "$GITHUB_OUTPUT"
+          # Toutes les étapes suivantes (cache compris) voient la nightly, pas la stable de
+          # rust-toolchain.toml.
+          echo "RUSTUP_TOOLCHAIN=$nightly" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.pins.outputs.nightly }}
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: fuzz
-          workspaces: fuzz -> ../target
+          # Seuls les targets du fuzzing (scripts/ct/fuzz.sh : target/fuzz, target/fuzz-gen).
+          workspaces: |
+            fuzz -> ../target/fuzz
+            fuzz -> ../target/fuzz-gen
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz@${{ steps.pins.outputs.cargo_fuzz }}

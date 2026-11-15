@@ -11,8 +11,9 @@
 #    ui/src/views/settings/licenses/third-party-licenses.json and
 #    apps/desktop/resources/licenses/THIRD-PARTY-NOTICES.txt.
 #
-# cargo-about comes from PATH when it is the pinned version (CI: taiki-e/install-action), otherwise
-# it is compiled once into the cache volume (/cache/tools), like git-cliff.
+# cargo-about comes from PATH when it is the pinned version (CI: prebuilt binary installed by
+# taiki-e/install-action), otherwise it is compiled with its `cli` feature, once, into the cache
+# volume (/cache/tools) like git-cliff, or into NETSIFT_TOOLS_DIR (CI fallback).
 set -euo pipefail
 CARGO_ABOUT_VERSION="0.9.3"
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."

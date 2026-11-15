@@ -118,8 +118,16 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - working-directory: ui
         run: npm ci --ignore-scripts
-      # cargo-about, à la version épinglée dans scripts/ct/licenses.sh (source unique), est compilé
-      # par le script dans le répertoire temporaire du runner.
+      # cargo-about à la version épinglée dans scripts/ct/licenses.sh (source unique), binaire
+      # précompilé. S'il manque (outil ou version absents du manifeste de l'action), le script le
+      # compile dans le répertoire temporaire du runner (feature `cli`, environ 1 min).
+      - name: Version de cargo-about
+        id: about
+        run: echo "version=$(sed -n 's/^CARGO_ABOUT_VERSION="\(.*\)"$/\1/p' scripts/ct/licenses.sh)" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        continue-on-error: true
+        with:
+          tool: cargo-about@${{ steps.about.outputs.version }}
       - name: Liste régénérée et comparée
         env:
           NETSIFT_TOOLS_DIR: ${{ runner.temp }}/tools

@@ -19,15 +19,15 @@ const MAX_FRAMES: usize = 64;
 /// Most header lines taken from one input.
 const MAX_HEADERS: usize = 64;
 
-/// NTLMSSP (`smb::ntlmssp`): any message, then the hashcat line of an AUTHENTICATE paired with
-/// the first 8 input bytes as server challenge.
+/// Server challenge paired with a fuzzed AUTHENTICATE: the hashcat line only hex-encodes it, so
+/// a fixed value loses nothing.
+const SERVER_CHALLENGE: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+
+/// NTLMSSP (`smb::ntlmssp`): any message (found anywhere in the input, as behind a SPNEGO
+/// wrapping), then, for an AUTHENTICATE, its hashcat line with [`SERVER_CHALLENGE`].
 pub fn ntlmssp(data: &[u8]) {
     if let Some(NtlmMessage::Authenticate(auth)) = ntlmssp::parse(data) {
-        let challenge = data
-            .get(..8)
-            .and_then(|c| <[u8; 8]>::try_from(c).ok())
-            .unwrap_or_default();
-        let _ = ntlmssp::hashcat(challenge, &auth);
+        let _ = ntlmssp::hashcat(SERVER_CHALLENGE, &auth);
     }
 }
 

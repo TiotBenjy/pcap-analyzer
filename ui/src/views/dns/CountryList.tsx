@@ -27,6 +27,7 @@ export function CountryList({ stats, loading, error, onRetry }: CountryListProps
   if (loading) return <Skeleton height={240} />;
   if (error !== null) return <ErrorState message={error} onRetry={onRetry} />;
   if (stats === null) return null;
+  const queries = (n: number) => t('views.dns.map.queries', { count: n, formatted: formatCount(n) });
   const rows = stats.countries.flatMap((c) =>
     c.country === null
       ? []
@@ -54,7 +55,7 @@ export function CountryList({ stats, loading, error, onRetry }: CountryListProps
           key={r.key}
           flag={<Flag country={r.code} />}
           label={r.label}
-          title={labelled(r.label, t('views.dns.charts.serverQueries', { count: r.servers, queries: formatCount(r.value) }), i18n.language)}
+          title={labelled(r.label, t('views.dns.charts.serverQueries', { count: r.servers, queries: queries(r.value) }), i18n.language)}
           value={r.value}
           max={max}
         />
@@ -65,7 +66,7 @@ export function CountryList({ stats, loading, error, onRetry }: CountryListProps
           label={t('views.dns.charts.countryUnknown')}
           title={labelled(
             t('views.dns.charts.countryUnknown'),
-            t('views.dns.charts.serverQueries', { count: unknown.servers, queries: formatCount(unknown.messages) }),
+            t('views.dns.charts.serverQueries', { count: unknown.servers, queries: queries(unknown.messages) }),
             i18n.language,
           )}
           value={unknown.messages}

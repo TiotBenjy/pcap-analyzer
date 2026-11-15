@@ -277,7 +277,7 @@ function GroupOption({ group, name, checked, onSelect }: GroupOptionProps) {
                 const detail = anomalyDetail(t, a);
                 return (
                   <li key={i} className="min-w-0 [overflow-wrap:anywhere]">
-                    <span className="font-medium">{anomalyLabel(t, a.code)}</span>
+                    <span className="font-medium">{anomalyLabel(t, a)}</span>
                     <span className="text-muted">
                       {' '}
                       ({anomalyWhere(t, a)}){detail === '' ? '' : `${colon(i18n.language)} ${detail}`}

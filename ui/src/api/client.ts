@@ -103,8 +103,8 @@ export async function apiGet<T>(path: ApiPath, signal?: AbortSignal): Promise<T>
   return (await res.json()) as T;
 }
 
-/** POST / PATCH / DELETE with an optional JSON body; resolves to the JSON response. */
-export async function apiSend<T>(method: 'POST' | 'PATCH' | 'DELETE', path: ApiPath, body?: unknown, signal?: AbortSignal): Promise<T> {
+/** POST / PUT / PATCH / DELETE with an optional JSON body; resolves to the JSON response. */
+export async function apiSend<T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: ApiPath, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await apiFetch(path, { method, body, signal });
   return (await res.json()) as T;
 }

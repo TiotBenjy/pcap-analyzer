@@ -11,6 +11,7 @@ import { type LanguagePref, readLanguagePref, setLanguagePref } from '../../i18n
 import { type ThemePref, useTheme } from '../../theme/theme';
 import { GeoipSection } from './GeoipSection';
 import { ThirdPartyLicensesDialog } from './licenses/ThirdPartyLicenses';
+import { OnlineCard } from './online/OnlineCard';
 
 /** Shown as text only: the application never opens external URLs (no network, opener limited to exports/). */
 const REPOSITORY_URL = 'https://github.com/TiotBenjy/pcap-analyzer';
@@ -50,6 +51,7 @@ export default function SettingsView() {
           />
         </div>
       </Card>
+      <OnlineCard />
       <AboutCard />
     </div>
   );

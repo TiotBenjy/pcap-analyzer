@@ -127,6 +127,8 @@ fn fill(conn: &Connection) {
     for r in &rows {
         r.insert(conn).unwrap();
     }
+    // The search indexes are built at the end of the import (finalizer `http`).
+    finalize(conn).unwrap();
 }
 
 fn paths(page: &Page<HttpEntry>) -> Vec<String> {
@@ -234,6 +236,34 @@ fn text_search_uses_trigrams_or_like() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn search_indexes_are_built_by_the_finalizer_only() {
+    let conn = db();
+    fill(&conn);
+    // No trigger: a row inserted afterwards waits for the next rebuild.
+    row(
+        9,
+        1,
+        Some("GET"),
+        "late.test",
+        "/late",
+        Some(200),
+        None,
+        0,
+        &[],
+    )
+    .insert(&conn)
+    .unwrap();
+    let q = HttpFilter {
+        q: Some("late".into()),
+        ..HttpFilter::default()
+    };
+    assert_eq!(list(&conn, &q), Vec::<String>::new());
+    finalize(&conn).unwrap();
+    finalize(&conn).unwrap();
+    assert_eq!(list(&conn, &q), vec!["/late"]);
 }
 
 #[test]

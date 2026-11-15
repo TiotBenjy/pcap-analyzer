@@ -2,7 +2,10 @@
 //! queries of the HTTP and HTTP Headers views.
 //!
 //! Rows are plain inserts (one transaction and its headers per record, atomically): the set of
-//! rows does not depend on arrival order, only their `id`s do.
+//! rows does not depend on arrival order, only their `id`s do. The two search indexes
+//! (`http_transactions_fts`, `http_headers_fts`) are built by [`finalize`] at the end of the
+//! import (`0201_http_fts_deferred.sql`).
+
 
 use std::net::IpAddr;
 
@@ -358,6 +361,20 @@ impl HttpEntry {
             },
         })
     }
+}
+
+/// End-of-import step `http` ([`crate::finalize::SESSION_FINALIZERS`]): rebuilds both search
+/// indexes from their content tables, in the transaction of the caller. Idempotent.
+pub(crate) fn finalize(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "INSERT INTO http_transactions_fts (http_transactions_fts) VALUES ('rebuild')",
+        [],
+    )?;
+    conn.execute(
+        "INSERT INTO http_headers_fts (http_headers_fts) VALUES ('rebuild')",
+        [],
+    )?;
+    Ok(())
 }
 
 /// Every filter of [`HttpFilter`], with `NULL` parameters for the unused ones. The sort

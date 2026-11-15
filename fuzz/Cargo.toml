@@ -1,0 +1,155 @@
+# cargo-fuzz targets (nightly, outside the main workspace: see docs/FUZZING.md).
+# Run through `./x.sh fuzz`, never directly.
+[package]
+name = "netsift-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Own workspace: the root workspace excludes `fuzz/`.
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+netsift-analyze = { path = "../crates/netsift-analyze", features = ["fuzzing"] }
+netsift-capture = { path = "../crates/netsift-capture" }
+netsift-engine = { path = "../crates/netsift-engine" }
+netsift-geo = { path = "../crates/netsift-geo" }
+
+[dev-dependencies]
+# Seed generator (examples/gen_corpus.rs) only.
+flate2 = "1.1.11"
+netsift-fixtures = { path = "../crates/netsift-fixtures" }
+netsift-geo = { path = "../crates/netsift-geo", features = ["test-util"] }
+
+[profile.release]
+# Line tables for readable crash backtraces.
+debug = 1
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# One binary per target (fuzz_targets/<name>.rs), sorted.
+[[bin]]
+name = "analyzers"
+path = "fuzz_targets/analyzers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "capture"
+path = "fuzz_targets/capture.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dissect"
+path = "fuzz_targets/dissect.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dns"
+path = "fuzz_targets/dns.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "flow_table"
+path = "fuzz_targets/flow_table.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "http"
+path = "fuzz_targets/http.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "http_auth"
+path = "fuzz_targets/http_auth.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ldap"
+path = "fuzz_targets/ldap.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lineproto"
+path = "fuzz_targets/lineproto.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mmdb"
+path = "fuzz_targets/mmdb.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ntlmssp"
+path = "fuzz_targets/ntlmssp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pipeline"
+path = "fuzz_targets/pipeline.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "smb"
+path = "fuzz_targets/smb.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "snmp"
+path = "fuzz_targets/snmp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "thumbs"
+path = "fuzz_targets/thumbs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tls"
+path = "fuzz_targets/tls.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "udp_services"
+path = "fuzz_targets/udp_services.rs"
+test = false
+doc = false
+bench = false

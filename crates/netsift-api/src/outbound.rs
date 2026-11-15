@@ -23,9 +23,6 @@
 //! Tests reach a local plain-HTTP server through [`Policy::local_http_for_tests`], which only
 //! exists in test builds: a release binary cannot leave HTTPS.
 
-// HEAD, JSON and file downloads are used by the online features (ADR-025) once they register.
-#![cfg_attr(not(test), allow(dead_code))]
-
 #[cfg(test)]
 mod tests;
 
@@ -85,12 +82,6 @@ impl Policy {
             #[cfg(test)]
             local_http: false,
         }
-    }
-
-    /// Redirections followed at most (default [`MAX_REDIRECTS`]).
-    pub(crate) fn with_max_redirects(mut self, n: usize) -> Self {
-        self.max_redirects = n;
-        self
     }
 
     /// Longest wait for the connection (default 15 s).

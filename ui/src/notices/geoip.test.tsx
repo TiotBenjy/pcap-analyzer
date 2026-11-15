@@ -3,11 +3,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client';
+import type { GeoipDownload } from '../api/types/GeoipDownload';
 import type { GeoipFreshness } from '../api/types/GeoipFreshness';
 import type { GeoipInfo } from '../api/types/GeoipInfo';
 import type { Settings } from '../api/types/Settings';
 import i18n from '../i18n';
 import { setupUser } from '../test/user';
+import { pendingInterval } from '../api/geoipQueries';
+import { GeoipSection } from '../views/settings/GeoipSection';
 import { NoticeArea } from './NoticeArea';
 import { NOTICE_PROVIDERS } from './providers';
 
@@ -65,11 +68,21 @@ const INSTALLED: GeoipInfo = {
   installed_at_us: 1_793_491_200_000_000,
 };
 
-function renderArea() {
+function downloaded(extra: Partial<GeoipDownload> = {}): GeoipDownload {
+  return { info: INSTALLED, month: '2026-11', newer: true, dismissed: false, ...extra };
+}
+
+function renderArea({ withAbout = false } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
       <NoticeArea />
+      {withAbout && (
+        <GeoipSection
+          info={{ version: '0.1.0', read_only: false, can_browse: false, geoip: INSTALLED }}
+          infoError={false}
+        />
+      )}
     </QueryClientProvider>,
   );
   return client;
@@ -97,7 +110,7 @@ describe('GeoIP notice', () => {
     renderArea();
     const banner = await screen.findByTestId('notice-geoip');
     expect(banner).toHaveTextContent('No GeoIP database: the countries of public addresses stay unknown.');
-    expect(banner).toHaveTextContent('Downloaded by NetSift from download.db-ip.com.');
+    expect(banner).toHaveTextContent('Downloading contacts download.db-ip.com.');
     expect(within(banner).getByRole('button', { name: 'Download' })).toBeEnabled();
   });
 
@@ -169,9 +182,9 @@ describe('GeoIP notice', () => {
 
   it('downloads with progress, then disappears once the database is current', async () => {
     api.getGeoipStatus.mockResolvedValue(status());
-    let finish: (info: GeoipInfo) => void = () => undefined;
+    let finish: (result: GeoipDownload) => void = () => undefined;
     api.downloadGeoip.mockReturnValue(
-      new Promise<GeoipInfo>((resolve) => {
+      new Promise<GeoipDownload>((resolve) => {
         finish = resolve;
       }),
     );
@@ -187,10 +200,56 @@ describe('GeoIP notice', () => {
     expect(within(banner).getByRole('button', { name: 'Update' })).toBeDisabled();
 
     api.getGeoipStatus.mockResolvedValue(CURRENT);
-    finish(INSTALLED);
+    finish(downloaded());
     await waitFor(() => {
       expect(screen.queryByTestId('notice-geoip')).not.toBeInTheDocument();
     });
+  });
+
+  it('says when nothing newer is published, and drops its button', async () => {
+    api.getGeoipStatus.mockResolvedValue(status());
+    api.downloadGeoip.mockResolvedValue(downloaded({ month: '2026-10', newer: false, dismissed: true }));
+    renderArea();
+    const banner = await screen.findByTestId('notice-geoip');
+    await setupUser().click(within(banner).getByRole('button', { name: 'Update' }));
+    expect(await within(banner).findByRole('status')).toHaveTextContent(/^No newer database published yet\.$/);
+    expect(within(banner).queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
+    // Still closable; the server already dismissed it for the month.
+    expect(within(banner).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+  });
+
+  it('shares a running download with Settings > About', async () => {
+    api.getGeoipStatus.mockResolvedValue(status());
+    let finish: (result: GeoipDownload) => void = () => undefined;
+    api.downloadGeoip.mockReturnValue(
+      new Promise<GeoipDownload>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    api.getGeoipUpdate.mockResolvedValue({ phase: 'downloading', received_bytes: 2048, total_bytes: null });
+    renderArea({ withAbout: true });
+    const banner = await screen.findByTestId('notice-geoip');
+    await setupUser().click(within(banner).getByRole('button', { name: 'Update' }));
+    const about = screen.getByTestId('geoip-update');
+    await waitFor(() => {
+      expect(within(about).getByRole('button', { name: 'Download latest version' })).toBeDisabled();
+    });
+    expect(within(about).getByTestId('geoip-progress')).toHaveTextContent('Downloading');
+    expect(api.downloadGeoip).toHaveBeenCalledOnce();
+
+    api.getGeoipStatus.mockResolvedValue(CURRENT);
+    finish(downloaded());
+    await waitFor(() => {
+      expect(within(about).getByRole('button', { name: 'Download latest version' })).toBeEnabled();
+    });
+  });
+
+  it('stops asking after about a minute of running check, or after an error', () => {
+    const running = { status: 'success', data: { online: 'pending' } };
+    expect(pendingInterval({ ...running, dataUpdateCount: 1 })).toBe(2000);
+    expect(pendingInterval({ ...running, dataUpdateCount: 30 })).toBe(false);
+    expect(pendingInterval({ ...running, status: 'error', dataUpdateCount: 1 })).toBe(false);
+    expect(pendingInterval({ status: 'success', data: { online: 'published' }, dataUpdateCount: 1 })).toBe(false);
   });
 
   it('reports a failed download in the banner', async () => {
@@ -219,6 +278,6 @@ describe('GeoIP notice', () => {
     const banner = await screen.findByTestId('notice-geoip');
     expect(banner).toHaveTextContent('Base GeoIP générée en octobre 2026. DB-IP en publie une nouvelle chaque mois.');
     expect(within(banner).getByRole('button', { name: 'Mettre à jour' })).toBeInTheDocument();
-    expect(banner).toHaveTextContent('Téléchargée par NetSift depuis download.db-ip.com.');
+    expect(banner).toHaveTextContent('Le téléchargement contacte download.db-ip.com.');
   });
 });

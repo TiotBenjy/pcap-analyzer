@@ -6,11 +6,12 @@ import { GeoipUpdateFeedback } from '../components/GeoipUpdateFeedback';
 import { KeepTogether } from '../components/KeepTogether';
 import { DB_IP_HOST, formatMonth, geoipUpdateErrorMessage } from '../lib/geoip';
 import { NoticeSlot } from './NoticeSlot';
-import type { Notice, NoticeSlotProps } from './types';
+import type { Notice, NoticeAction, NoticeSlotProps } from './types';
 
-// GeoIP notice (P4.9): no database, or one built before the current month. The offer comes from
+// GeoIP notice (P4.9): no database, or one older than the current month. The offer comes from
 // the server (local check, confirmed by DB-IP when the user enabled the startup check); the
-// button starts the download of ADR-015. Dismissed until the month changes.
+// button starts the download of ADR-015. Dismissed until the month changes, by the user or by
+// the server after a download that found nothing newer.
 
 /** The offer of a status, if it is a well-formed one. */
 function offerOf(status: GeoipFreshness | undefined): GeoipFreshness['offer'] {
@@ -24,7 +25,7 @@ export function GeoipNotice(slot: NoticeSlotProps) {
   const { t, i18n } = useTranslation();
   const status = useGeoipStatus();
   const info = useServerInfo();
-  const { mutation, downloading, progress } = useGeoipUpdate();
+  const { mutation, busy, downloading, progress } = useGeoipUpdate();
 
   const data = status.data;
   const offer = offerOf(data);
@@ -40,12 +41,23 @@ export function GeoipNotice(slot: NoticeSlotProps) {
       });
     else message = t('views.geoipPrompt.outdated', { month: month(data.built_month) });
 
-    const busy = mutation.isPending;
     const readOnly = info.data?.read_only ?? false;
     let disabledReason: string | undefined;
     if (readOnly) disabledReason = t('views.settings.geoip.readOnly');
     else if (busy) disabledReason = t('views.settings.geoip.errors.running');
     const feedback = busy || mutation.isError || mutation.isSuccess;
+    // Nothing newer to download this month: the result stays, the button goes (the server
+    // dismissed the notice until the next month).
+    const done = mutation.data?.dismissed === true;
+    const action: NoticeAction = {
+      label: offer === 'download' ? t('views.geoipPrompt.download') : t('views.geoipPrompt.update'),
+      primary: true,
+      disabled: busy || readOnly,
+      ...(disabledReason === undefined ? {} : { title: disabledReason }),
+      onClick: () => {
+        mutation.mutate({ kind: 'download' });
+      },
+    };
 
     notice = {
       dismissKey: data.current_month,
@@ -57,21 +69,12 @@ export function GeoipNotice(slot: NoticeSlotProps) {
           progress={progress}
           error={mutation.isError ? geoipUpdateErrorMessage(t, mutation.error) : null}
           success={mutation.isSuccess}
+          notNewer={mutation.data?.newer === false}
         />
       ) : (
         <KeepTogether text={t('views.geoipPrompt.host')} word={DB_IP_HOST} />
       ),
-      actions: [
-        {
-          label: offer === 'download' ? t('views.geoipPrompt.download') : t('views.geoipPrompt.update'),
-          primary: true,
-          disabled: busy || readOnly,
-          ...(disabledReason === undefined ? {} : { title: disabledReason }),
-          onClick: () => {
-            mutation.mutate({ kind: 'download' });
-          },
-        },
-      ],
+      actions: done ? [] : [action],
     };
   }
   return <NoticeSlot slot={slot} notice={notice} />;

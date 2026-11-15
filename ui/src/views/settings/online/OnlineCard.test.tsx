@@ -146,8 +146,10 @@ describe('OnlineCard', () => {
   });
 
   it.each([
-    [freshness({ online: 'off' }), 'Not checked at this start. Applies from the next start.'],
-    [freshness({ online: 'off', state: 'current', built_month: '2026-11', offer: null }), 'Not checked at this start: the database is current.'],
+    [freshness({ online: 'off' }), 'Not checked at this start: the setting was off. Applies from the next start.'],
+    [freshness({ online: 'not_needed', state: 'current', built_month: '2026-11', offer: null }), 'Not checked at this start: the database was current.'],
+    // The month changed since the startup: still what happened at the startup.
+    [freshness({ online: 'not_needed' }), 'Not checked at this start: the database was current.'],
     [freshness({ online: 'pending', offer: null }), 'Checking download.db-ip.com.'],
     [freshness({ online: 'published', published_month: '2026-11' }), 'Last check: database of November 2026 published.'],
     [freshness({ online: 'not_published', offer: null }), 'Last check: no database published for this month or the previous one.'],
@@ -160,6 +162,14 @@ describe('OnlineCard', () => {
     await waitFor(() => {
       expect(screen.getByTestId('geoip-check-status')).toHaveTextContent(text);
     });
+  });
+
+  it('says nothing about the startup on a read-only server', async () => {
+    readOnly = true;
+    api.getSettings.mockResolvedValue({ ...DEFAULTS, online: { geoip_check: true, update_check: false } });
+    renderCard();
+    const status = await screen.findByTestId('geoip-check-status');
+    expect(status).toHaveTextContent(/^Installed database: October 2026\.$/);
   });
 
   it('is translated in French', async () => {

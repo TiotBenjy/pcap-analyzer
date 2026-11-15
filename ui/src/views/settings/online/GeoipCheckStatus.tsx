@@ -7,8 +7,9 @@ import type { OnlineExtensionProps } from './extensions';
 /**
  * Under "Check for a new GeoIP database at startup": month of the installed database and, when
  * the check is on, its result at this start (P4.9). Plain, muted text: a failure is not an error.
+ * The check runs once, at startup, with the setting of that time.
  */
-export function GeoipCheckStatus({ enabled }: OnlineExtensionProps) {
+export function GeoipCheckStatus({ enabled, readOnly }: OnlineExtensionProps) {
   const { t, i18n } = useTranslation();
   const status = useGeoipStatus();
   const data = status.data;
@@ -19,7 +20,11 @@ export function GeoipCheckStatus({ enabled }: OnlineExtensionProps) {
   if (enabled) {
     switch (data.online) {
       case 'off':
-        check = data.state === 'current' ? t('views.geoipPrompt.checkNotNeeded') : t('views.geoipPrompt.checkOff');
+        // On now but not run: turned on during this run (a read-only server never runs it).
+        check = readOnly ? null : t('views.geoipPrompt.checkOff');
+        break;
+      case 'not_needed':
+        check = t('views.geoipPrompt.checkNotNeeded');
         break;
       case 'pending':
         check = t('views.geoipPrompt.checkPending');

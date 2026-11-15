@@ -1,6 +1,6 @@
 # Open Ports
 
-Référence : `docs/reference/open-ports.png`.
+Référence : `docs/reference/private/open-ports.png`.
 
 ## But
 

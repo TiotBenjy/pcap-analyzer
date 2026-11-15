@@ -3,12 +3,17 @@
 Captures d'écran d'une plateforme existante d'analyse de pcap, fournies par l'utilisateur.
 Elles décrivent **les fonctionnalités et l'organisation des onglets** attendues.
 
+Aucune n'est publiée : à la demande de l'utilisateur (2026-11-15), elles ont été retirées de tout
+l'historique git et restent dans `docs/reference/private/`, ignoré par git et présent seulement dans le
+checkout racine de l'utilisateur (un worktree le lit par le chemin absolu du checkout racine). Ne jamais
+les commiter ni recopier leurs données (SSID, adresses MAC, identifiants) dans les specs, tests ou captures.
+
 Ne pas reproduire leur style : ombres sur les camemberts, emoji (drapeaux, icônes de nœuds,
 titres de cartes), nuage de mots 3D, libellés de graphes qui se chevauchent, légendes tronquées,
 grands espaces vides. Les règles visuelles du projet sont dans `docs/UI_GUIDELINES.md`,
 et chaque spec de `docs/specs/` indique ce qui est repris et ce qui est amélioré.
 
-| Fichier | Onglet |
+| Fichier (`private/`) | Onglet |
 |---|---|
 | `overview.png` | Data Overview |
 | `credentials.png` | Credentials |
@@ -23,11 +28,7 @@ et chaque spec de `docs/specs/` indique ce qui est repris et ce qui est amélior
 | `servers.png` | Servers |
 | `network.png` | Network |
 
-Phase 5 : les captures de Documents, FTP, Telnet, SSDP, SIP, ARP, Ethernet et WiFi montrent des données
-de captures (SSID, BSSID, mots de passe). À la demande de l'utilisateur, elles ne sont **pas publiées** : elles
-restent dans `docs/reference/private/` (ignoré par git, présent seulement dans le checkout racine de
-l'utilisateur ; un worktree le lit par le chemin absolu du checkout racine). Ne jamais les commiter ni
-recopier leurs données (SSID, adresses MAC, identifiants) dans les specs, tests ou captures d'écran.
+Phase 5 :
 
 | Fichier (`private/`) | Onglet |
 |---|---|

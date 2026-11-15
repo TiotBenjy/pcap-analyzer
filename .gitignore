@@ -37,5 +37,5 @@ apps/desktop/resources/geoip/*.mmdb
 # Tauri : schémas générés au build
 /apps/desktop/gen
 
-# Reference screenshots that show capture data: kept local, never published (phase 5).
+# Reference screenshots: kept local, never published (removed from history on 2026-11-15).
 docs/reference/private/

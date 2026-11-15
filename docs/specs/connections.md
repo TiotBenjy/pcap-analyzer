@@ -1,6 +1,6 @@
 # Connections
 
-Références : `docs/reference/connections-1.png`, `docs/reference/connections-2.png`.
+Références : `docs/reference/private/connections-1.png`, `docs/reference/private/connections-2.png`.
 
 ## But
 

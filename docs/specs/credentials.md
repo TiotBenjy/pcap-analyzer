@@ -1,6 +1,6 @@
 # Credentials
 
-Référence : `docs/reference/credentials.png`.
+Référence : `docs/reference/private/credentials.png`.
 
 ## But
 

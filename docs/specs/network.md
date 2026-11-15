@@ -1,6 +1,6 @@
 # Network (carte des communications)
 
-Référence : `docs/reference/network.png`.
+Référence : `docs/reference/private/network.png`.
 
 ## But
 

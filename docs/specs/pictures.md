@@ -1,6 +1,6 @@
 # Pictures
 
-Référence : `docs/reference/pictures.png`.
+Référence : `docs/reference/private/pictures.png`.
 
 ## But
 

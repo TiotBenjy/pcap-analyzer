@@ -31,7 +31,15 @@ Tout passe par le conteneur. La nightly et cargo-fuzz, épinglés dans `scripts/
 - Un dictionnaire `fuzz/dict/<cible>.dict` est passé automatiquement s'il existe (protocoles
   texte : `http`, `http_auth`, `lineproto`).
 - CI : le job facultatif `fuzz` de `ci.yml` (sur `main` et à la demande) régénère les graines et
-  fuzze chaque cible 60 s (`scripts/ci/fuzz.sh`, même script hors conteneur).
+  fuzze chaque cible 60 s (`scripts/ci/fuzz.sh`, même script hors conteneur). C'est assumé : une
+  entrée qui plante pendant ces 60 s rend le run de `main` **rouge**, comme un test cassé ; les
+  entrées et les journaux sont publiés en artefact `fuzz`, à minimiser et corriger (ci-dessous).
+- Gate : `./x.sh check` et le job Rust de la CI vérifient aussi `fuzz/` sur la stable (format,
+  `cargo check --locked --all-targets`, tests de `fuzz/src/lib.rs`), sans fuzzer : un changement d'API
+  des crates ne casse pas les cibles en silence. Surcoût mesuré : environ 1 s sans changement, 5 s
+  après une modification, 40 s à froid (target neuf, avec sccache).
+- `fuzz/Cargo.lock` est commité et vérifié (`--locked`) ; `scripts/release.sh` le met à jour avec la
+  version des crates `netsift-*`.
 
 ## Cibles
 

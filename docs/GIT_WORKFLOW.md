@@ -112,8 +112,8 @@ l'utilisateur pour ce numéro. Jamais de tag poussé à la main. Décision : ADR
   et `release.yml` en fait le nom de la release GitHub : `NetSift vX.Y.Z — titre` (sans titre :
   `NetSift vX.Y.Z`). L'application affiche ce titre dans le bandeau de mise à jour et dans
   « Paramètres > À propos », à la place d'un extrait des notes, qui restent derrière « Notes de
-  version » (ADR-028). Une ligne, 80 caractères au plus, sans caractère de contrôle ni de mise en
-  forme bidirectionnelle ; écrit pour l'utilisateur (ce qui change pour lui), dans la langue des notes.
+  version » (ADR-028). Une ligne, 80 caractères au plus, sans caractère de contrôle, invisible
+  (espace sans chasse, BOM...) ni de mise en forme bidirectionnelle ; écrit pour l'utilisateur (ce qui change pour lui), dans la langue des notes.
 - Licences tierces : la liste embarquée (« À propos », `THIRD_PARTY_LICENSES` des bundles) est
   vérifiée par le gate ; elle est donc à jour sur `main` au moment de la release (`docs/LICENSES.md`).
 

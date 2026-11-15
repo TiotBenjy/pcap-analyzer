@@ -1092,16 +1092,17 @@ acceptée : la remplacer par une nouvelle qui la référence.
 - Décision :
   - **source** : `scripts/release.sh X.Y.Z --title "…"` ; le titre est le corps du message du tag
     annoté (`NetSift vX.Y.Z`, ligne vide, titre ; `--cleanup=whitespace` pour garder un `#` initial).
-    Une ligne d'UTF-8, 80 caractères au plus, sans caractère de contrôle (C0, DEL, C1) ni de mise en
-    forme bidirectionnelle ; refusé avant toute action. Le tag est déjà le document signé de la
+    Une ligne d'UTF-8, 80 caractères au plus, sans caractère de contrôle (C0, DEL, C1, séparateurs
+    U+2028-U+2029), invisible (U+180E, U+200B, U+2060-U+2064, U+FEFF) ni de mise en forme
+    bidirectionnelle (dont U+061C) ; refusé avant toute action. Le tag est déjà le document signé de la
     version : pas de fichier en plus dans le dépôt, et le titre ne peut pas diverger du tag poussé ;
   - **nom de la release** : `release.yml` (job `create`) récupère l'objet tag (`git fetch --force`,
     actions/checkout ne laisse qu'une référence légère pour un événement de tag) et nomme la release
     `NetSift vX.Y.Z — titre`, `NetSift vX.Y.Z` sans titre (`scripts/ci/release-name.sh`, testé par
     `scripts/tests/release.sh`). Titre invalide ou tag léger : nom par défaut et avertissement,
-    jamais d'échec de la publication ;
-  - **application** : `UpdateRelease` expose `name` (texte brut : caractères de contrôle et
-    bidirectionnels retirés, une ligne, 120 caractères au plus) et `title` : ce qui suit la version
+    jamais d'échec de la publication (objet tag non récupéré ou script en échec compris) ;
+  - **application** : `UpdateRelease` expose `name` (texte brut, une ligne, 120 caractères au plus ;
+    ces caractères y sont retirés, comme dans les notes) et `title` : ce qui suit la version
     dans `NetSift vX.Y.Z <séparateur> titre`, le nom entier s'il a été écrit à la main sans ce
     préfixe, rien pour le nom par défaut ou le seul tag. L'application lit le nom de la release, pas
     le tag : un titre corrigé dans l'interface GitHub (« Edit release ») s'affiche à la vérification

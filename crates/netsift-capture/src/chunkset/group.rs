@@ -106,7 +106,7 @@ impl ChunkGroup {
                 }
             }
         }
-        mark_gzip_copies(&mut members);
+        mark_compressed_copies(&mut members);
         Self {
             kind,
             label,
@@ -190,14 +190,14 @@ impl ChunkGroup {
 /// Pool index of an entry and its sequence number.
 type Numbered = (usize, Option<u64>);
 
-/// Identity of a capture for `.gz` copy detection: directory, name without `.gz`, first
-/// timestamp, first packet.
-type GzipKey = (PathBuf, String, i64, Fingerprint);
+/// Identity of a capture for compressed copy detection: directory, name without its
+/// compression suffix, first timestamp, first packet.
+type CopyKey = (PathBuf, String, i64, Fingerprint);
 
-fn gzip_key(member: &ChunkMember) -> Option<GzipKey> {
+fn copy_key(member: &ChunkMember) -> Option<CopyKey> {
     let entry = &member.entry;
     let meta = entry.capture()?;
-    let name = naming::strip_gz(&entry.name).unwrap_or(&entry.name);
+    let name = naming::strip_compression(&entry.name).unwrap_or(&entry.name);
     Some((
         entry.dir().to_path_buf(),
         name.to_owned(),
@@ -206,33 +206,36 @@ fn gzip_key(member: &ChunkMember) -> Option<GzipKey> {
     ))
 }
 
-/// Marks a `.gz` copy stored next to its original (`cap.pcap` and `cap.pcap.gz`) as a
-/// duplicate, so that its packets are not read twice: same directory, same name without `.gz`,
-/// same first timestamp and first packet, and the same packet count when both files were fully
-/// scanned. The uncompressed file is kept (cheaper to read).
-fn mark_gzip_copies(members: &mut [ChunkMember]) {
-    let mut originals: HashMap<GzipKey, usize> = HashMap::new();
+/// Marks a compressed copy stored next to its original (`cap.pcap` and `cap.pcap.gz`, `.zst`
+/// or `.lz4`) as a duplicate, so that its packets are not read twice: same directory, same name
+/// without the compression suffix, same first timestamp and first packet, and the same packet
+/// count when both files were fully scanned. The uncompressed file is kept (cheaper to read);
+/// without one, the first compressed copy in member order is kept (`cap.pcap.gz` next to
+/// `cap.pcap.zst`).
+fn mark_compressed_copies(members: &mut [ChunkMember]) {
+    let mut originals: HashMap<CopyKey, usize> = HashMap::new();
     for (index, member) in members.iter().enumerate() {
         let plain = member.entry.capture().is_some_and(|m| !m.info.compressed);
         if member.status == MemberStatus::Active
             && plain
-            && let Some(key) = gzip_key(member)
+            && let Some(key) = copy_key(member)
         {
             originals.entry(key).or_insert(index);
         }
     }
-    if originals.is_empty() {
-        return;
-    }
     let packets = |m: &ChunkMember| m.entry.capture()?.scan.as_ref().map(|s| s.packets);
     let mut copies = Vec::new();
     for (index, member) in members.iter().enumerate() {
-        let gz_copy = naming::strip_gz(&member.entry.name).is_some()
+        let compressed_copy = naming::strip_compression(&member.entry.name).is_some()
             && member.entry.capture().is_some_and(|m| m.info.compressed);
-        if member.status != MemberStatus::Active || !gz_copy {
+        if member.status != MemberStatus::Active || !compressed_copy {
             continue;
         }
-        let Some(&original) = gzip_key(member).and_then(|k| originals.get(&k)) else {
+        let Some(key) = copy_key(member) else {
+            continue;
+        };
+        let Some(&original) = originals.get(&key) else {
+            originals.insert(key, index);
             continue;
         };
         let same_count = match (members.get(original).and_then(packets), packets(member)) {
@@ -696,6 +699,41 @@ mod tests {
                 ("/d/cap.pcap.gz", MemberStatus::Duplicate { of: 0 }),
                 ("/elsewhere/cap.pcap.gz", MemberStatus::Active),
                 ("/d/cap.pcap1.gz", MemberStatus::Active),
+            ]
+        );
+    }
+
+    #[test]
+    fn zstd_and_lz4_copies_are_duplicates_even_without_a_plain_original() {
+        let compressed = |name: &str| {
+            let mut entry = capture(name, 1);
+            if let EntryKind::Capture(meta) = &mut entry.kind {
+                meta.info.compressed = true;
+            }
+            entry
+        };
+        let group = ChunkGroup::new(
+            GroupKind::Folder,
+            "d".into(),
+            vec![
+                (compressed("cap.pcap.zst"), None),
+                (compressed("cap.pcap.lz4"), None),
+                (compressed("cap.pcap.GZ"), None),
+                (compressed("other.pcap.zst"), None),
+            ],
+        );
+        let statuses: Vec<_> = group
+            .members
+            .iter()
+            .map(|m| (m.entry.name.as_str(), m.status))
+            .collect();
+        assert_eq!(
+            statuses,
+            vec![
+                ("cap.pcap.GZ", MemberStatus::Active),
+                ("cap.pcap.lz4", MemberStatus::Duplicate { of: 0 }),
+                ("cap.pcap.zst", MemberStatus::Duplicate { of: 0 }),
+                ("other.pcap.zst", MemberStatus::Active),
             ]
         );
     }

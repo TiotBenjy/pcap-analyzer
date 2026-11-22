@@ -265,6 +265,8 @@ fn truncated_last_packet_is_dropped_cleanly() {
         Encoding::pcap(),
         Encoding::pcapng(),
         Encoding::pcapng().gz(),
+        Encoding::pcapng().zst(),
+        Encoding::pcap().lz4(),
     ] {
         let tmp = TempDir::new().unwrap();
         let opts = SplitOptions::new(SplitBy::At(vec![15]), Naming::Dumpcap)
@@ -368,7 +370,7 @@ fn empty_last_file_is_flagged_as_last() {
 }
 
 #[test]
-fn mixed_pcap_pcapng_and_gzip_in_one_set() {
+fn mixed_pcap_pcapng_and_compressed_in_one_set() {
     let packets = traffic();
     let tmp = TempDir::new().unwrap();
     let opts =
@@ -657,18 +659,94 @@ fn tcpdump_time_rotation_names_without_extension() {
 }
 
 #[test]
-fn gzip_copy_next_to_the_original_is_read_once() {
+fn compressed_chunk_sets_read_like_the_single_file() {
     let packets = traffic();
-    for full_scan in [false, true] {
+    let tmp = TempDir::new().unwrap();
+    let single = tmp.path().join("single.pcapng");
+    write_file(&single, &packets, &Encoding::pcapng()).unwrap();
+    let reference = drain(reader::open(&single).unwrap().as_mut());
+    let cases = [
+        (Naming::Dumpcap, Encoding::pcapng().zst(), ".pcapng.zst"),
+        (
+            Naming::DumpcapNameTimeNum,
+            Encoding::pcap().lz4(),
+            ".pcap.lz4",
+        ),
+        (Naming::TcpdumpC, Encoding::pcap_ns().zst(), ".zst"),
+        (Naming::Editcap, Encoding::pcapng().lz4(), ".pcapng.lz4"),
+    ];
+    for (i, (naming, encoding, suffix)) in cases.into_iter().enumerate() {
+        let dir = tmp.path().join(format!("case{i}"));
+        let opts = SplitOptions::new(SplitBy::Packets(9), naming).with_encoding(encoding);
+        let paths = split(&dir, &packets, &opts);
+        assert!(paths.len() > 3);
+        let group = only_group(&dir);
+        let kind = match naming {
+            Naming::Dumpcap | Naming::Editcap => GroupKind::Dumpcap,
+            Naming::DumpcapNameTimeNum => GroupKind::DumpcapNameTimeNum,
+            Naming::TcpdumpC => GroupKind::TcpdumpRotation,
+        };
+        assert_eq!(group.kind, kind, "{naming:?}");
+        assert!(
+            names(&group).iter().all(|n| n.ends_with(suffix)),
+            "{:?}",
+            names(&group)
+        );
+        // Ordered by the number in the name, which the suffix does not hide.
+        let seqs: Vec<_> = group.members.iter().map(|m| m.seq).collect();
+        assert!(seqs.windows(2).all(|w| w[0] < w[1]), "{seqs:?}");
+        let (seen, source) = read(&group);
+        assert_eq!(seen, reference, "{naming:?}");
+        assert_eq!(source.anomalies(), &[], "{naming:?}");
+        assert!(source.info().compressed);
+        // Progress counts the compressed bytes of the files.
+        let sizes: u64 = paths.iter().map(|p| fs::metadata(p).unwrap().len()).sum();
+        assert_eq!(source.total_bytes(), sizes);
+    }
+}
+
+#[test]
+fn compressed_chunk_cut_short_is_reported_and_the_rest_is_read() {
+    let packets = traffic();
+    for encoding in [Encoding::pcapng().zst(), Encoding::pcap().lz4()] {
+        let tmp = TempDir::new().unwrap();
+        let opts = SplitOptions::new(SplitBy::At(vec![15, 30]), Naming::Dumpcap)
+            .with_encoding(encoding.clone());
+        let paths = split(tmp.path(), &packets, &opts);
+        // The last file was being compressed when the folder was copied.
+        let last = paths.last().unwrap();
+        let bytes = fs::read(last).unwrap();
+        fs::write(last, &bytes[..bytes.len() / 2]).unwrap();
+        let group = only_group(tmp.path());
+        let mut source = ChunkSetSource::new(&group, ReadOptions::default());
+        let seen = drain(&mut source);
+        assert!(source.is_finished());
+        // Every packet of the complete chunks, then whatever the cut one released.
+        assert!(seen.len() >= 30, "{encoding:?}: {}", seen.len());
+        assert_eq!(seen[..], expected(&packets)[..seen.len()], "{encoding:?}");
+        let kinds: Vec<_> = codes(source.anomalies());
+        assert!(
+            kinds == vec![(Some(2), "truncated_tail")]
+                || kinds == vec![(Some(2), "unreadable_chunk")],
+            "{encoding:?}: {kinds:?}"
+        );
+    }
+}
+
+#[test]
+fn compressed_copy_next_to_the_original_is_read_once() {
+    let packets = traffic();
+    for (full_scan, compressed) in [
+        (false, Encoding::pcap().gz()),
+        (true, Encoding::pcap().gz()),
+        (false, Encoding::pcap().zst()),
+        (true, Encoding::pcap().lz4()),
+    ] {
         let tmp = TempDir::new().unwrap();
         let plain = tmp.path().join("cap.pcap");
         write_file(&plain, &packets, &Encoding::pcap()).unwrap();
-        write_file(
-            &tmp.path().join("cap.pcap.gz"),
-            &packets,
-            &Encoding::pcap().gz(),
-        )
-        .unwrap();
+        let copy = format!("cap.{}", compressed.extension());
+        write_file(&tmp.path().join(&copy), &packets, &compressed).unwrap();
         let options = InventoryOptions {
             full_scan,
             ..InventoryOptions::default()
@@ -677,7 +755,7 @@ fn gzip_copy_next_to_the_original_is_read_once() {
         let mut grouping = chunkset::group(&inventory);
         assert_eq!(grouping.groups.len(), 1);
         let group = grouping.groups.remove(0);
-        assert_eq!(names(&group), vec!["cap.pcap", "cap.pcap.gz"]);
+        assert_eq!(names(&group), vec!["cap.pcap", copy.as_str()]);
         assert_eq!(group.members[1].status, MemberStatus::Duplicate { of: 0 });
         let (seen, source) = read(&group);
         assert_eq!(seen, expected(&packets));

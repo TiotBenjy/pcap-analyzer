@@ -8,6 +8,8 @@
 //! than an hour (`netsift_store::range::LONG_FLOW_NS`), and sends a segment every
 //! [`KEEPALIVE_NS`], below the idle timeout of the flow table.
 
+use std::net::Ipv6Addr;
+
 use crate::images;
 use crate::packet::Packet;
 use crate::proto::dns::DnsType;
@@ -46,11 +48,17 @@ pub fn burst_start(i: usize) -> i64 {
     DEFAULT_START_NS + LONG_LEAD_NS + i64::try_from(i).unwrap_or(0) * BURST_GAP_NS
 }
 
-/// Builds the spread capture.
+/// Builds the spread capture ([`BURSTS`] bursts).
 pub fn spread() -> Spread {
+    spread_with(BURSTS)
+}
+
+/// The spread capture with `count` bursts: with many, one burst is a narrow share of each table
+/// (the narrow plan of the range aggregates, `netsift_store::range`).
+pub fn spread_with(count: usize) -> Spread {
     let mut packets = Vec::new();
     let mut bursts = Vec::new();
-    for i in 0..BURSTS {
+    for i in 0..count {
         let mut sc = Scenario::starting_at(burst_start(i)).with_seed(100 + i as u64);
         burst(&mut sc, i);
         let part = sc.into_packets();
@@ -87,6 +95,16 @@ fn burst(sc: &mut Scenario, i: usize) {
         ws,
         hosts::router(),
         &DnsExchange::nxdomain(format!("missing{i}.example.test"), DnsType::A),
+    );
+    sc.advance(gap);
+    // A second client -> server pair (IPv6).
+    sc.dns(
+        hosts::workstation_v6(),
+        hosts::router_v6(),
+        &DnsExchange::aaaa(
+            format!("burst{i}.example.test"),
+            Ipv6Addr::new(0x2001, 0xdb8, 0x80, 0, 0, 0, 0, 0x80),
+        ),
     );
     sc.advance(gap);
     // An image of its own, then the image shared by every burst.

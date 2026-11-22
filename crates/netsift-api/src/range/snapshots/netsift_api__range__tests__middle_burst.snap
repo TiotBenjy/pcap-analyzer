@@ -19,12 +19,13 @@ expression: "json!({\n    \"dns\": names, \"dns_stats\":\n    {\n        \"total
   ],
   "dns": [
     "burst1.example.test",
-    "missing1.example.test"
+    "missing1.example.test",
+    "burst1.example.test"
   ],
   "dns_stats": {
-    "answered": 2,
+    "answered": 3,
     "errors": 1,
-    "total": 2
+    "total": 3
   },
   "http_hosts": [
     {

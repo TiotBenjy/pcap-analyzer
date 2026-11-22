@@ -7,7 +7,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{HeaderValue, Request, StatusCode, header};
 use netsift_engine::{CancelToken, IngestOptions, ingest};
-use netsift_fixtures::spread::{Spread, spread};
+use netsift_fixtures::spread::{Spread, spread, spread_with};
 use netsift_fixtures::{Encoding, encode};
 use netsift_store::Catalog;
 use serde_json::{Value, json};
@@ -51,11 +51,19 @@ const ROUTES: &[&str] = &[
 
 impl Env {
     fn new() -> Self {
+        Self::with(spread())
+    }
+
+    /// Many bursts: one burst is a narrow share of every table (narrow plan of the aggregates).
+    fn many() -> Self {
+        Self::with(spread_with(40))
+    }
+
+    fn with(spread: Spread) -> Self {
         let tmp = tempfile::TempDir::new().unwrap();
         let data = tmp.path().join("data");
         let captures = tmp.path().join("captures");
         std::fs::create_dir_all(&captures).unwrap();
-        let spread = spread();
         let path: PathBuf = captures.join("spread.pcap");
         std::fs::write(&path, encode(&spread.packets, &Encoding::pcap()).unwrap()).unwrap();
         let catalog = Catalog::open(&data).unwrap();
@@ -108,8 +116,16 @@ impl Env {
 
     /// `path` with the range of burst `i` (its first and last packet, inclusive microseconds).
     fn burst(&self, path: &str, i: usize) -> String {
-        let (first, last) = self.spread.bursts[i];
-        with_range(path, first.div_euclid(1000), last.div_euclid(1000))
+        self.bursts(path, i, i)
+    }
+
+    /// `path` with the range from the start of burst `first` to the end of burst `last`.
+    fn bursts(&self, path: &str, first: usize, last: usize) -> String {
+        with_range(
+            path,
+            self.spread.bursts[first].0.div_euclid(1000),
+            self.spread.bursts[last].1.div_euclid(1000),
+        )
     }
 }
 
@@ -244,13 +260,20 @@ async fn dns_and_http_keep_the_records_of_the_middle_burst() {
         .iter()
         .map(|m| m["qname"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["burst1.example.test", "missing1.example.test"]);
+    assert_eq!(
+        names,
+        [
+            "burst1.example.test",
+            "missing1.example.test",
+            "burst1.example.test"
+        ]
+    );
     let dns = env.json(&b("/dns/stats")).await;
-    assert_eq!(dns["total"], 2);
+    assert_eq!(dns["total"], 3);
     assert_eq!(dns["errors"], 1);
-    assert_eq!(module(&summary, "dns"), (2, json!("range")));
+    assert_eq!(module(&summary, "dns"), (3, json!("range")));
     let pairs = env.json(&b("/dns/pairs")).await;
-    assert_eq!(total(&pairs), 1);
+    assert_eq!(total(&pairs), 2);
     let pair = &items(&pairs)[0];
     assert_eq!(pair["messages"], 2);
     assert_eq!(pair["errors"], 1);
@@ -501,14 +524,17 @@ async fn pages_under_a_range_have_no_gap_nor_duplicate() {
     let env = Env::new();
     for route in [
         "/dns/messages",
+        "/dns/pairs",
         "/http/transactions?sort=size&order=desc",
+        "/tls/sessions",
         "/credentials",
     ] {
-        let full = env.json(&env.burst(route, 1)).await;
+        // Two bursts of three: several rows of every list.
+        let full = env.json(&env.bursts(route, 0, 1)).await;
         let mut seen = Vec::new();
         let mut cursor: Option<String> = None;
         loop {
-            let mut path = env.burst(route, 1);
+            let mut path = env.bursts(route, 0, 1);
             path.push_str("&limit=1");
             if let Some(c) = &cursor {
                 path.push_str("&cursor=");
@@ -524,5 +550,74 @@ async fn pages_under_a_range_have_no_gap_nor_duplicate() {
         let expected: Vec<Value> = items(&full).iter().map(|i| i["id"].clone()).collect();
         assert_eq!(seen, expected, "{route}");
         assert!(seen.len() >= 2, "{route}");
+        assert_eq!(total(&full), seen.len() as u64, "{route}");
     }
+}
+
+/// One burst of forty is under a twentieth of every table: the aggregates read the time index
+/// (narrow plan, `range::PointSql`); the answers are those of the wide plan.
+#[tokio::test]
+async fn a_narrow_range_reads_the_time_index_with_the_same_answers() {
+    let env = Env::many();
+    let b = |p: &str| env.burst(p, 20);
+    let dns = env.json(&b("/dns/stats")).await;
+    assert_eq!(
+        (dns["total"].as_u64(), dns["errors"].as_u64()),
+        (Some(3), Some(1))
+    );
+    assert_eq!(dns["protocols"][0]["count"], 3);
+    let pairs = env.json(&b("/dns/pairs")).await;
+    assert_eq!(total(&pairs), 2);
+    let http = env.json(&b("/http/stats")).await;
+    assert_eq!(http["transactions"], 2);
+    assert_eq!(http["hosts"][0]["count"], 2);
+    let by_size = env
+        .json(&b("/http/transactions?sort=size&order=desc"))
+        .await;
+    assert_eq!(total(&by_size), 2);
+    let sizes: Vec<u64> = items(&by_size)
+        .iter()
+        .map(|t| t["response_size"].as_u64().unwrap_or(0))
+        .collect();
+    assert!(sizes.windows(2).all(|w| w[0] >= w[1]), "{sizes:?}");
+    let tls = env.json(&b("/tls/stats")).await;
+    assert_eq!(
+        (tls["sessions"].as_u64(), tls["certificates"].as_u64()),
+        (Some(1), Some(1))
+    );
+    let certs = env.json(&b("/tls/certificates")).await;
+    assert_eq!(total(&certs), 1);
+    assert_eq!(items(&certs)[0]["sessions"], 1);
+    // A single record: the first DNS message of the burst, alone in its microsecond.
+    let first = env.json(&b("/dns/messages")).await;
+    let ts = items(&first)[0]["ts_us"].as_i64().unwrap();
+    let one = env.json(&with_range("/dns/stats", ts, ts)).await;
+    assert_eq!(one["total"], 1);
+    let tx = env.json(&b("/http/transactions")).await;
+    let tts = items(&tx)[0]["ts_us"].as_i64().unwrap();
+    assert_eq!(
+        env.json(&with_range("/http/stats", tts, tts)).await["transactions"],
+        1
+    );
+    let session = env.json(&b("/tls/sessions")).await;
+    let sts = items(&session)[0]["ts_us"].as_i64().unwrap();
+    assert_eq!(
+        env.json(&with_range("/tls/stats", sts, sts)).await["sessions"],
+        1
+    );
+    assert_eq!(
+        total(&env.json(&with_range("/tls/certificates", sts, sts)).await),
+        1
+    );
+    assert_eq!(
+        total(
+            &env.json(&with_range(
+                "/http/transactions?sort=size&order=desc",
+                tts,
+                tts
+            ))
+            .await
+        ),
+        1
+    );
 }

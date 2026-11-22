@@ -19,7 +19,7 @@
 use rusqlite::types::Value;
 use rusqlite::{Connection, Row, ToSql};
 
-use crate::error::Result;
+use crate::error::{Result, StoreError};
 use crate::query::Conditions;
 
 /// Flows longer than this are found through the partial index `flows_long` (migration 0003):
@@ -199,9 +199,14 @@ pub(crate) fn query_ranged<T>(
     for (i, p) in positional.iter().enumerate() {
         stmt.raw_bind_parameter(i + 1, p)?;
     }
-    if let Some(r) = range
-        && stmt.parameter_count() >= TO_PARAM
-    {
+    if let Some(r) = range {
+        // A range given to a statement without its bounds would answer unfiltered, silently.
+        if stmt.parameter_count() < TO_PARAM {
+            return Err(StoreError::InvalidValue {
+                field: "range",
+                reason: "statement without the ?98 / ?99 bounds",
+            });
+        }
         stmt.raw_bind_parameter(FROM_PARAM, r.from_ns)?;
         stmt.raw_bind_parameter(TO_PARAM, r.to_ns)?;
     }
@@ -363,5 +368,7 @@ mod tests {
         );
         let n: i64 = query_row_ranged(&conn, &all, &[], None, |row| row.get(0)).unwrap();
         assert_eq!(n, 4);
+        // A range given to a statement that cannot apply it is an error, never ignored.
+        assert!(query_row_ranged::<i64>(&conn, &all, &[], Some(r), |row| row.get(0)).is_err());
     }
 }

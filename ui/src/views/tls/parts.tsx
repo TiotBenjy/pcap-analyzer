@@ -42,16 +42,23 @@ export function SuiteName({ name, id, weak }: { name: string | null; id: number 
   );
 }
 
-/** Badges of the certificate issues of a session. */
-export function IssueBadges({ issues }: { issues: readonly string[] }) {
+/** Badges of the certificate issues of a session, date problems first. */
+export function IssueBadges({ issues, max }: { issues: readonly string[]; max?: number }) {
   const { t } = useTranslation();
+  const dated = (issue: string) => issue === 'expired' || issue === 'not_yet_valid';
+  const all = issues.filter(isCertIssue).sort((a, b) => Number(dated(b)) - Number(dated(a)));
+  // In a table cell, the badges past `max` fold into a "+n" counter that names them on hover,
+  // so that the certificate name stays visible and no badge is cut.
+  const shown = max === undefined ? all : all.slice(0, max);
+  const rest = all.slice(shown.length);
   return (
     <>
-      {issues.filter(isCertIssue).map((issue) => (
-        <Badge key={issue} tone={issue === 'expired' || issue === 'not_yet_valid' ? 'danger' : 'warning'}>
+      {shown.map((issue) => (
+        <Badge key={issue} tone={dated(issue) ? 'danger' : 'warning'}>
           {t(CERT_ISSUE_KEYS[issue])}
         </Badge>
       ))}
+      {rest.length > 0 && <Badge title={rest.map((issue) => t(CERT_ISSUE_KEYS[issue])).join(', ')}>{`+${rest.length}`}</Badge>}
     </>
   );
 }

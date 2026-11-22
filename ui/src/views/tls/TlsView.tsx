@@ -560,7 +560,7 @@ function CertificateCell({ item }: { item: TlsSessionItem }) {
       <span data-testid="truncatable" title={cn} className="min-w-0 truncate">
         {cn}
       </span>
-      <IssueBadges issues={item.cert_issues} />
+      <IssueBadges issues={item.cert_issues} max={1} />
     </span>
   );
 }

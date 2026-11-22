@@ -215,7 +215,10 @@ describe('TLS view', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'SSL/TLS' })).toBeInTheDocument();
     const table = await screen.findByRole('table', { name: 'TLS sessions' });
     expect(within(table).getAllByText('legacy.example.test').length).toBe(2);
+    // One issue badge per cell (date problems first), the others folded into a counter.
     expect(within(table).getByText('Expired')).toBeInTheDocument();
+    expect(within(table).queryByText('Self-signed')).toBeNull();
+    expect(within(table).getByText('+1')).toHaveAttribute('title', 'Self-signed');
     expect(within(table).getByText('Encrypted')).toBeInTheDocument();
     expect(within(table).getAllByRole('img', { name: 'RC4' }).length).toBeGreaterThan(0);
     expect(charts.has('Negotiated TLS versions')).toBe(true);

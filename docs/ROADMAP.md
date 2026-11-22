@@ -499,7 +499,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       indicateur d'import à côté de la pastille à 375 px jamais capturé ; colonne Rôles SMB étroite à 768 px
       (badges tronqués avec infobulle) ; couleurs SMB/NetBIOS et DNS/DHCP identiques dans le graphique de
       l'Overview ; voile du dialogue peu visible en sombre (aussi Save PCAP).
-- [ ] **P5.2b** `feat/time-filter-aggregates` — Plage appliquée aux vues agrégées (Connections, Open Ports,
+- [~] **P5.2b** `feat/time-filter-aggregates` — Plage appliquée aux vues agrégées (Connections, Open Ports,
       Servers, Network) et à leurs compteurs de modules : tables dérivées calculées à la première requête d'une
       plage (code des étapes de fin d'import paramétré), base annexe `sessions/<id>/ranges.db` des 4 dernières
       plages. Attente simple validée par l'utilisateur (pas de 202) : exception écrite aux 300 ms pour la première
@@ -507,13 +507,13 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 
 ### Vague 5.A — Couche 2 et protocoles simples (parallèle, après 5.0)
 
-- [ ] **P5.3** `feat/arp` — Référence `private/arp.png`. Requêtes, réponses, ARP gratuits (compteurs et filtres),
+- [~] **P5.3** `feat/arp` — Référence `private/arp.png`. Requêtes, réponses, ARP gratuits (compteurs et filtres),
       table IP <-> MAC dans le temps, conflits (une IP pour plusieurs MAC) et signes d'usurpation expliqués ;
       graphe lisible (réutiliser sigma de Network) ou tableau.
-- [ ] **P5.4** `feat/ethernet` — Référence `private/ethernet.png`. Adresses MAC, constructeur d'après l'OUI (registre
+- [~] **P5.4** `feat/ethernet` — Référence `private/ethernet.png`. Adresses MAC, constructeur d'après l'OUI (registre
       IEEE, licence et mode de mise à jour à vérifier, pas de fichier GPL), broadcast/multicast, VLAN, EtherTypes,
       volumes ; paires source -> cibles. Barres des constructeurs à la place des bulles.
-- [ ] **P5.5** `feat/ssdp` — Référence `private/ssdp.png`. Messages NOTIFY / M-SEARCH / réponses, appareils UPnP (USN,
+- [~] **P5.5** `feat/ssdp` — Référence `private/ssdp.png`. Messages NOTIFY / M-SEARCH / réponses, appareils UPnP (USN,
       types NT/ST, `SERVER`, `LOCATION`), émetteurs ; message brut dépliable. Le graphe de la référence est
       illisible : tableau groupé par appareil, graphe facultatif borné.
 - [ ] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,

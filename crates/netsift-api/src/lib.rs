@@ -28,6 +28,7 @@ mod online;
 mod outbound;
 mod overview;
 mod ports;
+mod range;
 mod servers;
 mod sessions;
 mod settings;

@@ -590,3 +590,52 @@ async fn roles_of_version_2_are_read_while_the_ranks_are_missing() {
         .unwrap();
     assert_eq!(ranks, 0, "a read-only server writes nothing");
 }
+
+/// Undoes migrations 0003, 0101, 0202 and 0302 (time filter): the session looks imported by a
+/// build that predates them, header lines without their time.
+const BEFORE_TIME_RANGES: &str = "DROP INDEX http_headers_name; \
+    ALTER TABLE http_headers DROP COLUMN ts; \
+    CREATE INDEX http_headers_name ON http_headers (name_lc, transaction_id); \
+    DROP INDEX flows_long; DROP INDEX dns_messages_pair_cover; \
+    DROP INDEX http_transactions_status_ts; \
+    DELETE FROM schema_migrations WHERE version IN (3, 101, 202, 302);";
+
+#[tokio::test]
+async fn a_session_of_the_previous_build_answers_time_ranges_after_its_opening() {
+    let env = Env::new(false);
+    let current = env.import_showcase();
+    let previous = env.import_showcase();
+    env.tamper(&previous, BEFORE_TIME_RANGES);
+    assert!(env.outdated(&previous));
+    let (_, _, summary) = env
+        .get(&format!("/api/v1/sessions/{current}/summary"))
+        .await;
+    let first = summary["first_ts_us"].as_i64().unwrap();
+    // The second of the three demo rounds (one second apart).
+    let range = format!("from_us={}&to_us={}", first + 900_000, first + 1_900_000);
+    let paths: Vec<String> = [
+        "summary",
+        "dns/stats",
+        "dns/messages",
+        "http/stats",
+        "http/headers/stats",
+        "tls/stats",
+        "smb/stats",
+        "credentials/stats",
+        "objects/stats",
+    ]
+    .iter()
+    .map(|p| format!("{p}?{range}"))
+    .collect();
+    let refs: Vec<&str> = paths.iter().map(String::as_str).collect();
+    // First opening: the migrations fill the time of the header lines; same answers as a
+    // session imported by this build.
+    env.same_answers(&current, &previous, &refs).await;
+    assert!(!env.outdated(&previous));
+    let (_, _, headers) = env
+        .get(&format!(
+            "/api/v1/sessions/{previous}/http/headers/stats?{range}"
+        ))
+        .await;
+    assert!(headers["header_count"].as_u64().unwrap() > 0, "{headers}");
+}

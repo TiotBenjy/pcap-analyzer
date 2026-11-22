@@ -14,13 +14,15 @@ use std::sync::Arc;
 use axum::extract::{Path as UrlPath, State};
 use axum::routing::get;
 use axum::{Json, Router};
+use netsift_store::range::ModuleRows;
 use netsift_store::traffic::{self, BucketPlan};
-use netsift_store::{Session, SessionId, SessionInfo, SessionState as StoreState};
+use netsift_store::{Session, SessionId, SessionInfo, SessionState as StoreState, TimeRange};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::contract::SessionState;
 use crate::extract::ApiQuery;
+use crate::range::{ApiRange, RangeParams};
 use crate::sessions::{Stats, info, parse_id, session_dir};
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -42,6 +44,35 @@ pub struct ModuleCount {
     /// Identifier of the view (`connections`, `hosts`, `dns`...).
     pub id: String,
     pub count: u64,
+    /// Under a time range: whether `count` is that of the range (same rule as the list of the
+    /// view) or of the whole session (module not filtered yet). `null` without range.
+    pub scope: Option<CountScope>,
+}
+
+/// What a module counter covers under a time range (ADR-030).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum CountScope {
+    Range,
+    Session,
+}
+
+/// Figures of the time range of a summary (`docs/specs/time-filter.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct RangeSummary {
+    /// The range bounded to the captured period (inclusive, microseconds); `to_us < from_us`
+    /// when it does not meet the session.
+    pub from_us: i64,
+    pub to_us: i64,
+    pub duration_us: i64,
+    /// Packets and on-wire bytes of the one-second buckets that intersect the range.
+    pub packets: u64,
+    pub bytes: u64,
+    /// Flows and hosts active in the range (their span overlaps it).
+    pub flow_count: u64,
+    pub host_count: u64,
 }
 
 /// `GET /sessions/{id}/summary`: figures of the overview header and module cards.
@@ -67,6 +98,9 @@ pub struct OverviewSummary {
     /// Row counts of the analysis modules present in this session. A module whose table does
     /// not exist (added by a later version, or not run) is absent, not 0.
     pub modules: Vec<ModuleCount>,
+    /// Figures of the time range asked for (`from_us` / `to_us`), `null` without range or when
+    /// it covers the whole session.
+    pub range: Option<RangeSummary>,
 }
 
 /// Series of the traffic chart, in display order. Stored protocol labels (`timeseries.proto`,
@@ -213,6 +247,21 @@ const MODULES: &[(&str, &str)] = &[
     ("tls", "tls_sessions"),
 ];
 
+/// Count over a time range of a module of [`MODULES`]; `None` for a module whose view does not
+/// apply the range yet (lot b of the spec: counted over the session). Sorted by id.
+fn ranged_rows(module: &str) -> Option<ModuleRows> {
+    match module {
+        "credentials" => Some(ModuleRows::Credentials),
+        "dns" => Some(ModuleRows::DnsMessages),
+        "http" => Some(ModuleRows::HttpTransactions),
+        "httpHeaders" => Some(ModuleRows::HttpHeaders),
+        "pictures" => Some(ModuleRows::Pictures),
+        "smb" => Some(ModuleRows::Smb),
+        "tls" => Some(ModuleRows::TlsSessions),
+        _ => None,
+    }
+}
+
 /// Opens a session whose data can be shown: 404 when unknown, 409 while importing or failed.
 /// A session created by an older build is upgraded first, except on a read-only server (ADR-013).
 pub(crate) fn open_ready(
@@ -237,8 +286,13 @@ pub(crate) fn open_ready(
     Ok((info, session))
 }
 
-fn build_summary(state: &AppState, id: &SessionId) -> Result<OverviewSummary, ApiError> {
+fn build_summary(
+    state: &AppState,
+    id: &SessionId,
+    range: RangeParams,
+) -> Result<OverviewSummary, ApiError> {
     let (info, session) = open_ready(state, id)?;
+    let range = range.resolve(&session)?;
     let conn = session.conn();
     let stats = Stats::of(&session);
     let (bytes, ts_packets) = traffic::traffic_totals(conn)?;
@@ -256,10 +310,16 @@ fn build_summary(state: &AppState, id: &SessionId) -> Result<OverviewSummary, Ap
     };
     let mut modules = Vec::with_capacity(MODULES.len());
     for (module, table) in MODULES {
-        if let Some(count) = count(table)? {
+        if let Some(session_count) = count(table)? {
+            let (count, scope) = match (range, ranged_rows(module)) {
+                (None, _) => (session_count, None),
+                (Some(r), Some(rows)) => (rows.count(conn, r)?, Some(CountScope::Range)),
+                (Some(_), None) => (session_count, Some(CountScope::Session)),
+            };
             modules.push(ModuleCount {
                 id: (*module).to_owned(),
                 count,
+                scope,
             });
         }
     }
@@ -288,15 +348,42 @@ fn build_summary(state: &AppState, id: &SessionId) -> Result<OverviewSummary, Ap
         flow_count: stats.flows,
         anomaly_count: stats.anomalies,
         modules,
+        range: range
+            .map(|r| range_summary(&session, r, stats.first_ts, stats.last_ts))
+            .transpose()?,
+    })
+}
+
+fn range_summary(
+    session: &Session,
+    range: TimeRange,
+    first: Option<i64>,
+    last: Option<i64>,
+) -> Result<RangeSummary, ApiError> {
+    let from = first.map_or(range.from_ns(), |f| f.max(range.from_ns()));
+    let to = last.map_or(range.to_ns().saturating_sub(1), |l| {
+        l.min(range.to_ns().saturating_sub(1))
+    });
+    let conn = session.conn();
+    let (bytes, packets) = traffic::traffic_totals_in(conn, range)?;
+    Ok(RangeSummary {
+        from_us: convert::us(from),
+        to_us: convert::us(to),
+        duration_us: convert::us(to.saturating_sub(from).max(0)),
+        packets,
+        bytes,
+        flow_count: netsift_store::range::count_active_flows(conn, range)?,
+        host_count: netsift_store::range::count_active_hosts(conn, range)?,
     })
 }
 
 async fn summary(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<OverviewSummary>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_summary(s, &id))
+    blocking(&state, move |s| build_summary(s, &id, range))
         .await
         .map(Json)
 }

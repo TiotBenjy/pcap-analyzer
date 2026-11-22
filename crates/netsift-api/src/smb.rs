@@ -13,8 +13,8 @@ use std::sync::Arc;
 use axum::extract::{Path as UrlPath, State};
 use axum::routing::get;
 use axum::{Json, Router};
+use netsift_store::PageRequest;
 use netsift_store::smb::{self, SmbAnnounceEntry, SmbSessionEntry};
-use netsift_store::{PageRequest, Session};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -22,6 +22,7 @@ use crate::contract::Page;
 use crate::endpoint::Endpoint;
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
+use crate::range::ApiRange;
 use crate::sessions::parse_id;
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -153,26 +154,21 @@ pub struct SmbStats {
     pub auth_count: u64,
 }
 
-fn table_count(session: &Session, sql: &'static str) -> u64 {
-    session
-        .conn()
-        .query_row(sql, [], |r| r.get::<_, i64>(0))
-        .map_or(0, |n| u64::try_from(n).unwrap_or(0))
-}
-
 async fn announces(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<PageParams>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<SmbAnnounceInfo>>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
-        let page = smb::announces_page(session.conn(), &query.request())?;
+        let range = range.resolve(&session)?;
+        let page = smb::announces_page(session.conn(), &query.request(), range)?;
         Ok(Page {
             items: page.items.into_iter().map(announce_info).collect(),
             next_cursor: page.next_cursor,
-            total_estimate: Some(table_count(&session, "SELECT count(*) FROM smb_announces")),
+            total_estimate: Some(smb::count_announces(session.conn(), range)?),
         })
     })
     .await
@@ -183,18 +179,17 @@ async fn auth(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<PageParams>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<SmbAuthInfo>>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
-        let page = smb::sessions_page(session.conn(), true, &query.request())?;
+        let range = range.resolve(&session)?;
+        let page = smb::sessions_page(session.conn(), true, &query.request(), range)?;
         Ok(Page {
             items: page.items.into_iter().map(auth_info).collect(),
             next_cursor: page.next_cursor,
-            total_estimate: Some(table_count(
-                &session,
-                "SELECT count(*) FROM smb_sessions WHERE ntlm_phase IS NOT NULL",
-            )),
+            total_estimate: Some(smb::count_sessions(session.conn(), true, range)?),
         })
     })
     .await
@@ -204,22 +199,22 @@ async fn auth(
 async fn stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<SmbStats>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
-        let os = smb::os_distribution(session.conn(), OS_LIMIT)?
+        let range = range.resolve(&session)?;
+        let conn = session.conn();
+        let os = smb::os_distribution(conn, OS_LIMIT, range)?
             .into_iter()
             .map(|(label, count)| OsSlice { label, count })
             .collect();
         Ok(SmbStats {
             os,
-            announce_count: table_count(&session, "SELECT count(*) FROM smb_announces"),
-            session_count: table_count(&session, "SELECT count(*) FROM smb_sessions"),
-            auth_count: table_count(
-                &session,
-                "SELECT count(*) FROM smb_sessions WHERE ntlm_phase IS NOT NULL",
-            ),
+            announce_count: smb::count_announces(conn, range)?,
+            session_count: smb::count_sessions(conn, false, range)?,
+            auth_count: smb::count_sessions(conn, true, range)?,
         })
     })
     .await

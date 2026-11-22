@@ -27,6 +27,7 @@ use ts_rs::TS;
 use crate::contract::Page;
 use crate::endpoint::Endpoint;
 use crate::overview::open_ready;
+use crate::range::{ApiRange, RangeParams};
 use crate::sessions::{DEFAULT_LIMIT, MAX_LIMIT, parse_id};
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -248,6 +249,7 @@ impl ListQuery {
             protocols,
             errors_only: self.errors.unwrap_or(false),
             search: search.map(str::to_owned),
+            range: None,
         })
     }
 
@@ -286,9 +288,9 @@ fn counts(buckets: Vec<store::Bucket>) -> Vec<DnsCount> {
         .collect()
 }
 
-fn build_stats(state: &AppState, id: &SessionId) -> Result<DnsStats, ApiError> {
+fn build_stats(state: &AppState, id: &SessionId, range: RangeParams) -> Result<DnsStats, ApiError> {
     let s = match open(state, id)? {
-        Some(session) => store::stats(session.conn())?,
+        Some(session) => store::stats(session.conn(), range.resolve(&session)?)?,
         None => store::DnsStats::default(),
     };
     let errors_of = |protocol: &Option<String>| {
@@ -334,11 +336,13 @@ fn build_pairs(
     state: &AppState,
     id: &SessionId,
     query: &ListQuery,
+    range: RangeParams,
 ) -> Result<Page<DnsPair>, ApiError> {
-    let filter = query.filter()?;
+    let mut filter = query.filter()?;
     let Some(session) = open(state, id)? else {
         return Ok(empty());
     };
+    filter.range = range.resolve(&session)?;
     let (page, total) = store::pairs_page(session.conn(), &filter, &query.request())?;
     Ok(Page {
         items: page
@@ -402,12 +406,14 @@ fn build_messages(
     state: &AppState,
     id: &SessionId,
     query: &ListQuery,
+    range: RangeParams,
 ) -> Result<Page<DnsMessage>, ApiError> {
-    let filter = query.filter()?;
+    let mut filter = query.filter()?;
     let pair = query.pair()?;
     let Some(session) = open(state, id)? else {
         return Ok(empty());
     };
+    filter.range = range.resolve(&session)?;
     let (page, total) = store::messages_page(session.conn(), pair, &filter, &query.request())?;
     Ok(Page {
         items: page.items.into_iter().map(message).collect(),
@@ -420,11 +426,13 @@ fn build_servers(
     state: &AppState,
     id: &SessionId,
     query: &ListQuery,
+    range: RangeParams,
 ) -> Result<Page<DnsServer>, ApiError> {
     let Some(session) = open(state, id)? else {
         return Ok(empty());
     };
-    let (page, total) = store::servers_page(session.conn(), &query.request())?;
+    let range = range.resolve(&session)?;
+    let (page, total) = store::servers_page(session.conn(), &query.request(), range)?;
     Ok(Page {
         items: page
             .items
@@ -449,9 +457,10 @@ fn build_servers(
 async fn stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<DnsStats>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_stats(s, &id))
+    blocking(&state, move |s| build_stats(s, &id, range))
         .await
         .map(Json)
 }
@@ -460,9 +469,10 @@ async fn pairs(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     crate::extract::ApiQuery(query): crate::extract::ApiQuery<ListQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<DnsPair>>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_pairs(s, &id, &query))
+    blocking(&state, move |s| build_pairs(s, &id, &query, range))
         .await
         .map(Json)
 }
@@ -471,9 +481,10 @@ async fn messages(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     crate::extract::ApiQuery(query): crate::extract::ApiQuery<ListQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<DnsMessage>>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_messages(s, &id, &query))
+    blocking(&state, move |s| build_messages(s, &id, &query, range))
         .await
         .map(Json)
 }
@@ -482,9 +493,10 @@ async fn servers(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     crate::extract::ApiQuery(query): crate::extract::ApiQuery<ListQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<DnsServer>>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_servers(s, &id, &query))
+    blocking(&state, move |s| build_servers(s, &id, &query, range))
         .await
         .map(Json)
 }

@@ -27,7 +27,7 @@ use netsift_store::tls::{
     self as store, CertificateFilter, CertificateRow, ClientHelloRow, ServerHelloRow,
     TlsSessionEntry, TlsSessionFilter,
 };
-use netsift_store::{PageRequest, Session};
+use netsift_store::{PageRequest, Session, TimeRange};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -35,6 +35,7 @@ use crate::contract::Page;
 use crate::convert::us;
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
+use crate::range::ApiRange;
 use crate::sessions::{DEFAULT_LIMIT, MAX_LIMIT, Stats, parse_id};
 use crate::{ApiError, AppState, blocking};
 
@@ -412,7 +413,7 @@ fn server_hello(sh: ServerHelloRow, suites: &Suites) -> TlsServerHelloInfo {
 // Handlers
 // ------------------------------------------------------------------------------------------
 
-fn build_stats(session: &Session) -> Result<TlsStats, ApiError> {
+fn build_stats(session: &Session, range: Option<TimeRange>) -> Result<TlsStats, ApiError> {
     let rows = store::stats(
         session.conn(),
         store::StatsLimits {
@@ -420,6 +421,7 @@ fn build_stats(session: &Session) -> Result<TlsStats, ApiError> {
             suites: u32::try_from(TOP_SUITES).unwrap_or(u32::MAX),
             sni: TOP_SNI,
         },
+        range,
     )?;
     let mut suites: Vec<TlsSuiteCount> = rows
         .suites
@@ -475,11 +477,15 @@ fn build_stats(session: &Session) -> Result<TlsStats, ApiError> {
 async fn stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<TlsStats>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_stats(&open_ready(s, &id)?.1))
-        .await
-        .map(Json)
+    blocking(&state, move |s| {
+        let (_, session) = open_ready(s, &id)?;
+        build_stats(&session, range.resolve(&session)?)
+    })
+    .await
+    .map(Json)
 }
 
 fn page_request(limit: Option<u32>, cursor: Option<String>) -> PageRequest {
@@ -530,6 +536,7 @@ async fn sessions(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<SessionsQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<TlsSessionItem>>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
@@ -540,6 +547,7 @@ async fn sessions(
             q: search(query.q)?,
             weak_only: query.weak,
             cert_issues_only: query.cert_issues,
+            range: range.resolve(&session)?,
         };
         let conn = session.conn();
         let page = store::sessions_page(
@@ -600,6 +608,7 @@ async fn certificates(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<CertificatesQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<TlsCertificateItem>>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
@@ -610,6 +619,7 @@ async fn certificates(
             problems_only: query.problems,
             capture_start: period.first_ts,
             capture_end: period.last_ts,
+            range: range.resolve(&session)?,
         };
         let conn = session.conn();
         let page =

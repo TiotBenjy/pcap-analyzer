@@ -33,6 +33,7 @@ use crate::contract::Page;
 use crate::endpoint::Endpoint;
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
+use crate::range::{ApiRange, RangeParams};
 use crate::sessions::{DEFAULT_LIMIT, MAX_LIMIT, parse_id};
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -348,11 +349,12 @@ fn non_empty(s: Option<String>) -> Option<String> {
 async fn stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<HttpStats>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
-        let st = store::stats(session.conn())?;
+        let st = store::stats(session.conn(), range.resolve(&session)?)?;
         Ok(HttpStats {
             transactions: st.transactions,
             methods: counts(st.methods),
@@ -375,12 +377,17 @@ async fn stats(
 fn page(
     state: &AppState,
     id: &netsift_store::SessionId,
-    filter: &HttpFilter,
+    filter: HttpFilter,
+    range: RangeParams,
     sort: HttpSort,
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<HttpTransactionSummary>, ApiError> {
     let (_, session) = open_ready(state, id)?;
+    let filter = &HttpFilter {
+        range: range.resolve(&session)?,
+        ..filter
+    };
     let conn = session.conn();
     let page = store::transactions_page(conn, filter, sort, descending, request)?;
     // Counted with the first page only (the UI keeps it while scrolling).
@@ -400,6 +407,7 @@ async fn transactions(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<TransactionsQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<HttpTransactionSummary>>, ApiError> {
     let id = parse_id(&id)?;
     let filter = HttpFilter {
@@ -417,7 +425,7 @@ async fn transactions(
     let descending = matches!(query.order, Order::Desc);
     let request = page_request(query.limit, query.cursor);
     blocking(&state, move |s| {
-        page(s, &id, &filter, sort, descending, &request)
+        page(s, &id, filter, range, sort, descending, &request)
     })
     .await
     .map(Json)
@@ -442,17 +450,19 @@ async fn transaction(
 async fn header_stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<HttpHeaderStats>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
+        let range = range.resolve(&session)?;
         let conn = session.conn();
-        let methods = counts(store::method_counts(conn)?);
+        let methods = counts(store::method_counts(conn, range)?);
         Ok(HttpHeaderStats {
             transactions: methods.iter().map(|m| m.count).sum(),
-            header_count: store::header_count(conn)?,
+            header_count: store::header_count(conn, range)?,
             methods,
-            names: counts(store::header_names(conn, MAX_HEADER_NAMES)?),
+            names: counts(store::header_names(conn, MAX_HEADER_NAMES, range)?),
         })
     })
     .await
@@ -463,6 +473,7 @@ async fn headers(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<HeadersQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<HttpTransactionSummary>>, ApiError> {
     let id = parse_id(&id)?;
     let filter = HttpFilter {
@@ -473,7 +484,7 @@ async fn headers(
     };
     let request = page_request(query.limit, query.cursor);
     blocking(&state, move |s| {
-        page(s, &id, &filter, HttpSort::Time, true, &request)
+        page(s, &id, filter, range, HttpSort::Time, true, &request)
     })
     .await
     .map(Json)

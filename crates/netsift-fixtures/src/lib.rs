@@ -42,6 +42,7 @@ pub mod scenario;
 pub mod scenarios;
 pub mod servers;
 pub mod split;
+pub mod spread;
 pub mod time;
 pub mod writer;
 

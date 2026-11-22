@@ -19,12 +19,14 @@ import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { formatBytes, formatCount } from '../../lib/format';
 import { type ChartFormat, countBars, PART_HEIGHT, statusOption } from './charts';
-import { ExpandableList } from './ExpandableList';
+import { ExpandableList } from '../../components/ExpandableList';
 import { displayTarget } from './format';
 import { RankedList } from './RankedList';
 import { useSessionGate } from './gate';
-import { FilterChip, MethodBadge, MethodsChart, ServerCell, StatusBadge, TargetText } from './shared';
-import { methodFilters, methodParam, useDebounced, useViewableSession } from './state';
+import { MethodBadge, MethodsChart, ServerCell, StatusBadge, TargetText } from './shared';
+import { methodFilters, methodParam, useViewableSession } from './state';
+import { useDebounced } from '../../lib/useDebounced';
+import { FilterChip } from '../../components/FilterChip';
 import { TransactionDetail } from './TransactionDetail';
 import { Timestamp } from '../../components/Timestamp';
 

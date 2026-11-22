@@ -123,7 +123,6 @@ export const arpEn = {
       targetMac: 'Target MAC',
     },
   },
-  mac: 'MAC address',
 };
 
 export const arpFr: typeof arpEn = {
@@ -247,5 +246,4 @@ export const arpFr: typeof arpEn = {
       targetMac: 'MAC cible',
     },
   },
-  mac: 'Adresse MAC',
 };

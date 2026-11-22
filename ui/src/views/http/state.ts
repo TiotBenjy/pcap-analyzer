@@ -1,23 +1,8 @@
-import { useEffect, useState } from 'react';
 import { METHOD_GROUPS, type MethodGroup } from '../../api/http';
 import { useSession } from '../../api/sessionQueries';
 import type { HttpCount } from '../../api/types/HttpCount';
 import type { FilterOption } from '../../components/FilterBar';
 import { sameLocalDay } from '../../lib/format';
-
-/** Value of `value` once it stopped changing for `ms`. */
-export function useDebounced<T>(value: T, ms = 300): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const id = window.setTimeout(() => {
-      setSettled(value);
-    }, ms);
-    return () => {
-      window.clearTimeout(id);
-    };
-  }, [value, ms]);
-  return settled;
-}
 
 /** Session state of an HTTP view: data can be requested only when the session is ready. */
 export function useViewableSession(sessionId: string) {

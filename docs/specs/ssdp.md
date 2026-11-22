@@ -166,7 +166,7 @@ dans la plage » avec « Effacer la plage »).
 - Analyseur : `crates/netsift-analyze/src/ssdp/` (`parser.rs` pur et fuzzé par la cible `udp_services`,
   `analyzer.rs` sans état) ; store : `crates/netsift-store/src/ssdp.rs` (upsert commutatif des appareils
   avec un horodatage par valeur texte) ; API : `crates/netsift-api/src/ssdp.rs` ; UI :
-  `ui/src/views/ssdp/` (listes dépliables de `views/http/ExpandableList`).
+  `ui/src/views/ssdp/` (listes dépliables de `components/ExpandableList`).
 - Fixture : `netsift_fixtures::ssdp` (`ssdp_showcase`, `ssdp_round`), aussi ajoutée à la session de
   démonstration (vitrine puis annonces toutes les 10 s) pour les captures.
 - Mesure (`ssdp::tests::timings`, ignoré, mode release, 500 000 messages de 2 000 appareils, machine de

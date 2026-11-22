@@ -480,9 +480,11 @@ ADR-030 (`docs/DECISIONS.md`).
   `components/TimeRangeChip.tsx`, `components/TimeRangeDialog.tsx`. Les hooks de requête des vues filtrées
   lisent eux-mêmes la plage (`useViewRange`) : les vues ne la manipulent pas. Un état vide sans action propre
   affiche « Rien n'a été enregistré entre ces heures » et « Effacer la plage » sous plage.
-- Compteurs repliés sous plage : en-tête court « Vu » avec « Session entière » en seconde ligne (SMB, tableau
-  des annonces), « 147 fois (session entière) » sur les cartes SMB et « Vu 296 fois (session entière) » sur
-  les cartes Credentials, libellé du détail Credentials.
+- Compteurs repliés sous plage, dans un tableau : en-tête court (« Vu », « Trames ») avec « Session entière »
+  en seconde ligne, par `WholeSessionHeader` ou, dans une `DataTable`, `wholeSessionHeader`
+  (`components/WholeSession.tsx`) ; exemples : annonces SMB, compteurs Ethernet, liaisons ARP. Sur une carte
+  ou dans un détail, la mention suit le compteur entre parenthèses : « 147 fois (session entière) » (cartes
+  SMB), « Vu 296 fois (session entière) » (cartes et détail Credentials).
 - Un agrégat fixe qui reçoit une plage sans porter ses bornes `?98` / `?99` est une erreur, jamais une
   réponse non filtrée.
 - Mesures : `docs/PERFORMANCE.md`, section « Filtre temporel (P5.2a) ».

@@ -22,6 +22,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
+import { WholeSessionHeader } from '../../components/WholeSession';
 import type { en } from '../../i18n/en';
 import { formatCount } from '../../lib/format';
 import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
@@ -284,12 +285,7 @@ function AnnounceTable({ query }: { query: ListQuery<SmbAnnounceInfo> }) {
                   <th scope="col" className="px-3 py-2 font-medium">{t('views.smb.announce.roles')}</th>
                   <th scope="col" className="w-[14%] px-3 py-2 font-medium">{t('views.smb.announce.comment')}</th>
                   <th scope="col" className={cn('px-3 py-2 text-right font-medium sm:pr-4', ranged ? 'w-24 xl:w-32' : 'w-20')}>
-                    {t('views.smb.announce.count')}
-                    {ranged && (
-                      <span className="block leading-tight font-normal text-faint xl:whitespace-nowrap">
-                        {t('timeRange.wholeSession')}
-                      </span>
-                    )}
+                    <WholeSessionHeader label={t('views.smb.announce.count')} ranged={ranged} className="xl:whitespace-nowrap" />
                   </th>
                 </tr>
               </thead>

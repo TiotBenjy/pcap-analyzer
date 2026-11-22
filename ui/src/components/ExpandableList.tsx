@@ -2,8 +2,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronRight } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '../../components/Button';
-import { cn } from '../../lib/cn';
+import { Button } from './Button';
+import { cn } from '../lib/cn';
 
 /** Lists longer than this (or with more pages to load) are virtualized. */
 export const VIRTUALIZE_FROM = 100;
@@ -13,7 +13,8 @@ const PREFETCH_ROWS = 20;
 
 interface ExpandableListProps<T> {
   items: readonly T[];
-  getKey: (item: T) => number;
+  /** Stable key of a row (id); also keeps the expanded rows across pages. */
+  getKey: (item: T) => string | number;
   /** Accessible name of the list. */
   ariaLabel: string;
   /** Column titles (wide layouts), above the scrolling rows. */
@@ -49,7 +50,7 @@ export function ExpandableList<T>({
 }: ExpandableListProps<T>) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState<ReadonlySet<number>>(new Set());
+  const [open, setOpen] = useState<ReadonlySet<string | number>>(new Set());
   const baseId = useId();
   const virtual = hasMore || items.length > VIRTUALIZE_FROM;
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is not memo-safe by design
@@ -70,7 +71,7 @@ export function ExpandableList<T>({
     if (virtual && hasMore && !loadingMore && lastIndex >= items.length - PREFETCH_ROWS) onLoadMore();
   }, [virtual, hasMore, loadingMore, lastIndex, items.length, onLoadMore]);
 
-  const toggle = (key: number) => {
+  const toggle = (key: string | number) => {
     setOpen((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -82,7 +83,8 @@ export function ExpandableList<T>({
   const row = (item: T, index: number) => {
     const key = getKey(item);
     const expanded = open.has(key);
-    const detailId = `${baseId}-${key}`;
+    // From the index, not the key: a text key (Call-ID...) may hold spaces or any character.
+    const detailId = `${baseId}-detail-${index}`;
     return (
       <div
         key={key}
@@ -140,7 +142,7 @@ export function ExpandableList<T>({
       {hasMore && (
         <div className="flex justify-center border-t border-line p-2">
           <Button variant="ghost" disabled={loadingMore} onClick={onLoadMore}>
-            {loadingMore ? t('common.loading') : t('views.http.loadMore')}
+            {loadingMore ? t('common.loading') : t('common.loadMore')}
           </Button>
         </div>
       )}

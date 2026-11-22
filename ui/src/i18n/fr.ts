@@ -4,6 +4,7 @@ import { credentialsFr } from './credentials';
 import { ethernetFr } from './ethernet';
 import { exportsFr } from './exports';
 import { geoipPromptFr } from './geoipPrompt';
+import { macAddressFr } from './macAddress';
 import { onlineFr } from './online';
 import { picturesFr } from './pictures';
 import { ssdpFr } from './ssdp';
@@ -723,7 +724,6 @@ export const fr: Dictionary = {
       noMatch: 'Aucune transaction ne correspond aux filtres',
       listLabel: 'Transactions HTTP',
       rowLabel: '{{method}} {{target}}, statut {{status}}\u00a0: afficher le détail',
-      loadMore: 'Charger la suite',
       noResponse: 'Pas de réponse',
       noRequestShort: 'aucune',
       showAll_one: 'Tout afficher ({{count}} caractère)',
@@ -999,6 +999,7 @@ export const fr: Dictionary = {
     tls: tlsFr,
     updates: updatesFr,
   },
+  macAddress: macAddressFr,
   timeRange: timeRangeFr,
   common: {
     all: 'Tout',

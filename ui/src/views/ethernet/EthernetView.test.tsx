@@ -204,6 +204,12 @@ describe('EthernetView', () => {
     expect(screen.getAllByText('Whole session').length).toBeGreaterThanOrEqual(7);
     expect(screen.queryByText('In a time range, frames and bytes are those of the whole session.')).not.toBeInTheDocument();
     expect(screen.getByText('EtherTypes (whole session)')).toBeInTheDocument();
+    // The counter columns of 100 px widen so that the second line is not cut at 768 px; EtherTypes
+    // gives them that room, so that the table keeps its width.
+    const pairs = await screen.findByRole('table', { name: 'Frames from a source to a destination' });
+    expect(within(pairs).getByRole('columnheader', { name: /Frames\s*Whole session/ })).toHaveStyle({ width: '112px' });
+    expect(within(pairs).getByRole('columnheader', { name: /Bytes\s*Whole session/ })).toHaveStyle({ width: '112px' });
+    expect(within(pairs).getByRole('columnheader', { name: 'EtherTypes' })).toHaveStyle({ width: '106px' });
   });
 
   it('says when the session has no Ethernet frame', async () => {

@@ -5,6 +5,7 @@ import { credentialsEn } from './credentials';
 import { ethernetEn } from './ethernet';
 import { exportsEn } from './exports';
 import { geoipPromptEn } from './geoipPrompt';
+import { macAddressEn } from './macAddress';
 import { onlineEn } from './online';
 import { picturesEn } from './pictures';
 import { ssdpEn } from './ssdp';
@@ -723,7 +724,6 @@ export const en = {
       noMatch: 'No transaction matches the filters',
       listLabel: 'HTTP transactions',
       rowLabel: '{{method}} {{target}}, status {{status}}: show details',
-      loadMore: 'Load more',
       noResponse: 'No response',
       noRequestShort: 'none',
       showAll_one: 'Show all ({{count}} character)',
@@ -999,6 +999,7 @@ export const en = {
     tls: tlsEn,
     updates: updatesEn,
   },
+  macAddress: macAddressEn,
   timeRange: timeRangeEn,
   common: {
     all: 'All',

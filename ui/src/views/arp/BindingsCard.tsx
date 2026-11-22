@@ -6,10 +6,11 @@ import type { ArpBindingInfo } from '../../api/types/ArpBindingInfo';
 import { useViewRange } from '../../app/timeRange';
 import { Badge } from '../../components/Badge';
 import { Card } from '../../components/Card';
-import { CopyButton } from '../../components/CopyButton';
 import { DataTable } from '../../components/DataTable';
 import { Endpoint } from '../../components/Endpoint';
 import { ErrorState } from '../../components/ErrorState';
+import { MacText } from '../../components/MacAddress';
+import { wholeSessionHeader } from '../../components/wholeSessionHeader';
 import { SearchInput } from '../../components/SearchInput';
 import { Skeleton } from '../../components/Skeleton';
 import { Timestamp } from '../../components/Timestamp';
@@ -90,17 +91,8 @@ function useBindingColumns(
 ): ColumnDef<ArpBindingInfo, unknown>[] {
   const { t } = useTranslation();
   return useMemo<ColumnDef<ArpBindingInfo, unknown>[]>(() => {
-    // Folded rows: under a range, their span and counters stay those of the session (short
-    // header, the mention on a second line, as in the SMB view).
-    const folded = (label: string) =>
-      ranged
-        ? () => (
-            <span className="block leading-tight">
-              {label}
-              <span className="block font-normal text-faint">{t('timeRange.wholeSession')}</span>
-            </span>
-          )
-        : label;
+    // Folded rows: under a range, their span and counters stay those of the session.
+    const folded = (label: string) => wholeSessionHeader(label, ranged);
     const all: ColumnDef<ArpBindingInfo, unknown>[] = [
       {
         id: 'ip',
@@ -132,14 +124,7 @@ function useBindingColumns(
         accessorFn: (b) => b.mac,
         header: t('views.arp.bindings.col.mac'),
         size: wide ? 196 : 192,
-        cell: ({ row }) => (
-          <span className="inline-flex max-w-full min-w-0 items-center">
-            <span data-testid="truncatable" title={row.original.mac} className="truncate font-mono">
-              {row.original.mac}
-            </span>
-            <CopyButton value={row.original.mac} name={t('views.arp.mac')} />
-          </span>
-        ),
+        cell: ({ row }) => <MacText mac={row.original.mac} copy />,
       },
       {
         id: 'first',

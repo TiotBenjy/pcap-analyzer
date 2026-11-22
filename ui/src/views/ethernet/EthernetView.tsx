@@ -41,9 +41,10 @@ import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { LoadMore } from '../connections/LoadMore';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
-import { useDebounced } from '../connections/useDebounced';
-import { FilterChip } from '../http/shared';
-import { MacAddress, VendorName } from './MacAddress';
+import { useDebounced } from '../../lib/useDebounced';
+import { FilterChip } from '../../components/FilterChip';
+import { MacAddress, VendorName } from '../../components/MacAddress';
+import { wholeSessionHeader } from '../../components/wholeSessionHeader';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -322,17 +323,8 @@ function EtherTypesCard({
  * session (docs/specs/time-filter.md). Below 768 px the rows are cards: the card note says it.
  */
 function useCounterHeader(ranged: boolean): (label: string) => string | (() => ReactNode) {
-  const { t } = useTranslation();
   const wide = useMediaQuery(MD_QUERY);
-  return (label) => {
-    if (!ranged || !wide) return label;
-    return () => (
-      <>
-        {label}
-        <span className="block leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>
-      </>
-    );
-  };
+  return (label) => wholeSessionHeader(label, ranged && wide);
 }
 
 /** Under a range, below 768 px: the frames and bytes of the rows are those of the whole session. */
@@ -569,7 +561,8 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
         id: 'vendor',
         accessorFn: (m) => m.address.vendor ?? '',
         header: t('views.ethernet.macs.col.vendor'),
-        size: 170,
+        // Truncated with a tooltip: under a range it gives the Bytes header its room.
+        size: ranged ? 160 : 170,
         cell: ({ row }) => <VendorName address={row.original.address} registry={row.original.registry} />,
       },
       {
@@ -593,7 +586,8 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
         meta: { align: 'right' },
         accessorFn: (m) => m.bytes_sent + m.bytes_received,
         header: counter(t('views.ethernet.macs.col.bytes')),
-        size: 100,
+        // Under a range, room for the "Whole session" line of the header (not cut at 768 px).
+        size: ranged ? 112 : 100,
         cell: ({ row }) => <span className="num">{formatBytes(row.original.bytes_sent + row.original.bytes_received)}</span>,
       },
       {
@@ -611,7 +605,7 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ],
-    [t, counter, oneDay],
+    [t, counter, oneDay, ranged],
   );
 
   return (
@@ -773,7 +767,8 @@ function PairsCard({
         meta: { align: 'right' },
         accessorFn: (p) => p.frames,
         header: counter(t('views.ethernet.pairs.col.frames')),
-        size: 100,
+        // Under a range, room for the "Whole session" line of the header (not cut at 768 px).
+        size: ranged ? 112 : 100,
         cell: ({ row }) => <span className="num">{formatCount(row.original.frames)}</span>,
       },
       {
@@ -781,14 +776,17 @@ function PairsCard({
         meta: { align: 'right' },
         accessorFn: (p) => p.bytes,
         header: counter(t('views.ethernet.pairs.col.bytes')),
-        size: 100,
+        // Under a range, room for the "Whole session" line of the header (not cut at 768 px).
+        size: ranged ? 112 : 100,
         cell: ({ row }) => <span className="num">{formatBytes(row.original.bytes)}</span>,
       },
       {
         id: 'ethertypes',
         accessorFn: (p) => p.ethertypes.map((e) => e.value).join(','),
         header: t('views.ethernet.pairs.col.ethertypes'),
-        size: 130,
+        // Badges truncate: under a range the column gives the counters their room, so that the
+        // table keeps its width (no horizontal scroll in a 1280 px window).
+        size: ranged ? 106 : 130,
         cell: ({ row }) => <EtherTypeBadges types={row.original.ethertypes} />,
       },
       {
@@ -806,7 +804,7 @@ function PairsCard({
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ],
-    [t, counter, oneDay],
+    [t, counter, oneDay, ranged],
   );
 
   return (

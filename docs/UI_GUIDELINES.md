@@ -123,6 +123,14 @@ Une vue n'invente pas de composant visuel ad hoc s'il en existe un. En particuli
   valeur jamais tronquée, segments pour les deux sens d'une paire, lignes cliquables pour filtrer) ;
 - toute heure de paquet affichée passe par `Timestamp` (`<time>`, heure locale ISO, infobulle à la
   microseconde avec le fuseau) ; dans un texte (infobulle, phrase), `formatTimestamp`.
+- sous une plage horaire, toute colonne de valeurs repliées à l'import (compteurs, première et
+  dernière vue) passe par `WholeSessionHeader` (`components/WholeSession.tsx`) : en-tête court, ligne
+  « Session entière » en dessous ; dans une `DataTable`, `wholeSessionHeader(label, ranged)`. Sous un
+  compteur de ligne, `WholeSessionLine`. La colonne est assez large pour cette ligne (non rognée à
+  768 px) ;
+- toute adresse MAC passe par `MacAddress` (DTO : classe, constructeur, copie) ou `MacText` (texte
+  seul) ; tout filtre actif retirable par `FilterChip` ; toute liste de lignes dépliables paginée par
+  `ExpandableList` ; tout filtre texte est temporisé par `useDebounced` (`lib/useDebounced.ts`).
 
 ## États
 

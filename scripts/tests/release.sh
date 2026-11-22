@@ -158,6 +158,7 @@ gc commit -q --allow-empty -m "feat: subject" -m "Body that is not a title"
 gc tag v9.0.4 main
 check "lightweight tag: no title from the commit message" test "$(name_of v9.0.4)" = "NetSift v9.0.4"
 check "missing tag fails" not quiet name_of v9.9.9
+# shellcheck disable=SC2069 # keeps stderr only: stdout (the name) is discarded on purpose
 warnings_of() { (cd "$GITREPO" && bash "$ROOT/scripts/ci/release-name.sh" "$1" 2>&1 >/dev/null); }
 check "invalid title in the tag: a workflow warning" test "$(warnings_of v9.0.3)" \
   = "::warning::titre du tag v9.0.3 ignoré : titre trop long (81 caractères, 80 au plus)"

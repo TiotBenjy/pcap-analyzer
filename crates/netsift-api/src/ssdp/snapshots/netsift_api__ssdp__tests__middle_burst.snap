@@ -1,0 +1,159 @@
+---
+source: crates/netsift-api/src/ssdp/tests.rs
+expression: "(stats, devices)"
+---
+[
+  {
+    "alive": 10,
+    "byebye": 0,
+    "devices": 2,
+    "invalid": 0,
+    "messages": 13,
+    "notify": 10,
+    "response": 2,
+    "search": 1,
+    "senders": 3,
+    "software": [
+      {
+        "count": 6,
+        "name": "Linux/4.19 UPnP/1.0 ExampleTV/7.3"
+      },
+      {
+        "count": 6,
+        "name": "Linux/5.10 UPnP/1.0 ExampleGateway/2.1"
+      },
+      {
+        "count": 1,
+        "name": "Windows/10.0 UPnP/2.0 ExampleClient/1.0"
+      }
+    ],
+    "targets": [
+      {
+        "count": 2,
+        "name": "upnp:rootdevice"
+      },
+      {
+        "count": 2,
+        "name": "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
+      },
+      {
+        "count": 2,
+        "name": "urn:schemas-upnp-org:device:MediaRenderer:1"
+      },
+      {
+        "count": 1,
+        "name": "ssdp:all"
+      },
+      {
+        "count": 1,
+        "name": "urn:dial-multiscreen-org:service:dial:1"
+      },
+      {
+        "count": 1,
+        "name": "urn:schemas-upnp-org:service:AVTransport:1"
+      },
+      {
+        "count": 1,
+        "name": "urn:schemas-upnp-org:service:Layer3Forwarding:1"
+      },
+      {
+        "count": 1,
+        "name": "urn:schemas-upnp-org:service:WANIPConnection:1"
+      },
+      {
+        "count": 1,
+        "name": "uuid:6f1c2a40-1dd2-11b2-a5c3-020000000001"
+      },
+      {
+        "count": 1,
+        "name": "uuid:a7d3b0c2-4e5f-4a6b-8c7d-020000000040"
+      }
+    ],
+    "top_senders": [
+      {
+        "address": {
+          "category": "private",
+          "country": null,
+          "ip": "192.168.1.1",
+          "names": []
+        },
+        "count": 6
+      },
+      {
+        "address": {
+          "category": "private",
+          "country": null,
+          "ip": "192.168.1.40",
+          "names": []
+        },
+        "count": 6
+      },
+      {
+        "address": {
+          "category": "private",
+          "country": null,
+          "ip": "192.168.1.10",
+          "names": []
+        },
+        "count": 1
+      }
+    ],
+    "update": 0
+  },
+  {
+    "items": [
+      {
+        "address": {
+          "category": "private",
+          "country": null,
+          "ip": "192.168.1.40",
+          "names": []
+        },
+        "alive_count": 15,
+        "byebye_count": 0,
+        "device_type": "urn:schemas-upnp-org:device:MediaRenderer:1",
+        "first_ts_us": 1700000000017500,
+        "last_ts_us": 1700001200225000,
+        "location": "http://192.168.1.40:8060/dial/dd.xml",
+        "message_count": 18,
+        "response_count": 3,
+        "server": "Linux/4.19 UPnP/1.0 ExampleTV/7.3",
+        "targets": [
+          "upnp:rootdevice",
+          "urn:dial-multiscreen-org:service:dial:1",
+          "urn:schemas-upnp-org:device:MediaRenderer:1",
+          "urn:schemas-upnp-org:service:AVTransport:1",
+          "uuid:a7d3b0c2-4e5f-4a6b-8c7d-020000000040"
+        ],
+        "uuid": "a7d3b0c2-4e5f-4a6b-8c7d-020000000040"
+      },
+      {
+        "address": {
+          "category": "private",
+          "country": null,
+          "ip": "192.168.1.1",
+          "names": []
+        },
+        "alive_count": 15,
+        "byebye_count": 0,
+        "device_type": "urn:schemas-upnp-org:device:InternetGatewayDevice:1",
+        "first_ts_us": 1700000000000000,
+        "last_ts_us": 1700001200212500,
+        "location": "http://192.168.1.1:5000/rootDesc.xml",
+        "message_count": 17,
+        "response_count": 2,
+        "server": "Linux/5.10 UPnP/1.0 ExampleGateway/2.1",
+        "targets": [
+          "upnp:rootdevice",
+          "urn:schemas-upnp-org:device:InternetGatewayDevice:1",
+          "urn:schemas-upnp-org:service:Layer3Forwarding:1",
+          "urn:schemas-upnp-org:service:WANIPConnection:1",
+          "uuid:6f1c2a40-1dd2-11b2-a5c3-020000000001"
+        ],
+        "uuid": "6f1c2a40-1dd2-11b2-a5c3-020000000001"
+      }
+    ],
+    "next_cursor": null,
+    "total_estimate": 2
+  }
+]

@@ -513,9 +513,18 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 - [~] **P5.4** `feat/ethernet` — Référence `private/ethernet.png`. Adresses MAC, constructeur d'après l'OUI (registre
       IEEE, licence et mode de mise à jour à vérifier, pas de fichier GPL), broadcast/multicast, VLAN, EtherTypes,
       volumes ; paires source -> cibles. Barres des constructeurs à la place des bulles.
-- [~] **P5.5** `feat/ssdp` — Référence `private/ssdp.png`. Messages NOTIFY / M-SEARCH / réponses, appareils UPnP (USN,
+- [x] **P5.5** `feat/ssdp` — Référence `private/ssdp.png`. Messages NOTIFY / M-SEARCH / réponses, appareils UPnP (USN,
       types NT/ST, `SERVER`, `LOCATION`), émetteurs ; message brut dépliable. Le graphe de la référence est
       illisible : tableau groupé par appareil, graphe facultatif borné.
+      Fusionné le 2026-11-22 (3727d68) : parseur borné (8 Kio, 64 en-têtes, champs 512 o, brut 2 Kio nettoyé) dans la
+      cible de fuzz `udp_services`, appareils repliés par (uuid, adresse) sans les M-SEARCH, plage ADR-030 (messages
+      ponctuels, appareils par chevauchement avec mention « session entière »), < 200 ms sur 500 000 messages,
+      pas de graphe. Suivis : caractères bidi et invisibles non filtrés (aussi HTTP et DNS, à traiter pour tout le
+      projet) ; `/ssdp/devices` en N+1 (`device_targets`) ; `ExpandableList`, `FilterChip`, `useDebounced` importés de
+      `views/http` (à remonter dans `components/` après la vague 5.A) ; coût linéaire sous réflexion SSDP (3 à 4 s
+      pour `/stats` sur 10 M messages, environ 2 Kio stockés par message) ; réponses depuis un port autre que 1900
+      non vues ; ordre des appareils à égalité selon `rowid` ; détail d'appareil coupé par la hauteur de
+      `ExpandableList` à 375 px ; graphe facultatif.
 - [ ] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
       statut), REGISTER, user-agents (scanners comme `friendly-scanner`), messages bruts dépliables, flux RTP
       associés sans lecture audio, identifiants SIP Digest vers Credentials.

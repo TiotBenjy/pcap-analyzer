@@ -135,7 +135,8 @@ Tables principales (chaque analyseur ajoute les siennes via sa migration) :
 
 Règles : index sur toutes les colonnes filtrables/triables par l'UI ; FTS5 pour la recherche
 texte (noms DNS, URL, en-têtes) ; pagination par **keyset** (pas d'OFFSET sur grosses tables) ;
-toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paquets.
+toute requête d'une vue doit répondre en < 300 ms sur une session de 10 M paquets (exception : première
+requête d'une vue agrégée sous plage temporelle, ADR-030).
 
 Une session terminée créée par une version antérieure reçoit les migrations manquantes à sa première
 ouverture par l'API (sauf serveur `--read-only`, qui répond 409) ; les tables ainsi créées sont vides et leurs modules apparaissent « non analysés »
@@ -149,6 +150,8 @@ jusqu'à un réimport (ADR-013).
   publié que sur `127.0.0.1` de l'hôte ; le proxy Vite ajoute le jeton.
 - Préfixe `/api/v1`. Réponses JSON, erreurs `application/problem+json`.
 - Listes : `?limit=&cursor=&sort=&q=&filters...` -> `{ items, next_cursor, total_estimate }`.
+- Filtre temporel global : `from_us` / `to_us` (µs, bornes incluses) sur les routes de données d'une session,
+  même plage pour une liste et ses statistiques (ADR-030, `docs/specs/time-filter.md`).
 - Graphiques : endpoints dédiés qui renvoient des données **déjà agrégées et bornées**
   (top N + « autres », séries rééchantillonnées ≤ 2 000 points).
 - Import : `POST /sessions/import { path }` -> id ; progression via SSE `GET /sessions/{id}/events`.

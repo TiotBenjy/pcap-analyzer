@@ -1,7 +1,7 @@
 # Filtre temporel global
 
-Tâche ROADMAP P5.2 (suivi de P4.2 : « zoom avec refetch » de l'Overview). Décision transverse : ADR-030
-(proposé en fin de document).
+Tâche ROADMAP P5.2 (suivi de P4.2 : « zoom avec refetch » de l'Overview). Décision transverse : ADR-030.
+Découpage : P5.2a (cette branche) puis P5.2b (vues agrégées), voir « Découpage ».
 
 ## Référence
 
@@ -77,7 +77,9 @@ pendant la plage). Un élément replié (une ligne pour plusieurs observations :
 identifiant replié, annonce SMB, port ouvert) qui chevauche la plage est compté **en entier** : ses
 compteurs (octets, paquets, `seen_count`, `announce_count`) sont ceux de la session, faute de
 répartition dans le temps au stockage. Seule la série temporelle (`timeseries`) donne un volume exact
-par seconde ; les vues le disent dans leur infobulle de total (« octets des flux actifs dans la plage »).
+par seconde. Sous plage active, l'en-tête de chaque colonne d'un tel compteur porte la mention
+« session entière » (Credentials : « Vu » ; SMB : « Annonces » ; Pictures : aucune, ses occurrences sont
+recalculées), pour qu'aucune valeur de session ne passe pour une valeur de la plage.
 
 Colonne « Lot » : **a** = P5.2a (socle et vues à enregistrements horodatés), **b** = P5.2b (vues
 agrégées), **—** = non filtrée (voir « Découpage »).
@@ -124,7 +126,7 @@ agrégées), **—** = non filtrée (voir « Découpage »).
 |---|---|---|
 | `/tls/sessions` | *ponctuel(`ts`)* (premier message de la poignée de main) | a |
 | `/tls/stats` | mêmes sessions | a |
-| `/tls/certificates` | certificats d'au moins une session de la plage ; `sessions` = sessions de la plage ; `problems_only` juge l'expiration sur la plage (bornée) au lieu de la période de capture | a |
+| `/tls/certificates` | certificats d'au moins une session de la plage ; `sessions` = sessions de la plage ; `problems_only` juge l'expiration sur la période de capture, comme sans plage | a |
 | `/tls/sessions/{flow}`, `/tls/certificates/{sha256}`, `.../der`, `.../pem` | non filtrées : détail ou fichier par identifiant | — |
 
 ### SMB, Credentials, Pictures
@@ -256,8 +258,8 @@ gardée pour les 4 dernières plages (LRU) ; les pages, statistiques et filtres 
 tables de session (moins de 1 ms par page mesuré sur la table de conversations matérialisée). Une seule
 construction à la fois par (session, plage, famille), les requêtes concurrentes l'attendent. La première
 requête dépasse 300 ms pour une plage large (estimation : 0,3 s à 24 h, 2 à 5 s à 6 jours, Network compris) :
-exception à la règle d'ARCHITECTURE à acter par ADR-030 (état de chargement explicite dans l'UI), ou
-construction en tâche de fond avec réponse 202 et attente côté UI si l'utilisateur préfère.
+la requête attend simplement la construction (pas de réponse 202 ni de tâche de fond) et l'UI montre son
+état de chargement ; c'est l'exception à la règle des 300 ms d'`ARCHITECTURE.md` actée par ADR-030.
 
 ## Index
 
@@ -413,7 +415,7 @@ fermé), `overview-range-dialog`, et une vue filtrée par famille avec plage act
 
 ## Découpage
 
-Proposition : **scinder P5.2 en deux tâches**.
+Décidé le 2026-11-22 : **P5.2 est scindée en deux tâches** (ROADMAP).
 
 - **P5.2a `feat/time-filter`** (cette branche) — socle et vues à enregistrements horodatés :
   - API : extracteur de plage (`range.rs`), `TimeRange` et fragments de `Conditions` du store,
@@ -430,8 +432,7 @@ Proposition : **scinder P5.2 en deux tâches**.
   Open Ports (2), Servers (1), Network (2), compteurs de modules `connections`, `hosts`, `network`,
   `openPorts`, `servers` ; matérialisation par plage (section « Agrégats précalculés ») et sa règle de
   performance (ADR-030). Elle commence par une courte mesure de la matérialisation (Network et Servers
-  surtout) et complète cette spec ; à défaut d'accord sur l'exception aux 300 ms, l'alternative est la
-  construction en tâche de fond (202, état « calcul de la plage » dans l'UI).
+  surtout) et complète cette spec.
 
 Entre les deux, les vues de lot b affichent la session entière, signalé par la pastille estompée et la
 mention « session entière » des cartes de modules : rien de faux n'est affiché.
@@ -440,56 +441,21 @@ Les nouveaux onglets de la phase 5 (ARP, Ethernet, SSDP, SIP, FTP, Telnet, WiFi,
 convention dès leur création (ADR-030) : routes filtrées, ligne dans `timeFilterViews.ts`, critère
 d'acceptation sous plage. P5.18 (rapports) s'appuie sur le même extracteur.
 
-## ADR proposé
+## ADR
 
-Texte proposé pour `docs/DECISIONS.md` :
+ADR-030 (`docs/DECISIONS.md`).
 
-> ## ADR-030 — Filtre temporel global : paramètres, sémantique et coût
->
-> - Contexte : P5.2. La plage choisie dans l'Overview doit restreindre toutes les vues ; environ 45
->   routes de données par session, des tables d'enregistrements horodatés et des tables repliées ou précalculées en
->   fin d'import (ADR-014, ADR-023). Mesures du banc de 8,9 M paquets : `docs/specs/time-filter.md`.
-> - Décision :
->   - **paramètres** `from_us` / `to_us` (microsecondes, bornes incluses, chacun facultatif), lus et
->     validés par un extracteur unique de l'API, convertis en `[F, T)` en nanosecondes (`TimeRange` du
->     store) ; 400 problem+json pour une plage inversée ou hors bornes ; une plage disjointe donne des
->     résultats vides ; une plage qui couvre la session est abandonnée (tables précalculées) ;
->   - **sémantique** : enregistrement ponctuel dans `[F, T)` par sa colonne horodatée ; élément replié
->     (flux, conversation, identifiant, annonce, port ouvert) retenu s'il chevauche la plage, compté en
->     entier ; les statistiques, totaux et compteurs d'une vue suivent la plage de sa liste ; détails par
->     identifiant, fichiers, chunks et anomalies non filtrés ;
->   - **convention transverse** : toute nouvelle route de données d'une session accepte la plage ou dit
->     dans sa spec pourquoi elle ne l'accepte pas ; toute vue s'inscrit dans `ui/src/app/timeFilterViews.ts`
->     ou ignore la plage, ce que la pastille d'en-tête signale ;
->   - **coût** : un agrégat filtrable est servi par un index couvrant terminé par la colonne horodatée, la
->     plage écrite `+ts` dans les agrégats (choix de l'index couvrant sans `INDEXED BY`), plan des pages
->     choisi à la sélectivité ; flux actifs en deux branches (index `(first_ts, last_ts)` et index partiel
->     des flux de plus d'une heure) ; les vues agrégées (Connections, Open Ports, Servers, Network)
->     matérialisent leurs tables par plage dans une base annexe (LRU) : la première requête d'une plage
->     large peut dépasser 300 ms (état de chargement explicite), les suivantes non ;
->   - **UI** : la plage vit dans l'URL de la session (`from_us`, `to_us`), conservée entre onglets
->     (`retainSearchParams`), et entre dans la clé de requête de chaque route filtrée.
-> - Conséquences : environ 5 s d'index et +6 % de taille de session sur le banc (aussi à la première
->   ouverture d'une session existante) ; les compteurs repliés (`seen_count`, octets d'un flux long)
->   restent ceux de la session et le disent ; la règle des 300 ms d'`ARCHITECTURE.md` reçoit une
->   exception pour la première requête d'une vue agrégée sous plage.
+## Décisions (2026-11-22)
 
-## Points ouverts
+Validées avec la spec (utilisateur et orchestrateur) :
 
-1. **Zoom implicite** : la plage suit le zoom du graphique dès qu'il se stabilise (proposé), ou seulement
-   après un clic « Appliquer à toutes les vues » ? L'implicite répond à l'énoncé de la ROADMAP ; l'explicite
-   évite qu'un zoom de lecture filtre les autres vues à l'insu de l'utilisateur (la pastille le montre).
-2. **Exception aux 300 ms** pour la première requête d'une vue agrégée sous plage large (lot b), ou
-   construction en tâche de fond (202) : à trancher avant P5.2b.
-3. **Compteurs repliés** : `seen_count`, `announce_count`, octets et paquets d'un flux qui déborde de la
-   plage restent ceux de la session (aucune répartition dans le temps au stockage). Acceptable, ou faut-il
-   masquer ces colonnes sous plage ?
-4. **Sources** (chunks, anomalies) non filtrée : les anomalies horodatées pourraient l'être ; proposé non,
-   la vue décrit les fichiers.
-5. **Certificats** : `problems_only` juge l'expiration sur la plage plutôt que sur la période de capture
-   (proposé), ou à l'heure de chaque session ?
-6. **Seuil des flux longs** `Δ` = 1 h : constante ; à revoir si une capture réelle a beaucoup de flux plus
-   longs (la branche B lit alors davantage).
-7. Les filtres propres aux vues (recherche, bascules) ne sont pas dans l'URL aujourd'hui, contrairement à la
-   règle de `docs/specs/README.md` ; la plage est le premier état partagé par l'URL. Cette tâche ne change
-   pas les autres filtres.
+1. Découpage en P5.2a (cette spec, socle et vues à enregistrements horodatés) et P5.2b (vues agrégées).
+2. Zoom implicite : la plage suit le zoom du graphique dès qu'il se stabilise (400 ms), avec refetch
+   serveur ; Dézoomer, Plage..., Toute la session.
+3. Vues agrégées (P5.2b) : la première requête d'une plage attend la matérialisation, sans 202 ; exception
+   écrite à la règle des 300 ms (ADR-030).
+4. Compteurs d'éléments repliés : valeurs de session conservées, mention « session entière » dans l'en-tête
+   de colonne sous plage active.
+5. Sources (chunks, anomalies) non filtrée ; expiration des certificats jugée sur la période de capture ;
+   seuil des flux longs `Δ` = 1 h ; la plage est le premier état de filtre porté par l'URL (les autres
+   filtres de vue ne changent pas dans cette tâche).

@@ -1145,3 +1145,35 @@ acceptée : la remplacer par une nouvelle qui la référence.
   sa fin et LZ4 un bloc entier : un fichier coupé perd au plus une fenêtre (zstd) ou un bloc (LZ4)
   avant la coupure. Mémoire au pire par lecteur ouvert : 32 Mio (zstd) ou 8 Mio (LZ4), multipliée par
   le nombre de chunks ouverts en fusion k-voies (64 au plus) dans un cas pathologique.
+
+## ADR-030 — Filtre temporel global : paramètres, sémantique et coût
+
+- Contexte : P5.2. La plage choisie dans l'Overview doit restreindre toutes les vues ; environ 45
+  routes de données par session, des tables d'enregistrements horodatés et des tables repliées ou
+  précalculées en fin d'import (ADR-014, ADR-023). Mesures du banc de 8,9 M paquets : `docs/specs/time-filter.md`.
+- Décision :
+  - **paramètres** `from_us` / `to_us` (microsecondes, bornes incluses, chacun facultatif), lus et
+    validés par un extracteur unique de l'API, convertis en `[F, T)` en nanosecondes (`TimeRange` du
+    store) ; 400 problem+json pour une plage inversée ou hors bornes ; une plage disjointe donne des
+    résultats vides ; une plage qui couvre la session est abandonnée (tables précalculées) ;
+  - **sémantique** : enregistrement ponctuel dans `[F, T)` par sa colonne horodatée ; élément replié
+    (flux, conversation, identifiant, annonce, port ouvert) retenu s'il chevauche la plage, compté en
+    entier ; les statistiques, totaux et compteurs d'une vue suivent la plage de sa liste ; détails par
+    identifiant, fichiers, chunks et anomalies non filtrés ;
+  - **convention transverse** : toute nouvelle route de données d'une session accepte la plage ou dit
+    dans sa spec pourquoi elle ne l'accepte pas ; toute vue s'inscrit dans `ui/src/app/timeFilterViews.ts`
+    ou ignore la plage, ce que la pastille d'en-tête signale ;
+  - **coût** : un agrégat filtrable est servi par un index couvrant terminé par la colonne horodatée, la
+    plage écrite `+ts` dans les agrégats (choix de l'index couvrant sans `INDEXED BY`), plan des pages
+    choisi à la sélectivité ; flux actifs en deux branches (index `(first_ts, last_ts)` et index partiel
+    des flux de plus d'une heure) ; les vues agrégées (Connections, Open Ports, Servers, Network)
+    matérialisent leurs tables par plage dans une base annexe (LRU) : la première requête d'une plage
+      large attend la construction et peut dépasser 300 ms (pas de réponse 202 ; état de chargement de
+    l'UI), les suivantes non ;
+  - **UI** : la plage vit dans l'URL de la session (`from_us`, `to_us`), conservée entre onglets
+    (`retainSearchParams`), et entre dans la clé de requête de chaque route filtrée.
+- Conséquences : environ 5 s d'index et +6 % de taille de session sur le banc (aussi à la première
+  ouverture d'une session existante) ; les compteurs repliés (`seen_count`, octets d'un flux long)
+  restent ceux de la session, avec la mention « session entière » dans l'en-tête de leur colonne sous
+  plage ; la règle des 300 ms d'`ARCHITECTURE.md` reçoit une exception pour la première requête d'une vue
+  agrégée sous plage.

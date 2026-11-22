@@ -481,7 +481,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       collée au bord à 1280 px ; cartes mobiles hautes (Conversations, Sources) ; donuts TLS et SMB sans total ;
       couleur de `Timestamp` inégale ; nom de certificat très court dans la colonne Certificate de TLS à 1280 px ;
       drapeau en double sur la ligne Adresse de `NodePanel`.
-- [ ] **P5.2** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
+- [~] **P5.2** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
       toutes les vues (`from_us`/`to_us` dans l'API et l'URL, refetch serveur du zoom Overview, suivi de P4.2).
       Après P5.1.
 

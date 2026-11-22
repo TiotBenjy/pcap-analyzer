@@ -149,6 +149,28 @@ fn add_ethernet_showcase(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
     packets.sort_by_key(|p| p.ts_ns);
 }
 
+/// Gap between two small FTP sessions (login, download of a text file).
+const FTP_EVERY_SECONDS: i64 = 9;
+
+/// FTP sessions of the FTP view (`netsift_fixtures::ftp`): the showcase once (passive, active,
+/// EPSV over IPv6, refused login, interrupted download, AUTH TLS), then a small session every few
+/// seconds over the `seconds` following `start`, merged into `packets` (sorted by time).
+fn add_ftp(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
+    let mut sc = Scenario::starting_at(start + 3 * NS_PER_SEC).with_seed(0x4654_5000);
+    netsift_fixtures::ftp::ftp_showcase(&mut sc);
+    let mut round = 0;
+    loop {
+        sc.advance(FTP_EVERY_SECONDS * NS_PER_SEC);
+        if sc.now() >= start + seconds * NS_PER_SEC {
+            break;
+        }
+        netsift_fixtures::ftp::ftp_round(&mut sc, round);
+        round += 1;
+    }
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+}
+
 fn write_chunked(dir: &Path) -> Result<usize> {
     let mut packets = demo_packets(ROUNDS, 7);
     let start = packets.first().map_or(0, |p| p.ts_ns);
@@ -159,6 +181,7 @@ fn write_chunked(dir: &Path) -> Result<usize> {
     add_ssdp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_arp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_ethernet_showcase(&mut packets, start, (end - start) / NS_PER_SEC - 5);
+    add_ftp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     let pause_at = start + PAUSE_AFTER_SECONDS * NS_PER_SEC;
     for p in &mut packets {
         if p.ts_ns >= pause_at {
@@ -189,6 +212,7 @@ fn write_single(dir: &Path) -> Result<PathBuf> {
     add_ssdp(&mut packets, start, 20);
     add_arp(&mut packets, start, 20);
     add_ethernet_showcase(&mut packets, start, 20);
+    add_ftp(&mut packets, start, 20);
     let bytes = encode(&packets, &Encoding::pcap())?;
     let path = dir.join("demo-single.pcap");
     std::fs::write(&path, bytes).with_context(|| format!("cannot write {}", path.display()))?;
@@ -251,6 +275,21 @@ mod tests {
     use super::*;
     use netsift_store::query::get_meta;
     use netsift_store::{OpenMode, SessionState};
+
+    /// FTP view: the showcase sessions, then periodic ones; files stored as objects.
+    fn assert_ftp(session: &netsift_store::Session) {
+        let (sessions, stored): (i64, i64) = session
+            .conn()
+            .query_row(
+                "SELECT count(*), (SELECT count(*) FROM objects WHERE source = 'ftp') \
+                 FROM ftp_sessions",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(sessions > 10, "{sessions}");
+        assert!(stored > 3, "{stored}");
+    }
 
     #[test]
     fn creates_two_ready_sessions_with_continuity_anomalies() {
@@ -327,6 +366,7 @@ mod tests {
             .unwrap();
         assert_eq!(kinds, 4);
         assert_eq!(devices, 5);
+        assert_ftp(&session);
         // ARP view: refreshes over the whole capture and two conflicting addresses.
         let (messages, conflicts): (i64, i64) = session
             .conn()

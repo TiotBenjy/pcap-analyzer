@@ -64,6 +64,8 @@ pub enum StoreRecord {
     Credential(Box<crate::credentials::CredentialRow>),
     /// New DNS transaction (`dns_messages`, see [`crate::dns`]).
     Dns(Box<crate::dns::DnsRow>),
+    /// Additive upsert of an address, pair, EtherType or VLAN stack (`ethernet`).
+    Ethernet(crate::ethernet::EthernetRow),
     /// Additive upsert of the traffic of a host (`connections`).
     HostTraffic(HostTrafficRow),
     /// New HTTP transaction with its headers (`http_*`), boxed: much larger than the others.
@@ -98,6 +100,7 @@ impl StoreRecord {
             Self::Conversation(_) => "conversations",
             Self::Credential(_) => "credentials",
             Self::Dns(_) => "dns_messages",
+            Self::Ethernet(r) => r.kind(),
             Self::HostTraffic(_) => "host_traffic",
             Self::Http(_) => "http_transactions",
             Self::OpenPort(_) => "open_ports",
@@ -122,6 +125,7 @@ impl StoreRecord {
             Self::Conversation(r) => r.insert(conn),
             Self::Credential(r) => r.insert(conn),
             Self::Dns(r) => r.insert(conn),
+            Self::Ethernet(r) => r.insert(conn),
             Self::HostTraffic(r) => r.insert(conn),
             Self::Http(r) => r.insert(conn),
             Self::OpenPort(r) => r.insert(conn),

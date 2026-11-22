@@ -10,6 +10,7 @@ use crate::connections::{ConnectionsAnalyzer, ConnectionsConfig};
 use crate::core::CoreAnalyzer;
 use crate::credentials::CredentialsAnalyzer;
 use crate::dns::{DnsAnalyzer, DnsConfig};
+use crate::ethernet::{EthernetAnalyzer, EthernetConfig};
 use crate::geo::GeoDb;
 use crate::http::{HttpAnalyzer, HttpConfig};
 use crate::ports::{PortsAnalyzer, PortsConfig};
@@ -48,6 +49,7 @@ pub struct AnalyzerConfig {
     pub connections: ConnectionsConfig,
     pub core: CoreConfig,
     pub dns: DnsConfig,
+    pub ethernet: EthernetConfig,
     pub http: HttpConfig,
     pub ports: PortsConfig,
     pub servers: ServersConfig,
@@ -79,6 +81,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (ConnectionsAnalyzer::ID, factory(ConnectionsAnalyzer::boxed)),
         (CredentialsAnalyzer::ID, factory(CredentialsAnalyzer::boxed)),
         (DnsAnalyzer::ID, factory(DnsAnalyzer::boxed)),
+        (EthernetAnalyzer::ID, factory(EthernetAnalyzer::boxed)),
         (HttpAnalyzer::ID, factory(HttpAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
         (ServersAnalyzer::ID, factory(ServersAnalyzer::boxed)),

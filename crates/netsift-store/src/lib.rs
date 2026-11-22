@@ -8,6 +8,7 @@
 //! - [`traffic`]: overview queries (resampled time series, totals, row counts);
 //! - [`connections`], [`ports`]: tables and queries of the Connections and Open Ports views;
 //! - [`credentials`]: table and queries of the Credentials view (secrets read on demand only);
+//! - [`ethernet`]: link-layer tables and queries of the Ethernet view;
 //! - [`network`]: bounded communication graph of the Network view (read queries only).
 
 pub mod arp;
@@ -17,6 +18,7 @@ pub mod credentials;
 pub mod deferred;
 pub mod dns;
 mod error;
+pub mod ethernet;
 pub mod finalize;
 pub mod http;
 mod id;

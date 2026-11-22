@@ -1,0 +1,40 @@
+---
+source: crates/netsift-analyze/src/ethernet/tests.rs
+assertion_line: 158
+expression: render(&merge(&records))
+---
+mac 00:00:0c:9f:f0:01 vendor=Some("Cisco Systems, Inc") registry=Some("ma-l") sent=2/88 received=0/0 1000000000..1000500000 vlans=[]
+mac 00:1b:21:3a:4b:5c vendor=Some("Intel Corporate") registry=Some("ma-l") sent=2/91 received=1/53 1003500000..1006500000 vlans=[10]
+mac 01:00:5e:00:00:fb vendor=Some("ICANN, IANA Department") registry=Some("ma-l") sent=0/0 received=1/53 1004500000..1004500000 vlans=[10]
+mac 01:80:c2:00:00:00 vendor=Some("IEEE 802.1 Working Group") registry=Some("ma-l") sent=0/0 received=1/52 1000000000..1000000000 vlans=[]
+mac 01:80:c2:00:00:0e vendor=Some("IEEE 802.1 Working Group") registry=Some("ma-l") sent=0/0 received=1/36 1000500000..1000500000 vlans=[]
+mac 08:00:27:09:d9:cb vendor=Some("PCS Systemtechnik GmbH") registry=Some("ma-l") sent=3/167 received=1/49 1001000000..1003000000 vlans=[]
+mac 08:00:27:80:f2:01 vendor=Some("PCS Systemtechnik GmbH") registry=Some("ma-l") sent=1/49 received=1/49 1002000000..1002500000 vlans=[]
+mac 1c:87:74:01:02:03 vendor=Some("Philips Personal Health Solutions") registry=Some("ma-m") sent=1/57 received=1/57 1005000000..1005500000 vlans=[100.20]
+mac 33:33:00:00:00:01 vendor=None registry=None sent=0/0 received=1/69 1003000000..1003000000 vlans=[]
+mac 52:55:0a:00:02:01 vendor=None registry=None sent=1/49 received=2/98 1001000000..1006000000 vlans=[]
+mac 70:b3:d5:00:1a:bc vendor=Some("SOREDI touch systems GmbH") registry=Some("ma-s") sent=1/57 received=1/57 1005000000..1005500000 vlans=[100.20]
+mac b8:27:eb:12:34:56 vendor=Some("Raspberry Pi Foundation") registry=Some("ma-l") sent=2/106 received=1/53 1003500000..1004500000 vlans=[10]
+mac da:a1:19:3c:4e:7f vendor=None registry=None sent=1/49 received=0/0 1006000000..1006000000 vlans=[]
+mac ff:ff:ff:ff:ff:ff vendor=None registry=None sent=0/0 received=2/87 1002500000..1006500000 vlans=[10]
+pair 00:00:0c:9f:f0:01 -> 01:80:c2:00:00:00 frames=1 bytes=52 1000000000..1000000000 types=["0x0042"] vlans=[]
+pair 00:00:0c:9f:f0:01 -> 01:80:c2:00:00:0e frames=1 bytes=36 1000500000..1000500000 types=["0x88cc"] vlans=[]
+pair 00:1b:21:3a:4b:5c -> b8:27:eb:12:34:56 frames=1 bytes=53 1003500000..1003500000 types=["0x0800"] vlans=[10]
+pair 00:1b:21:3a:4b:5c -> ff:ff:ff:ff:ff:ff frames=1 bytes=38 1006500000..1006500000 types=["0x88b5"] vlans=[10]
+pair 08:00:27:09:d9:cb -> 08:00:27:80:f2:01 frames=1 bytes=49 1002000000..1002000000 types=["0x0800"] vlans=[]
+pair 08:00:27:09:d9:cb -> 33:33:00:00:00:01 frames=1 bytes=69 1003000000..1003000000 types=["0x86dd"] vlans=[]
+pair 08:00:27:09:d9:cb -> 52:55:0a:00:02:01 frames=1 bytes=49 1001000000..1001000000 types=["0x0800"] vlans=[]
+pair 08:00:27:80:f2:01 -> ff:ff:ff:ff:ff:ff frames=1 bytes=49 1002500000..1002500000 types=["0x0800"] vlans=[]
+pair 1c:87:74:01:02:03 -> 70:b3:d5:00:1a:bc frames=1 bytes=57 1005000000..1005000000 types=["0x0800"] vlans=[100.20]
+pair 52:55:0a:00:02:01 -> 08:00:27:09:d9:cb frames=1 bytes=49 1001500000..1001500000 types=["0x0800"] vlans=[]
+pair 70:b3:d5:00:1a:bc -> 1c:87:74:01:02:03 frames=1 bytes=57 1005500000..1005500000 types=["0x0800"] vlans=[100.20]
+pair b8:27:eb:12:34:56 -> 00:1b:21:3a:4b:5c frames=1 bytes=53 1004000000..1004000000 types=["0x0800"] vlans=[10]
+pair b8:27:eb:12:34:56 -> 01:00:5e:00:00:fb frames=1 bytes=53 1004500000..1004500000 types=["0x0800"] vlans=[10]
+pair da:a1:19:3c:4e:7f -> 52:55:0a:00:02:01 frames=1 bytes=49 1006000000..1006000000 types=["0x0800"] vlans=[]
+ethertype 0x0042 frames=1 bytes=52
+ethertype 0x0800 frames=10 bytes=518
+ethertype 0x86dd frames=1 bytes=69
+ethertype 0x88b5 frames=1 bytes=38
+ethertype 0x88cc frames=1 bytes=36
+vlan 10 tpid=0x8100 frames=4 bytes=197
+vlan 100.20 tpid=0x88a8 frames=2 bytes=114

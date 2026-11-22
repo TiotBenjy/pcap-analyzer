@@ -10,7 +10,7 @@
 //! | 0200-0299 | http    |   | 0700-0799 | objects |
 //! | 0300-0399 | tls     |   | 0800-0899 | servers |
 //! | 0400-0499 | flows   |   | 0900-0999 | network |
-//! | 1000-1099 | arp     |   |           |         |
+//! | 1000-1099 | arp     |   | 1100-1199 | ethernet |
 //! | 1200-1299 | ssdp    |   |           |         |
 //!
 //! To add a migration: create the SQL file, then add **one line** to [`SESSION_MIGRATIONS`]
@@ -67,6 +67,7 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
     migration!(802, "servers_ranks", "0802_servers_ranks.sql"),
     migration!(900, "network", "0900_network.sql"),
     migration!(1000, "arp", "1000_arp.sql"),
+    migration!(1100, "ethernet", "1100_ethernet.sql"),
     migration!(1200, "ssdp", "1200_ssdp.sql"),
 ];
 

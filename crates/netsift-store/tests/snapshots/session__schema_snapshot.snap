@@ -330,6 +330,91 @@ CREATE INDEX dns_pairs_proto_messages ON dns_pairs (proto, messages, id);
 -- index dns_pairs_server
 CREATE INDEX dns_pairs_server ON dns_pairs (server_ip);
 
+-- table eth_macs
+CREATE TABLE eth_macs (
+    mac             TEXT PRIMARY KEY NOT NULL,
+    vendor          TEXT,                           -- IEEE organization (universally administered)
+    registry        TEXT,                           -- ma-l / ma-m / ma-s
+    kind            TEXT NOT NULL CHECK (kind IN ('unicast', 'multicast', 'broadcast')),
+    local           INTEGER NOT NULL DEFAULT 0,     -- U/L bit: locally administered
+    grp             TEXT,                           -- well-known group (ipv4_multicast...)
+    frames_sent     INTEGER NOT NULL DEFAULT 0,
+    bytes_sent      INTEGER NOT NULL DEFAULT 0,
+    frames_received INTEGER NOT NULL DEFAULT 0,
+    bytes_received  INTEGER NOT NULL DEFAULT 0,
+    first_ts        INTEGER NOT NULL,
+    last_ts         INTEGER NOT NULL,
+    vlans           TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(vlans)),  -- sorted VLAN stacks
+    frames_total    INTEGER GENERATED ALWAYS AS (frames_sent + frames_received) VIRTUAL,
+    bytes_total     INTEGER GENERATED ALWAYS AS (bytes_sent + bytes_received) VIRTUAL
+) WITHOUT ROWID;
+
+-- index eth_macs_bytes
+CREATE INDEX eth_macs_bytes ON eth_macs (bytes_total);
+
+-- index eth_macs_first_ts
+CREATE INDEX eth_macs_first_ts ON eth_macs (first_ts, last_ts);
+
+-- index eth_macs_frames
+CREATE INDEX eth_macs_frames ON eth_macs (frames_total);
+
+-- index eth_macs_last_ts
+CREATE INDEX eth_macs_last_ts ON eth_macs (last_ts);
+
+-- index eth_macs_vendor
+CREATE INDEX eth_macs_vendor ON eth_macs (kind, local, vendor, first_ts, last_ts);
+
+-- table eth_pairs
+CREATE TABLE eth_pairs (
+    id         INTEGER PRIMARY KEY,
+    src_mac    TEXT NOT NULL,
+    dst_mac    TEXT NOT NULL,
+    frames     INTEGER NOT NULL DEFAULT 0,
+    bytes      INTEGER NOT NULL DEFAULT 0,
+    first_ts   INTEGER NOT NULL,
+    last_ts    INTEGER NOT NULL,
+    ethertypes TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(ethertypes)),  -- sorted EtherType keys
+    vlans      TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(vlans)),       -- sorted VLAN stacks
+    UNIQUE (src_mac, dst_mac)
+);
+
+-- index eth_pairs_bytes
+CREATE INDEX eth_pairs_bytes ON eth_pairs (bytes);
+
+-- index eth_pairs_dst_mac
+CREATE INDEX eth_pairs_dst_mac ON eth_pairs (dst_mac);
+
+-- index eth_pairs_first_ts
+CREATE INDEX eth_pairs_first_ts ON eth_pairs (first_ts, last_ts);
+
+-- index eth_pairs_frames
+CREATE INDEX eth_pairs_frames ON eth_pairs (frames);
+
+-- index eth_pairs_last_ts
+CREATE INDEX eth_pairs_last_ts ON eth_pairs (last_ts);
+
+-- table eth_types
+CREATE TABLE eth_types (
+    ethertype INTEGER PRIMARY KEY,
+    frames    INTEGER NOT NULL DEFAULT 0,
+    bytes     INTEGER NOT NULL DEFAULT 0,
+    first_ts  INTEGER NOT NULL,
+    last_ts   INTEGER NOT NULL
+);
+
+-- table eth_vlans
+CREATE TABLE eth_vlans (
+    stack      TEXT PRIMARY KEY NOT NULL,
+    outer_id   INTEGER NOT NULL,
+    inner_id   INTEGER NOT NULL,
+    depth      INTEGER NOT NULL,                    -- number of tags
+    outer_tpid INTEGER NOT NULL,                    -- 0x8100, 0x88a8 or 0x9100
+    frames     INTEGER NOT NULL DEFAULT 0,
+    bytes      INTEGER NOT NULL DEFAULT 0,
+    first_ts   INTEGER NOT NULL,
+    last_ts    INTEGER NOT NULL
+) WITHOUT ROWID;
+
 -- table flows
 CREATE TABLE flows (
     id            INTEGER PRIMARY KEY,

@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 // --- analyzers: one translation module each, sorted ---
 mod arp;
 mod credentials;
+mod ethernet;
 mod servers;
 mod ssdp;
 mod tls;
@@ -37,6 +38,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
         Record::Conversation(c) => StoreRecord::Conversation(conversation_row(&c)),
         Record::Credential(c) => StoreRecord::Credential(Box::new(credentials::credential_row(c))),
         Record::Dns(t) => StoreRecord::Dns(Box::new(dns_row(*t))),
+        Record::Ethernet(e) => StoreRecord::Ethernet(ethernet::ethernet_row(e)),
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
         Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
@@ -162,6 +164,13 @@ pub fn approx_size(record: &StoreRecord) -> usize {
         }
         StoreRecord::HostTraffic(_) => 0,
         StoreRecord::Arp(_) => std::mem::size_of::<netsift_store::arp::ArpRow>(),
+        StoreRecord::Ethernet(netsift_store::ethernet::EthernetRow::Mac(m)) => {
+            m.vlans.iter().map(|v| v.len() + 24).sum::<usize>() + 64
+        }
+        StoreRecord::Ethernet(netsift_store::ethernet::EthernetRow::Pair(p)) => {
+            p.vlans.iter().map(|v| v.len() + 24).sum::<usize>() + 4 * p.ethertypes.len()
+        }
+        StoreRecord::Ethernet(_) => 16,
         StoreRecord::Http(h) => h.heap_size(),
         StoreRecord::Server(s) => s.heap_size(),
         StoreRecord::Ssdp(s) => s.approx_size(),

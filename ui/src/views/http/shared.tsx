@@ -8,6 +8,7 @@ import { BarList } from '../../components/BarList';
 import { Card } from '../../components/Card';
 import { Chart } from '../../components/Chart';
 import { Endpoint } from '../../components/Endpoint';
+import { endpointTitle } from '../../components/endpointText';
 import { formatCount } from '../../lib/format';
 import { type ChartFormat, countBars, DONUT_CENTER_Y, DONUT_MAX, donutOption, METHOD_COLORS, PART_HEIGHT } from './charts';
 import { displayTarget, statusTone } from './format';
@@ -110,17 +111,16 @@ export function TargetText({ tx }: { tx: HttpTransactionSummary }) {
   );
 }
 
-/** Server address and port, after the host asked for (when it differs from the address). */
+/**
+ * Server of a transaction: the host asked for when it differs from the address (the address,
+ * port and names in its tooltip), else the address and port. Never both cut side by side.
+ */
 export function ServerCell({ tx }: { tx: HttpTransactionSummary }) {
   const host = tx.host !== null && tx.host !== '' && tx.host !== tx.server.ip ? tx.host : null;
+  if (host === null) return <Endpoint endpoint={tx.server} port={tx.server_port} show="address" className="text-meta" />;
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      {host !== null && (
-        <span data-testid="truncatable" title={host} className="min-w-0 shrink truncate">
-          {host}
-        </span>
-      )}
-      <Endpoint endpoint={tx.server} port={tx.server_port} show="address" className="shrink-[2] text-meta" />
+    <span data-testid="truncatable" title={`${host} ${endpointTitle(tx.server, tx.server_port)}`} className="block min-w-0 truncate">
+      {host}
     </span>
   );
 }

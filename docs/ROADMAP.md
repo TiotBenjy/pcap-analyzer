@@ -481,9 +481,20 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       collée au bord à 1280 px ; cartes mobiles hautes (Conversations, Sources) ; donuts TLS et SMB sans total ;
       couleur de `Timestamp` inégale ; nom de certificat très court dans la colonne Certificate de TLS à 1280 px ;
       drapeau en double sur la ligne Adresse de `NodePanel`.
-- [~] **P5.2** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
+- [~] **P5.2a** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
       toutes les vues (`from_us`/`to_us` dans l'API et l'URL, refetch serveur du zoom Overview, suivi de P4.2).
-      Après P5.1.
+      Spec `docs/specs/time-filter.md`, ADR-030. Scindée le 2026-11-22 après mesure sur le banc 5 Go, choix validés
+      par l'utilisateur : socle API (`TimeRange`, `point`/`overlap`) et UI (search params conservés entre onglets,
+      `useTimeRange`, registre `timeFilterViews.ts`, pastille d'en-tête), index couvrants et migrations, `/summary`
+      (objet `range`, compteurs `scope`), zoom implicite de l'Overview (plage après 400 ms, série redemandée au
+      serveur, Dézoomer / Plage... / Toute la session), Save PCAP prérempli, vues DNS, HTTP, HTTP Headers, TLS, SMB,
+      Credentials, Pictures. Compteurs d'éléments repliés gardés à leur valeur de session avec la mention
+      « session entière » dans l'en-tête de colonne sous plage. Sources non filtrée.
+- [ ] **P5.2b** `feat/time-filter-aggregates` — Plage appliquée aux vues agrégées (Connections, Open Ports,
+      Servers, Network) et à leurs compteurs de modules : tables dérivées calculées à la première requête d'une
+      plage (code des étapes de fin d'import paramétré), base annexe `sessions/<id>/ranges.db` des 4 dernières
+      plages. Attente simple validée par l'utilisateur (pas de 202) : exception écrite aux 300 ms pour la première
+      requête d'une plage. Après P5.2a.
 
 ### Vague 5.A — Couche 2 et protocoles simples (parallèle, après 5.0)
 

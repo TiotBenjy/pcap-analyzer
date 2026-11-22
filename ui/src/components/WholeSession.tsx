@@ -7,9 +7,14 @@ import { cn } from '../lib/cn';
  * value above it (column header, count of a row) was folded at import and stays that of the
  * session (ADR-030, docs/specs/time-filter.md).
  */
-export function WholeSessionLine({ className }: { className?: string | undefined }) {
+export function WholeSessionLine({ className, inline = false }: { className?: string | undefined; inline?: boolean }) {
   const { t } = useTranslation();
-  return <span className={cn('block leading-tight font-normal text-faint', className)}>{t('timeRange.wholeSession')}</span>;
+  // `inline`: one more item of a row of details (keeps the line height of the row).
+  return (
+    <span className={cn(inline ? 'font-normal text-faint' : 'block leading-tight font-normal text-faint', className)}>
+      {t('timeRange.wholeSession')}
+    </span>
+  );
 }
 
 interface WholeSessionHeaderProps {

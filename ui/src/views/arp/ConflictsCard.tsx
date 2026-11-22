@@ -97,7 +97,7 @@ function ConflictItem({ conflict: c, onShowMessages }: { conflict: ArpConflict; 
         {c.macs.map((m) => (
           <li key={m.mac} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-meta">
             <MacText mac={m.mac} copy className="text-table" />
-            {ranged && <WholeSessionLine />}
+            {ranged && <WholeSessionLine inline />}
             <span className="num text-muted">{t('views.arp.conflicts.seen', { period: formatPeriod(m.first_ts_us, m.last_ts_us) })}</span>
             <span className="num text-muted">{t('views.arp.conflicts.messages', { count: m.messages })}</span>
             {m.gratuitous > 0 && <span className="num text-muted">{t('views.arp.conflicts.gratuitous', { count: m.gratuitous })}</span>}

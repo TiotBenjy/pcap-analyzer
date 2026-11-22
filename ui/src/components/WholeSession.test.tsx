@@ -16,6 +16,14 @@ describe('WholeSession', () => {
     expect(line).toHaveClass('block', 'text-faint', 'font-normal', 'text-meta');
   });
 
+  it('has an inline variant for a row of details', () => {
+    render(<WholeSessionLine inline />);
+    const line = screen.getByText('Whole session');
+    expect(line).toHaveClass('text-faint');
+    expect(line).not.toHaveClass('block');
+    expect(line).not.toHaveClass('leading-tight');
+  });
+
   it('adds the line under the label only under a range', () => {
     const { rerender } = render(<WholeSessionHeader label="Messages" ranged={false} />);
     expect(screen.getByText('Messages')).toBeInTheDocument();

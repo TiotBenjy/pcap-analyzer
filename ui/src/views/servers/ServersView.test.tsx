@@ -142,5 +142,7 @@ it('asks for the time range of the URL and marks folded counts as those of the s
   await user.click(within(table).getByRole('button', { name: 'Show the evidence of 192.168.1.2' }));
   const detail = await screen.findByRole('table', { name: 'Evidence of 192.168.1.2' });
   expect(within(detail).getByText('NTP responses (whole session)')).toBeInTheDocument();
+  // The badge of the row says it too.
+  expect(within(table).getAllByText('NTP responses (whole session)').length).toBeGreaterThan(1);
   expect(within(detail).getByText('Open port')).toBeInTheDocument();
 });

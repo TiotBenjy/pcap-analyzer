@@ -260,13 +260,36 @@ function OtherRoles({
   );
 }
 
-function EvidenceKinds({ server }: { server: RoleServer }) {
+/**
+ * Evidence folded per server and client at import (NTP responses, KDC replies, browser
+ * announcements): under a time range their counts stay those of the whole session (ADR-030).
+ */
+const FOLDED_KINDS: ReadonlySet<ServerEvidence['kind']> = new Set([
+  'ntp_response',
+  'kdc_as_rep',
+  'kdc_tgs_rep',
+  'kdc_error',
+  'browser_server',
+  'browser_dc',
+]);
+
+/** Label of an evidence kind, with the whole-session mention of a folded count under a range. */
+function useKindLabel(): (kind: ServerEvidence['kind']) => string {
   const { t } = useTranslation();
+  const ranged = useViewRange() !== null;
+  return (kind) => {
+    const label = t(`views.servers.kinds.${kind}`);
+    return ranged && FOLDED_KINDS.has(kind) ? t('timeRange.wholeSessionColumn', { label }) : label;
+  };
+}
+
+function EvidenceKinds({ server }: { server: RoleServer }) {
+  const kindLabel = useKindLabel();
   return (
     <span className="flex flex-wrap gap-1">
       {server.evidence.map((e, i) => (
         <Badge key={`${e.kind}-${i}`}>
-          {t(`views.servers.kinds.${e.kind}`)}
+          {kindLabel(e.kind)}
           {e.kind === 'open_port' && e.example !== null ? ` ${e.example}` : ''}
         </Badge>
       ))}
@@ -338,29 +361,6 @@ function Example({ evidence }: { evidence: ServerEvidence }) {
       {evidence.example}
     </span>
   );
-}
-
-/**
- * Evidence folded per server and client at import (NTP responses, KDC replies, browser
- * announcements): under a time range their counts stay those of the whole session (ADR-030).
- */
-const FOLDED_KINDS: ReadonlySet<ServerEvidence['kind']> = new Set([
-  'ntp_response',
-  'kdc_as_rep',
-  'kdc_tgs_rep',
-  'kdc_error',
-  'browser_server',
-  'browser_dc',
-]);
-
-/** Label of an evidence kind, with the whole-session mention of a folded count under a range. */
-function useKindLabel(): (kind: ServerEvidence['kind']) => string {
-  const { t } = useTranslation();
-  const ranged = useViewRange() !== null;
-  return (kind) => {
-    const label = t(`views.servers.kinds.${kind}`);
-    return ranged && FOLDED_KINDS.has(kind) ? t('timeRange.wholeSessionColumn', { label }) : label;
-  };
 }
 
 function EvidenceTable({ server }: { server: RoleServer }) {

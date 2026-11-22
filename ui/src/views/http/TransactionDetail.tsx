@@ -196,10 +196,10 @@ function DetailBody({ d, tab }: { d: HttpTransactionDetail; tab: Tab }) {
   return (
     <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Fact label={t('views.http.detail.client')}>
-        <Endpoint endpoint={s.client} port={s.client_port} showName={false} />
+        <Endpoint endpoint={s.client} port={s.client_port} show="address" />
       </Fact>
       <Fact label={t('views.http.detail.server')}>
-        <Endpoint endpoint={s.server} port={s.server_port} showName={false} />
+        <Endpoint endpoint={s.server} port={s.server_port} show="address" />
       </Fact>
       <Fact label={t('views.http.detail.started')}>
         <span className="num">{formatTimestamp(s.ts_us)}</span>

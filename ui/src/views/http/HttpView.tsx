@@ -278,7 +278,7 @@ function Row({ tx, oneDay }: { tx: HttpTransactionSummary; oneDay: boolean }) {
     <span className={`flex min-w-0 flex-col gap-1 ${ROW_GRID}`}>
       <span className="num hidden text-meta text-muted md:block">{formatTimestamp(tx.ts_us, !oneDay)}</span>
       <span className="hidden min-w-0 md:block">
-        <Endpoint endpoint={tx.client} port={tx.client_port} showName={false} className="text-meta" />
+        <Endpoint endpoint={tx.client} port={tx.client_port} show="address" className="text-meta" />
       </span>
       <span className="hidden min-w-0 md:block">
         <ServerCell tx={tx} />

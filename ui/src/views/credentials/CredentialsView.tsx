@@ -233,17 +233,7 @@ function Loading() {
 /** Address and port (mono), then the first resolved name in grey, as in the other views. */
 function End({ end }: { end: CredentialEndpoint | null }) {
   if (end === null) return <span className="text-muted">-</span>;
-  const name = end.endpoint.names[0];
-  return (
-    <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 align-middle">
-      <Endpoint endpoint={end.endpoint} showName={false} {...(end.port === null ? {} : { port: end.port })} />
-      {name !== undefined && (
-        <span data-testid="truncatable" title={name} className="min-w-0 shrink-[2] truncate text-meta text-muted">
-          {name}
-        </span>
-      )}
-    </span>
-  );
+  return <Endpoint endpoint={end.endpoint} port={end.port} show="both" />;
 }
 
 /** Aggregated client -> protocol -> server paths (readable list instead of a node graph). */

@@ -130,7 +130,7 @@ function HostDetail({ sessionId, node, resolveNames }: { sessionId: string; node
         {endpoint.names.length > 0 && (
           <>
             <Row label={t('views.network.panel.address')}>
-              <span className="font-mono">{endpoint.ip}</span>
+              <Endpoint endpoint={endpoint} show="address" copy />
             </Row>
             <Row label={t('views.network.panel.names')}>{endpoint.names.map((n) => cleanLabel(n, 253)).join(', ')}</Row>
           </>
@@ -209,7 +209,7 @@ function HostDetail({ sessionId, node, resolveNames }: { sessionId: string; node
               <ol aria-label={t('views.network.panel.neighbors')} className="flex flex-col gap-1">
                 {d.neighbors.map((n) => (
                   <li key={n.endpoint.ip} className="flex min-w-0 items-center justify-between gap-2">
-                    <Endpoint endpoint={n.endpoint} showName={resolveNames} className="min-w-0" />
+                    <Endpoint endpoint={n.endpoint} show={resolveNames ? 'name' : 'address'} className="min-w-0" />
                     <span className="num shrink-0 text-muted">{formatBytes(n.bytes_sent + n.bytes_received, lang)}</span>
                   </li>
                 ))}
@@ -281,7 +281,7 @@ function GroupDetail({ data, node, labels, resolveNames, onExpand }: GroupDetail
               return (
                 <li key={n.node.id} className="flex min-w-0 items-center justify-between gap-2">
                   {n.node.endpoint !== null ? (
-                    <Endpoint endpoint={n.node.endpoint} showName={resolveNames} className="min-w-0" />
+                    <Endpoint endpoint={n.node.endpoint} show={resolveNames ? 'name' : 'address'} className="min-w-0" />
                   ) : (
                     <span data-testid="truncatable" title={text} className="min-w-0 truncate">
                       {text}

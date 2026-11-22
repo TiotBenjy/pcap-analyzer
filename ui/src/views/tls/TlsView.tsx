@@ -16,6 +16,7 @@ import { Card } from '../../components/Card';
 import { Chart } from '../../components/Chart';
 import { DataTable } from '../../components/DataTable';
 import { EmptyState } from '../../components/EmptyState';
+import { Endpoint } from '../../components/Endpoint';
 import { ErrorState } from '../../components/ErrorState';
 import { FilterBar } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
@@ -426,14 +427,14 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
         accessorFn: (s) => s.client_ip,
         header: t('views.tls.table.col.client'),
         size: 152,
-        cell: ({ row }) => <Endpoint ip={row.original.client_ip} port={row.original.client_port} />,
+        cell: ({ row }) => <Endpoint endpoint={row.original.client_ip} port={row.original.client_port} className="text-meta" />,
       },
       {
         id: 'server',
         accessorFn: (s) => s.server_ip,
         header: t('views.tls.table.col.server'),
         size: 152,
-        cell: ({ row }) => <Endpoint ip={row.original.server_ip} port={row.original.server_port} />,
+        cell: ({ row }) => <Endpoint endpoint={row.original.server_ip} port={row.original.server_port} className="text-meta" />,
       },
       {
         id: 'sni',
@@ -529,15 +530,6 @@ const NARROW_SIZES: Readonly<Record<string, number>> = {
   ja4: 140,
   certificate: 150,
 };
-
-function Endpoint({ ip, port }: { ip: string; port: number }) {
-  const text = ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;
-  return (
-    <span data-testid="truncatable" title={text} className="block truncate font-mono text-meta">
-      {text}
-    </span>
-  );
-}
 
 function CertificateCell({ item }: { item: TlsSessionItem }) {
   const { t } = useTranslation();

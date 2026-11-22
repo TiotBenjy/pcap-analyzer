@@ -804,7 +804,6 @@ export const en = {
       clients: 'Clients',
       firstSeen: 'First seen',
       example: 'Example',
-      address: 'address',
       roles: {
         dns: 'DNS',
         dhcp: 'DHCP',

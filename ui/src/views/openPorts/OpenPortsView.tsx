@@ -215,7 +215,7 @@ function HostList({ hosts, showNames, filtered }: { hosts: HostOpenPorts[]; show
         {hosts.map((h) => (
           <li key={h.host.ip} className="flex min-w-0 flex-col gap-2 px-3 py-2.5">
             <div className="flex min-w-0 items-center justify-between gap-2">
-              <Endpoint endpoint={h.host} showName={showNames} />
+              <Endpoint endpoint={h.host} show={showNames ? 'name' : 'address'} />
               <span className="num shrink-0 text-meta text-muted">
                 {t('views.openPorts.table.clients', { count: h.clients })}
               </span>
@@ -242,7 +242,7 @@ function HostList({ hosts, showNames, filtered }: { hosts: HostOpenPorts[]; show
           {hosts.map((h) => (
             <tr key={h.host.ip} className="border-b border-line align-top last:border-b-0">
               <td className="px-3 py-2 sm:px-4">
-                <Endpoint endpoint={h.host} showName={showNames} />
+                <Endpoint endpoint={h.host} show={showNames ? 'name' : 'address'} />
               </td>
               <td className="px-3 py-2">
                 <Ports host={h} />

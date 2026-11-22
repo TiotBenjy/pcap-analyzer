@@ -14,7 +14,6 @@ import { ADDRESS_CATEGORY_ORDER } from '../../charts/palette';
 import { Badge } from '../../components/Badge';
 import { Card } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
-import { CopyButton } from '../../components/CopyButton';
 import { Endpoint } from '../../components/Endpoint';
 import { ErrorState } from '../../components/ErrorState';
 import { MultiSelect } from '../../components/MultiSelect';
@@ -240,21 +239,7 @@ function ExpandButton({ server, expanded, controls, onToggle }: { server: RoleSe
 
 /** Server cell: endpoint (name first), its address below when a name is shown, copy button. */
 function ServerCell({ server }: { server: RoleServer }) {
-  const { t } = useTranslation();
-  const named = server.endpoint.names.length > 0;
-  return (
-    <span className="flex min-w-0 items-center gap-1">
-      <span className="flex min-w-0 flex-col">
-        <Endpoint endpoint={server.endpoint} />
-        {named && (
-          <span data-testid="truncatable" title={server.endpoint.ip} className="truncate font-mono text-meta text-muted">
-            {server.endpoint.ip}
-          </span>
-        )}
-      </span>
-      <CopyButton value={server.endpoint.ip} name={t('views.servers.address')} />
-    </span>
-  );
+  return <Endpoint endpoint={server.endpoint} show="stacked" copy />;
 }
 
 function OtherRoles({

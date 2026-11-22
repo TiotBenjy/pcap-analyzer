@@ -3,7 +3,6 @@ import { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DnsFilter } from '../../api/dns';
 import { useDnsPairs } from '../../api/dnsQueries';
-import type { Endpoint as EndpointInfo } from '../../api/types/Endpoint';
 import type { DnsPair } from '../../api/types/DnsPair';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -181,10 +180,10 @@ function PairsContent({ sessionId, filter, enabled, hasTraffic, wide }: PairsLis
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <HostCell host={p.client} />
+                      <Endpoint endpoint={p.client} />
                     </td>
                     <td className="px-3 py-2">
-                      <HostCell host={p.server} />
+                      <Endpoint endpoint={p.server} />
                     </td>
                     <td className="px-3 py-2">
                       <Badge>{protocolLabel(t, p.protocol)}</Badge>
@@ -219,10 +218,6 @@ function PairsContent({ sessionId, filter, enabled, hasTraffic, wide }: PairsLis
       {footer}
     </>
   );
-}
-
-function HostCell({ host }: { host: EndpointInfo }) {
-  return <Endpoint endpoint={host} />;
 }
 
 function ExpandButton({ open, pair, onToggle }: { open: boolean; pair: DnsPair; onToggle: () => void }) {
@@ -286,11 +281,11 @@ function PairCard({ pair, open, onToggle, sessionId, filter }: PairCardProps) {
           <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5">
             <dt className="text-meta text-muted">{t('views.dns.table.client')}</dt>
             <dd className="min-w-0">
-              <HostCell host={pair.client} />
+              <Endpoint endpoint={pair.client} />
             </dd>
             <dt className="text-meta text-muted">{t('views.dns.table.server')}</dt>
             <dd className="min-w-0">
-              <HostCell host={pair.server} />
+              <Endpoint endpoint={pair.server} />
             </dd>
           </dl>
           <Names pair={pair} open={open} onMore={onToggle} />

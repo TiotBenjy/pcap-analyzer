@@ -804,7 +804,6 @@ export const fr: Dictionary = {
       clients: 'Clients',
       firstSeen: 'Première activité',
       example: 'Exemple',
-      address: 'adresse',
       roles: {
         dns: 'DNS',
         dhcp: 'DHCP',

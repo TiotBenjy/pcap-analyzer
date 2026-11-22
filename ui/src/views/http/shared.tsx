@@ -116,7 +116,7 @@ export function ServerCell({ tx }: { tx: HttpTransactionSummary }) {
           {host}
         </span>
       )}
-      <Endpoint endpoint={tx.server} port={tx.server_port} showName={false} className="shrink-[2] text-meta" />
+      <Endpoint endpoint={tx.server} port={tx.server_port} show="address" className="shrink-[2] text-meta" />
     </span>
   );
 }

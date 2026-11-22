@@ -416,13 +416,8 @@ function DeviceRow({ device: d, oneDay, ranged }: { device: SsdpDeviceInfo; oneD
   const count = t('views.ssdp.devices.messages', { count: d.message_count });
   return (
     <span className={`flex min-w-0 flex-col gap-1 ${DEVICE_GRID}`}>
-      <span className="flex min-w-0 items-center justify-between gap-2 md:block">
-        <span data-testid="truncatable" title={d.device_type === '' ? d.uuid : d.device_type} className="block min-w-0 truncate font-medium">
-          {name}
-        </span>
-        <span className="num shrink-0 text-meta text-muted md:hidden">
-          {ranged ? t('timeRange.wholeSessionColumn', { label: count }) : count}
-        </span>
+      <span data-testid="truncatable" title={d.device_type === '' ? d.uuid : d.device_type} className="block min-w-0 truncate font-medium">
+        {name}
       </span>
       <span className="min-w-0">
         <Endpoint endpoint={d.address} show="address" className="text-meta" />
@@ -430,6 +425,8 @@ function DeviceRow({ device: d, oneDay, ranged }: { device: SsdpDeviceInfo; oneD
       <span data-testid="truncatable" title={d.server} className="block min-w-0 truncate text-meta text-muted">
         {d.server === '' ? '-' : d.server}
       </span>
+      {/* Narrow screens: the count on its own line, so that the device name keeps the width. */}
+      <span className="num text-meta text-muted md:hidden">{ranged ? t('timeRange.wholeSessionColumn', { label: count }) : count}</span>
       <span className="num hidden text-right md:block">{formatCount(d.message_count)}</span>
       <Timestamp us={d.last_ts_us} withDate={!oneDay} className="hidden text-meta text-muted xl:block" />
     </span>

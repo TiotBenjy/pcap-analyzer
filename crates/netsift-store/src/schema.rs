@@ -11,7 +11,7 @@
 //! | 0300-0399 | tls     |   | 0800-0899 | servers |
 //! | 0400-0499 | flows   |   | 0900-0999 | network |
 //! | 1000-1099 | arp     |   | 1100-1199 | ethernet |
-//! | 1200-1299 | ssdp    |   |           |         |
+//! | 1200-1299 | ssdp    |   | 1400-1499 | ftp     |
 //!
 //! To add a migration: create the SQL file, then add **one line** to [`SESSION_MIGRATIONS`]
 //! at its numeric position. Never edit or renumber a migration that has been merged into
@@ -69,6 +69,7 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
     migration!(1000, "arp", "1000_arp.sql"),
     migration!(1100, "ethernet", "1100_ethernet.sql"),
     migration!(1200, "ssdp", "1200_ssdp.sql"),
+    migration!(1400, "ftp", "1400_ftp.sql"),
 ];
 
 /// Migrations of `catalog.db`, sorted by version (owned by the core only).

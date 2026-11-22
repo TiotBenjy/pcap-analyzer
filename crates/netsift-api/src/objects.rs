@@ -125,8 +125,10 @@ pub struct ObjectItem {
     pub server: Endpoint,
     pub server_port: u16,
     pub host: Option<String>,
-    /// Request target as sent.
+    /// Request target as sent (HTTP), or path of the transfer (FTP).
     pub uri: Option<String>,
+    /// Protocol of the first occurrence: `http` (response body) or `ftp` (transferred file).
+    pub source: String,
     /// `http://host/target` when it can be rebuilt (text only, never fetched).
     pub url: Option<String>,
     /// Name of the downloaded file.
@@ -212,6 +214,7 @@ fn item(row: ObjectRow) -> ObjectItem {
         server_port: row.server_port,
         host: row.host,
         uri: row.uri,
+        source: row.source,
     }
 }
 

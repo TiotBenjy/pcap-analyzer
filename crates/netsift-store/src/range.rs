@@ -266,6 +266,8 @@ pub enum ModuleRows {
     DnsMessages,
     /// MAC addresses of the Ethernet view (`eth_macs`).
     EthernetMacs,
+    /// FTP control sessions (`ftp_sessions`, overlap).
+    FtpSessions,
     HttpHeaders,
     HttpTransactions,
     Pictures,
@@ -287,14 +289,18 @@ impl ModuleRows {
             Self::EthernetMacs => {
                 "SELECT count(*) FROM eth_macs WHERE first_ts < ?2 AND last_ts >= ?1"
             }
+            Self::FtpSessions => {
+                "SELECT count(*) FROM ftp_sessions WHERE first_ts < ?2 AND last_ts >= ?1"
+            }
             Self::HttpHeaders => "SELECT count(*) FROM http_headers WHERE +ts >= ?1 AND +ts < ?2",
             Self::HttpTransactions => {
                 "SELECT count(*) FROM http_transactions WHERE ts >= ?1 AND ts < ?2"
             }
             Self::Pictures => {
-                "SELECT count(*) FROM objects o WHERE o.mime LIKE 'image/%' AND EXISTS \
+                "SELECT count(*) FROM objects o WHERE o.mime LIKE 'image/%' AND (EXISTS \
                  (SELECT 1 FROM http_transactions t WHERE t.resp_sha256 = o.sha256 \
-                  AND t.ts >= ?1 AND t.ts < ?2)"
+                  AND t.ts >= ?1 AND t.ts < ?2) OR EXISTS (SELECT 1 FROM ftp_transfers f \
+                  WHERE f.sha256 = o.sha256 AND f.ts >= ?1 AND f.ts < ?2))"
             }
             Self::Smb => {
                 "SELECT (SELECT count(*) FROM smb_announces WHERE first_ts < ?2 \

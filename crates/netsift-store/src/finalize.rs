@@ -95,7 +95,7 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         // Nothing to unlist: a session imported before P3.6 never stored bodies, so its
         // `objects` stays "not analyzed" (ADR-013) rather than empty.
         fills: &[],
-        reads: &["http_transactions"],
+        reads: &["http_transactions", "ftp_transfers"],
         run: crate::objects::finalize,
     },
     Finalizer {

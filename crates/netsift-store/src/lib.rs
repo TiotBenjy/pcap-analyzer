@@ -9,6 +9,7 @@
 //! - [`connections`], [`ports`]: tables and queries of the Connections and Open Ports views;
 //! - [`credentials`]: table and queries of the Credentials view (secrets read on demand only);
 //! - [`ethernet`]: link-layer tables and queries of the Ethernet view;
+//! - [`ftp`]: FTP sessions, transcripts and transfers of the FTP view;
 //! - [`network`]: bounded communication graph of the Network view (read queries only);
 //! - [`ranges`]: tables of the aggregated views materialized per time range (P5.2b).
 
@@ -21,6 +22,7 @@ pub mod dns;
 mod error;
 pub mod ethernet;
 pub mod finalize;
+pub mod ftp;
 pub mod http;
 mod id;
 pub mod migrate;

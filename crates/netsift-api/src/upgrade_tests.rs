@@ -176,10 +176,11 @@ const BEFORE_0500: &str = "DROP VIEW smb_items; DROP TABLE smb_announces; \
 /// Credentials view.
 const BEFORE_0600: &str =
     "DROP TABLE credentials; DELETE FROM schema_migrations WHERE version = 600;";
-/// Undoes migration 0700 (objects) and its end-of-import step: the session looks imported by a
-/// build that predates the Pictures view.
+/// Undoes migration 0700 (objects) and its end-of-import step, and 1400 (FTP), which adds a
+/// column to `objects`: the session looks imported by a build that predates the Pictures view.
 const BEFORE_0700: &str = "DROP VIEW pictures; DROP TABLE objects; \
-    DELETE FROM schema_migrations WHERE version = 700; \
+    DROP TABLE ftp_sessions; DROP TABLE ftp_lines; DROP TABLE ftp_transfers; \
+    DELETE FROM schema_migrations WHERE version IN (700, 1400); \
     UPDATE meta SET value = replace(value, ',objects:1', '') WHERE key = 'finalizers';";
 /// Undoes migrations 0800 (servers) and 0801 (materialized roles), views included: the session
 /// looks imported by a build that predates the Servers view.

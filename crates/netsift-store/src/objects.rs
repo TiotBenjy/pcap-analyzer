@@ -4,9 +4,11 @@
 //! # Merge rules
 //!
 //! No shard writes this table. The end-of-import step [`finalize`] derives it from the
-//! transactions whose response body was stored (`http_transactions.resp_sha256`): one row per
-//! digest, the first occurrence being the smallest `(response time, flow_id, seq)`, the count of
-//! occurrences and the last time aggregated over every transaction. The result depends neither
+//! transactions whose response body was stored (`http_transactions.resp_sha256`) and from the FTP
+//! transfers whose file was stored (`ftp_transfers.sha256`, `source` = `ftp`, `uri` = the path,
+//! `flow_id` / `seq` = control flow and transfer): one row per digest, the first occurrence being
+//! the smallest `(time, flow_id, seq)`, the count of occurrences and the last time aggregated over
+//! every transaction and transfer. The result depends neither
 //! on the arrival order of the transactions nor on the number of shards. The step is an upsert
 //! that keeps the thumbnail columns (`width`, `height`, `thumb`) of rows already present, so a
 //! replay never loses the generated thumbnails.
@@ -39,20 +41,28 @@ pub mod thumb {
 pub fn finalize(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "INSERT INTO objects (sha256, size, mime, declared_type, thumb, occurrences, first_ts, \
-             last_ts, flow_id, seq, client_ip, server_ip, server_port, host, uri) \
+             last_ts, flow_id, seq, client_ip, server_ip, server_port, host, uri, source) \
          SELECT sha, size, mime, declared, \
                 CASE WHEN mime = 'image/svg+xml' THEN 'none' ELSE 'pending' END, \
-                n, first_ts, last_ts, flow_id, seq, client_ip, server_ip, server_port, host, uri \
+                n, first_ts, last_ts, flow_id, seq, client_ip, server_ip, server_port, host, uri, \
+                source \
          FROM ( \
-             SELECT t.resp_sha256 AS sha, t.resp_body_len AS size, t.resp_mime_magic AS mime, \
-                    t.content_type AS declared, t.flow_id, t.seq, t.client_ip, t.server_ip, \
-                    t.server_port, t.host, t.uri, coalesce(t.resp_ts, t.ts) AS first_ts, \
-                    count(*) OVER w AS n, max(coalesce(t.resp_ts, t.ts)) OVER w AS last_ts, \
-                    row_number() OVER (PARTITION BY t.resp_sha256 \
-                        ORDER BY coalesce(t.resp_ts, t.ts), t.flow_id, t.seq) AS rn \
-             FROM http_transactions AS t \
-             WHERE t.resp_sha256 IS NOT NULL AND t.resp_mime_magic IS NOT NULL \
-             WINDOW w AS (PARTITION BY t.resp_sha256) \
+             SELECT *, count(*) OVER w AS n, max(first_ts) OVER w AS last_ts, \
+                    row_number() OVER (PARTITION BY sha ORDER BY first_ts, flow_id, seq) AS rn \
+             FROM ( \
+                 SELECT t.resp_sha256 AS sha, t.resp_body_len AS size, t.resp_mime_magic AS mime, \
+                        t.content_type AS declared, t.flow_id, t.seq, t.client_ip, t.server_ip, \
+                        t.server_port, t.host, t.uri, 'http' AS source, \
+                        coalesce(t.resp_ts, t.ts) AS first_ts \
+                 FROM http_transactions AS t \
+                 WHERE t.resp_sha256 IS NOT NULL AND t.resp_mime_magic IS NOT NULL \
+                 UNION ALL \
+                 SELECT f.sha256, f.bytes, f.mime, NULL, f.flow_id, f.seq, s.client_ip, \
+                        s.server_ip, s.server_port, NULL, f.path, 'ftp', f.ts \
+                 FROM ftp_transfers AS f JOIN ftp_sessions AS s ON s.flow_id = f.flow_id \
+                 WHERE f.sha256 IS NOT NULL AND f.mime IS NOT NULL \
+             ) \
+             WINDOW w AS (PARTITION BY sha) \
          ) WHERE rn = 1 \
          ORDER BY first_ts, flow_id, seq \
          ON CONFLICT (sha256) DO UPDATE SET \
@@ -60,7 +70,8 @@ pub fn finalize(conn: &Connection) -> Result<()> {
              occurrences = excluded.occurrences, first_ts = excluded.first_ts, \
              last_ts = excluded.last_ts, flow_id = excluded.flow_id, seq = excluded.seq, \
              client_ip = excluded.client_ip, server_ip = excluded.server_ip, \
-             server_port = excluded.server_port, host = excluded.host, uri = excluded.uri;",
+             server_port = excluded.server_port, host = excluded.host, uri = excluded.uri, \
+             source = excluded.source;",
     )?;
     Ok(())
 }
@@ -86,7 +97,10 @@ pub struct ObjectRow {
     pub server_ip: IpAddr,
     pub server_port: u16,
     pub host: Option<String>,
+    /// Request target (HTTP) or path (FTP).
     pub uri: Option<String>,
+    /// `http` or `ftp`.
+    pub source: String,
     /// What the session knows about both ends (`hosts`).
     pub client: EndpointInfo,
     pub server: EndpointInfo,
@@ -95,7 +109,8 @@ pub struct ObjectRow {
 const COLUMNS: &str = "o.id, o.sha256, o.size, o.mime, o.declared_type, o.width, o.height, \
                        o.thumb, o.occurrences, o.first_ts, o.last_ts, o.flow_id, o.seq, \
                        o.client_ip, o.server_ip, o.server_port, o.host, o.uri, \
-                       hc.names, hc.category, hc.country, hv.names, hv.category, hv.country";
+                       hc.names, hc.category, hc.country, hv.names, hv.category, hv.country, \
+                       o.source";
 /// `objects` with the hosts of both ends.
 const FROM: &str = "objects AS o LEFT JOIN hosts AS hc ON hc.ip = o.client_ip \
                     LEFT JOIN hosts AS hv ON hv.ip = o.server_ip";
@@ -147,6 +162,7 @@ impl ObjectRow {
                 category: r.get(22)?,
                 country: r.get(23)?,
             },
+            source: r.get(24)?,
         })
     }
 }
@@ -186,9 +202,12 @@ const FILTER: &str = "(?1 = 0 OR o.mime LIKE 'image/%') \
      AND (?5 IS NULL OR o.size >= ?5) \
      AND (?6 IS NULL OR o.size <= ?6)";
 
-/// Objects carried by a transaction of the range (`?7`, `?8`; index `(resp_sha256, ts)`).
-const RANGE_FILTER: &str = "EXISTS (SELECT 1 FROM http_transactions t \
-    WHERE t.resp_sha256 = o.sha256 AND t.ts >= ?7 AND t.ts < ?8)";
+/// Objects carried by a transaction or an FTP transfer of the range (`?7`, `?8`; indexes
+/// `(resp_sha256, ts)` and `(sha256, ts)`).
+const RANGE_FILTER: &str = "(EXISTS (SELECT 1 FROM http_transactions t \
+    WHERE t.resp_sha256 = o.sha256 AND t.ts >= ?7 AND t.ts < ?8) \
+    OR EXISTS (SELECT 1 FROM ftp_transfers f WHERE f.sha256 = o.sha256 \
+    AND f.ts >= ?7 AND f.ts < ?8))";
 
 /// [`FILTER`] and its values, plus the range when set.
 fn filter_sql(f: &ObjectFilter) -> (String, Vec<Value>) {
@@ -206,8 +225,11 @@ fn filter_sql(f: &ObjectFilter) -> (String, Vec<Value>) {
 fn fill_range(conn: &Connection, row: &mut ObjectRow, range: TimeRange) -> Result<()> {
     let (n, first, last): (i64, Option<i64>, Option<i64>) = conn
         .prepare_cached(
-            "SELECT count(*), min(coalesce(resp_ts, ts)), max(coalesce(resp_ts, ts)) \
-             FROM http_transactions WHERE resp_sha256 = ?1 AND ts >= ?2 AND ts < ?3",
+            "SELECT count(*), min(t), max(t) FROM ( \
+                 SELECT coalesce(resp_ts, ts) AS t FROM http_transactions \
+                 WHERE resp_sha256 = ?1 AND ts >= ?2 AND ts < ?3 \
+                 UNION ALL \
+                 SELECT ts FROM ftp_transfers WHERE sha256 = ?1 AND ts >= ?2 AND ts < ?3)",
         )?
         .query_row(params![row.sha256, range.from_ns(), range.to_ns()], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
@@ -305,7 +327,7 @@ pub struct ObjectStats {
     /// Distinct objects and their total size.
     pub count: u64,
     pub bytes: u64,
-    /// Transactions that carried them.
+    /// Transactions and FTP transfers that carried them.
     pub occurrences: u64,
     /// Objects per detected type, most frequent first.
     pub types: Vec<(String, u64)>,
@@ -323,8 +345,9 @@ pub fn stats(
 ) -> Result<ObjectStats> {
     let images = i64::from(images_only);
     let in_range = range.map_or("", |_| {
-        " AND EXISTS (SELECT 1 FROM http_transactions t WHERE t.resp_sha256 = o.sha256 \
-          AND t.ts >= ?98 AND t.ts < ?99)"
+        " AND (EXISTS (SELECT 1 FROM http_transactions t WHERE t.resp_sha256 = o.sha256 \
+          AND t.ts >= ?98 AND t.ts < ?99) OR EXISTS (SELECT 1 FROM ftp_transfers f \
+          WHERE f.sha256 = o.sha256 AND f.ts >= ?98 AND f.ts < ?99))"
     });
     let (count, bytes, mut occurrences): (i64, i64, i64) = query_row_ranged(
         conn,
@@ -339,8 +362,11 @@ pub fn stats(
     if range.is_some() {
         occurrences = query_row_ranged(
             conn,
-            "SELECT count(*) FROM http_transactions t JOIN objects o ON o.sha256 = t.resp_sha256 \
-             WHERE t.ts >= ?98 AND t.ts < ?99 AND (?1 = 0 OR o.mime LIKE 'image/%')",
+            "SELECT (SELECT count(*) FROM http_transactions t \
+                     JOIN objects o ON o.sha256 = t.resp_sha256 \
+                     WHERE t.ts >= ?98 AND t.ts < ?99 AND (?1 = 0 OR o.mime LIKE 'image/%')) \
+                  + (SELECT count(*) FROM ftp_transfers f JOIN objects o ON o.sha256 = f.sha256 \
+                     WHERE f.ts >= ?98 AND f.ts < ?99 AND (?1 = 0 OR o.mime LIKE 'image/%'))",
             &[&images],
             range,
             |r| r.get(0),

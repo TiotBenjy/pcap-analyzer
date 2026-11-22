@@ -36,3 +36,4 @@ Règles transverses (sauf mention contraire) :
 | `servers.md` | Servers | 3 |
 | `network.md` | Network | 3 |
 | `export-pcap.md` | Save PCAP (Overview, Connections) | 4 |
+| `time-filter.md` | Filtre temporel global (toutes les vues) | 5 |

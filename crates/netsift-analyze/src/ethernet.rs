@@ -72,7 +72,11 @@ impl EtherKey {
 
 /// VLAN identifiers of a frame, outermost first (empty: untagged). Its label joins them with a
 /// dot (`100.20` for service tag 100, customer tag 20).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+///
+/// Ordered by label, byte by byte (`10` < `100.20` < `20`): the order of the store, which keeps
+/// the smallest labels of a bounded set in SQL text order, so that the stored sets do not depend
+/// on the number of shards nor on the moments of the flushes.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct VlanStack {
     len: u8,
     ids: [u16; MAX_VLAN_TAGS],
@@ -105,6 +109,18 @@ impl VlanStack {
 
     pub fn is_empty(&self) -> bool {
         self.len == 0
+    }
+}
+
+impl Ord for VlanStack {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.to_string().cmp(&other.to_string())
+    }
+}
+
+impl PartialOrd for VlanStack {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -211,10 +227,19 @@ struct PendingPair {
     vlans: Vec<VlanStack>,
 }
 
-/// Inserts `v` into a small unsorted set bounded to `max` (sorted at flush).
-fn add_bounded<T: PartialEq + Copy>(set: &mut Vec<T>, v: T, max: usize) {
-    if set.len() < max && !set.contains(&v) {
+/// Inserts `v` into a small unsorted set that keeps the `max` smallest values seen (sorted at
+/// flush). The store merges with the same rule and order (`MAX_SET` of `netsift-store`): the
+/// result is the `max` smallest values of the whole capture, whatever the shards and flushes.
+fn add_bounded<T: Ord + Copy>(set: &mut Vec<T>, v: T, max: usize) {
+    if set.contains(&v) {
+        return;
+    }
+    if set.len() < max {
         set.push(v);
+    } else if let Some(largest) = set.iter_mut().max()
+        && v < *largest
+    {
+        *largest = v;
     }
 }
 

@@ -3,7 +3,9 @@
 //!
 //! Merge rules (commutative, see `records.rs`): every counter is **added** (saturating at
 //! `i64::MAX`), `first_ts` = min, `last_ts` = max, the JSON sets (`vlans`, `ethertypes`) are
-//! sorted unions of at most [`MAX_SET`] values; the class columns of an address (`vendor`,
+//! sorted unions that keep the [`MAX_SET`] smallest values (VLAN stacks in text order, `10` <
+//! `100.20` < `20`, EtherTypes in numeric order: the orders of the analyzer, so that the result
+//! does not depend on the shards nor on the flushes); the class columns of an address (`vendor`,
 //! `registry`, `kind`, `local`, `grp`) derive from the address and keep their first value; the
 //! outer TPID of a VLAN stack is the largest seen.
 //!
@@ -532,6 +534,8 @@ impl PairSort {
     }
 }
 
+/// Unique key of a pair (both addresses have a fixed length), tie-breaker of the pages.
+const PAIR_KEY: &str = "p.src_mac || '>' || p.dst_mac";
 const PAIR_FROM: &str = "eth_pairs p LEFT JOIN eth_macs s ON s.mac = p.src_mac \
     LEFT JOIN eth_macs d ON d.mac = p.dst_mac";
 const PAIR_SELECT: &str = "p.id, p.src_mac, s.vendor, s.kind, s.local, s.grp, p.dst_mac, \
@@ -619,7 +623,8 @@ pub fn pairs_page(
         from: PAIR_FROM,
         select: PAIR_SELECT,
         sort,
-        tiebreak: "p.id",
+        // The addresses, not the row id: the order does not depend on the arrival of the rows.
+        tiebreak: PAIR_KEY,
         descending,
         filter: where_sql.as_deref(),
     };

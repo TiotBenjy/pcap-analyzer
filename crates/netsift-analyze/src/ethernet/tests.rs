@@ -297,3 +297,57 @@ fn bounded_sets_per_pair() {
     assert_eq!(m.macs[&macs::INTEL].vlans.len(), MAX_VLANS);
     assert_eq!(m.vlans.len(), 40);
 }
+
+/// A router on a trunk of 40 VLANs (more than [`MAX_VLANS`]), in a mixed order.
+fn trunk() -> Vec<netsift_fixtures::Packet> {
+    let mut sc = Scenario::starting_at(0);
+    for i in 0..40u16 {
+        let vid = (i * 37) % 400 + 1;
+        sc.push_frame(fx::frame(
+            macs::RASPBERRY,
+            macs::INTEL,
+            &[(fx::TPID_8021Q, vid)],
+            0x0800,
+            &fx::ipv4_udp([10, 0, 0, 1], [10, 0, 0, 2], 40_000 + i, 9, b"x"),
+        ));
+    }
+    sc.into_packets()
+}
+
+#[test]
+fn bounded_sets_keep_the_smallest_labels_whatever_the_flushes() {
+    let packets = trunk();
+    let reference = merge(&analyze(&AnalyzerConfig::default(), &packets));
+    let mut small = AnalyzerConfig::default();
+    small.ethernet.max_pending = 2;
+    let mut reversed = packets.clone();
+    reversed.reverse();
+    for (i, p) in reversed.iter_mut().enumerate() {
+        p.ts_ns = i64::try_from(i).unwrap();
+    }
+    for other in [analyze(&small, &packets), analyze(&small, &reversed)] {
+        let m = merge(&other);
+        assert_eq!(
+            m.macs[&macs::INTEL].vlans,
+            reference.macs[&macs::INTEL].vlans
+        );
+        assert_eq!(
+            m.pairs[&(macs::INTEL, macs::RASPBERRY)].vlans,
+            reference.pairs[&(macs::INTEL, macs::RASPBERRY)].vlans
+        );
+    }
+    // The 16 smallest labels in text order, the order of the store.
+    let mut labels: Vec<String> = (0..40u16)
+        .map(|i| ((i * 37) % 400 + 1).to_string())
+        .collect();
+    labels.sort();
+    labels.truncate(MAX_VLANS);
+    let kept: Vec<String> = reference.macs[&macs::INTEL]
+        .vlans
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(kept, labels);
+    assert!(VlanStack::from_ids(&[100]) < VlanStack::from_ids(&[20]));
+    assert!(VlanStack::from_ids(&[10]) < VlanStack::from_ids(&[100, 20]));
+}

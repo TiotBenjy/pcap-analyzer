@@ -75,6 +75,54 @@ fn address_deltas_merge() {
 }
 
 #[test]
+fn json_sets_keep_the_smallest_in_text_and_numeric_order() {
+    let conn = db();
+    // Two deltas of 16 values each: the 16 smallest of the 32 remain, VLANs in text order.
+    for half in [0u16, 1] {
+        let mut r = mac_row(1, None, 1, (1, 1));
+        r.vlans = (0..16u16).map(|i| (i * 2 + half + 1).to_string()).collect();
+        insert(&conn, &EthernetRow::Mac(r));
+        insert(
+            &conn,
+            &EthernetRow::Pair(EthPairRow {
+                src: [0x08, 0x00, 0x27, 0, 0, 1],
+                dst: [0x08, 0x00, 0x27, 0, 0, 2],
+                frames: 1,
+                bytes: 1,
+                first_ts: 1,
+                last_ts: 1,
+                ethertypes: (0..16i32)
+                    .map(|i| 0x0600 + i * 2 + i32::from(half))
+                    .collect(),
+                vlans: Vec::new(),
+            }),
+        );
+    }
+    let mut labels: Vec<String> = (1..=32u16).map(|v| v.to_string()).collect();
+    labels.sort();
+    labels.truncate(MAX_SET);
+    let page = macs_page(
+        &conn,
+        &MacFilter::default(),
+        MacSort::Frames,
+        &PageRequest::first(10),
+    )
+    .unwrap();
+    assert_eq!(page.items[0].vlans, labels);
+    let pairs = pairs_page(
+        &conn,
+        &PairFilter::default(),
+        PairSort::Frames,
+        &PageRequest::first(10),
+    )
+    .unwrap();
+    assert_eq!(
+        pairs.items[0].ethertypes,
+        (0..16i32).map(|i| 0x0600 + i).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn json_sets_stay_bounded() {
     let conn = db();
     for i in 0..40u32 {

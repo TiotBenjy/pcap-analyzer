@@ -258,3 +258,14 @@ export function baseName(path: string): string {
   const i = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
   return i < 0 ? trimmed : trimmed.slice(i + 1);
 }
+
+/**
+ * Compression suffix shown after the format of a compressed chunk (`.gz`, `.zst`, `.lz4`), taken
+ * from its file name: the backend only says whether the file is compressed (detected by magic
+ * number). Empty when not compressed or when the name has no known suffix.
+ */
+export function compressionSuffix(path: string, compressed: boolean): string {
+  if (!compressed) return '';
+  const suffix = /\.(gz|zst|lz4)$/i.exec(baseName(path))?.[1];
+  return suffix ? `.${suffix.toLowerCase()}` : '';
+}

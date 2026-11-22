@@ -617,7 +617,12 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
     )?;
     writeln!(out, "|---|---|---|---|---|---|---|---|")?;
     let mut slow = Vec::new();
+    // Peak resident memory before the first time range (P5.2b: range databases are built after).
+    let mut before_ranges: Option<u64> = None;
     for (view, case_path) in &cases {
+        if before_ranges.is_none() && case_path.contains("{r") {
+            before_ranges = peak_rss_kib();
+        }
         if args
             .only
             .as_ref()
@@ -666,6 +671,13 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
         )?;
     }
     writeln!(out, "\n{} requêtes au-dessus de 300 ms", slow.len())?;
+    let mib = |k: Option<u64>| k.map_or_else(|| "-".to_owned(), |k| format!("{} Mio", k / 1024));
+    writeln!(
+        out,
+        "pic de mémoire résidente (VmHWM) : {} avant les plages, {} à la fin",
+        mib(before_ranges),
+        mib(peak_rss_kib())
+    )?;
     Ok(())
 }
 

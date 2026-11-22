@@ -35,7 +35,9 @@ import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
 import { Timestamp } from '../../components/Timestamp';
+import { cn } from '../../lib/cn';
 import { formatBytes, formatCount, formatShare, sameLocalDay } from '../../lib/format';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { LoadMore } from '../connections/LoadMore';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
@@ -316,22 +318,29 @@ function EtherTypesCard({
 }
 
 /**
- * Header of a counter column: under a range, it says that the value is that of the session (full
- * text on hover when the column is too narrow; the card also says it in a note).
+ * Header of a counter column: under a range, a second line says that the value is that of the
+ * session (docs/specs/time-filter.md). Below 768 px the rows are cards: the card note says it.
  */
 function useCounterHeader(ranged: boolean): (label: string) => string | (() => ReactNode) {
   const { t } = useTranslation();
+  const wide = useMediaQuery(MD_QUERY);
   return (label) => {
-    if (!ranged) return label;
-    const full = t('timeRange.wholeSessionColumn', { label });
-    return () => <span title={full}>{full}</span>;
+    if (!ranged || !wide) return label;
+    return () => (
+      <>
+        {label}
+        <span className="block leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>
+      </>
+    );
   };
 }
 
-/** Under a range: the frames and bytes of the rows are those of the whole session. */
-function CountersNote() {
+/** Under a range, below 768 px: the frames and bytes of the rows are those of the whole session. */
+function CountersNote({ ranged, className }: { ranged: boolean; className?: string }) {
   const { t } = useTranslation();
-  return <p className="text-meta text-muted">{t('views.ethernet.countersNote')}</p>;
+  const wide = useMediaQuery(MD_QUERY);
+  if (!ranged || wide) return null;
+  return <p className={cn('text-meta text-muted', className)}>{t('views.ethernet.countersNote')}</p>;
 }
 
 function tpidKey(tpid: number): 'dot1q' | 'dot1ad' | 'qinqOld' {
@@ -350,7 +359,7 @@ function VlanCard({ vlans, ranged, oneDay, onSelect }: { vlans: VlanInfo[]; rang
         meta: { card: 'title' },
         accessorFn: (v) => v.stack,
         header: t('views.ethernet.vlans.stack'),
-        size: 120,
+        size: 100,
         cell: ({ row }) => {
           const v = row.original;
           const title = v.depth > 1 ? t('views.ethernet.vlans.stackTitle', { outer: v.outer_id, inner: v.inner_id }) : v.stack;
@@ -366,7 +375,7 @@ function VlanCard({ vlans, ranged, oneDay, onSelect }: { vlans: VlanInfo[]; rang
         meta: { card: 'action' },
         accessorFn: (v) => v.outer_tpid,
         header: t('views.ethernet.vlans.tag'),
-        size: 150,
+        size: 130,
         cell: ({ row }) => <Badge>{t(`views.ethernet.vlans.${tpidKey(row.original.outer_tpid)}`)}</Badge>,
       },
       {
@@ -374,7 +383,7 @@ function VlanCard({ vlans, ranged, oneDay, onSelect }: { vlans: VlanInfo[]; rang
         meta: { align: 'right' },
         accessorFn: (v) => v.frames,
         header: counter(t('views.ethernet.vlans.frames')),
-        size: 130,
+        size: 110,
         cell: ({ row }) => <span className="num">{formatCount(row.original.frames)}</span>,
       },
       {
@@ -382,21 +391,21 @@ function VlanCard({ vlans, ranged, oneDay, onSelect }: { vlans: VlanInfo[]; rang
         meta: { align: 'right' },
         accessorFn: (v) => v.bytes,
         header: counter(t('views.ethernet.vlans.bytes')),
-        size: 130,
+        size: 110,
         cell: ({ row }) => <span className="num">{formatBytes(row.original.bytes)}</span>,
       },
       {
         id: 'first',
         accessorFn: (v) => v.first_ts_us,
         header: t('views.ethernet.vlans.firstSeen'),
-        size: oneDay ? 100 : 170,
+        size: oneDay ? 130 : 170,
         cell: ({ row }) => <Timestamp us={row.original.first_ts_us} withDate={!oneDay} />,
       },
       {
         id: 'last',
         accessorFn: (v) => v.last_ts_us,
         header: t('views.ethernet.vlans.lastSeen'),
-        size: oneDay ? 100 : 170,
+        size: oneDay ? 130 : 170,
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ],
@@ -404,6 +413,7 @@ function VlanCard({ vlans, ranged, oneDay, onSelect }: { vlans: VlanInfo[]; rang
   );
   return (
     <Card title={t('views.ethernet.vlans.title')} flush>
+      <CountersNote ranged={ranged} className="border-b border-line px-3 py-2" />
       <DataTable
         columns={columns}
         data={vlans}
@@ -552,14 +562,14 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
         meta: { card: 'title' },
         accessorFn: (m) => m.address.mac,
         header: t('views.ethernet.macs.col.address'),
-        size: 240,
+        size: 260,
         cell: ({ row }) => <MacAddress address={row.original.address} copy />,
       },
       {
         id: 'vendor',
         accessorFn: (m) => m.address.vendor ?? '',
         header: t('views.ethernet.macs.col.vendor'),
-        size: 190,
+        size: 170,
         cell: ({ row }) => <VendorName address={row.original.address} registry={row.original.registry} />,
       },
       {
@@ -597,7 +607,7 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
         id: 'last',
         accessorFn: (m) => m.last_ts_us,
         header: t('views.ethernet.macs.col.lastSeen'),
-        size: oneDay ? 100 : 170,
+        size: oneDay ? 130 : 170,
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ],
@@ -629,7 +639,7 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
               />
             </div>
           </div>
-          {ranged && <CountersNote />}
+          <CountersNote ranged={ranged} />
           {(vendor !== null || vlan !== null) && (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {vendor !== null && (
@@ -748,14 +758,14 @@ function PairsCard({
         meta: { card: 'title' },
         accessorFn: (p) => p.src.mac,
         header: t('views.ethernet.pairs.col.source'),
-        size: 200,
+        size: 220,
         cell: ({ row }) => <MacAddress address={row.original.src} withVendor />,
       },
       {
         id: 'destination',
         accessorFn: (p) => p.dst.mac,
         header: t('views.ethernet.pairs.col.destination'),
-        size: 200,
+        size: 220,
         cell: ({ row }) => <MacAddress address={row.original.dst} withVendor />,
       },
       {
@@ -792,7 +802,7 @@ function PairsCard({
         id: 'last',
         accessorFn: (p) => p.last_ts_us,
         header: t('views.ethernet.pairs.col.lastSeen'),
-        size: oneDay ? 100 : 170,
+        size: oneDay ? 130 : 170,
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ],
@@ -815,7 +825,7 @@ function PairsCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <SearchInput value={search} onChange={setSearch} placeholder={t('views.ethernet.pairs.search')} />
           </div>
-          {ranged && <CountersNote />}
+          <CountersNote ranged={ranged} />
           {(mac !== null || vlan !== null || ethertype !== null) && (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {mac !== null && (

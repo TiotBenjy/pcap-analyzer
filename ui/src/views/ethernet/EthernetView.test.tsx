@@ -200,8 +200,9 @@ describe('EthernetView', () => {
     expect(ethApi.getEthernetStats).toHaveBeenCalledWith(ID, expect.anything(), range);
     expect(ethApi.listMacs).toHaveBeenCalledWith(ID, { sort: 'frames' }, null, expect.anything(), range);
     expect(ethApi.listMacPairs).toHaveBeenCalledWith(ID, { sort: 'frames' }, null, expect.anything(), range);
-    expect(screen.getByText('Frames sent (whole session)')).toHaveAttribute('title', 'Frames sent (whole session)');
-    expect(screen.getAllByText('In a time range, frames and bytes are those of the whole session.')).toHaveLength(2);
+    // Wide: a second line in the counter headers (VLANs, addresses, pairs); no card note.
+    expect(screen.getAllByText('Whole session').length).toBeGreaterThanOrEqual(7);
+    expect(screen.queryByText('In a time range, frames and bytes are those of the whole session.')).not.toBeInTheDocument();
     expect(screen.getByText('EtherTypes (whole session)')).toBeInTheDocument();
   });
 
@@ -212,6 +213,13 @@ describe('EthernetView', () => {
     renderApp(`/sessions/${ID}/ethernet`);
     expect(await screen.findByText('No Ethernet frame in this session')).toBeInTheDocument();
     expect(screen.queryByRole('table', { name: 'MAC addresses' })).not.toBeInTheDocument();
+  });
+
+  it('says in a note of each card that the counters cover the session, on narrow screens', async () => {
+    setViewportWide(false);
+    renderApp(`/sessions/${ID}/ethernet?from_us=${T0}&to_us=${T0 + 59_999_999}`);
+    await screen.findByRole('list', { name: 'MAC addresses' });
+    expect(screen.getAllByText('In a time range, frames and bytes are those of the whole session.')).toHaveLength(3);
   });
 
   it('shows the addresses as cards on narrow screens', async () => {

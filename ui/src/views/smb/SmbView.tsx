@@ -212,12 +212,16 @@ function Roles({ roles }: { roles: readonly string[] }) {
   const { t } = useTranslation();
   if (roles.length === 0) return <span className="text-muted">-</span>;
   return (
-    <span className="flex flex-wrap gap-1">
-      {roles.map((r) => (
-        <Badge key={r} tone="neutral">
-          {t(tokenKey('roles', r), { defaultValue: r })}
-        </Badge>
-      ))}
+    <span className="flex min-w-0 flex-wrap gap-1">
+      {roles.map((r) => {
+        const label = t(tokenKey('roles', r), { defaultValue: r });
+        // Contained in its cell: a long role is cut with its full name in the tooltip.
+        return (
+          <Badge key={r} tone="neutral" title={label} className="max-w-full min-w-0 overflow-hidden">
+            <span className="truncate">{label}</span>
+          </Badge>
+        );
+      })}
     </span>
   );
 }
@@ -248,11 +252,12 @@ function AnnounceTable({ query }: { query: ListQuery<SmbAnnounceInfo> }) {
                 <li key={`${a.source.ip}-${a.server_name}-${a.dst_name}`} className="flex min-w-0 flex-col gap-1.5 px-3 py-2.5">
                   <div className="flex min-w-0 items-center justify-between gap-2">
                     <Name announce={a} />
-                    <span
-                      className="num shrink-0 text-meta text-muted"
-                      {...(ranged ? { title: t('timeRange.wholeSession') } : {})}
-                    >
-                      {t('views.smb.announce.times', { count: Number(a.announce_count) })}
+                    <span className="num shrink-0 text-meta text-muted">
+                      {ranged
+                        ? t('timeRange.wholeSessionColumn', {
+                            label: t('views.smb.announce.times', { count: Number(a.announce_count) }),
+                          })
+                        : t('views.smb.announce.times', { count: Number(a.announce_count) })}
                     </span>
                   </div>
                   <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
@@ -278,8 +283,13 @@ function AnnounceTable({ query }: { query: ListQuery<SmbAnnounceInfo> }) {
                   <th scope="col" className="w-[16%] px-3 py-2 font-medium">{t('views.smb.announce.os')}</th>
                   <th scope="col" className="px-3 py-2 font-medium">{t('views.smb.announce.roles')}</th>
                   <th scope="col" className="w-[14%] px-3 py-2 font-medium">{t('views.smb.announce.comment')}</th>
-                  <th scope="col" className={cn('px-3 py-2 text-right font-medium sm:pr-4', ranged ? 'w-28' : 'w-20')}>
-                    {ranged ? t('timeRange.wholeSessionColumn', { label: t('views.smb.announce.count') }) : t('views.smb.announce.count')}
+                  <th scope="col" className={cn('px-3 py-2 text-right font-medium sm:pr-4', ranged ? 'w-32' : 'w-20')}>
+                    {t('views.smb.announce.count')}
+                    {ranged && (
+                      <span className="block font-normal whitespace-nowrap text-faint">
+                        {t('timeRange.wholeSession')}
+                      </span>
+                    )}
                   </th>
                 </tr>
               </thead>

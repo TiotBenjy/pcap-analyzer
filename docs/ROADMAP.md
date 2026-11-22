@@ -462,9 +462,25 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 
 ### Vague 5.0 — Socle commun (séquentiel, avant les nouveaux onglets)
 
-- [~] **P5.1** `refactor/views-harmonize` — Tâche transverse notée après la vague 3.B : composant `Endpoint`
+- [x] **P5.1** `refactor/views-harmonize` — Tâche transverse notée après la vague 3.B : composant `Endpoint`
       commun, `CopyButton` partagé (16 px, cible 32 px), helper unique de barres horizontales avec valeurs,
       format d'heure, filtres dans l'en-tête de carte, tableaux en cartes sous `md`.
+      Fusionné le 2026-11-22 : `Endpoint` (4 modes, point d'extension `hostLink.ts` pour P5.12), `CopyButton` et
+      `lib/clipboard.ts`, `BarList` en HTML à la place des barres ECharts (pas d'ADR : CSSOM déjà permis par
+      ADR-006, règle dans `UI_GUIDELINES.md`), `Timestamp`, bande `filters` de `Card` et `SearchInput`, mode
+      `cards` de `DataTable`. Suivis de revue : avec un `HostLinkContext` (P5.12), `Endpoint` rendra un bouton
+      dans d'autres éléments interactifs (carte Credentials, lignes cliquables) -> mode sans lien ; libellé
+      accessible des lignes `BarList` sans valeur ni raison de faiblesse ; pas de tri sous `md` en mode cartes
+      (à écrire dans `UI_GUIDELINES.md`) ; `docs/specs/README.md:17` (« copie » pour toute IP) à aligner sur les
+      guidelines ; `shots.spec.ts` accepte une liste même à 1280 px ; tableaux faits main (DNS, Open Ports,
+      Servers, SMB, Credentials) pas encore sur le mode cartes de `DataTable`. Revue visuelle : couleur des barres
+      `BarList` sans logique entre vues ; placeholder de recherche TLS coupé et segmenté des versions sur deux
+      lignes à 375 px ; bandes de filtres de Network (bascules d'affichage), Pictures (deux `select`) et Servers
+      (pas de recherche) ; légendes de catégories d'adresses différentes entre Connections et Network ; flèche
+      `→` en caractère dans SMB ; titre du panneau des flux avec IP hors `Endpoint` ; cellule « smb, tcp, tls »
+      collée au bord à 1280 px ; cartes mobiles hautes (Conversations, Sources) ; donuts TLS et SMB sans total ;
+      couleur de `Timestamp` inégale ; nom de certificat très court dans la colonne Certificate de TLS à 1280 px ;
+      drapeau en double sur la ligne Adresse de `NodePanel`.
 - [ ] **P5.2** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
       toutes les vues (`from_us`/`to_us` dans l'API et l'URL, refetch serveur du zoom Overview, suivi de P4.2).
       Après P5.1.

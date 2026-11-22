@@ -1,4 +1,5 @@
-//! pcap / pcapng / gzip readers (`netsift_capture::reader`): the input is a whole capture file.
+//! pcap / pcapng readers and their gzip, zstd and LZ4 frame decompressors
+//! (`netsift_capture::reader`): the input is a whole capture file.
 #![no_main]
 
 use std::io::Cursor;

@@ -1,5 +1,5 @@
 //! End to end without the store: capture reader, flow table, every built-in analyzer and the
-//! translation into store rows. The input is a whole capture file (pcap, pcapng, gzip).
+//! translation into store rows. The input is a whole capture file (pcap, pcapng, gzip, zstd, LZ4).
 #![no_main]
 
 use std::io::Cursor;

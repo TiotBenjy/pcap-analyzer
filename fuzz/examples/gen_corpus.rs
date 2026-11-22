@@ -213,6 +213,8 @@ fn from_scenario(out: &mut Out, name: &str, packets: &[Packet]) -> Result<(), Bo
         ("pcapns", Encoding::pcap_ns()),
         ("pcapng", Encoding::pcapng()),
         ("pcapnggz", Encoding::pcapng().gz()),
+        ("pcapngzst", Encoding::pcapng().zst()),
+        ("pcaplz4", Encoding::pcap().lz4()),
     ];
     for (i, (ename, enc)) in encodings.iter().enumerate() {
         let file = bounded_file(packets, enc)?;

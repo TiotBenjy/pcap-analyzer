@@ -334,6 +334,8 @@ describe('DNS charts and formats', () => {
       ['Other', '2', true],
     ]);
     expect(bars[0]?.title).toBe('A: 9 (82%)');
+    // Plain text for the title attribute: capture names are not HTML-escaped there.
+    expect(entryBars([{ key: 'q', label: `<b>&'x`, value: 1 }], String)[0]?.title).toBe(`<b>&'x: 1 (100%)`);
     expect(truncateLabel('x'.repeat(30))).toHaveLength(24);
     expect(truncateLabel('short')).toBe('short');
     expect(escapeHtml(`a&<>"'`)).toBe('a&amp;&lt;&gt;&quot;&#39;');

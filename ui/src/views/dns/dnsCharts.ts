@@ -19,10 +19,15 @@ interface ItemParam {
   percent?: number;
 }
 
-function tooltipLine(label: string, value: number, total: number, format: (n: number) => string): string {
+/** `label: value (share)` as plain text (a `title` attribute, or HTML once escaped). */
+function shareLine(label: string, value: number, total: number, format: (n: number) => string): string {
   const share = formatShare(value, total);
+  return labelled(label, share === '' ? format(value) : `${format(value)} (${share})`);
+}
+
+function tooltipLine(label: string, value: number, total: number, format: (n: number) => string): string {
   // ECharts renders tooltips as HTML: escape the label (names come from the capture).
-  return labelled(escapeHtml(label), share === '' ? format(value) : `${format(value)} (${share})`);
+  return shareLine(escapeHtml(label), value, total, format);
 }
 
 /** Vertical position of the donut center, in percent of the chart height (the total goes there). */
@@ -66,7 +71,8 @@ export function entryBars(entries: readonly ChartEntry[], format: (n: number) =>
   return entries.map((e) => ({
     key: e.key,
     label: e.label,
-    title: tooltipLine(e.label, e.value, total, format),
+    // A `title` attribute is plain text: no HTML escaping.
+    title: shareLine(e.label, e.value, total, format),
     value: e.value,
     valueText: format(e.value),
     color: e.color ?? color,

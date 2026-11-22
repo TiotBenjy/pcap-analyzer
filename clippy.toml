@@ -6,4 +6,4 @@ allow-panic-in-tests = true
 allow-print-in-tests = true
 allow-dbg-in-tests = false
 # Domain terms that are not code identifiers (".." keeps clippy defaults).
-doc-valid-idents = ["GeoIP", "NetSift", "NetBIOS", "NTLMSSP", "PCAPNG", "TypeScript", "WebKitGTK", ".."]
+doc-valid-idents = ["EtherType", "EtherTypes", "GeoIP", "NetSift", "NetBIOS", "NTLMSSP", "PCAPNG", "TypeScript", "WebKitGTK", ".."]

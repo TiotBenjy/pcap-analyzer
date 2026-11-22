@@ -121,7 +121,9 @@ fn macs_of(items: &[Value]) -> Vec<&str> {
 async fn stats_snapshot() {
     let env = Env::new();
     let id = env.import();
-    let json = env.ok(&format!("/api/v1/sessions/{id}/ethernet/stats")).await;
+    let json = env
+        .ok(&format!("/api/v1/sessions/{id}/ethernet/stats"))
+        .await;
     assert_eq!(json["frames"], 2 * ROUND);
     insta::assert_json_snapshot!(json);
 }
@@ -145,7 +147,10 @@ async fn addresses_with_vendor_class_and_counters() {
     assert_eq!(vbox["frames_sent"], 6);
     assert_eq!(find("1c:87:74:01:02:03")["registry"], "ma-m");
     assert_eq!(find("70:b3:d5:00:1a:bc")["registry"], "ma-s");
-    assert_eq!(find("1c:87:74:01:02:03")["vlans"], serde_json::json!(["100.20"]));
+    assert_eq!(
+        find("1c:87:74:01:02:03")["vlans"],
+        serde_json::json!(["100.20"])
+    );
     let qemu = find("52:55:0a:00:02:01");
     assert_eq!(qemu["address"]["local"], true);
     assert_eq!(qemu["address"]["vendor"], Value::Null);
@@ -154,8 +159,14 @@ async fn addresses_with_vendor_class_and_counters() {
     let v6 = find("33:33:00:00:00:01");
     assert_eq!(v6["address"]["kind"], "multicast");
     assert_eq!(v6["address"]["group"], "ipv6_multicast");
-    assert_eq!(find("01:00:5e:00:00:fb")["address"]["group"], "ipv4_multicast");
-    assert_eq!(find("01:80:c2:00:00:00")["address"]["group"], "ieee8021_reserved");
+    assert_eq!(
+        find("01:00:5e:00:00:fb")["address"]["group"],
+        "ipv4_multicast"
+    );
+    assert_eq!(
+        find("01:80:c2:00:00:00")["address"]["group"],
+        "ieee8021_reserved"
+    );
 
     // Default order: frames, descending; keyset pages give the same rows as one page.
     let one = env.ok(&format!("{base}?limit=100")).await;
@@ -175,21 +186,39 @@ async fn address_filters() {
     assert_eq!(count(env.all(&format!("{base}?q=08-00-27"), 10).await), 2);
     assert_eq!(count(env.all(&format!("{base}?q=raspberry"), 10).await), 1);
     // 9 unicast addresses, 2 of them locally administered; 5 group addresses.
-    assert_eq!(count(env.all(&format!("{base}?class=unicast"), 10).await), 9);
+    assert_eq!(
+        count(env.all(&format!("{base}?class=unicast"), 10).await),
+        9
+    );
     assert_eq!(
         macs_of(&env.all(&format!("{base}?class=local&sort=mac"), 10).await),
         vec!["52:55:0a:00:02:01", "da:a1:19:3c:4e:7f"]
     );
     assert_eq!(count(env.all(&format!("{base}?class=group"), 10).await), 5);
     assert_eq!(
-        count(env.all(&format!("{base}?vendor=PCS%20Systemtechnik%20GmbH"), 10).await),
+        count(
+            env.all(&format!("{base}?vendor=PCS%20Systemtechnik%20GmbH"), 10)
+                .await
+        ),
         2
     );
-    assert_eq!(count(env.all(&format!("{base}?vendor=~local"), 10).await), 2);
-    assert_eq!(count(env.all(&format!("{base}?vendor=~unknown"), 10).await), 0);
+    assert_eq!(
+        count(env.all(&format!("{base}?vendor=~local"), 10).await),
+        2
+    );
+    assert_eq!(
+        count(env.all(&format!("{base}?vendor=~unknown"), 10).await),
+        0
+    );
     assert_eq!(count(env.all(&format!("{base}?vlan=10"), 10).await), 4);
     assert_eq!(count(env.all(&format!("{base}?vlan=100.20"), 10).await), 2);
-    for bad in ["sort=size", "class=device", "vlan=4096", "vlan=1.2.3.4.5", "vlan=x"] {
+    for bad in [
+        "sort=size",
+        "class=device",
+        "vlan=4096",
+        "vlan=1.2.3.4.5",
+        "vlan=x",
+    ] {
         let (status, _) = env.get(&format!("{base}?{bad}")).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
     }
@@ -221,7 +250,10 @@ async fn pairs_with_filters_and_pages() {
     assert_eq!(lldp["ethertypes"][0]["name"], "LLDP");
 
     let n = |items: Vec<Value>| items.len();
-    assert_eq!(n(env.all(&format!("{base}?mac=08:00:27:09:d9:cb"), 10).await), 4);
+    assert_eq!(
+        n(env.all(&format!("{base}?mac=08:00:27:09:d9:cb"), 10).await),
+        4
+    );
     assert_eq!(n(env.all(&format!("{base}?q=philips"), 10).await), 2);
     assert_eq!(n(env.all(&format!("{base}?vlan=10"), 10).await), 4);
     assert_eq!(n(env.all(&format!("{base}?ethertype=0x86dd"), 10).await), 1);
@@ -240,15 +272,25 @@ async fn time_range_keeps_overlapping_rows() {
     let api = format!("/api/v1/sessions/{id}/ethernet");
     // The second round only (from 30 s on): addresses of both rounds span both, so all stay,
     // with their session counters; a range before the capture is empty.
-    let second = format!("from_us={}&to_us={}", START_US + 30_000_000, START_US + 120_000_000);
+    let second = format!(
+        "from_us={}&to_us={}",
+        START_US + 30_000_000,
+        START_US + 120_000_000
+    );
     let macs = env.all(&format!("{api}/macs?{second}"), 50).await;
     assert_eq!(macs.len(), 14);
-    let vbox = macs.iter().find(|m| m["address"]["mac"] == "08:00:27:09:d9:cb").unwrap();
+    let vbox = macs
+        .iter()
+        .find(|m| m["address"]["mac"] == "08:00:27:09:d9:cb")
+        .unwrap();
     assert_eq!(vbox["frames_sent"], 6);
     // The first 0.4 ms: only the spanning tree frame of the switch (its rows start there).
     let early = format!("from_us={START_US}&to_us={}", START_US + 400);
     let macs = env.all(&format!("{api}/macs?{early}&sort=mac"), 50).await;
-    assert_eq!(macs_of(&macs), vec!["00:00:0c:9f:f0:01", "01:80:c2:00:00:00"]);
+    assert_eq!(
+        macs_of(&macs),
+        vec!["00:00:0c:9f:f0:01", "01:80:c2:00:00:00"]
+    );
     let pairs = env.all(&format!("{api}/pairs?{early}"), 50).await;
     assert_eq!(pairs.len(), 1);
     assert_eq!(pairs[0]["frames"], 2, "session counters");
@@ -259,8 +301,8 @@ async fn time_range_keeps_overlapping_rows() {
     assert_eq!(stats["vlan_count"], 0);
 
     let before = "from_us=0&to_us=10";
-    assert!(env.all(&format!("{api}/macs?{before}"), 50).await.is_empty());
-    assert!(env.all(&format!("{api}/pairs?{before}"), 50).await.is_empty());
+    assert_eq!(env.all(&format!("{api}/macs?{before}"), 50).await.len(), 0);
+    assert_eq!(env.all(&format!("{api}/pairs?{before}"), 50).await.len(), 0);
     let empty = env.ok(&format!("{api}/stats?{before}")).await;
     assert_eq!(empty["mac_count"], 0);
     assert_eq!(empty["frames"], 0);
@@ -284,7 +326,10 @@ async fn time_range_keeps_overlapping_rows() {
         .iter()
         .find(|m| m["id"] == "ethernet")
         .unwrap();
-    assert_eq!((module["count"].as_u64(), module["scope"].as_str()), (Some(0), Some("range")));
+    assert_eq!(
+        (module["count"].as_u64(), module["scope"].as_str()),
+        (Some(0), Some("range"))
+    );
 }
 
 #[tokio::test]
@@ -292,7 +337,9 @@ async fn rejects_invalid_ranges() {
     let env = Env::new();
     let id = env.import();
     let (status, _) = env
-        .get(&format!("/api/v1/sessions/{id}/ethernet/stats?from_us=10&to_us=5"))
+        .get(&format!(
+            "/api/v1/sessions/{id}/ethernet/stats?from_us=10&to_us=5"
+        ))
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }

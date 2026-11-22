@@ -15,7 +15,10 @@ fn hex(mac: [u8; 6]) -> String {
 }
 
 fn stacks(v: &[VlanStack]) -> String {
-    v.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
+    v.iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Merges deltas the way the store does (sums, min/max times, sorted bounded unions).
@@ -42,60 +45,65 @@ fn union<T: Ord + Copy>(a: &mut Vec<T>, b: &[T], max: usize) {
 }
 
 fn merge(records: &[Record]) -> Merged {
-    let mut m = Merged::default();
-    for r in records {
-        let Record::Ethernet(r) = r else { continue };
-        match r {
-            EthernetRecord::Mac(d) => {
-                let e = m.macs.entry(d.mac).or_insert_with(|| MacDelta {
+    let mut merged = Merged::default();
+    for record in records {
+        let Record::Ethernet(record) = record else {
+            continue;
+        };
+        match record {
+            EthernetRecord::Mac(delta) => {
+                let entry = merged.macs.entry(delta.mac).or_insert_with(|| MacDelta {
                     frames_sent: 0,
                     bytes_sent: 0,
                     frames_received: 0,
                     bytes_received: 0,
                     vlans: Vec::new(),
-                    ..d.clone()
+                    ..delta.clone()
                 });
-                e.frames_sent += d.frames_sent;
-                e.bytes_sent += d.bytes_sent;
-                e.frames_received += d.frames_received;
-                e.bytes_received += d.bytes_received;
-                e.first_ts = e.first_ts.min(d.first_ts);
-                e.last_ts = e.last_ts.max(d.last_ts);
-                union(&mut e.vlans, &d.vlans, MAX_VLANS);
+                entry.frames_sent += delta.frames_sent;
+                entry.bytes_sent += delta.bytes_sent;
+                entry.frames_received += delta.frames_received;
+                entry.bytes_received += delta.bytes_received;
+                entry.first_ts = entry.first_ts.min(delta.first_ts);
+                entry.last_ts = entry.last_ts.max(delta.last_ts);
+                union(&mut entry.vlans, &delta.vlans, MAX_VLANS);
             }
-            EthernetRecord::Pair(d) => {
-                let e = m.pairs.entry((d.src, d.dst)).or_insert_with(|| PairDelta {
-                    frames: 0,
-                    bytes: 0,
-                    ethertypes: Vec::new(),
-                    vlans: Vec::new(),
-                    ..d.clone()
-                });
-                e.frames += d.frames;
-                e.bytes += d.bytes;
-                e.first_ts = e.first_ts.min(d.first_ts);
-                e.last_ts = e.last_ts.max(d.last_ts);
-                union(&mut e.ethertypes, &d.ethertypes, MAX_ETHERTYPES);
-                union(&mut e.vlans, &d.vlans, MAX_VLANS);
+            EthernetRecord::Pair(delta) => {
+                let entry = merged
+                    .pairs
+                    .entry((delta.src, delta.dst))
+                    .or_insert_with(|| PairDelta {
+                        frames: 0,
+                        bytes: 0,
+                        ethertypes: Vec::new(),
+                        vlans: Vec::new(),
+                        ..delta.clone()
+                    });
+                entry.frames += delta.frames;
+                entry.bytes += delta.bytes;
+                entry.first_ts = entry.first_ts.min(delta.first_ts);
+                entry.last_ts = entry.last_ts.max(delta.last_ts);
+                union(&mut entry.ethertypes, &delta.ethertypes, MAX_ETHERTYPES);
+                union(&mut entry.vlans, &delta.vlans, MAX_VLANS);
             }
-            EthernetRecord::EtherType(k, v) => match m.types.get_mut(k) {
-                Some(e) => merge_volume(e, v),
+            EthernetRecord::EtherType(k, v) => match merged.types.get_mut(k) {
+                Some(entry) => merge_volume(entry, v),
                 None => {
-                    m.types.insert(*k, *v);
+                    merged.types.insert(*k, *v);
                 }
             },
-            EthernetRecord::Vlan(s, tpid, v) => match m.vlans.get_mut(s) {
-                Some((t, e)) => {
+            EthernetRecord::Vlan(s, tpid, v) => match merged.vlans.get_mut(s) {
+                Some((t, entry)) => {
                     *t = (*t).max(*tpid);
-                    merge_volume(e, v);
+                    merge_volume(entry, v);
                 }
                 None => {
-                    m.vlans.insert(*s, (*tpid, *v));
+                    merged.vlans.insert(*s, (*tpid, *v));
                 }
             },
         }
     }
-    m
+    merged
 }
 
 fn render(m: &Merged) -> String {
@@ -118,7 +126,11 @@ fn render(m: &Merged) -> String {
         .unwrap();
     }
     for d in m.pairs.values() {
-        let types: Vec<String> = d.ethertypes.iter().map(|k| format!("{:#06x}", k.0)).collect();
+        let types: Vec<String> = d
+            .ethertypes
+            .iter()
+            .map(|k| format!("{:#06x}", k.0))
+            .collect();
         writeln!(
             s,
             "pair {} -> {} frames={} bytes={} {}..{} types={types:?} vlans=[{}]",
@@ -133,10 +145,20 @@ fn render(m: &Merged) -> String {
         .unwrap();
     }
     for (k, v) in &m.types {
-        writeln!(s, "ethertype {:#06x} frames={} bytes={}", k.0, v.frames, v.bytes).unwrap();
+        writeln!(
+            s,
+            "ethertype {:#06x} frames={} bytes={}",
+            k.0, v.frames, v.bytes
+        )
+        .unwrap();
     }
     for (stack, (tpid, v)) in &m.vlans {
-        writeln!(s, "vlan {stack} tpid={tpid:#06x} frames={} bytes={}", v.frames, v.bytes).unwrap();
+        writeln!(
+            s,
+            "vlan {stack} tpid={tpid:#06x} frames={} bytes={}",
+            v.frames, v.bytes
+        )
+        .unwrap();
     }
     s
 }
@@ -199,7 +221,10 @@ fn addresses_pairs_types_and_vlans() {
 
     // Directional pairs.
     let p = &m.pairs[&(macs::INTEL, macs::BROADCAST)];
-    assert_eq!(p.ethertypes, vec![EtherKey(i32::from(fx::ETHERTYPE_EXPERIMENTAL))]);
+    assert_eq!(
+        p.ethertypes,
+        vec![EtherKey(i32::from(fx::ETHERTYPE_EXPERIMENTAL))]
+    );
     assert_eq!(p.vlans, vec![v10]);
     assert!(m.pairs.contains_key(&(macs::RASPBERRY, macs::INTEL)));
     assert!(m.pairs.contains_key(&(macs::INTEL, macs::RASPBERRY)));
@@ -236,7 +261,7 @@ fn non_ethernet_links_are_ignored() {
         p.linktype = netsift_fixtures::LINKTYPE_RAW;
         p.data.drain(..14);
     }
-    assert!(analyze(&AnalyzerConfig::default(), &packets).is_empty());
+    assert_eq!(analyze(&AnalyzerConfig::default(), &packets).len(), 0);
 }
 
 #[test]
@@ -245,7 +270,10 @@ fn truncated_frames_count_as_unknown() {
     // A VLAN tag cut short: addresses, but no EtherType nor LLC header.
     sc.push_frame([&macs::BROADCAST[..], &macs::INTEL[..], &[0x81, 0x00, 0x00]].concat());
     let m = merge(&analyze(&AnalyzerConfig::default(), &sc.into_packets()));
-    assert_eq!(m.types.keys().copied().collect::<Vec<_>>(), vec![EtherKey::UNKNOWN]);
+    assert_eq!(
+        m.types.keys().copied().collect::<Vec<_>>(),
+        vec![EtherKey::UNKNOWN]
+    );
     assert_eq!(m.macs[&macs::INTEL].frames_sent, 1);
 }
 
@@ -253,10 +281,19 @@ fn truncated_frames_count_as_unknown() {
 fn bounded_sets_per_pair() {
     let mut sc = Scenario::starting_at(0);
     for vid in 1..=40u16 {
-        sc.push_frame(fx::frame(macs::RASPBERRY, macs::INTEL, &[(fx::TPID_8021Q, vid)], 0x88b5, b"x"));
+        sc.push_frame(fx::frame(
+            macs::RASPBERRY,
+            macs::INTEL,
+            &[(fx::TPID_8021Q, vid)],
+            0x88b5,
+            b"x",
+        ));
     }
     let m = merge(&analyze(&AnalyzerConfig::default(), &sc.into_packets()));
-    assert_eq!(m.pairs[&(macs::INTEL, macs::RASPBERRY)].vlans.len(), MAX_VLANS);
+    assert_eq!(
+        m.pairs[&(macs::INTEL, macs::RASPBERRY)].vlans.len(),
+        MAX_VLANS
+    );
     assert_eq!(m.macs[&macs::INTEL].vlans.len(), MAX_VLANS);
     assert_eq!(m.vlans.len(), 40);
 }

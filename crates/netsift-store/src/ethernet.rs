@@ -31,8 +31,10 @@ pub const MAX_VENDORS: u32 = 50;
 
 /// Lower-case `aa:bb:cc:dd:ee:ff`.
 pub fn mac_text(mac: [u8; 6]) -> String {
-    let [a, b, c, d, e, f] = mac;
-    format!("{a:02x}:{b:02x}:{c:02x}:{d:02x}:{e:02x}:{f:02x}")
+    mac.iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(":")
 }
 
 /// Additive delta of one address.
@@ -125,9 +127,14 @@ fn add(col: &str) -> String {
 }
 
 static MAC_UPSERT: LazyLock<String> = LazyLock::new(|| {
-    let sums = ["frames_sent", "bytes_sent", "frames_received", "bytes_received"]
-        .map(add)
-        .join(", ");
+    let sums = [
+        "frames_sent",
+        "bytes_sent",
+        "frames_received",
+        "bytes_received",
+    ]
+    .map(add)
+    .join(", ");
     format!(
         "INSERT INTO eth_macs (mac, vendor, registry, kind, local, grp, frames_sent, bytes_sent, \
          frames_received, bytes_received, first_ts, last_ts, vlans) \
@@ -395,7 +402,10 @@ fn mac_conditions(f: &MacFilter) -> Conditions {
         ),
         Some(VendorKey::Local) => c.push("m.kind = 'unicast' AND m.local = 1", []),
         Some(VendorKey::Unknown) => {
-            c.push("m.kind = 'unicast' AND m.local = 0 AND m.vendor IS NULL", []);
+            c.push(
+                "m.kind = 'unicast' AND m.local = 0 AND m.vendor IS NULL",
+                [],
+            );
         }
     }
     if let Some(v) = &f.vlan {

@@ -259,7 +259,10 @@ mod tests {
             let a = vendor(mac(addr)).unwrap();
             assert_eq!((a.registry, a.organization), (Registry::MaL, org), "{addr}");
         }
-        assert_eq!(vendor(mac("00:00:00:00:00:00")).unwrap().organization, "XEROX CORPORATION");
+        assert_eq!(
+            vendor(mac("00:00:00:00:00:00")).unwrap().organization,
+            "XEROX CORPORATION"
+        );
     }
 
     #[test]
@@ -273,7 +276,10 @@ mod tests {
         assert_eq!(a.registry, Registry::MaS);
         assert_eq!(a.organization, "SOREDI touch systems GmbH");
         // IAB entries are 36-bit prefixes too.
-        assert_eq!(vendor(mac("00:50:c2:57:40:01")).unwrap().registry, Registry::MaS);
+        assert_eq!(
+            vendor(mac("00:50:c2:57:40:01")).unwrap().registry,
+            Registry::MaS
+        );
         assert_eq!(
             vendor(mac("00:50:c2:57:40:01")).unwrap().organization,
             "Ingeniería Almudí S.L."
@@ -317,7 +323,11 @@ mod tests {
     #[test]
     fn locally_administered_addresses_have_no_vendor() {
         // QEMU user networking, a randomized phone address, Docker.
-        for addr in ["52:55:0a:00:02:01", "da:a1:19:3c:4e:7f", "02:42:ac:11:00:02"] {
+        for addr in [
+            "52:55:0a:00:02:01",
+            "da:a1:19:3c:4e:7f",
+            "02:42:ac:11:00:02",
+        ] {
             let c = classify(mac(addr));
             assert_eq!((c.kind, c.local), (MacKind::Unicast, true), "{addr}");
             assert_eq!(vendor(mac(addr)), None, "{addr}");

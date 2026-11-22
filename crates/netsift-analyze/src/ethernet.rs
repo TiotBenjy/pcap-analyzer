@@ -1,7 +1,7 @@
 //! The `ethernet` analyzer: link-layer addresses, pairs, EtherTypes and VLANs for the Ethernet
 //! view (`docs/specs/ethernet.md`).
 //!
-//! Every frame of an Ethernet or Linux cooked capture (802.11 frames belong to the WiFi view) is
+//! Every frame of an Ethernet or Linux cooked capture (802.11 frames belong to the Wi-Fi view) is
 //! folded, never stored one by one, into:
 //! - its **source and destination MAC addresses**: frames and wire bytes sent and received,
 //!   first and last frame times, VLAN stacks seen (at most [`MAX_VLANS`]), and, at flush time,

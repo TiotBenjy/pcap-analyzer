@@ -174,8 +174,8 @@ function Mac({ value }: { value: string | null }) {
   );
 }
 
-/** Column widths from 768 to 1024 px (about 680 px in all, a MAC address fits). */
-const NARROW_SIZES: Readonly<Record<string, number>> = { kind: 150, sender: 130, senderMac: 168, target: 130 };
+/** Column widths from 768 to 1024 px (about 700 px in all: a MAC address and both badges fit). */
+const NARROW_SIZES: Readonly<Record<string, number>> = { kind: 184, sender: 124, senderMac: 164, target: 124 };
 
 function useMessageColumns(oneDay: boolean, wide: boolean): ColumnDef<ArpMessageInfo, unknown>[] {
   const { t } = useTranslation();

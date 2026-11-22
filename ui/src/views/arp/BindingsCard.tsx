@@ -107,8 +107,17 @@ function useBindingColumns(
         meta: { card: 'title' },
         accessorFn: (b) => ipSortKey(b.ip.ip),
         header: t('views.arp.bindings.col.ip'),
-        size: wide ? 200 : 130,
-        cell: ({ row }) => <Endpoint endpoint={row.original.ip} show={wide ? 'both' : 'address'} />,
+        size: wide ? 200 : 180,
+        cell: ({ row }) =>
+          wide ? (
+            <Endpoint endpoint={row.original.ip} show="both" />
+          ) : (
+            // From 768 to 1024 px the conflict badge joins the address (no column of its own).
+            <span className="inline-flex max-w-full min-w-0 items-center gap-1.5">
+              <Endpoint endpoint={row.original.ip} show="address" />
+              {row.original.conflict && <Badge tone="warning">{t('views.arp.bindings.conflict')}</Badge>}
+            </span>
+          ),
       },
       {
         id: 'conflict',
@@ -122,7 +131,7 @@ function useBindingColumns(
         id: 'mac',
         accessorFn: (b) => b.mac,
         header: t('views.arp.bindings.col.mac'),
-        size: 196,
+        size: wide ? 196 : 192,
         cell: ({ row }) => (
           <span className="inline-flex max-w-full min-w-0 items-center">
             <span data-testid="truncatable" title={row.original.mac} className="truncate font-mono">
@@ -136,14 +145,14 @@ function useBindingColumns(
         id: 'first',
         accessorFn: (b) => b.first_ts_us,
         header: folded(t('views.arp.bindings.col.first')),
-        size: oneDay ? (ranged ? 120 : 96) : 168,
+        size: oneDay ? (ranged ? 116 : 96) : 168,
         cell: ({ row }) => <Timestamp us={row.original.first_ts_us} withDate={!oneDay} />,
       },
       {
         id: 'last',
         accessorFn: (b) => b.last_ts_us,
         header: folded(t('views.arp.bindings.col.last')),
-        size: oneDay ? (ranged ? 120 : 96) : 168,
+        size: oneDay ? (ranged ? 116 : 96) : 168,
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
       {
@@ -158,7 +167,7 @@ function useBindingColumns(
         meta: { align: 'right' },
         accessorFn: (b) => b.messages,
         header: folded(t('views.arp.bindings.col.messages')),
-        size: 104,
+        size: ranged ? 116 : 104,
         cell: ({ row }) => {
           const b = row.original;
           const detail = [
@@ -174,7 +183,7 @@ function useBindingColumns(
         },
       },
     ];
-    return wide ? all : all.filter((c) => c.id !== 'activity');
+    return wide ? all : all.filter((c) => c.id !== 'activity' && c.id !== 'conflict');
   }, [t, period, oneDay, ranged, wide]);
 }
 

@@ -87,46 +87,51 @@ export default function HttpHeadersView() {
             footer={s === undefined ? undefined : t('views.http.headerLines', { count: s.header_count })}
           />
         </div>
-        <Card title={t('views.httpHeaders.transactions')} flush>
-          <div className="flex flex-col gap-2 border-b border-line p-3 sm:p-4">
-            <FilterBar
-              filters={methodFilters(s?.methods, disabled, t('views.http.otherMethods'))}
-              onToggle={(id, active) => {
-                setDisabled((prev) => {
-                  const next = new Set(prev);
-                  if (active) next.delete(id);
-                  else next.add(id);
-                  return next;
-                });
-              }}
-              onSetAll={(active) => {
-                setDisabled(active ? new Set() : new Set(METHOD_GROUPS));
-              }}
-              search={search}
-              onSearch={setSearch}
-              searchPlaceholder={t('views.httpHeaders.searchPlaceholder')}
-            />
-            <label className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="text-muted">{t('views.httpHeaders.nameLabel')}</span>
-              <input
-                type="text"
-                list={namesId}
-                value={name}
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={t('views.httpHeaders.namePlaceholder')}
-                onChange={(e) => {
-                  setName(e.target.value);
+        <Card
+          title={t('views.httpHeaders.transactions')}
+          flush
+          filters={
+            <>
+              <FilterBar
+                filters={methodFilters(s?.methods, disabled, t('views.http.otherMethods'))}
+                onToggle={(id, active) => {
+                  setDisabled((prev) => {
+                    const next = new Set(prev);
+                    if (active) next.delete(id);
+                    else next.add(id);
+                    return next;
+                  });
                 }}
-                className="h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2.5 text-body placeholder:text-faint sm:max-w-xs"
+                onSetAll={(active) => {
+                  setDisabled(active ? new Set() : new Set(METHOD_GROUPS));
+                }}
+                search={search}
+                onSearch={setSearch}
+                searchPlaceholder={t('views.httpHeaders.searchPlaceholder')}
               />
-              <datalist id={namesId}>
-                {(s?.names ?? []).map((n) => (
-                  <option key={n.key} value={n.key} />
-                ))}
-              </datalist>
-            </label>
-          </div>
+              <label className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="text-muted">{t('views.httpHeaders.nameLabel')}</span>
+                <input
+                  type="text"
+                  list={namesId}
+                  value={name}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={t('views.httpHeaders.namePlaceholder')}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                  }}
+                  className="h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2.5 text-body placeholder:text-faint sm:max-w-xs"
+                />
+                <datalist id={namesId}>
+                  {(s?.names ?? []).map((n) => (
+                    <option key={n.key} value={n.key} />
+                  ))}
+                </datalist>
+              </label>
+            </>
+          }
+        >
           <HeaderList sessionId={sessionId} query={list} highlight={q} />
         </Card>
       </>

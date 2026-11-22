@@ -21,7 +21,7 @@ import { Skeleton } from '../../components/Skeleton';
 import { Toggle } from '../../components/Toggle';
 import { countryName } from '../../lib/countries';
 import { formatBytes, formatCount } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { useTheme } from '../../theme/theme';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
@@ -36,8 +36,6 @@ import { hasWebGL } from './webgl';
 
 const route = getRouteApi('/sessions/$sessionId');
 
-/** From this viewport width the graph is drawn; below, the links are listed (spec). */
-const MD_QUERY = '(min-width: 768px)';
 /** Links listed by the narrow and fallback layouts. */
 const LISTED_PAIRS = 15;
 /** Address categories of the legend (the others use the "Other" grey). */
@@ -257,8 +255,7 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
           }}
         />
       }
-    >
-      <div className="flex flex-col gap-3">
+      filters={
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {/* Full width below md: the "Filters" menu spans the bar, not only its button. */}
           <div className="w-full min-w-0 md:w-auto">
@@ -267,15 +264,15 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
               onSearch={setSearch}
               searchPlaceholder={t('views.network.graph.search')}
               filters={filters}
-            onToggle={(id, active) => {
-              const next = new Set(protocols);
-              if (active) next.add(id as NetworkProtocol);
-              else next.delete(id as NetworkProtocol);
-              setProtocols(next);
-            }}
-            onSetAll={(active) => {
-              setProtocols(new Set(active ? NETWORK_PROTOCOLS : []));
-            }}
+              onToggle={(id, active) => {
+                const next = new Set(protocols);
+                if (active) next.add(id as NetworkProtocol);
+                else next.delete(id as NetworkProtocol);
+                setProtocols(next);
+              }}
+              onSetAll={(active) => {
+                setProtocols(new Set(active ? NETWORK_PROTOCOLS : []));
+              }}
             />
           </div>
           <Toggle
@@ -288,6 +285,9 @@ function GraphCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
           <Toggle label={t('views.network.graph.resolveNames')} checked={resolveNames} onChange={setResolveNames} />
           <Toggle label={t('views.network.graph.ipv6')} checked={ipv6} onChange={setIpv6} />
         </div>
+      }
+    >
+      <div className="flex flex-col gap-3">
         {data !== undefined && (
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-meta text-muted">
             <span data-testid="network-summary">

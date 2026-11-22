@@ -9,39 +9,46 @@ import { useTlsSessions, useTlsStats } from '../../api/tlsQueries';
 import type { TlsSessionItem } from '../../api/types/TlsSessionItem';
 import type { TlsStats } from '../../api/types/TlsStats';
 import type { ChartEvents } from '../../charts/EChartsRenderer';
+import { CATEGORICAL, OTHER_COLOR } from '../../charts/palette';
 import { CHART_HEIGHT } from '../../charts/sizes';
 import { Badge } from '../../components/Badge';
+import { type BarItem, BarList } from '../../components/BarList';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Chart } from '../../components/Chart';
 import { DataTable } from '../../components/DataTable';
 import { EmptyState } from '../../components/EmptyState';
+import { Endpoint } from '../../components/Endpoint';
 import { ErrorState } from '../../components/ErrorState';
 import { FilterBar } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
-import { formatCount, formatPercent, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { formatCount, formatPercent, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { useTheme } from '../../theme/theme';
 import { CertificatesPanel } from './CertificatesPanel';
-import { IssueBadges, MonoValue, SuiteName } from './parts';
+import { IssueBadges, MonoValue, SuiteName, WeakDot } from './parts';
 import { SessionDetail } from './SessionDetail';
 import {
   buildMatrixOption,
-  buildSuitesOption,
   buildVersionsOption,
   matrixHeight,
   matrixVersions,
+  suiteFullName,
   suiteOfRow,
+  suiteRowLabel,
   type TlsChartFormat,
   versionOfPie,
 } from './tlsCharts';
 import { isWeakness, suiteLabel, versionLabel, versionTone } from './tlsFormat';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
+/** Key of the "other suites" bar. */
+const OTHER_SUITES = 'other';
 /** Value of the "all versions" segment. */
 const ANY = 'any';
 /** From this width every column of the sessions table fits; below, secondary ones are hidden. */
@@ -200,7 +207,26 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
   const wideTable = useMediaQuery(WIDE_TABLE_QUERY);
 
   const versionsOption = useMemo(() => buildVersionsOption(stats, fmt), [stats, fmt]);
-  const suitesOption = useMemo(() => buildSuitesOption(stats, fmt), [stats, fmt]);
+  const suiteItems = useMemo<BarItem[]>(() => {
+    const total = stats.suites.reduce((n, x) => n + x.count, 0);
+    return stats.suites.map((x) => {
+      const name = suiteFullName(x, fmt.other);
+      return {
+        key: x.suite === null ? OTHER_SUITES : String(x.suite),
+        label: suiteRowLabel(x, fmt.other),
+        title: [name, fmt.share(x.count, total), ...(x.weak === null ? [] : [fmt.weak(x.weak)])].join('\n'),
+        lead: x.weak === null ? <span aria-hidden className="inline-block size-2 shrink-0" /> : <WeakDot weak={x.weak} />,
+        value: x.count,
+        valueText: fmt.count(x.count),
+        color: x.suite === null ? OTHER_COLOR : CATEGORICAL[1],
+        mono: true,
+        truncate: 'middle',
+        muted: x.suite === null,
+        selectable: x.suite !== null,
+        active: x.suite !== null && x.suite === suite,
+      };
+    });
+  }, [stats, fmt, suite]);
   const matrixOption = useMemo(() => buildMatrixOption(stats, fmt, theme === 'dark'), [stats, fmt, theme]);
   const columnsOfMatrix = useMemo(() => matrixVersions(stats), [stats]);
 
@@ -212,17 +238,6 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
       },
     }),
     [],
-  );
-  const barEvents = useMemo<ChartEvents>(
-    () => ({
-      click: (params) => {
-        const index = (params as { dataIndex?: number }).dataIndex;
-        if (index === undefined) return;
-        const s = suiteOfRow(stats, index);
-        if (s !== undefined) setSuite((cur) => (cur === s ? undefined : s));
-      },
-    }),
-    [stats],
   );
   const matrixEvents = useMemo<ChartEvents>(
     () => ({
@@ -263,6 +278,7 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
           data={list.data.items}
           getRowId={(s) => s.id}
           ariaLabel={t('views.tls.table.label')}
+          cards
           emptyText={t('views.tls.table.empty')}
           onRowClick={(s) => {
             setSelected((cur) => (cur === s.id ? null : s.id));
@@ -289,12 +305,14 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
         </Card>
         <Card title={t('views.tls.charts.suites')}>
           <div className="flex flex-col gap-2">
-            <Chart
-              option={suitesOption}
-              height={CHART_HEIGHT.bars(suiteCount)}
+            <BarList
+              items={suiteItems}
               ariaLabel={t('views.tls.charts.suitesLabel')}
-              empty={suiteCount === 0}
-              onEvents={barEvents}
+              onSelect={(key) => {
+                const id = Number(key);
+                setSuite((cur) => (cur === id ? undefined : id));
+              }}
+              selectLabel={(item) => t('views.tls.charts.filterSuite', { suite: item.label })}
             />
             {stats.suites.some((s) => s.weak !== null) && (
               <p className="text-meta text-muted">{t('views.tls.charts.weakNote')}</p>
@@ -316,7 +334,7 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
 
       <Card
         title={t('views.tls.table.label')}
-        actions={
+        filters={
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="tls-filters">
             <FilterBar
               filters={[
@@ -419,21 +437,22 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
         accessorFn: (s) => s.ts_us,
         header: t('views.tls.table.col.time'),
         size: oneDay ? 88 : 168,
-        cell: ({ row }) => <span className="num">{formatTimestamp(row.original.ts_us, !oneDay)}</span>,
+        cell: ({ row }) => <Timestamp us={row.original.ts_us} withDate={!oneDay} />,
       },
       {
         id: 'client',
         accessorFn: (s) => s.client_ip,
         header: t('views.tls.table.col.client'),
-        size: 152,
-        cell: ({ row }) => <Endpoint ip={row.original.client_ip} port={row.original.client_port} />,
+        size: 168,
+        cell: ({ row }) => <Endpoint endpoint={row.original.client_ip} port={row.original.client_port} className="text-meta" />,
       },
       {
         id: 'server',
+        meta: { card: 'title' },
         accessorFn: (s) => s.server_ip,
         header: t('views.tls.table.col.server'),
-        size: 152,
-        cell: ({ row }) => <Endpoint ip={row.original.server_ip} port={row.original.server_port} />,
+        size: 168,
+        cell: ({ row }) => <Endpoint endpoint={row.original.server_ip} port={row.original.server_port} className="text-meta" />,
       },
       {
         id: 'sni',
@@ -451,6 +470,7 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
       },
       {
         id: 'version',
+        meta: { card: 'title' },
         accessorFn: (s) => s.version ?? 0,
         header: t('views.tls.table.col.version'),
         size: 84,
@@ -463,7 +483,7 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
         id: 'suite',
         accessorFn: (s) => s.cipher_name ?? '',
         header: t('views.tls.table.col.suite'),
-        size: 250,
+        size: 234,
         cell: ({ row }) =>
           row.original.cipher_suite === null ? null : (
             <SuiteName name={row.original.cipher_name} id={row.original.cipher_suite} weak={row.original.cipher_weak} />
@@ -521,23 +541,14 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
 
 /** Column widths below `WIDE_TABLE_QUERY` (about 1000 px in all). */
 const NARROW_SIZES: Readonly<Record<string, number>> = {
-  server: 140,
+  server: 160,
   sni: 130,
   version: 80,
-  suite: 170,
+  suite: 150,
   ja3: 100,
   ja4: 140,
   certificate: 150,
 };
-
-function Endpoint({ ip, port }: { ip: string; port: number }) {
-  const text = ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;
-  return (
-    <span data-testid="truncatable" title={text} className="block truncate font-mono text-meta">
-      {text}
-    </span>
-  );
-}
 
 function CertificateCell({ item }: { item: TlsSessionItem }) {
   const { t } = useTranslation();
@@ -549,7 +560,7 @@ function CertificateCell({ item }: { item: TlsSessionItem }) {
       <span data-testid="truncatable" title={cn} className="min-w-0 truncate">
         {cn}
       </span>
-      <IssueBadges issues={item.cert_issues} />
+      <IssueBadges issues={item.cert_issues} max={1} />
     </span>
   );
 }

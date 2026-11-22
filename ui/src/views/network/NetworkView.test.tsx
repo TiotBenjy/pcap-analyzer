@@ -203,8 +203,8 @@ describe('Network view', () => {
     expect(await within(panel).findByText('443/tcp')).toBeInTheDocument();
     // The links of the found host are highlighted in the list.
     const rows = within(screen.getByRole('list', { name: 'Links ranked by bytes' })).getAllByRole('listitem');
-    expect(rows[0]).toHaveAttribute('data-selected', 'true');
-    expect(rows[1]).not.toHaveAttribute('data-selected');
+    expect(rows[0]).toHaveAttribute('data-active', 'true');
+    expect(rows[1]).not.toHaveAttribute('data-active');
     expect(within(panel).getByText('Public')).toBeInTheDocument();
     expect(within(panel).getByText('France')).toBeInTheDocument();
     expect(within(panel).getByText('HTTP server')).toBeInTheDocument();

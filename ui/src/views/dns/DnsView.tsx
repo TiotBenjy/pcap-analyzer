@@ -8,6 +8,7 @@ import { useSession } from '../../api/sessionQueries';
 import type { DnsProtocol } from '../../api/types/DnsProtocol';
 import type { DnsStats } from '../../api/types/DnsStats';
 import { Badge } from '../../components/Badge';
+import { BarList } from '../../components/BarList';
 import { Card } from '../../components/Card';
 import { Chart } from '../../components/Chart';
 import { EmptyState } from '../../components/EmptyState';
@@ -16,7 +17,7 @@ import { FilterBar, type FilterOption } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
 import { formatCount, formatLatency } from '../../lib/format';
 import { CountryList } from './CountryList';
-import { barsHeight, barsOption, type ChartEntry, DONUT_CENTER_Y, donutOption, withOther } from './dnsCharts';
+import { type ChartEntry, DONUT_CENTER_Y, donutOption, entryBars, withOther } from './dnsCharts';
 import { protocolColor, protocolLabel, rcodeLabel } from './dnsFormat';
 import { PairsList } from './PairsList';
 import { ServerMap } from './ServerMap';
@@ -109,8 +110,10 @@ export default function DnsView() {
       <>
         <ChartsRow stats={stats.data ?? null} loading={stats.isPending && viewable} error={stats.isError} onRetry={() => void stats.refetch()} />
         <ServerMap sessionId={sessionId} enabled={viewable} />
-        <Card title={t('views.dns.table.title')} flush>
-          <div className="border-b border-line p-3 sm:px-4">
+        <Card
+          title={t('views.dns.table.title')}
+          flush
+          filters={
             <FilterBar
               filters={filters}
               onToggle={(id, active) => {
@@ -132,7 +135,8 @@ export default function DnsView() {
               onSearch={setSearch}
               searchPlaceholder={t('views.dns.filters.search')}
             />
-          </div>
+          }
+        >
           <PairsList sessionId={sessionId} filter={filter} enabled={viewable} hasTraffic={s === undefined ? null : s.total > 0} />
         </Card>
       </>
@@ -192,10 +196,8 @@ function ChartsRow({ stats, loading, error, onRetry }: ChartsRowProps) {
     );
     return {
       protocols: donutOption(protocols, formatCount),
-      rcodes: barsOption(rcodes, formatCount),
-      rcodeCount: rcodes.length,
-      qtypes: barsOption(qtypes, formatCount),
-      qtypeCount: qtypes.length,
+      rcodes: entryBars(rcodes, formatCount),
+      qtypes: entryBars(qtypes, formatCount),
     };
   }, [stats, t]);
   const latency =
@@ -207,6 +209,7 @@ function ChartsRow({ stats, loading, error, onRetry }: ChartsRowProps) {
       : null;
 
   const common = { loading, error: errorText, onRetry, empty, emptyText: t('views.dns.table.empty') };
+  const bars = { loading: loading || (stats === null && errorText === null), error: errorText, onRetry, emptyText: t('views.dns.table.empty') };
   return (
     <div
       className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))]"
@@ -233,24 +236,13 @@ function ChartsRow({ stats, loading, error, onRetry }: ChartsRowProps) {
         </div>
       </Card>
       <Card title={t('views.dns.charts.results')}>
-        <Chart
-          {...common}
-          option={options.rcodes}
-          height={barsHeight(options.rcodeCount)}
-          ariaLabel={t('views.dns.charts.resultsLabel')}
-        />
+        <BarList {...bars} items={empty ? [] : options.rcodes} ariaLabel={t('views.dns.charts.resultsLabel')} />
         {latency !== null && (
           <p className="mt-2 text-meta text-muted">{latency}</p>
         )}
       </Card>
       <Card title={t('views.dns.charts.qtypes')}>
-        <Chart
-          {...common}
-          option={options.qtypes}
-          height={barsHeight(options.qtypeCount)}
-          ariaLabel={t('views.dns.charts.qtypesLabel')}
-          empty={empty || (stats !== null && options.qtypeCount === 0)}
-        />
+        <BarList {...bars} items={empty ? [] : options.qtypes} ariaLabel={t('views.dns.charts.qtypesLabel')} />
       </Card>
       <Card title={t('views.dns.charts.countries')}>
         <CountryList stats={stats} loading={loading} error={errorText} onRetry={onRetry} />

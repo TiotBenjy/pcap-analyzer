@@ -27,6 +27,7 @@ export const tlsEn = {
     versionsLabel: 'Negotiated TLS versions',
     suites: 'Cipher suites',
     suitesLabel: 'Negotiated cipher suites, top 15',
+    filterSuite: 'Show the sessions of {{suite}}',
     matrix: 'Version x suite',
     matrixLabel: 'Sessions by negotiated version and cipher suite',
     sessions_one: '{{count}} session',
@@ -192,10 +193,6 @@ export const tlsEn = {
     error: 'Download failed',
     unavailable: 'The certificate file was not stored',
   },
-  copy: {
-    label: 'Copy {{name}}',
-    copied: 'Copied',
-  },
 } as const;
 
 type Widen<T> = { readonly [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
@@ -226,6 +223,7 @@ export const tlsFr: Widen<typeof tlsEn> = {
     versionsLabel: 'Versions TLS négociées',
     suites: 'Suites de chiffrement',
     suitesLabel: 'Suites de chiffrement négociées, top 15',
+    filterSuite: 'Afficher les sessions de {{suite}}',
     matrix: 'Version par suite',
     matrixLabel: 'Sessions par version négociée et suite de chiffrement',
     sessions_one: '{{count}} session',
@@ -390,9 +388,5 @@ export const tlsFr: Widen<typeof tlsEn> = {
     pemLabel: 'Télécharger {{name}} au format PEM',
     error: 'Échec du téléchargement',
     unavailable: "Le fichier du certificat n'a pas été conservé",
-  },
-  copy: {
-    label: 'Copier {{name}}',
-    copied: 'Copié',
   },
 };

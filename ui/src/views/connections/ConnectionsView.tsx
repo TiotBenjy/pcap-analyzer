@@ -1,6 +1,6 @@
 import { getRouteApi } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Cable, Globe2, ListTree, Search } from 'lucide-react';
+import { Cable, Globe2, ListTree } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConnectionStats, useConnectionTop, useConversations } from '../../api/connectionQueries';
@@ -11,6 +11,7 @@ import type { ConversationInfo } from '../../api/types/ConversationInfo';
 import type { CountrySide } from '../../api/types/CountrySide';
 import { ADDRESS_CATEGORIES, ADDRESS_CATEGORY_ORDER, OTHER_COLOR } from '../../charts/palette';
 import { Badge } from '../../components/Badge';
+import { BarList } from '../../components/BarList';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { DataTable } from '../../components/DataTable';
@@ -19,24 +20,25 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { Flag } from '../../components/Flag';
 import { PageHeader } from '../../components/PageHeader';
+import { SearchInput } from '../../components/SearchInput';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { Toggle } from '../../components/Toggle';
-import { formatBytes, formatCount, formatDuration, formatPercent, formatTimestamp } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { formatBytes, formatCount, formatDuration, formatPercent, labelled } from '../../lib/format';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { ChordDiagram, type ChordNodeView } from './ChordDiagram';
 import { FlowsDialog } from './FlowsDialog';
 import { countryName } from '../../lib/countries';
-import { rankedPairs, truncateLabel } from './chordLayout';
+import { MAX_LABEL_CHARS, rankedPairs } from './chordLayout';
+import { truncateLabel } from '../../charts/text';
 import { LoadMore } from './LoadMore';
 import { isViewable } from './session';
 import { SessionGate } from './SessionGate';
 import { useDebounced } from './useDebounced';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
-/** From this viewport width the chord diagram replaces the ranked list (spec). */
-const MD_QUERY = '(min-width: 768px)';
 /** Countries listed next to each other card. */
 const TOP_COUNTRIES = 5;
 /** Pairs listed by the narrow layout. */
@@ -127,30 +129,21 @@ function CountryList({ side, label }: { side: CountrySide; label: string }) {
       {top.length === 0 ? (
         <p className="text-muted">{t('views.connections.countries.noCountry')}</p>
       ) : (
-        <ol aria-label={label} className="flex flex-col gap-2">
-          {top.map((c) => {
+        <BarList
+          ariaLabel={label}
+          items={top.map((c) => {
             const name = countryName(c.country, i18n.language);
-            return (
-              <li key={c.country} className="flex min-w-0 flex-col gap-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Flag country={c.country} />
-                  <span data-testid="truncatable" title={`${name} (${c.country})`} className="min-w-0 flex-1 truncate">
-                    {name}
-                  </span>
-                  <span className="num shrink-0 text-meta text-muted">
-                    {t('views.connections.countries.hosts', { count: c.hosts })}
-                  </span>
-                  <span className="num w-20 shrink-0 text-right" title={pct(c.bytes)}>
-                    {formatBytes(c.bytes)}
-                  </span>
-                </div>
-                <div aria-hidden className="h-1.5 overflow-hidden rounded-full bg-subtle">
-                  <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(1, share(c.bytes) * 100)}%` }} />
-                </div>
-              </li>
-            );
+            return {
+              key: c.country,
+              label: name,
+              title: labelled(`${name} (${c.country})`, `${formatBytes(c.bytes)} (${pct(c.bytes)})`, i18n.language),
+              lead: <Flag country={c.country} />,
+              value: c.bytes,
+              valueText: formatBytes(c.bytes),
+              detail: t('views.connections.countries.hosts', { count: c.hosts }),
+            };
           })}
-        </ol>
+        />
       )}
       {groups.length > 0 && (
         <dl className="flex flex-col gap-1 border-t border-line pt-2 text-meta">
@@ -274,54 +267,34 @@ function ChordCard({ sessionId, enabled }: { sessionId: string; enabled: boolean
   );
 }
 
-/** Narrow layout of the matrix: pairs of endpoints ranked by bytes, with bars. */
+/** Narrow layout of the matrix: pairs of endpoints ranked by bytes, with bars split by direction. */
 function PairList({ data, nodes }: { data: ConnectionMatrix; nodes: readonly ChordNodeView[] }) {
   const { t } = useTranslation();
   const pairs = rankedPairs(data.matrix).slice(0, TOP_PAIRS);
-  const max = Math.max(1, ...pairs.map((p) => p.ab + p.ba));
   return (
-    <ol aria-label={t('views.connections.chord.listLabel')} className="flex flex-col gap-2.5">
-      {pairs.map((p) => {
+    <BarList
+      ariaLabel={t('views.connections.chord.listLabel')}
+      items={pairs.map((p) => {
         const a = nodes[p.a];
         const b = nodes[p.b];
         const title = [
           t('views.connections.chord.aToB', { a: a?.label ?? '', b: b?.label ?? '', bytes: formatBytes(p.ab) }),
           ...(p.a === p.b ? [] : [t('views.connections.chord.aToB', { a: b?.label ?? '', b: a?.label ?? '', bytes: formatBytes(p.ba) })]),
         ].join('\n');
-        return (
-          <li key={`${p.a}-${p.b}`} className="flex min-w-0 flex-col gap-1">
-            <div className="flex min-w-0 items-center gap-2 text-meta">
-              <span data-testid="truncatable" title={title} className="min-w-0 flex-1 truncate font-mono">
-                {truncateLabel(a?.label ?? '')} / {truncateLabel(b?.label ?? '')}
-              </span>
-              <span className="num shrink-0">{formatBytes(p.ab + p.ba)}</span>
-            </div>
-            <div aria-hidden className="flex h-1.5 overflow-hidden rounded-full bg-subtle">
-              <div style={{ width: `${(p.ab / max) * 100}%`, background: a?.color ?? OTHER_COLOR }} />
-              <div style={{ width: `${(p.ba / max) * 100}%`, background: b?.color ?? OTHER_COLOR }} />
-            </div>
-          </li>
-        );
+        return {
+          key: `${p.a}-${p.b}`,
+          label: `${truncateLabel(a?.label ?? '', MAX_LABEL_CHARS)} / ${truncateLabel(b?.label ?? '', MAX_LABEL_CHARS)}`,
+          title,
+          mono: true,
+          value: p.ab + p.ba,
+          valueText: formatBytes(p.ab + p.ba),
+          segments: [
+            { value: p.ab, color: a?.color ?? OTHER_COLOR },
+            { value: p.ba, color: b?.color ?? OTHER_COLOR },
+          ],
+        };
       })}
-    </ol>
-  );
-}
-
-function FilterInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="relative flex h-8 min-w-0 flex-1 basis-40 items-center sm:max-w-56">
-      <span className="sr-only">{label}</span>
-      <Search aria-hidden size={16} strokeWidth={1.75} className="pointer-events-none absolute left-2.5 text-faint" />
-      <input
-        type="search"
-        value={value}
-        placeholder={label}
-        onChange={(e) => {
-          onChange(e.target.value);
-        }}
-        className="h-8 w-full min-w-0 rounded-md border border-line bg-surface pr-2 pl-8 text-body placeholder:text-faint"
-      />
-    </label>
+    />
   );
 }
 
@@ -340,6 +313,7 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
     () => [
       {
         id: 'actions',
+        meta: { card: 'action' },
         header: () => <span className="sr-only">{t('views.exportPcap.flows.title')}</span>,
         size: 60,
         cell: ({ row }) => {
@@ -362,6 +336,7 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
       },
       {
         id: 'from',
+        meta: { card: 'title' },
         header: t('views.connections.table.from'),
         size: 200,
         cell: ({ row }) => <Endpoint endpoint={row.original.src} />,
@@ -383,14 +358,14 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
         id: 'sent',
         header: () => <span title={t('views.connections.table.sentTitle')}>{t('views.connections.table.sent')}</span>,
         size: 96,
-        meta: { align: 'right' },
+        meta: { align: 'right', card: 'hidden' },
         cell: ({ row }) => <span className="num text-muted">{formatBytes(row.original.bytes_fwd, lang)}</span>,
       },
       {
         id: 'received',
         header: () => <span title={t('views.connections.table.receivedTitle')}>{t('views.connections.table.received')}</span>,
         size: 96,
-        meta: { align: 'right' },
+        meta: { align: 'right', card: 'hidden' },
         cell: ({ row }) => <span className="num text-muted">{formatBytes(row.original.bytes_rev, lang)}</span>,
       },
       {
@@ -431,13 +406,13 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
         id: 'first',
         header: t('views.connections.table.first'),
         size: 160,
-        cell: ({ row }) => <span className="num">{formatTimestamp(row.original.first_ts_us)}</span>,
+        cell: ({ row }) => <Timestamp us={row.original.first_ts_us} />,
       },
       {
         id: 'last',
         header: t('views.connections.table.last'),
         size: 160,
-        cell: ({ row }) => <span className="num">{formatTimestamp(row.original.last_ts_us)}</span>,
+        cell: ({ row }) => <Timestamp us={row.original.last_ts_us} />,
       },
     ],
     [t, lang],
@@ -454,10 +429,10 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
           {total !== null && <Badge>{formatCount(total)}</Badge>}
         </span>
       }
-      actions={
-        <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto">
-          <FilterInput label={t('views.connections.table.fromFilter')} value={from} onChange={setFrom} />
-          <FilterInput label={t('views.connections.table.toFilter')} value={to} onChange={setTo} />
+      filters={
+        <div className="flex min-w-0 flex-wrap gap-2">
+          <SearchInput placeholder={t('views.connections.table.fromFilter')} value={from} onChange={setFrom} className="flex-1 basis-40 sm:max-w-56" />
+          <SearchInput placeholder={t('views.connections.table.toFilter')} value={to} onChange={setTo} className="flex-1 basis-40 sm:max-w-56" />
         </div>
       }
       flush
@@ -480,6 +455,7 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
             data={rows}
             getRowId={(r) => r.id}
             ariaLabel={t('views.connections.table.label')}
+          cards
             emptyText={filtered ? t('views.connections.table.noMatch') : t('views.connections.table.empty')}
           />
           <LoadMore

@@ -9,8 +9,9 @@ import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { Skeleton } from '../../components/Skeleton';
-import { formatCount, formatLatency, formatTimestamp } from '../../lib/format';
+import { formatCount, formatLatency } from '../../lib/format';
 import { answerText, rcodeLabel, rcodeTone, suffixLabel } from './dnsFormat';
+import { Timestamp } from '../../components/Timestamp';
 
 /** Answers listed per transaction before "n more". */
 const ANSWERS_SHOWN = 3;
@@ -98,7 +99,7 @@ export function MessagesPanel({ sessionId, pair, filter, wide }: MessagesPanelPr
             <li key={m.id} className="flex min-w-0 flex-col gap-1 px-2.5 py-2">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <Result message={m} />
-                <span className="num text-meta text-muted">{formatTimestamp(m.ts_us)}</span>
+                <Timestamp us={m.ts_us} className="text-meta text-muted" />
                 {m.latency_us !== null && <span className="num text-meta text-muted">{formatLatency(m.latency_us)}</span>}
               </div>
               <QueryName message={m} />
@@ -151,7 +152,7 @@ export function MessagesPanel({ sessionId, pair, filter, wide }: MessagesPanelPr
           <tbody>
             {items.map((m) => (
               <tr key={m.id} className="border-b border-line align-top last:border-b-0">
-                <td className="num truncate px-2.5 py-1.5 text-muted">{formatTimestamp(m.ts_us)}</td>
+                <td className="truncate px-2.5 py-1.5 text-muted"><Timestamp us={m.ts_us} /></td>
                 <td className="px-2.5 py-1.5">
                   <QueryName message={m} />
                 </td>

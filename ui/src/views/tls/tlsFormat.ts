@@ -37,21 +37,6 @@ export function suiteLabel(name: string | null, id: number | null): string {
   return id === null ? '' : hex4(id);
 }
 
-/** Labels longer than this are cut in charts (with the full text in the tooltip). */
-export const MAX_LABEL = 24;
-
-export function truncateLabel(s: string, max = MAX_LABEL): string {
-  return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
-}
-
-/** Cut in the middle (`ECDHE_ECDSA…GCM_SHA256`): both ends of a suite name tell it apart. */
-export function truncateMiddle(s: string, max = MAX_LABEL): string {
-  if (s.length <= max) return s;
-  const tail = Math.floor((max - 1) / 2);
-  const head = max - 1 - tail;
-  return `${s.slice(0, head)}…${s.slice(s.length - tail)}`;
-}
-
 /** RFC 8446 6.2 alert descriptions (and the TLS 1.2 ones still seen). */
 const ALERTS: Readonly<Record<number, string>> = {
   0: 'close_notify',

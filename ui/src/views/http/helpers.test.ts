@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { httpHeaderListQuery, httpListQuery } from '../../api/http';
 import { OTHER_COLOR } from '../../charts/palette';
-import { BAR_COLOR, barColor, barsOption, donutOption, escapeHtml, statusOption, truncateLabel } from './charts';
+import { BAR_COLOR, countBars, donutOption, statusOption } from './charts';
 import { displayTarget, highlightParts, isSensitiveHeader, statusClass, statusTone } from './format';
 import { methodFilters, methodParam } from './state';
 
@@ -43,13 +43,12 @@ describe('HTTP formatting', () => {
 
 describe('HTTP charts', () => {
   it('escapes capture text in tooltips', () => {
-    const option = barsOption([{ key: '<img src=x onerror=alert(1)>', count: 2 }], () => '#000', fmt) as {
+    const option = donutOption([{ key: '<img src=x onerror=alert(1)>', count: 2 }], {}, fmt) as {
       tooltip: { formatter: (p: unknown) => string };
     };
-    const html = option.tooltip.formatter([{ name: '<img src=x onerror=alert(1)>', value: 2, marker: '' }]);
+    const html = option.tooltip.formatter({ name: '<img src=x onerror=alert(1)>', value: 2, marker: '' });
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;img');
-    expect(escapeHtml(`"'&`)).toBe('&quot;&#39;&amp;');
   });
 
   it('builds the donut, the bars and the status series', () => {
@@ -68,17 +67,13 @@ describe('HTTP charts', () => {
       ['2xx', [4, 2, '-']],
       ['5xx', ['-', '-', 1]],
     ]);
-    expect(truncateLabel('x'.repeat(30))).toHaveLength(24);
-    // Bars: values at the end of the bars, no value axis, one color.
-    const bars = barsOption([{ key: 'GET', count: 1234 }, { key: 'other', count: 2 }], barColor, fmt) as {
-      xAxis: { show: boolean };
-      series: { label: { position: string; formatter: (p: unknown) => string }; data: { itemStyle: { color: string } }[] }[];
-    };
-    expect(bars.xAxis.show).toBe(false);
-    const label = bars.series[0]?.label;
-    expect(label?.position).toBe('right');
-    expect(label?.formatter({ value: 1234 })).toBe('1234');
-    expect(bars.series[0]?.data.map((d) => d.itemStyle.color)).toEqual([BAR_COLOR, OTHER_COLOR]);
+    // Bars: one color, "other" grey and lighter, exact count and share on hover.
+    const bars = countBars([{ key: 'GET', count: 1234 }, { key: 'other', count: 2 }], fmt);
+    expect(bars.map((b) => [b.label, b.valueText, b.color, b.muted])).toEqual([
+      ['GET', '1234', BAR_COLOR, false],
+      ['other', '2', OTHER_COLOR, true],
+    ]);
+    expect(bars[0]?.title).toBe('GET: 1234 (100%)');
   });
 });
 

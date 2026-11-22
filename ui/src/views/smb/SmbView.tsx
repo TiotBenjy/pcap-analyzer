@@ -22,7 +22,7 @@ import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import type { en } from '../../i18n/en';
 import { formatCount } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
 
@@ -49,7 +49,6 @@ function tabLabel(label: string, count: number | undefined): string {
   return count === undefined ? label : `${label} (${formatCount(count)})`;
 }
 
-const MD_QUERY = '(min-width: 768px)';
 /** Container width from which the OS legend sits beside the donut instead of below it. */
 const LEGEND_SIDE_MIN_WIDTH = 1024;
 /** The Credentials view is navigable only once implemented (task P3.7). */

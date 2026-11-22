@@ -1,7 +1,7 @@
 import type { DnsServer } from '../../api/types/DnsServer';
 import { countryName } from '../../lib/countries';
 import { labelled } from '../../lib/format';
-import { escapeHtml } from './dnsCharts';
+import { escapeHtml } from '../../charts/text';
 
 // Data of the DNS server map (ServerMap.tsx): servers grouped by country, tooltip per country.
 

@@ -1,49 +1,12 @@
-import { Check, Copy } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TlsNamedValue } from '../../api/types/TlsNamedValue';
 import { Badge } from '../../components/Badge';
+import { CopyButton } from '../../components/CopyButton';
 import { cn } from '../../lib/cn';
 import { CERT_ISSUE_KEYS, hex4, isCertIssue, isWeakness, suiteLabel } from './tlsFormat';
 
 // Small building blocks of the TLS view.
-
-/** Copies `value` to the clipboard; `name` describes it for assistive technologies. */
-export function CopyButton({ value, name }: { value: string; name: string }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => {
-      setCopied(false);
-    }, 1500);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [copied]);
-  const label = copied ? t('views.tls.copy.copied') : t('views.tls.copy.label', { name });
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={(e) => {
-        // Inside a clickable row: copying must not select the row.
-        e.stopPropagation();
-        void navigator.clipboard?.writeText(value).then(() => {
-          setCopied(true);
-        });
-      }}
-      className="-my-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-subtle hover:text-fg"
-    >
-      {copied ? (
-        <Check aria-hidden size={16} strokeWidth={1.75} />
-      ) : (
-        <Copy aria-hidden size={16} strokeWidth={1.75} />
-      )}
-    </button>
-  );
-}
 
 /** Monospace value, truncated with its full text on hover, and a copy button. */
 export function MonoValue({ value, name, className }: { value: string; name: string; className?: string }) {
@@ -79,16 +42,23 @@ export function SuiteName({ name, id, weak }: { name: string | null; id: number 
   );
 }
 
-/** Badges of the certificate issues of a session. */
-export function IssueBadges({ issues }: { issues: readonly string[] }) {
+/** Badges of the certificate issues of a session, date problems first. */
+export function IssueBadges({ issues, max }: { issues: readonly string[]; max?: number }) {
   const { t } = useTranslation();
+  const dated = (issue: string) => issue === 'expired' || issue === 'not_yet_valid';
+  const all = issues.filter(isCertIssue).sort((a, b) => Number(dated(b)) - Number(dated(a)));
+  // In a table cell, the badges past `max` fold into a "+n" counter that names them on hover,
+  // so that the certificate name stays visible and no badge is cut.
+  const shown = max === undefined ? all : all.slice(0, max);
+  const rest = all.slice(shown.length);
   return (
     <>
-      {issues.filter(isCertIssue).map((issue) => (
-        <Badge key={issue} tone={issue === 'expired' || issue === 'not_yet_valid' ? 'danger' : 'warning'}>
+      {shown.map((issue) => (
+        <Badge key={issue} tone={dated(issue) ? 'danger' : 'warning'}>
           {t(CERT_ISSUE_KEYS[issue])}
         </Badge>
       ))}
+      {rest.length > 0 && <Badge title={rest.map((issue) => t(CERT_ISSUE_KEYS[issue])).join(', ')}>{`+${rest.length}`}</Badge>}
     </>
   );
 }

@@ -5,6 +5,7 @@ import {
   colon,
   compressionSuffix,
   formatByteCount,
+  formatClock,
   formatBytes,
   formatCompact,
   formatCount,
@@ -12,14 +13,17 @@ import {
   formatDuration,
   formatLatency,
   formatLongDate,
+  formatMonthDay,
   formatNumber,
   formatPercent,
   formatPreciseDuration,
+  formatPreciseTimestamp,
   formatPeriod,
   formatRate,
   formatShare,
   formatSpan,
   formatTimestamp,
+  isoTimestamp,
   labelled,
   parseTimestamp,
 } from './format';
@@ -82,6 +86,17 @@ describe('timestamps', () => {
     expect(formatPeriod(start, next)).toBe('2026-11-08 14:03:12 \u2013 2026-11-09 01:00:00');
     expect(formatPeriod(null, end)).toBe('');
     expect(formatSpan(start, end)).toBe('56\u00a0min 48\u00a0s');
+  });
+
+  it('writes microseconds, clock times, month-days and ISO instants', () => {
+    const us = new Date(2026, 10, 8, 14, 3, 12).getTime() * 1000 + 4_567;
+    expect(formatPreciseTimestamp(us)).toBe('2026-11-08 14:03:12.004567');
+    expect(formatPreciseTimestamp(Number.NaN)).toBe('');
+    expect(formatClock(us)).toBe('14:03:12');
+    expect(formatClock(us, false)).toBe('14:03');
+    expect(formatMonthDay(us)).toBe('11-08');
+    expect(isoTimestamp(Date.UTC(2026, 10, 8, 13, 3, 12) * 1000)).toBe('2026-11-08T13:03:12.000Z');
+    expect(isoTimestamp(Number.NaN)).toBe('');
   });
 });
 

@@ -24,10 +24,11 @@ import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
 import type { en } from '../../i18n/en';
 import { cn } from '../../lib/cn';
-import { formatCount, formatTimestamp } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { formatCount } from '../../lib/format';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -40,7 +41,6 @@ function tokenKey<G extends Group>(group: G, value: string): TokenKey<G> {
   return `views.credentials.${group}.${value}` as TokenKey<G>;
 }
 
-const MD_QUERY = '(min-width: 768px)';
 const SELECT_CLASS = 'h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-body sm:w-auto sm:max-w-64';
 
 /** Protocol names as written in the protocols' specifications (not translated). */
@@ -154,8 +154,7 @@ export default function CredentialsView() {
                   }}
                 />
               }
-            >
-              <div className="flex flex-col gap-3">
+              filters={
                 <Filters
                   stats={stats.data}
                   state={stateFilter}
@@ -163,16 +162,17 @@ export default function CredentialsView() {
                   protocol={protocol}
                   onProtocol={setProtocol}
                 />
-                <CredentialList
-                  sessionId={sessionId}
-                  query={list}
-                  items={items}
-                  filtered={stateFilter !== 'all' || protocol !== ''}
-                  onExport={(request) => {
-                    setPending({ request, count: 1 });
-                  }}
-                />
-              </div>
+              }
+            >
+              <CredentialList
+                sessionId={sessionId}
+                query={list}
+                items={items}
+                filtered={stateFilter !== 'all' || protocol !== ''}
+                onExport={(request) => {
+                  setPending({ request, count: 1 });
+                }}
+              />
             </Card>
           </>
         )}
@@ -233,17 +233,7 @@ function Loading() {
 /** Address and port (mono), then the first resolved name in grey, as in the other views. */
 function End({ end }: { end: CredentialEndpoint | null }) {
   if (end === null) return <span className="text-muted">-</span>;
-  const name = end.endpoint.names[0];
-  return (
-    <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 align-middle">
-      <Endpoint endpoint={end.endpoint} showName={false} {...(end.port === null ? {} : { port: end.port })} />
-      {name !== undefined && (
-        <span data-testid="truncatable" title={name} className="min-w-0 shrink-[2] truncate text-meta text-muted">
-          {name}
-        </span>
-      )}
-    </span>
-  );
+  return <Endpoint endpoint={end.endpoint} port={end.port} show="both" />;
 }
 
 /** Aggregated client -> protocol -> server paths (readable list instead of a node graph). */
@@ -616,7 +606,7 @@ function CredentialCard({
           </span>
           <span className="flex shrink-0 items-center gap-3 text-muted">
             <span className="num">{t('views.credentials.card.seen', { count: c.seen_count })}</span>
-            <span className="num">{formatTimestamp(c.first_ts_us)}</span>
+            <Timestamp us={c.first_ts_us} />
           </span>
         </span>
       </button>
@@ -681,11 +671,11 @@ function CredentialDetailPanel({
           </Row>
         ))}
         <Row label={t('views.credentials.detail.firstSeen')}>
-          <span className="num">{formatTimestamp(c.first_ts_us)}</span>
+          <Timestamp us={c.first_ts_us} />
         </Row>
         {c.seen_count > 1 && (
           <Row label={t('views.credentials.detail.lastSeen')}>
-            <span className="num">{formatTimestamp(c.last_ts_us)}</span>
+            <Timestamp us={c.last_ts_us} />
           </Row>
         )}
         <Row label={t('views.credentials.detail.seen')}>

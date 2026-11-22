@@ -1,11 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as connectionsApi from '../../api/connections';
 import * as api from '../../api/sessions';
 import type { HostOpenPorts } from '../../api/types/HostOpenPorts';
 import type { OpenPortInfo } from '../../api/types/OpenPortInfo';
-import type { Chart } from '../../components/Chart';
 import { renderApp, setViewportWide } from '../../test/renderApp';
 import { session } from '../../test/sessionFixtures';
 import { setupUser } from '../../test/user';
@@ -16,15 +14,6 @@ vi.mock('../../api/connections', async (importOriginal) => ({
   ...(await importOriginal<typeof connectionsApi>()),
   listOpenPorts: vi.fn(),
   getOpenPortStats: vi.fn(),
-}));
-
-type ChartProps = ComponentProps<typeof Chart>;
-const chart = { props: null as ChartProps | null };
-vi.mock('../../components/Chart', () => ({
-  Chart: (props: ChartProps) => {
-    chart.props = props;
-    return <div data-testid="chart" data-empty={String(props.empty === true)} />;
-  },
 }));
 
 const ID = '01JC0FFEE0000000000000000A';
@@ -67,7 +56,6 @@ function hosts(): HostOpenPorts[] {
 describe('Open Ports view', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    chart.props = null;
     setViewportWide(true);
     vi.mocked(api.getSession).mockResolvedValue(session());
     vi.mocked(connectionsApi.listOpenPorts).mockResolvedValue({ items: hosts(), next_cursor: null, total_estimate: 2 });
@@ -101,7 +89,8 @@ describe('Open Ports view', () => {
     expect(second.getByText('53/udp domain')).toBeInTheDocument();
     expect(second.getByText('None')).toBeInTheDocument();
     // Chart: top ports, others counted below.
-    expect(chart.props?.empty).toBe(false);
+    const bars = await screen.findByRole('list', { name: 'Ports open on the most hosts, as horizontal bars' });
+    expect(within(bars).getAllByRole('listitem').length).toBeGreaterThan(0);
     expect(screen.getByText('4 other ports not shown')).toBeInTheDocument();
   });
 
@@ -150,9 +139,7 @@ describe('Open Ports view', () => {
     vi.mocked(connectionsApi.getOpenPortStats).mockResolvedValue({ top: [], distinct_ports: 0, open_ports: 0 });
     renderApp(`/sessions/${ID}/open-ports`);
     expect(await screen.findByText('No open port detected in this session')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(chart.props?.empty).toBe(true);
-    });
+    expect(await screen.findByText('No open port')).toBeInTheDocument();
   });
 
   it('maps the switches to address categories', () => {

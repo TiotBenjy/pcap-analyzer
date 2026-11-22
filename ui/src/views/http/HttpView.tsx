@@ -7,6 +7,7 @@ import { useHttpStats, useHttpTransactions } from '../../api/httpQueries';
 import type { HttpTransactionSummary } from '../../api/types/HttpTransactionSummary';
 import type { ChartEvents } from '../../charts/EChartsRenderer';
 import { Badge } from '../../components/Badge';
+import { BarList } from '../../components/BarList';
 import { Card } from '../../components/Card';
 import { Chart } from '../../components/Chart';
 import { Endpoint } from '../../components/Endpoint';
@@ -16,8 +17,8 @@ import { FilterBar } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
-import { formatBytes, formatCount, formatTimestamp } from '../../lib/format';
-import { barColor, barsHeight, barsOption, type ChartFormat, PART_HEIGHT, statusOption } from './charts';
+import { formatBytes, formatCount } from '../../lib/format';
+import { type ChartFormat, countBars, PART_HEIGHT, statusOption } from './charts';
 import { ExpandableList } from './ExpandableList';
 import { displayTarget } from './format';
 import { RankedList } from './RankedList';
@@ -25,6 +26,7 @@ import { useSessionGate } from './gate';
 import { FilterChip, MethodBadge, MethodsChart, ServerCell, StatusBadge, TargetText } from './shared';
 import { methodFilters, methodParam, useDebounced, useViewableSession } from './state';
 import { TransactionDetail } from './TransactionDetail';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -135,48 +137,50 @@ export default function HttpView() {
               onChange={setSort}
             />
           }
+          filters={
+            <>
+              <FilterBar
+                filters={methodFilters(s?.methods, disabled, t('views.http.otherMethods'))}
+                onToggle={(id, active) => {
+                  setDisabled((prev) => {
+                    const next = new Set(prev);
+                    if (active) next.delete(id);
+                    else next.add(id);
+                    return next;
+                  });
+                }}
+                onSetAll={(active) => {
+                  setDisabled(active ? new Set() : new Set(METHOD_GROUPS));
+                }}
+                search={search}
+                onSearch={setSearch}
+                searchPlaceholder={t('views.http.searchPlaceholder')}
+              />
+              {(host !== null || status !== null) && (
+                <div className="flex flex-wrap gap-2">
+                  {host !== null && (
+                    <FilterChip
+                      label={t('views.http.hostChip', { host })}
+                      removeLabel={t('views.http.removeFilter', { label: host })}
+                      onRemove={() => {
+                        setHost(null);
+                      }}
+                    />
+                  )}
+                  {status !== null && (
+                    <FilterChip
+                      label={t('views.http.statusChip', { status })}
+                      removeLabel={t('views.http.removeFilter', { label: status })}
+                      onRemove={() => {
+                        setStatus(null);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </>
+          }
         >
-          <div className="flex flex-col gap-2 border-b border-line p-3 sm:p-4">
-            <FilterBar
-              filters={methodFilters(s?.methods, disabled, t('views.http.otherMethods'))}
-              onToggle={(id, active) => {
-                setDisabled((prev) => {
-                  const next = new Set(prev);
-                  if (active) next.delete(id);
-                  else next.add(id);
-                  return next;
-                });
-              }}
-              onSetAll={(active) => {
-                setDisabled(active ? new Set() : new Set(METHOD_GROUPS));
-              }}
-              search={search}
-              onSearch={setSearch}
-              searchPlaceholder={t('views.http.searchPlaceholder')}
-            />
-            {(host !== null || status !== null) && (
-              <div className="flex flex-wrap gap-2">
-                {host !== null && (
-                  <FilterChip
-                    label={t('views.http.hostChip', { host })}
-                    removeLabel={t('views.http.removeFilter', { label: host })}
-                    onRemove={() => {
-                      setHost(null);
-                    }}
-                  />
-                )}
-                {status !== null && (
-                  <FilterChip
-                    label={t('views.http.statusChip', { status })}
-                    removeLabel={t('views.http.removeFilter', { label: status })}
-                    onRemove={() => {
-                      setStatus(null);
-                    }}
-                  />
-                )}
-              </div>
-            )}
-          </div>
           <TransactionList sessionId={sessionId} query={list} oneDay={oneDay} />
         </Card>
       </>
@@ -237,16 +241,13 @@ function ContentTypesChart({ stats, loading, error, fmt }: ChartCardProps) {
     const other = stats?.content_types_other ?? 0;
     return other > 0 ? [...top, { key: 'other', count: other }] : top;
   }, [stats]);
-  const option = useMemo(() => barsOption(items, barColor, fmt), [items, fmt]);
   return (
     <Card title={t('views.http.contentTypes')}>
-      <Chart
-        option={option}
-        height={barsHeight(items.length)}
+      <BarList
         ariaLabel={t('views.http.contentTypesLabel')}
+        items={countBars(items, fmt)}
         loading={loading}
         error={error ? t('views.http.loadError') : null}
-        empty={!loading && !error && items.length === 0}
         emptyText={t('views.http.noContentTypes')}
       />
     </Card>
@@ -276,9 +277,9 @@ function Row({ tx, oneDay }: { tx: HttpTransactionSummary; oneDay: boolean }) {
   const size = formatBytes(tx.response_size, i18n.language);
   return (
     <span className={`flex min-w-0 flex-col gap-1 ${ROW_GRID}`}>
-      <span className="num hidden text-meta text-muted md:block">{formatTimestamp(tx.ts_us, !oneDay)}</span>
+      <Timestamp us={tx.ts_us} withDate={!oneDay} className="hidden text-meta text-muted md:block" />
       <span className="hidden min-w-0 md:block">
-        <Endpoint endpoint={tx.client} port={tx.client_port} showName={false} className="text-meta" />
+        <Endpoint endpoint={tx.client} port={tx.client_port} show="address" className="text-meta" />
       </span>
       <span className="hidden min-w-0 md:block">
         <ServerCell tx={tx} />

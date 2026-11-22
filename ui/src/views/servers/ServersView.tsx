@@ -20,15 +20,13 @@ import { MultiSelect } from '../../components/MultiSelect';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
 import { cn } from '../../lib/cn';
-import { formatCount, formatTimestamp } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { formatCount } from '../../lib/format';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
-import { CopyButton } from '../tls/parts';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
-
-const MD_QUERY = '(min-width: 768px)';
 
 const ROLE_ICONS: Record<ServerRole, LucideIcon> = {
   dns: Globe,
@@ -86,13 +84,12 @@ export default function ServersView() {
       <SessionGate session={session}>
         <Card
           title={t('views.servers.rolesTitle')}
-          actions={
+          filters={
             <MultiSelect
               label={t('views.servers.categories')}
               options={categoryOptions}
               selected={categories}
               onChange={setCategories}
-              align="end"
             />
           }
         >
@@ -240,21 +237,7 @@ function ExpandButton({ server, expanded, controls, onToggle }: { server: RoleSe
 
 /** Server cell: endpoint (name first), its address below when a name is shown, copy button. */
 function ServerCell({ server }: { server: RoleServer }) {
-  const { t } = useTranslation();
-  const named = server.endpoint.names.length > 0;
-  return (
-    <span className="flex min-w-0 items-center gap-1">
-      <span className="flex min-w-0 flex-col">
-        <Endpoint endpoint={server.endpoint} />
-        {named && (
-          <span data-testid="truncatable" title={server.endpoint.ip} className="truncate font-mono text-meta text-muted">
-            {server.endpoint.ip}
-          </span>
-        )}
-      </span>
-      <CopyButton value={server.endpoint.ip} name={t('views.servers.address')} />
-    </span>
-  );
+  return <Endpoint endpoint={server.endpoint} show="stacked" copy />;
 }
 
 function OtherRoles({
@@ -329,7 +312,7 @@ function ServerTable({ role, labels, byAddress }: ServerListProps) {
                     <EvidenceKinds server={s} />
                   </td>
                   <td className="num px-3 py-2 text-right">{formatCount(s.count)}</td>
-                  <td className="num px-3 py-2 text-meta sm:pr-4">{formatTimestamp(s.last_ts_us)}</td>
+                  <td className="px-3 py-2 text-meta sm:pr-4"><Timestamp us={s.last_ts_us} /></td>
                 </tr>
                 {expanded && (
                   <tr id={detailId} className="border-b border-line last:border-b-0">
@@ -378,8 +361,8 @@ function EvidenceTable({ server }: { server: RoleServer }) {
             </td>
             <td className="num py-1 pr-3 text-right">{formatCount(e.count)}</td>
             <td className="num py-1 pr-3 text-right">{e.clients === null ? '-' : formatCount(e.clients)}</td>
-            <td className="num hidden py-1 pr-3 text-meta lg:table-cell">{formatTimestamp(e.first_ts_us)}</td>
-            <td className="num py-1 pr-3 text-meta">{formatTimestamp(e.last_ts_us)}</td>
+            <td className="hidden py-1 pr-3 text-meta lg:table-cell"><Timestamp us={e.first_ts_us} /></td>
+            <td className="py-1 pr-3 text-meta"><Timestamp us={e.last_ts_us} /></td>
             <td className="min-w-0 py-1">
               <Example evidence={e} />
             </td>
@@ -426,10 +409,10 @@ function ServerCards({ role, labels, byAddress }: ServerListProps) {
                       </span>
                     )}
                     <span className="text-muted">
-                      {t('views.servers.firstSeen')} <span className="num">{formatTimestamp(e.first_ts_us)}</span>
+                      {t('views.servers.firstSeen')} <Timestamp us={e.first_ts_us} />
                     </span>
                     <span className="text-muted">
-                      {t('views.servers.lastSeen')} <span className="num">{formatTimestamp(e.last_ts_us)}</span>
+                      {t('views.servers.lastSeen')} <Timestamp us={e.last_ts_us} />
                     </span>
                     {e.example !== null && <Example evidence={e} />}
                   </li>

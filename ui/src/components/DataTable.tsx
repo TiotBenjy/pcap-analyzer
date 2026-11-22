@@ -9,9 +9,10 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp } from 'lucide-react';
-import { type KeyboardEvent, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/cn';
+import { MD_QUERY, useMediaQuery } from '../lib/useMediaQuery';
 import { EmptyState } from './EmptyState';
 
 declare module '@tanstack/react-table' {
@@ -19,12 +20,19 @@ declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     /** `right` for numeric columns (header and cells). */
     align?: 'left' | 'right';
+    /**
+     * Place of the column in the cards drawn below 768 px (`cards`): `title` on the first line,
+     * `action` at its end, `hidden` left out; a labelled line by default.
+     */
+    card?: 'title' | 'action' | 'hidden';
   }
 }
 
 /** Above this many rows the body is virtualized (docs/UI_GUIDELINES.md). */
 export const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 32;
+/** First guess of a card height, measured once drawn. */
+const CARD_HEIGHT = 96;
 
 interface DataTableProps<T> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TanStack column value types are heterogeneous
@@ -37,11 +45,17 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** Accessible table name. */
   ariaLabel: string;
+  /**
+   * Below 768 px, draws one card per row instead of the table (docs/UI_GUIDELINES.md): `title`
+   * and `action` columns on the first line, the others as labelled lines (`meta.card`).
+   */
+  cards?: boolean;
 }
 
 /**
  * Generic table: sticky header, resizable columns, client-side sorting, virtualization above
- * 200 rows. Horizontal overflow scrolls inside the container, never the page.
+ * 200 rows. Horizontal overflow scrolls inside the container, never the page. With `cards`, rows
+ * become stacked cards below 768 px, so that no column hides in a horizontal scroll.
  */
 export function DataTable<T>({
   columns,
@@ -51,8 +65,11 @@ export function DataTable<T>({
   emptyText,
   onRowClick,
   ariaLabel,
+  cards = false,
 }: DataTableProps<T>) {
   const { t } = useTranslation();
+  const wide = useMediaQuery(MD_QUERY);
+  const asCards = cards && !wide;
   const [sorting, setSorting] = useState<SortingState>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -74,9 +91,13 @@ export function DataTable<T>({
   const virtualizer = useVirtualizer({
     count: virtual ? rows.length : 0,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 12,
+    estimateSize: () => (asCards ? CARD_HEIGHT : ROW_HEIGHT),
+    overscan: asCards ? 6 : 12,
   });
+  // Sizes measured in one mode (cards) must not be applied to the other (rows).
+  useEffect(() => {
+    virtualizer.measure();
+  }, [asCards, virtualizer]);
 
   if (data.length === 0) {
     return <EmptyState title={emptyText ?? t('common.noData')} />;
@@ -89,6 +110,86 @@ export function DataTable<T>({
     virtual ? items.map((v) => ({ row: rows[v.index], pos: v.index })) : rows.map((row, pos) => ({ row, pos }))
   ).filter((v): v is { row: (typeof rows)[number]; pos: number } => v.row !== undefined);
   const colCount = table.getVisibleLeafColumns().length;
+  const clickProps = (row: T) =>
+    onRowClick === undefined
+      ? {}
+      : {
+          tabIndex: 0,
+          onClick: () => {
+            onRowClick(row);
+          },
+          onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
+            // Enter or Space on a nested control (copy, download) belongs to that control.
+            if (e.target !== e.currentTarget) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onRowClick(row);
+            }
+          },
+        };
+
+  if (asCards) {
+    const headers = new Map(table.getFlatHeaders().map((h) => [h.column.id, h]));
+    return (
+      <div ref={scrollRef} className="relative w-full min-w-0 overflow-auto" style={{ maxHeight }} data-testid="datatable">
+        <ul aria-label={ariaLabel} className="divide-y divide-line">
+          {padTop > 0 && <li aria-hidden style={{ height: padTop }} />}
+          {visible.map(({ row, pos }) => {
+            const cells = row.getVisibleCells();
+            const place = (c: (typeof cells)[number]) => c.column.columnDef.meta?.card;
+            const title = cells.filter((c) => place(c) === 'title');
+            const actions = cells.filter((c) => place(c) === 'action');
+            const lines = cells.filter((c) => place(c) === undefined);
+            return (
+              <li
+                key={row.id}
+                data-index={pos}
+                ref={virtual ? virtualizer.measureElement : undefined}
+                {...clickProps(row.original)}
+                className={cn(
+                  'flex min-w-0 flex-col gap-1.5 px-3 py-2.5',
+                  onRowClick !== undefined && 'cursor-pointer hover:bg-subtle focus-visible:bg-subtle',
+                )}
+              >
+                {(title.length > 0 || actions.length > 0) && (
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 font-medium">
+                      {title.map((c) => (
+                        <div key={c.id} className="max-w-full min-w-0">
+                          {flexRender(c.column.columnDef.cell, c.getContext())}
+                        </div>
+                      ))}
+                    </div>
+                    {actions.map((c) => (
+                      <div key={c.id} className="shrink-0">
+                        {flexRender(c.column.columnDef.cell, c.getContext())}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {lines.length > 0 && (
+                  <dl className="grid min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-x-3 gap-y-1 text-meta">
+                    {lines.map((c) => {
+                      const header = headers.get(c.column.id);
+                      return (
+                        <div key={c.id} className="contents">
+                          <dt className="min-w-0 truncate text-muted">
+                            {header === undefined ? null : flexRender(c.column.columnDef.header, header.getContext())}
+                          </dt>
+                          <dd className="min-w-0 truncate">{flexRender(c.column.columnDef.cell, c.getContext())}</dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                )}
+              </li>
+            );
+          })}
+          {padBottom > 0 && <li aria-hidden style={{ height: padBottom }} />}
+        </ul>
+      </div>
+    );
+  }
 
   return (
     <div ref={scrollRef} className="relative w-full min-w-0 overflow-auto" style={{ maxHeight }} data-testid="datatable">
@@ -156,20 +257,7 @@ export function DataTable<T>({
               key={row.id}
               style={{ height: ROW_HEIGHT }}
               aria-rowindex={pos + 2}
-              {...(onRowClick === undefined
-                ? {}
-                : {
-                    tabIndex: 0,
-                    onClick: () => {
-                      onRowClick(row.original);
-                    },
-                    onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onRowClick(row.original);
-                      }
-                    },
-                  })}
+              {...clickProps(row.original)}
               className={cn(
                 'border-b border-line last:border-b-0',
                 onRowClick !== undefined && 'cursor-pointer hover:bg-subtle focus-visible:bg-subtle',

@@ -377,7 +377,7 @@ for (const lang of LANGS) {
           }
           if (view === 'sources' && !path.includes(NO_SESSION)) {
             await expect(page.getByRole('img', { name: pattern(D.views.sources.coverageLabel_other) })).toBeVisible();
-            await expect(page.getByRole('table', { name: D.views.sources.chunksLabel })).toBeVisible();
+            await expect(page.getByRole('table', { name: D.views.sources.chunksLabel }).or(page.getByRole('list', { name: D.views.sources.chunksLabel }))).toBeVisible();
           }
 
           if (view === 'import-progress') {
@@ -404,7 +404,7 @@ for (const lang of LANGS) {
           }
 
           if (view === 'connections' && !path.includes(NO_SESSION)) {
-            await expect(page.getByRole('table', { name: D.views.connections.table.label })).toBeVisible();
+            await expect(page.getByRole('table', { name: D.views.connections.table.label }).or(page.getByRole('list', { name: D.views.connections.table.label }))).toBeVisible();
             await expect(page
                 .getByRole('list', { name: filled(D.views.connections.countries.listLabel, { title: D.views.connections.countries.sources }) })
                 .or(page.getByText(D.views.connections.countries.noCountry).first())).toBeVisible();
@@ -495,7 +495,7 @@ for (const lang of LANGS) {
             for (const secret of DEMO_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
           }
           if (view === 'open-ports' && !path.includes(NO_SESSION)) {
-            await expect(page.getByRole('img', { name: pattern(D.views.openPorts.chart.label) })).toBeVisible();
+            await expect(page.getByRole('list', { name: D.views.openPorts.chart.label })).toBeVisible();
             await expect(
               page
                 .getByRole('table', { name: D.views.openPorts.table.label })
@@ -514,11 +514,15 @@ for (const lang of LANGS) {
           if (view === 'tls' && !path.includes(NO_SESSION)) {
             await expect(page.getByTestId('tls-summary')).toBeVisible();
             await expect(page.getByRole('img', { name: pattern(D.views.tls.charts.versionsLabel) })).toBeVisible();
-            await expect(page.getByRole('table', { name: D.views.tls.table.label })).toBeVisible();
+            await expect(page.getByRole('table', { name: D.views.tls.table.label }).or(page.getByRole('list', { name: D.views.tls.table.label }))).toBeVisible();
+            await expect(page.getByRole('list', { name: D.views.tls.charts.suitesLabel })).toBeVisible();
           }
           if ((view === 'http' || view === 'http-headers') && !path.includes(NO_SESSION)) {
             const list = filled(view === 'http' ? D.views.http.listLabel : D.views.httpHeaders.listLabel);
-            await expect(page.getByRole('img', { name: pattern(D.views.http.methodsLabel) })).toBeVisible();
+            // Methods: a donut up to five groups, bars beyond.
+            await expect(
+              page.getByRole('img', { name: pattern(D.views.http.methodsLabel) }).or(page.getByRole('list', { name: D.views.http.methodsLabel })),
+            ).toBeVisible();
             await expect(page.getByRole('list', { name: list })).toBeVisible();
             if (view === 'http-headers') {
               // Search a session cookie: the expanded row then shows masked values and highlights.
@@ -533,7 +537,7 @@ for (const lang of LANGS) {
             await page.waitForLoadState('networkidle');
           }
           if (view === 'dns' && !path.includes(NO_SESSION)) {
-            await expect(page.getByRole('img', { name: D.views.dns.charts.resultsLabel })).toBeVisible();
+            await expect(page.getByRole('list', { name: D.views.dns.charts.resultsLabel })).toBeVisible();
             const pairs = page.getByRole('table', { name: D.views.dns.table.label });
             await expect(pairs.or(page.getByRole('list', { name: D.views.dns.table.label }))).toBeVisible();
             // The first pair expanded: its queries are laid out and checked too.

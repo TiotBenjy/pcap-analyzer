@@ -17,5 +17,8 @@ export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(subscribe, get, get);
 }
 
+/** Tailwind `md` breakpoint: tables become cards below it (docs/UI_GUIDELINES.md). */
+export const MD_QUERY = '(min-width: 768px)';
+
 /** Tailwind `lg` breakpoint. */
 export const LG_QUERY = '(min-width: 1024px)';

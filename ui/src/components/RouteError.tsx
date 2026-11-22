@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from './Button';
 import { Card } from './Card';
-import { copyText, errorDetails } from '../lib/errorReport';
+import { copyText } from '../lib/clipboard';
+import { errorDetails } from '../lib/errorReport';
 
 // Error screen of the router (root and session routes), in place of the TanStack default, with
 // the error report of lib/errorReport.ts ("Copy details").

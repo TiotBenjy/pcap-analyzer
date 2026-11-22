@@ -13,7 +13,8 @@ import type { Chart } from '../../components/Chart';
 import { renderApp, setViewportWide } from '../../test/renderApp';
 import { page, session } from '../../test/sessionFixtures';
 import { setupUser } from '../../test/user';
-import { barsOption, donutOption, escapeHtml, truncateLabel, withOther } from './dnsCharts';
+import { escapeHtml, truncateLabel } from '../../charts/text';
+import { donutOption, entryBars, withOther } from './dnsCharts';
 import { rcodeLabel, suffixLabel } from './dnsFormat';
 import { formatLatency } from '../../lib/format';
 import { worldMapHeight, stepOf } from '../../charts/worldMapOption';
@@ -180,8 +181,10 @@ describe('DNS view', () => {
 
     // Charts: protocols donut, results and query types bars.
     await waitFor(() => {
-      expect(charts.some((c) => c.ariaLabel === 'DNS transactions by result')).toBe(true);
+      expect(charts.some((c) => c.ariaLabel === 'Share of DNS transactions by protocol')).toBe(true);
     });
+    const results = await screen.findByRole('list', { name: 'DNS transactions by result' });
+    expect(within(results).getAllByRole('listitem').length).toBeGreaterThan(0);
     expect(screen.getByText('Response time: median 0.5 ms, 95th percentile 2.5 ms')).toBeInTheDocument();
     expect(screen.getByTestId('donut-total')).toHaveTextContent('19');
     // No public server: an explicit empty state in the country list, no map.
@@ -290,11 +293,13 @@ describe('DNS view', () => {
     vi.mocked(dnsApi.getDnsPairs).mockResolvedValue(page([]));
     vi.mocked(dnsApi.getDnsServers).mockResolvedValue(page([]));
     renderApp(`/sessions/${ID}/dns`);
-    expect(await screen.findByText('No DNS traffic in this session')).toBeInTheDocument();
-    // The last render of each chart shows its empty state.
+    // The table and both bar lists (results, query types) say so; the donut shows its empty state.
+    await waitFor(() => {
+      expect(screen.getAllByText('No DNS traffic in this session')).toHaveLength(3);
+    });
     await waitFor(() => {
       const last = new Map(charts.map((c) => [c.ariaLabel, c]));
-      expect(last.size).toBe(3);
+      expect(last.size).toBe(1);
       expect([...last.values()].every((c) => c.empty === true && c.loading !== true)).toBe(true);
     });
   });
@@ -317,20 +322,23 @@ describe('DNS charts and formats', () => {
       String,
     ) as { tooltip: { formatter: (p: unknown) => string }; legend: { data: string[] } };
     expect(option.legend.data).toEqual(['DNS', '<b>NBNS</b>']);
-    expect(option.tooltip.formatter({ name: '<b>NBNS</b>', value: 1 })).toBe('&#60;b&#62;NBNS&#60;/b&#62;: 1 (25%)');
+    expect(option.tooltip.formatter({ name: '<b>NBNS</b>', value: 1 })).toBe('&lt;b&gt;NBNS&lt;/b&gt;: 1 (25%)');
   });
 
-  it('builds bars, largest first, with truncated labels and an Other bar', () => {
+  it('builds bars, largest first, with an Other bar', () => {
     const entries = withOther([{ key: 'A', label: 'A', value: 9 }], 2, 'Other');
     expect(entries.map((e) => e.key)).toEqual(['A', '__other']);
-    const option = barsOption(entries, String) as {
-      yAxis: { data: string[]; inverse: boolean; axisLabel: { formatter: (s: string) => string } };
-    };
-    expect(option.yAxis.data).toEqual(['A', 'Other']);
-    expect(option.yAxis.inverse).toBe(true);
-    expect(option.yAxis.axisLabel.formatter('x'.repeat(30))).toHaveLength(24);
+    const bars = entryBars(entries, String);
+    expect(bars.map((b) => [b.label, b.valueText, b.muted])).toEqual([
+      ['A', '9', false],
+      ['Other', '2', true],
+    ]);
+    expect(bars[0]?.title).toBe('A: 9 (82%)');
+    // Plain text for the title attribute: capture names are not HTML-escaped there.
+    expect(entryBars([{ key: 'q', label: `<b>&'x`, value: 1 }], String)[0]?.title).toBe(`<b>&'x: 1 (100%)`);
+    expect(truncateLabel('x'.repeat(30))).toHaveLength(24);
     expect(truncateLabel('short')).toBe('short');
-    expect(escapeHtml(`a&<>"'`)).toBe('a&#38;&#60;&#62;&#34;&#39;');
+    expect(escapeHtml(`a&<>"'`)).toBe('a&amp;&lt;&gt;&quot;&#39;');
     expect(withOther([], 0, 'Other')).toEqual([]);
   });
 

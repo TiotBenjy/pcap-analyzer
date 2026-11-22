@@ -1,8 +1,8 @@
 import { MapPinOff } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DnsStats } from '../../api/types/DnsStats';
 import { NEUTRAL } from '../../charts/palette';
+import { type BarItem, BarList } from '../../components/BarList';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { Flag } from '../../components/Flag';
@@ -47,62 +47,29 @@ export function CountryList({ stats, loading, error, onRetry }: CountryListProps
       </div>
     );
   }
-  const max = Math.max(...rows.map((r) => r.value), unknown.messages, 1);
-  return (
-    <ol aria-label={t('views.dns.charts.countriesLabel')} className="flex flex-col gap-1.5">
-      {rows.map((r) => (
-        <Row
-          key={r.key}
-          flag={<Flag country={r.code} />}
-          label={r.label}
-          title={labelled(r.label, t('views.dns.charts.serverQueries', { count: r.servers, queries: queries(r.value) }), i18n.language)}
-          value={r.value}
-          max={max}
-        />
-      ))}
-      {unknown.messages > 0 && (
-        <Row
-          flag={<span aria-hidden className="inline-block w-[1.333em] shrink-0" />}
-          label={t('views.dns.charts.countryUnknown')}
-          title={labelled(
-            t('views.dns.charts.countryUnknown'),
-            t('views.dns.charts.serverQueries', { count: unknown.servers, queries: queries(unknown.messages) }),
-            i18n.language,
-          )}
-          value={unknown.messages}
-          max={max}
-          muted
-        />
-      )}
-    </ol>
-  );
-}
-
-interface RowProps {
-  flag: ReactNode;
-  label: string;
-  title: string;
-  value: number;
-  max: number;
-  muted?: boolean;
-}
-
-function Row({ flag, label, title, value, max, muted = false }: RowProps) {
-  return (
-    <li className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_auto] items-center gap-2 text-table">
-      <span className="flex min-w-0 items-center gap-1.5">
-        {flag}
-        <span data-testid="truncatable" title={title} className="min-w-0 truncate">
-          {label}
-        </span>
-      </span>
-      <span aria-hidden className="h-2 min-w-0 rounded-sm bg-subtle">
-        <span
-          className="block h-full rounded-sm"
-          style={{ width: `${Math.max(2, (100 * value) / max)}%`, backgroundColor: NEUTRAL, opacity: muted ? 0.5 : 1 }}
-        />
-      </span>
-      <span className="num text-right text-muted">{formatCount(value)}</span>
-    </li>
-  );
+  const title = (label: string, servers: number, messages: number) =>
+    labelled(label, t('views.dns.charts.serverQueries', { count: servers, queries: queries(messages) }), i18n.language);
+  const items: BarItem[] = rows.map((r) => ({
+    key: r.key,
+    label: r.label,
+    title: title(r.label, r.servers, r.value),
+    lead: <Flag country={r.code} />,
+    value: r.value,
+    valueText: formatCount(r.value),
+    color: NEUTRAL,
+  }));
+  if (unknown.messages > 0) {
+    const label = t('views.dns.charts.countryUnknown');
+    items.push({
+      key: '__unknown',
+      label,
+      title: title(label, unknown.servers, unknown.messages),
+      lead: <span aria-hidden className="inline-block w-4 shrink-0" />,
+      value: unknown.messages,
+      valueText: formatCount(unknown.messages),
+      color: NEUTRAL,
+      muted: true,
+    });
+  }
+  return <BarList ariaLabel={t('views.dns.charts.countriesLabel')} items={items} />;
 }

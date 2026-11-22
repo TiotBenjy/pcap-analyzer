@@ -139,6 +139,34 @@ export function formatTimestamp(us: number, withDate = true): string {
 }
 
 /**
+ * `formatTimestamp` down to the microsecond (`2026-11-08 14:03:12.123456`): tooltips of packet
+ * times, where the second is not precise enough to order events.
+ */
+export function formatPreciseTimestamp(us: number): string {
+  const text = formatTimestamp(us);
+  if (text === '') return '';
+  const micros = ((Math.floor(us) % 1_000_000) + 1_000_000) % 1_000_000;
+  return `${text}.${String(micros).padStart(6, '0')}`;
+}
+
+/** Machine-readable UTC instant of a microsecond timestamp (`dateTime` of `<time>`), empty when invalid. */
+export function isoTimestamp(us: number): string {
+  const d = localDate(us);
+  return d === null ? '' : d.toISOString();
+}
+
+/** Local time of day of a microsecond timestamp: `14:03:12`, or `14:03` without seconds (axes). */
+export function formatClock(us: number, seconds = true): string {
+  const time = formatTimestamp(us, false);
+  return seconds ? time : time.slice(0, 5);
+}
+
+/** Local month and day of a microsecond timestamp (`11-08`), for axes spanning several days. */
+export function formatMonthDay(us: number): string {
+  return formatDate(us).slice(5);
+}
+
+/**
  * Microsecond timestamp of a local date and time typed as `formatTimestamp` writes it
  * (`2026-11-08 14:03:12`, optionally `.123456`, `T` accepted instead of the space), `null` when
  * the text is not one. `endOfSecond`: without a fraction, the last microsecond of that second

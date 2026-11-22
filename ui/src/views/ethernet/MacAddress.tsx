@@ -71,7 +71,7 @@ export function MacAddress({ address, withVendor = false, copy = false }: MacAdd
       <span className="flex min-w-0 items-center gap-1.5">
         <span className="shrink-0 font-mono text-meta">{address.mac}</span>
         <MacClassBadge address={address} />
-        {copy && <CopyButton value={address.mac} name={t('views.ethernet.address.copy')} className="-my-1.5" />}
+        {copy && <CopyButton value={address.mac} name={t('views.ethernet.address.copy')} className="-my-1.5 ml-auto" />}
       </span>
       {withVendor && <VendorName address={address} small />}
     </span>

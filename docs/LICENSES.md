@@ -21,7 +21,7 @@ L'application embarque la liste des logiciels tiers qu'elle contient, avec leurs
 | Fichier (commité) | Usage |
 |---|---|
 | `ui/src/views/settings/licenses/third-party-licenses.json` | « Paramètres > À propos > Licences tierces », chargé à l'ouverture du dialogue (chunk séparé, jamais téléchargé) |
-| `THIRD_PARTY_LICENSES` (racine) | texte brut cité par `NOTICE` et livré dans chaque bundle (`licenses/`) : licences, fichiers d'avis (`NOTICE`, `THIRDPARTYNOTICES`...), adresse des sources des paquets MPL-2.0, attribution DB-IP |
+| `THIRD_PARTY_LICENSES` (racine) | texte brut cité par `NOTICE` et livré dans chaque bundle (`licenses/`) : licences, fichiers d'avis (`NOTICE`, `THIRDPARTYNOTICES`...), adresse des sources des paquets MPL-2.0, attribution DB-IP, mention des listes IEEE des constructeurs MAC (ADR-031) |
 
 Les deux fichiers sont **générés** par `./x.sh licenses` (`scripts/ct/licenses.sh`), jamais édités à
 la main :
@@ -63,3 +63,13 @@ dépendances (Cargo.lock, package-lock.json) : `./x.sh licenses`, puis committer
 L'interface affiche les textes comme du texte brut (nœuds texte React dans un `<pre>`), jamais comme
 du HTML. Aucun lien n'est ouvert : l'adresse du dépôt est affichée en texte (le plugin `opener` est
 limité au dossier `exports/`).
+
+## Données tierces embarquées
+
+| Données | Fichier | Conditions |
+|---|---|---|
+| Base pays DB-IP IP to Country Lite | `resources/geoip/` (bundle) | CC BY 4.0, attribution dans « À propos » et `THIRD_PARTY_LICENSES` |
+| Noms de services IANA des ports | `crates/netsift-analyze/data/iana-services.csv` | domaine public (CC0 1.0) |
+| Constructeurs des préfixes MAC (IEEE MA-L, MA-M, MA-S, IAB) | `crates/netsift-analyze/data/ieee-oui.tsv` | listes publiques, sans droit d'auteur revendiqué par l'IEEE ; source citée dans `THIRD_PARTY_LICENSES` (ADR-031) |
+
+Origine, contenu et régénération des deux tables : `crates/netsift-analyze/data/README.md`.

@@ -131,7 +131,7 @@ Tables principales (chaque analyseur ajoute les siennes via sa migration) :
 | `timeseries` | `(bucket_s, proto) -> bytes, packets` (bucket 1 s ; l'API rééchantillonne) |
 | `hosts` | IP, MAC, noms (DNS/NBNS/DHCP), pays, catégorie (privé/public/multicast...) |
 | `flows` | 5-tuple, premier/dernier ts, octets/paquets par sens, protocole applicatif, état TCP |
-| `dns_*`, `http_*`, `tls_*`, `smb_*`, `credentials`, `objects`, `servers`, ... | par analyseur |
+| `dns_*`, `http_*`, `tls_*`, `smb_*`, `eth_*`, `credentials`, `objects`, `servers`, ... | par analyseur |
 
 Règles : index sur toutes les colonnes filtrables/triables par l'UI ; FTS5 pour la recherche
 texte (noms DNS, URL, en-têtes) ; pagination par **keyset** (pas d'OFFSET sur grosses tables) ;

@@ -371,7 +371,7 @@ impl RangeCache {
                     elapsed_ms = started.elapsed().as_millis(),
                     "range database built"
                 );
-                self.evict(dir);
+                Self::evict(dir);
                 Ok(())
             }
             Err(e) => {
@@ -384,7 +384,7 @@ impl RangeCache {
     /// Keeps the [`KEEP`] most recently used range databases of `dir`; removes partial files of
     /// builds that are not running (an interrupted process). Best effort: a file still open
     /// elsewhere (Windows) stays until the next eviction.
-    fn evict(&self, dir: &Path) {
+    fn evict(dir: &Path) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };

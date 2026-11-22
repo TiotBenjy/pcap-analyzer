@@ -1187,8 +1187,13 @@ acceptée : la remplacer par une nouvelle qui la référence.
   aucune requête ne l'attend ; empreinte (migrations, étapes, statistiques, version) dans le nom pour qu'une
   session migrée n'en relise jamais une ancienne ; serveur `--read-only` : dossier temporaire du processus.
   Conversations, trafic par hôte et clients des ports agrégés en Rust en une lecture des flux actifs (le
-  `GROUP BY` SQL coûtait 8 s à 6 jours). Les compteurs de modules du résumé attendent la base de la plage
-  comme les vues. Mesures : `docs/PERFORMANCE.md`, « Filtre temporel (P5.2b) ».
+  `GROUP BY` SQL coûtait 8 s à 6 jours ; mémoire bornée par passes, catégories et ports lus par clé
+  primaire). Les compteurs de modules des vues agrégées sont servis par une route à part,
+  `GET /sessions/{id}/modules`, qui attend la base ; `/summary` ne l'attend jamais (compteurs `pending`) et
+  garde ses temps de P5.2a à chaque zoom. Un test compare, sur des sessions importées, la base d'une plage
+  couvrante et la session table par table. Suivi : construire les tables du graphe seulement à la première
+  requête Network (non retenu en l'état : le fichier publié est immuable). Mesures : `docs/PERFORMANCE.md`,
+  « Filtre temporel (P5.2b) ».
 
 ## ADR-031 — Constructeurs des adresses MAC : listes publiques de l'IEEE, table générée et commitée
 

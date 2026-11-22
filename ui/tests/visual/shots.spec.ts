@@ -519,7 +519,10 @@ for (const lang of LANGS) {
           }
           if ((view === 'http' || view === 'http-headers') && !path.includes(NO_SESSION)) {
             const list = filled(view === 'http' ? D.views.http.listLabel : D.views.httpHeaders.listLabel);
-            await expect(page.getByRole('img', { name: pattern(D.views.http.methodsLabel) })).toBeVisible();
+            // Methods: a donut up to five groups, bars beyond.
+            await expect(
+              page.getByRole('img', { name: pattern(D.views.http.methodsLabel) }).or(page.getByRole('list', { name: D.views.http.methodsLabel })),
+            ).toBeVisible();
             await expect(page.getByRole('list', { name: list })).toBeVisible();
             if (view === 'http-headers') {
               // Search a session cookie: the expanded row then shows masked values and highlights.

@@ -1,5 +1,6 @@
 // Typed client of the DNS routes (crates/netsift-api/src/dns.rs).
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiGet } from './client';
 import type { DnsMessage } from './types/DnsMessage';
 import type { DnsPair } from './types/DnsPair';
@@ -43,25 +44,26 @@ export function dnsListQuery(p: DnsListParams = {}): string {
   return s === '' ? '' : `?${s}`;
 }
 
-export function getDnsStats(id: string, signal?: AbortSignal): Promise<DnsStats> {
-  return apiGet(`${dnsPath(id)}/stats`, signal);
+export function getDnsStats(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<DnsStats> {
+  return apiGet(withRange(`${dnsPath(id)}/stats`, range), signal);
 }
 
-export function getDnsPairs(id: string, params: DnsListParams, signal?: AbortSignal): Promise<Page<DnsPair>> {
-  return apiGet(`${dnsPath(id)}/pairs${dnsListQuery(params)}`, signal);
+export function getDnsPairs(id: string, params: DnsListParams, signal?: AbortSignal, range: TimeRange | null = null): Promise<Page<DnsPair>> {
+  return apiGet(withRange(`${dnsPath(id)}/pairs${dnsListQuery(params)}`, range), signal);
 }
 
-export function getDnsMessages(id: string, params: DnsListParams, signal?: AbortSignal): Promise<Page<DnsMessage>> {
-  return apiGet(`${dnsPath(id)}/messages${dnsListQuery(params)}`, signal);
+export function getDnsMessages(id: string, params: DnsListParams, signal?: AbortSignal, range: TimeRange | null = null): Promise<Page<DnsMessage>> {
+  return apiGet(withRange(`${dnsPath(id)}/messages${dnsListQuery(params)}`, range), signal);
 }
 
 export function getDnsServers(
   id: string,
   params: Pick<DnsListParams, 'limit' | 'cursor'>,
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<DnsServer>> {
   const paging: DnsListParams = {};
   if (params.limit !== undefined) paging.limit = params.limit;
   if (params.cursor !== undefined) paging.cursor = params.cursor;
-  return apiGet(`${dnsPath(id)}/servers${dnsListQuery(paging)}`, signal);
+  return apiGet(withRange(`${dnsPath(id)}/servers${dnsListQuery(paging)}`, range), signal);
 }

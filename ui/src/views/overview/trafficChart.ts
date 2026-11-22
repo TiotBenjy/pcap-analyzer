@@ -5,6 +5,7 @@ import type { TrafficSeries } from '../../api/types/TrafficSeries';
 import { colorFor } from '../../charts/palette';
 import { formatShare } from '../../lib/format';
 import { escapeHtml } from '../../charts/text';
+import type { TimeRange } from '../../lib/timeRange';
 
 // ECharts option of the Overview "Traffic by protocol" chart (pure: unit-tested without ECharts).
 
@@ -249,4 +250,15 @@ export function zoomOfEvent(params: unknown): Zoom | null {
   const end = Number(src?.end);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
   return { start: Math.max(0, Math.min(100, start)), end: Math.max(0, Math.min(100, end)) };
+}
+
+/**
+ * Time range of a zoom window, aligned on the buckets shown (whole buckets, at least one), so
+ * that the volumes of the range equal those of the chart; `null` when not zoomed.
+ */
+export function zoomRange(data: TrafficSeries, z: Zoom): TimeRange | null {
+  if (!isZoomed(z) || data.points === 0) return null;
+  const from = Math.min(data.points - 1, Math.max(0, Math.floor((z.start / 100) * data.points)));
+  const to = Math.min(data.points, Math.max(from + 1, Math.ceil((z.end / 100) * data.points)));
+  return { fromUs: data.start_us + from * data.step_us, toUs: data.start_us + to * data.step_us - 1 };
 }

@@ -1,5 +1,6 @@
 // Typed client of the overview routes (crates/netsift-api/src/overview.rs).
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiGet } from './client';
 import type { OverviewSummary } from './types/OverviewSummary';
 import type { TrafficProtocol } from './types/TrafficProtocol';
@@ -22,8 +23,8 @@ export interface TrafficParams {
 
 const sessionPath = (id: string): `/${string}` => `/sessions/${encodeURIComponent(id)}`;
 
-export function getOverviewSummary(id: string, signal?: AbortSignal): Promise<OverviewSummary> {
-  return apiGet(`${sessionPath(id)}/summary`, signal);
+export function getOverviewSummary(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<OverviewSummary> {
+  return apiGet(withRange(`${sessionPath(id)}/summary`, range), signal);
 }
 
 export function trafficQuery(params: TrafficParams = {}): string {

@@ -161,7 +161,7 @@ it('asks for confirmation before an export and then shows the sensitive-data ban
   expect(credApi.downloadCredentials).not.toHaveBeenCalled();
   await user.click(within(dialog).getByRole('button', { name: 'Export' }));
   await waitFor(() =>
-    expect(credApi.downloadCredentials).toHaveBeenCalledWith(ID, { format: 'csv', state: null, protocol: null }),
+    expect(credApi.downloadCredentials).toHaveBeenCalledWith(ID, { format: 'csv', state: null, protocol: null, range: null }),
   );
   expect(await screen.findByText('credentials-01jc0ffe.csv was exported. It contains sensitive data.')).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -175,7 +175,7 @@ it('exports one hashcat mode per file', async () => {
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getByText(/1 entry with its secret/)).toBeInTheDocument();
   await user.click(within(dialog).getByRole('button', { name: 'Export' }));
-  await waitFor(() => expect(credApi.downloadCredentials).toHaveBeenCalledWith(ID, { format: 'hashcat', mode: 5600 }));
+  await waitFor(() => expect(credApi.downloadCredentials).toHaveBeenCalledWith(ID, { format: 'hashcat', mode: 5600, range: null }));
 });
 
 it('filters by state and protocol', async () => {
@@ -188,6 +188,7 @@ it('filters by state and protocol', async () => {
       ID,
       expect.objectContaining({ state: 'recoverable', protocol: null }),
       expect.anything(),
+      null,
     ),
   );
   await user.selectOptions(screen.getByLabelText('Protocol'), 'smb');
@@ -196,6 +197,7 @@ it('filters by state and protocol', async () => {
       ID,
       expect.objectContaining({ state: 'recoverable', protocol: 'smb' }),
       expect.anything(),
+      null,
     ),
   );
 });
@@ -236,6 +238,7 @@ it('moves the filters into a menu on narrow screens and shows names next to addr
       ID,
       expect.objectContaining({ state: 'recoverable' }),
       expect.anything(),
+      null,
     ),
   );
 });

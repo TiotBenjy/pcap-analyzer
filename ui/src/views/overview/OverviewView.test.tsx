@@ -14,7 +14,7 @@ import { renderApp, setViewportWide } from '../../test/renderApp';
 import { session } from '../../test/sessionFixtures';
 import { setupUser } from '../../test/user';
 import { moduleState, MODULE_ITEMS } from './modules';
-import { buildTrafficOption, byteAxis, tooltipHtml, type TrafficFormat, zoomOfEvent } from './trafficChart';
+import { buildTrafficOption, byteAxis, tooltipHtml, type TrafficFormat, zoomOfEvent, zoomRange } from './trafficChart';
 
 vi.mock('../../api/sessions');
 vi.mock('../../api/overview', async (importOriginal) => ({
@@ -43,7 +43,7 @@ vi.mock('../../components/Chart', () => ({
 }));
 
 const ID = '01JC0FFEE0000000000000000A';
-const T0 = Date.UTC(2026, 10, 8, 10, 0, 0) * 1_000_000;
+const T0 = Date.UTC(2026, 10, 8, 10, 0, 0) * 1000;
 
 function summary(overrides: Partial<OverviewSummary> = {}): OverviewSummary {
   return {
@@ -61,9 +61,10 @@ function summary(overrides: Partial<OverviewSummary> = {}): OverviewSummary {
     flow_count: 1_234,
     anomaly_count: 2,
     modules: [
-      { id: 'connections', count: 1_234 },
-      { id: 'hosts', count: 42 },
+      { id: 'connections', count: 1_234, scope: null },
+      { id: 'hosts', count: 42, scope: null },
     ],
+    range: null,
     ...overrides,
   };
 }
@@ -198,27 +199,117 @@ describe('Overview view', () => {
     expect(dns?.data.map((d) => d[1])).toEqual([1, null, 3]);
   });
 
-  it('follows the zoom without rebuilding the option and resets it through the chart', async () => {
-    renderApp(`/sessions/${ID}/overview`);
+  it('turns a settled zoom into the time range of the views and fetches its series', async () => {
+    const { router } = renderApp(`/sessions/${ID}/overview`);
     await waitFor(() => {
       expect(seriesNames()).toHaveLength(3);
     });
-    const reset = screen.getByRole('button', { name: 'Reset zoom' });
-    expect(reset).toBeDisabled();
+    const all = screen.getByRole('button', { name: 'Whole session' });
+    expect(all).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Zoom out' })).toBeDisabled();
     const before = chart.props?.option;
     act(() => {
       chart.props?.onEvents?.datazoom?.({ batch: [{ start: 20, end: 60 }] });
     });
+    // Same option object while the user drags: the renderer does not re-apply it.
+    expect(chart.props?.option).toBe(before);
+    // Aligned on the buckets shown: buckets 0 and 1 of three.
+    const expected = zoomRange(traffic(), { start: 20, end: 60 });
+    expect(expected).toEqual({ fromUs: T0, toUs: T0 + 120_000_000 - 1 });
+    await waitFor(
+      () => {
+        expect(router.state.location.search).toMatchObject({ from_us: T0, to_us: T0 + 120_000_000 - 1 });
+      },
+      { timeout: 2000 },
+    );
     await waitFor(() => {
-      expect(reset).toBeEnabled();
+      expect(overviewApi.getTraffic).toHaveBeenLastCalledWith(
+        ID,
+        expect.objectContaining({ from_us: T0, to_us: T0 + 120_000_000 - 1 }),
+        expect.anything(),
+      );
     });
-    // Same option object: the renderer does not re-apply it while the user drags.
-    expect(chart.props?.option).toBe(before);
-    const user = setupUser();
-    await user.click(reset);
+    expect(overviewApi.getOverviewSummary).toHaveBeenLastCalledWith(ID, expect.anything(), expected);
+    // The new series is shown whole.
     expect(chart.dispatchAction).toHaveBeenCalledWith({ type: 'dataZoom', start: 0, end: 100 });
-    expect(reset).toBeDisabled();
-    expect(chart.props?.option).toBe(before);
+    // The header shows the range on every view; Whole session clears it.
+    expect(await screen.findByTestId('time-range-chip')).toHaveAttribute('data-applied', 'true');
+    const user = setupUser();
+    await user.click(screen.getByRole('button', { name: 'Whole session' }));
+    await waitFor(() => {
+      expect(router.state.location.search).not.toHaveProperty('from_us');
+    });
+    expect(screen.queryByTestId('time-range-chip')).toBeNull();
+  });
+
+  it('keeps the range across views, dims the chip where it does not apply and clears it', async () => {
+    const to = T0 + 120_000_000 - 1;
+    const { router } = renderApp(`/sessions/${ID}/overview?from_us=${T0}&to_us=${to}`);
+    const chip = await screen.findByTestId('time-range-chip');
+    expect(chip).toHaveAttribute('data-applied', 'true');
+    const user = setupUser();
+    // A module card keeps the range in its link (retained search params).
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Connections' }).closest('a')).not.toBeNull();
+    });
+    await user.click(screen.getByRole('heading', { name: 'Connections' }).closest('a') as HTMLElement);
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(`/sessions/${ID}/connections`);
+    });
+    expect(router.state.location.search).toMatchObject({ from_us: T0, to_us: to });
+    // Connections does not apply the range yet (P5.2b): the chip says so.
+    await waitFor(() => {
+      expect(screen.getByTestId('time-range-chip')).toHaveAttribute('data-applied', 'false');
+    });
+    await user.click(screen.getByRole('button', { name: 'Clear the time range' }));
+    await waitFor(() => {
+      expect(router.state.location.search).not.toHaveProperty('from_us');
+    });
+  });
+
+  it('shows the figures of the range and edits it in the range dialog', async () => {
+    const to = T0 + 120_000_000 - 1;
+    vi.mocked(overviewApi.getOverviewSummary).mockResolvedValue(
+      summary({
+        range: { from_us: T0, to_us: to, duration_us: to - T0, packets: 2_000, bytes: 1_572_864, flow_count: 7, host_count: 3 },
+        modules: [
+          { id: 'connections', count: 1_234, scope: 'session' },
+          { id: 'dns', count: 0, scope: 'range' },
+        ],
+      }),
+    );
+    const { router } = renderApp(`/sessions/${ID}/overview?from_us=${T0}&to_us=${to}`);
+    const band = within(await screen.findByTestId('overview-summary'));
+    expect(await band.findByText('2,000')).toBeInTheDocument();
+    expect(band.getByText('1.5 MiB')).toBeInTheDocument();
+    expect(band.getAllByText('In the range').length).toBeGreaterThan(0);
+    // A module empty in the range stays a link, dimmed; a module not filtered says so.
+    const dns = screen.getByRole('heading', { name: 'DNS' }).closest('a');
+    expect(dns).toHaveClass('opacity-60');
+    expect(within(screen.getByRole('heading', { name: 'Connections' }).closest('a') as HTMLElement).getByText('Whole session')).toBeInTheDocument();
+    // Zoom out doubles the range around its center, bounded to the session.
+    const user = setupUser();
+    await user.click(screen.getByRole('button', { name: 'Zoom out' }));
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({ from_us: T0 });
+    });
+    expect((router.state.location.search as { to_us: number }).to_us).toBeGreaterThan(to);
+    // Typed range: errors in the dialog, then applied.
+    await user.click(screen.getByRole('button', { name: 'Range' }));
+    const dialog = within(await screen.findByRole('dialog', { name: 'Time range' }));
+    const [fromField, toField] = dialog.getAllByRole('textbox') as [HTMLInputElement, HTMLInputElement];
+    await user.clear(toField);
+    await user.type(toField, '2000-01-01 00:00:00');
+    await user.click(dialog.getByRole('button', { name: 'Apply' }));
+    expect(dialog.getByRole('alert')).toHaveTextContent('The end is before the start');
+    await user.clear(toField);
+    await user.type(toField, fromField.value);
+    await user.click(dialog.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    const search = router.state.location.search as { from_us: number; to_us: number };
+    expect(search.to_us - search.from_us).toBe(999_999);
   });
 
   it('hides the legend below 640 px', async () => {
@@ -380,9 +471,9 @@ describe('overview helpers', () => {
     const connections = MODULE_ITEMS.find((i) => i.id === 'connections');
     if (connections === undefined) throw new Error('connections module');
     const counts = new Map([['connections', 3]]);
-    expect(moduleState({ ...connections, enabled: false }, counts)).toEqual({ count: 3, active: false, reason: 'later' });
+    expect(moduleState({ ...connections, enabled: false }, counts)).toEqual({ count: 3, active: false, dimmed: true, reason: 'later' });
     const enabled = { ...connections, enabled: true };
-    expect(moduleState(enabled, counts)).toEqual({ count: 3, active: true, reason: null });
+    expect(moduleState(enabled, counts)).toEqual({ count: 3, active: true, dimmed: false, reason: null });
     expect(moduleState(enabled, new Map([['connections', 0]])).reason).toBe('empty');
     expect(moduleState(enabled, new Map()).reason).toBe('notRun');
     expect(MODULE_ITEMS.every((i) => i.group === 'analysis' || i.enabled)).toBe(true);

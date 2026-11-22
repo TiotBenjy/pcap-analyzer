@@ -1,3 +1,5 @@
+import { useViewRange } from '../app/timeRange';
+import { rangeKey, type TimeRange } from '../lib/timeRange';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { fetchRendition, getPictureStats, listPictures, type PictureFilters } from './objects';
 import { fetchAll } from './sessionQueries';
@@ -8,21 +10,23 @@ import { fetchAll } from './sessionQueries';
 export const PICTURES_LIST_LIMIT = 5000;
 
 export const objectKeys = {
-  stats: (id: string) => ['sessions', 'detail', id, 'objects', 'stats'] as const,
-  pictures: (id: string, filters: PictureFilters) => ['sessions', 'detail', id, 'objects', 'pictures', filters] as const,
+  stats: (id: string, range: TimeRange | null = null) => ['sessions', 'detail', id, 'objects', 'stats', rangeKey(range)] as const,
+  pictures: (id: string, filters: PictureFilters, range: TimeRange | null = null) => ['sessions', 'detail', id, 'objects', 'pictures', filters, rangeKey(range)] as const,
   rendition: (id: string, sha256: string, kind: 'thumb' | 'preview') =>
     ['sessions', 'detail', id, 'objects', kind, sha256] as const,
 };
 
 /** `enabled`: false while the session is importing or failed (the routes answer 409). */
 export function usePictureStats(id: string, enabled: boolean) {
-  return useQuery({ queryKey: objectKeys.stats(id), queryFn: ({ signal }) => getPictureStats(id, signal), enabled });
+  const range = useViewRange();
+  return useQuery({ queryKey: objectKeys.stats(id, range), queryFn: ({ signal }) => getPictureStats(id, signal, range), enabled });
 }
 
 export function usePictures(id: string, filters: PictureFilters, enabled: boolean) {
+  const range = useViewRange();
   return useQuery({
-    queryKey: objectKeys.pictures(id, filters),
-    queryFn: ({ signal }) => fetchAll((p) => listPictures(id, filters, p, signal), PICTURES_LIST_LIMIT),
+    queryKey: objectKeys.pictures(id, filters, range),
+    queryFn: ({ signal }) => fetchAll((p) => listPictures(id, filters, p, signal, range), PICTURES_LIST_LIMIT),
     enabled,
     placeholderData: keepPreviousData,
   });

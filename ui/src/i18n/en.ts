@@ -6,6 +6,7 @@ import { geoipPromptEn } from './geoipPrompt';
 import { onlineEn } from './online';
 import { picturesEn } from './pictures';
 import { tlsEn } from './tls';
+import { timeRangeEn } from './timeRange';
 import { updatesEn } from './updates';
 
 export const en = {
@@ -993,6 +994,7 @@ export const en = {
     tls: tlsEn,
     updates: updatesEn,
   },
+  timeRange: timeRangeEn,
   common: {
     all: 'All',
     none: 'None',

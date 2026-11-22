@@ -3,6 +3,8 @@ import type { EChartsCoreOption } from 'echarts/core';
 import { FolderTree, KeyRound } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useViewRange } from '../../app/timeRange';
+import { cn } from '../../lib/cn';
 import { NAV_ITEMS } from '../../app/nav';
 import { useSession } from '../../api/sessionQueries';
 import { useSmbAnnounces, useSmbAuth, useSmbStats } from '../../api/smbQueries';
@@ -233,6 +235,8 @@ function Name({ announce }: { announce: SmbAnnounceInfo }) {
 function AnnounceTable({ query }: { query: ListQuery<SmbAnnounceInfo> }) {
   const { t } = useTranslation();
   const wide = useMediaQuery(MD_QUERY);
+  // Announcements are folded per host: under a range their count stays that of the session.
+  const ranged = useViewRange() !== null;
   return (
     <Block query={query}>
       {(items) => {
@@ -244,7 +248,12 @@ function AnnounceTable({ query }: { query: ListQuery<SmbAnnounceInfo> }) {
                 <li key={`${a.source.ip}-${a.server_name}-${a.dst_name}`} className="flex min-w-0 flex-col gap-1.5 px-3 py-2.5">
                   <div className="flex min-w-0 items-center justify-between gap-2">
                     <Name announce={a} />
-                    <span className="num shrink-0 text-meta text-muted">{t('views.smb.announce.times', { count: Number(a.announce_count) })}</span>
+                    <span
+                      className="num shrink-0 text-meta text-muted"
+                      {...(ranged ? { title: t('timeRange.wholeSession') } : {})}
+                    >
+                      {t('views.smb.announce.times', { count: Number(a.announce_count) })}
+                    </span>
                   </div>
                   <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
                     <Endpoint endpoint={a.source} />
@@ -269,7 +278,9 @@ function AnnounceTable({ query }: { query: ListQuery<SmbAnnounceInfo> }) {
                   <th scope="col" className="w-[16%] px-3 py-2 font-medium">{t('views.smb.announce.os')}</th>
                   <th scope="col" className="px-3 py-2 font-medium">{t('views.smb.announce.roles')}</th>
                   <th scope="col" className="w-[14%] px-3 py-2 font-medium">{t('views.smb.announce.comment')}</th>
-                  <th scope="col" className="w-20 px-3 py-2 text-right font-medium sm:pr-4">{t('views.smb.announce.count')}</th>
+                  <th scope="col" className={cn('px-3 py-2 text-right font-medium sm:pr-4', ranged ? 'w-28' : 'w-20')}>
+                    {ranged ? t('timeRange.wholeSessionColumn', { label: t('views.smb.announce.count') }) : t('views.smb.announce.count')}
+                  </th>
                 </tr>
               </thead>
               <tbody>

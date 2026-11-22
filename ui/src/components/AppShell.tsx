@@ -10,6 +10,7 @@ import { useTheme } from '../theme/theme';
 import { Button } from './Button';
 import { ImportIndicator } from './ImportIndicator';
 import { Sidebar } from './Sidebar';
+import { TimeRangeChip } from './TimeRangeChip';
 
 const COLLAPSED_KEY = 'netsift.sidebar.collapsed';
 /** Must match the Tailwind `lg` breakpoint used by the layout classes. */
@@ -146,6 +147,7 @@ export function AppShell() {
             {current === undefined ? t('app.name') : t(`nav.items.${current.id}`)}
           </span>
           <div className="ml-auto flex min-w-0 items-center gap-1">
+            <TimeRangeChip />
             <ImportIndicator />
             <Button
               variant="ghost"

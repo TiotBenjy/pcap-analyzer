@@ -160,6 +160,7 @@ it('filters by type, host and text on the server', async () => {
       expect.objectContaining({ type: 'image/png' }),
       expect.anything(),
       expect.anything(),
+      null,
     ),
   );
   await user.selectOptions(screen.getByRole('combobox', { name: 'Host' }), 'cdn.example.test');
@@ -171,6 +172,7 @@ it('filters by type, host and text on the server', async () => {
       { type: 'image/png', host: 'cdn.example.test', q: 'night', sort: 'size' },
       expect.anything(),
       expect.anything(),
+      null,
     ),
   );
   vi.mocked(objectsApi.listPictures).mockResolvedValue(page([]));

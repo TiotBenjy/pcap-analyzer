@@ -1,5 +1,6 @@
 // Typed client of the TLS routes (crates/netsift-api/src/tls/mod.rs).
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiFetch, apiGet } from './client';
 import type { PageParams } from './sessions';
 import type { Page } from './types/Page';
@@ -37,8 +38,8 @@ function query(entries: Record<string, string | number | boolean | null | undefi
   return text === '' ? '' : `?${text}`;
 }
 
-export function getTlsStats(id: string, signal?: AbortSignal): Promise<TlsStats> {
-  return apiGet(`${tlsPath(id)}/stats`, signal);
+export function getTlsStats(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<TlsStats> {
+  return apiGet(withRange(`${tlsPath(id)}/stats`, range), signal);
 }
 
 export function listTlsSessions(
@@ -46,6 +47,7 @@ export function listTlsSessions(
   filters: TlsSessionFilters,
   params: PageParams = {},
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<TlsSessionItem>> {
   const q = query({
     limit: params.limit,
@@ -57,7 +59,7 @@ export function listTlsSessions(
     weak: filters.weak,
     cert_issues: filters.certIssues,
   });
-  return apiGet(`${tlsPath(id)}/sessions${q}`, signal);
+  return apiGet(withRange(`${tlsPath(id)}/sessions${q}`, range), signal);
 }
 
 export function getTlsSession(id: string, flow: string, signal?: AbortSignal): Promise<TlsSessionDetail> {
@@ -69,9 +71,10 @@ export function listTlsCertificates(
   filters: TlsCertificateFilters,
   params: PageParams = {},
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<TlsCertificateItem>> {
   const q = query({ limit: params.limit, cursor: params.cursor, q: filters.q?.trim(), problems: filters.problems });
-  return apiGet(`${tlsPath(id)}/certificates${q}`, signal);
+  return apiGet(withRange(`${tlsPath(id)}/certificates${q}`, range), signal);
 }
 
 /** Path of a certificate file (`der` or `pem`). */

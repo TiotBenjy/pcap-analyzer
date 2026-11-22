@@ -17,10 +17,12 @@ interface ModuleGridProps {
 export function ModuleGrid({ sessionId, modules }: ModuleGridProps) {
   const { t } = useTranslation();
   const counts = new Map((modules ?? []).map((m) => [m.id, m.count]));
+  const scopes = new Map((modules ?? []).map((m) => [m.id, m.scope]));
   return (
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {MODULE_ITEMS.map((item) => {
-        const state = moduleState(item, counts);
+        const scope = scopes.get(item.id) ?? null;
+        const state = moduleState(item, counts, scope);
         const Icon = item.icon;
         const title = t(`nav.items.${item.id}`);
         const description = t(`views.overview.modules.${item.id as ModuleId}`);
@@ -37,6 +39,11 @@ export function ModuleGrid({ sessionId, modules }: ModuleGridProps) {
               )}
             </div>
             <h3 className="mt-3 truncate text-card font-medium">{title}</h3>
+            {scope !== null && state.count !== null && (
+              <p className="truncate text-meta text-faint">
+                {scope === 'range' ? t('timeRange.inRange') : t('timeRange.wholeSession')}
+              </p>
+            )}
             <p data-testid="truncatable" title={description} className="mt-0.5 line-clamp-2 min-h-10 text-muted">
               {description}
             </p>
@@ -49,7 +56,7 @@ export function ModuleGrid({ sessionId, modules }: ModuleGridProps) {
               <Link
                 to={`/sessions/$sessionId${item.path}`}
                 params={{ sessionId }}
-                className={cn(base, 'hover:border-accent hover:bg-subtle')}
+                className={cn(base, 'hover:border-accent hover:bg-subtle', state.dimmed && 'opacity-60')}
               >
                 {body}
               </Link>

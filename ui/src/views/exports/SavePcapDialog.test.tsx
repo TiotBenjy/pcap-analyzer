@@ -48,11 +48,11 @@ function job(over: Partial<ExportJob> = {}): ExportJob {
   };
 }
 
-function renderDialog(onClose = vi.fn()) {
+function renderDialog(onClose = vi.fn(), activeRange: { fromUs: number; toUs: number } | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <SavePcapDialog open onClose={onClose} sessionId={SESSION} firstUs={FIRST} lastUs={LAST} />
+      <SavePcapDialog open onClose={onClose} sessionId={SESSION} firstUs={FIRST} lastUs={LAST} activeRange={activeRange} />
     </QueryClientProvider>,
   );
   return onClose;
@@ -67,6 +67,14 @@ describe('Save PCAP dialog', () => {
     vi.clearAllMocks();
     serverInfo(false);
     vi.mocked(exportsApi.deliversByFolder).mockReturnValue(false);
+  });
+
+  it('opens on the active time range of the views', () => {
+    const range = { fromUs: FIRST + 60_000_000, toUs: FIRST + 120_000_000 };
+    renderDialog(vi.fn(), range);
+    expect(screen.getByRole('radio', { name: 'Time range' })).toBeChecked();
+    expect(screen.getByLabelText('From')).toHaveValue(formatTimestamp(range.fromUs));
+    expect(screen.getByLabelText('To')).toHaveValue(formatTimestamp(range.toUs));
   });
 
   it('exports the whole session, shows the progress then a download link', async () => {

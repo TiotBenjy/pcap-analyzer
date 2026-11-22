@@ -2,6 +2,7 @@ import { getRouteApi } from '@tanstack/react-router';
 import { ArrowRight, ChevronDown, Download, KeyRound, ShieldAlert, X } from 'lucide-react';
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useViewRange } from '../../app/timeRange';
 import { useCredential, useCredentialPaths, useCredentialStats, useCredentials } from '../../api/credentialQueries';
 import { type CredentialExport, MAX_EXPORT, type SecretState, downloadCredentials } from '../../api/credentials';
 import { useSession } from '../../api/sessionQueries';
@@ -560,6 +561,8 @@ function CredentialCard({
 }) {
   const { t } = useTranslation();
   const panelId = useId();
+  // Identical observations are folded: under a range the count stays that of the session.
+  const ranged = useViewRange() !== null;
   const kind = t(tokenKey('kind', c.kind), { defaultValue: c.kind });
   const label = `${protocolLabel(c.protocol)} ${kind}`;
   const login = [c.domain, c.username].filter((v) => v !== null && v !== '').join('\\');
@@ -605,7 +608,9 @@ function CredentialCard({
             )}
           </span>
           <span className="flex shrink-0 items-center gap-3 text-muted">
-            <span className="num">{t('views.credentials.card.seen', { count: c.seen_count })}</span>
+            <span className="num" {...(ranged ? { title: t('timeRange.wholeSession') } : {})}>
+              {t('views.credentials.card.seen', { count: c.seen_count })}
+            </span>
             <Timestamp us={c.first_ts_us} />
           </span>
         </span>
@@ -639,6 +644,7 @@ function CredentialDetailPanel({
 }) {
   const { t } = useTranslation();
   const detail = useCredential(sessionId, c.id, true);
+  const ranged = useViewRange() !== null;
   return (
     <div className="flex flex-col gap-3">
       <dl className="flex flex-col gap-1.5">
@@ -678,7 +684,13 @@ function CredentialDetailPanel({
             <Timestamp us={c.last_ts_us} />
           </Row>
         )}
-        <Row label={t('views.credentials.detail.seen')}>
+        <Row
+          label={
+            ranged
+              ? t('timeRange.wholeSessionColumn', { label: t('views.credentials.detail.seen') })
+              : t('views.credentials.detail.seen')
+          }
+        >
           <span className="num">{formatCount(c.seen_count)}</span>
         </Row>
         {c.hashcat_mode !== null && (
@@ -752,6 +764,8 @@ function ExportDialog({
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // An export of the filtered list follows the time range of the list (a selection does not).
+  const range = useViewRange();
   const close = () => {
     setError(null);
     onClose();
@@ -762,7 +776,7 @@ function ExportDialog({
     if (pending === null || tooMany) return;
     setBusy(true);
     setError(null);
-    downloadCredentials(sessionId, pending.request)
+    downloadCredentials(sessionId, { ...pending.request, range })
       .then((name) => {
         onDone(name);
       })

@@ -10,6 +10,7 @@
 //! - [`credentials`]: table and queries of the Credentials view (secrets read on demand only);
 //! - [`network`]: bounded communication graph of the Network view (read queries only).
 
+pub mod arp;
 pub mod catalog;
 pub mod connections;
 pub mod credentials;

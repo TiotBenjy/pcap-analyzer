@@ -17,6 +17,7 @@ use netsift_store::{
 use serde_json::{Value, json};
 
 // --- analyzers: one translation module each, sorted ---
+mod arp;
 mod credentials;
 mod servers;
 mod ssdp;
@@ -32,6 +33,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
         Record::Host(h) => StoreRecord::Host(host_row(h)),
         Record::Flow(f) => StoreRecord::Flow(flow_row(&f)),
         // --- analyzers: one arm each, sorted alphabetically ---
+        Record::Arp(m) => StoreRecord::Arp(Box::new(arp::arp_row(m))),
         Record::Conversation(c) => StoreRecord::Conversation(conversation_row(&c)),
         Record::Credential(c) => StoreRecord::Credential(Box::new(credentials::credential_row(c))),
         Record::Dns(t) => StoreRecord::Dns(Box::new(dns_row(*t))),
@@ -159,6 +161,7 @@ pub fn approx_size(record: &StoreRecord) -> usize {
                 + p.banner.as_ref().map_or(0, String::len)
         }
         StoreRecord::HostTraffic(_) => 0,
+        StoreRecord::Arp(_) => std::mem::size_of::<netsift_store::arp::ArpRow>(),
         StoreRecord::Http(h) => h.heap_size(),
         StoreRecord::Server(s) => s.heap_size(),
         StoreRecord::Ssdp(s) => s.approx_size(),

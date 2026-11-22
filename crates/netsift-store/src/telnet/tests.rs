@@ -66,7 +66,7 @@ fn secrets_are_stored_apart_and_joined_by_the_detail_only() {
     row(7, 10, 99, None, 0).insert(&conn).unwrap();
     let (transcript, secrets): (String, String) = conn
         .query_row(
-            "SELECT transcript, secrets FROM telnet_sessions WHERE flow_id = 7",
+            "SELECT transcript, secrets FROM telnet_transcripts WHERE flow_id = 7",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -173,4 +173,74 @@ fn filters_pages_range_and_stats() {
     assert_eq!((some.sessions, some.accepted, some.logins), (4, 1, 3));
     let none = stats(&conn, TimeRange::new(1_000_000_000_000, 2_000_000_000_000)).unwrap();
     assert_eq!(none, TelnetStatsRow::default());
+}
+
+/// Order of magnitude of the queries on 100 000 sessions with a 2 KiB transcript each (a Telnet
+/// brute force over days, far beyond real captures). Run on demand in release mode:
+/// `./x.sh cargo test --release -p netsift-store telnet::tests::timings -- --ignored --nocapture`.
+#[test]
+#[ignore = "measurement, run on demand in release mode"]
+fn timings() {
+    let conn = db();
+    let output = "drwxr-xr-x 2 root root 4096 Jan  1 00:00 bin\n".repeat(45);
+    conn.execute_batch("BEGIN").unwrap();
+    for i in 0..100_000_i64 {
+        let mut r = row(
+            i,
+            i * 10,
+            i * 10 + 5,
+            Some(["accepted", "rejected"][usize::try_from(i % 2).unwrap()]),
+            1,
+        );
+        r.client_ip = IpAddr::V4(Ipv4Addr::from(
+            0x0a00_0000 + u32::try_from(i % 5000).unwrap(),
+        ));
+        r.transcript.push(run(Speaker::Server, &output));
+        r.insert(&conn).unwrap();
+    }
+    conn.execute_batch("COMMIT; ANALYZE").unwrap();
+    let total = 1_000_000 * 1_000_000_000_i64;
+    for (name, range) in [
+        ("whole", None),
+        (
+            "1 h",
+            TimeRange::new(total / 2, total / 2 + 3_600 * 1_000_000_000),
+        ),
+        ("half", TimeRange::new(total / 4, total * 3 / 4)),
+    ] {
+        let t = std::time::Instant::now();
+        stats(&conn, range).unwrap();
+        let stats_time = t.elapsed();
+        let filter = TelnetFilter {
+            range,
+            ..TelnetFilter::default()
+        };
+        let t = std::time::Instant::now();
+        let page = sessions_page(&conn, &filter, &PageRequest::first(100)).unwrap();
+        count_sessions(&conn, &filter).unwrap();
+        let page_time = t.elapsed();
+        let t = std::time::Instant::now();
+        let next = PageRequest {
+            limit: 100,
+            cursor: page.next_cursor,
+        };
+        sessions_page(&conn, &filter, &next).unwrap();
+        let next_time = t.elapsed();
+        let searched = TelnetFilter {
+            q: Some("uname".to_owned()),
+            login: Some(LoginFilter::Rejected),
+            range,
+        };
+        let t = std::time::Instant::now();
+        sessions_page(&conn, &searched, &PageRequest::first(100)).unwrap();
+        count_sessions(&conn, &searched).unwrap();
+        let search_time = t.elapsed();
+        let t = std::time::Instant::now();
+        session_detail(&conn, 50_000).unwrap().unwrap();
+        let detail_time = t.elapsed();
+        println!(
+            "{name}: stats {stats_time:?}, page + count {page_time:?}, next page {next_time:?}, \
+             search {search_time:?}, detail {detail_time:?}"
+        );
+    }
 }

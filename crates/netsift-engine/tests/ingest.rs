@@ -1083,7 +1083,8 @@ fn telnet_sessions_are_the_same_on_any_shard_count_and_keep_secrets_apart() {
             "SELECT flow_id || ' ' || client_ip || ' -> ' || server_ip || ':' || server_port || \
              ' ' || coalesce(username, '-') || ' ' || coalesce(login, '-') || ' ' || \
              client_bytes || '/' || server_bytes || ' ' || transcript_bytes || ' ' || truncated || \
-             ' ' || length(transcript) || ' ' || secrets FROM telnet_sessions ORDER BY flow_id",
+             ' ' || length(x.transcript) || ' ' || x.secrets FROM telnet_sessions \
+             JOIN telnet_transcripts x USING (flow_id) ORDER BY flow_id",
         )
     };
     let reference = table(&single);
@@ -1105,7 +1106,7 @@ fn telnet_sessions_are_the_same_on_any_shard_count_and_keep_secrets_apart() {
         scalar(
             &catalog,
             &single,
-            "SELECT count(*) FROM telnet_sessions WHERE transcript LIKE '%-fixture%'"
+            "SELECT count(*) FROM telnet_transcripts WHERE transcript LIKE '%-fixture%'"
         ),
         0
     );
@@ -1113,7 +1114,7 @@ fn telnet_sessions_are_the_same_on_any_shard_count_and_keep_secrets_apart() {
         scalar(
             &catalog,
             &single,
-            "SELECT count(*) FROM telnet_sessions WHERE secrets LIKE '%user-fixture%'"
+            "SELECT count(*) FROM telnet_transcripts WHERE secrets LIKE '%user-fixture%'"
         ),
         1
     );

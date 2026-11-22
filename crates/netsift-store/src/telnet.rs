@@ -1,7 +1,7 @@
 //! Rows and read queries of the Telnet analyzer (`telnet_sessions`, `docs/specs/telnet.md`).
 //!
-//! The transcript is stored without its secrets: a secret run is the marker `["p", ""]` in
-//! `transcript`, its text is in `secrets` (same order). Only [`session_detail`] puts them back
+//! The transcript is stored apart (`telnet_transcripts`) and without its secrets: a secret run is
+//! the marker `["p", ""]` in `transcript`, its text is in `secrets` (same order). Only [`session_detail`] puts them back
 //! together. Under a time range (ADR-030), a session is a folded row: it is listed when its span
 //! overlaps the range, with the counters of the whole connection.
 
@@ -147,40 +147,45 @@ impl TelnetRow {
     pub(crate) fn insert(&self, conn: &Connection) -> Result<()> {
         let (transcript, secrets) = split_secrets(&self.transcript)?;
         let (cols, rows) = self.window.unzip();
-        conn.prepare_cached(
-            "INSERT INTO telnet_sessions \
+        let inserted = conn
+            .prepare_cached(
+                "INSERT INTO telnet_sessions \
              (flow_id, first_ts, last_ts, client_ip, client_port, server_ip, server_port, \
               client_bytes, server_bytes, username, env_user, login, login_attempts, terminal, \
-              window_cols, window_rows, options, transcript, secrets, transcript_bytes, \
-              transcript_lines, truncated) \
+              window_cols, window_rows, options, transcript_bytes, transcript_lines, truncated) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                     ?18, ?19, ?20, ?21, ?22) \
+                     ?18, ?19, ?20) \
              ON CONFLICT (flow_id) DO NOTHING",
-        )?
-        .execute(params![
-            self.flow_id,
-            self.first_ts,
-            self.last_ts,
-            self.client_ip.to_string(),
-            self.client_port,
-            self.server_ip.to_string(),
-            self.server_port,
-            sat(self.client_bytes),
-            sat(self.server_bytes),
-            self.username,
-            self.env_user,
-            self.login,
-            self.login_attempts,
-            self.terminal,
-            cols,
-            rows,
-            serde_json::to_string(&self.options)?,
-            transcript,
-            secrets,
-            sat(self.transcript_bytes),
-            self.transcript_lines,
-            self.truncated,
-        ])?;
+            )?
+            .execute(params![
+                self.flow_id,
+                self.first_ts,
+                self.last_ts,
+                self.client_ip.to_string(),
+                self.client_port,
+                self.server_ip.to_string(),
+                self.server_port,
+                sat(self.client_bytes),
+                sat(self.server_bytes),
+                self.username,
+                self.env_user,
+                self.login,
+                self.login_attempts,
+                self.terminal,
+                cols,
+                rows,
+                serde_json::to_string(&self.options)?,
+                sat(self.transcript_bytes),
+                self.transcript_lines,
+                self.truncated,
+            ])?;
+        if inserted > 0 {
+            conn.prepare_cached(
+                "INSERT INTO telnet_transcripts (flow_id, transcript, secrets) VALUES (?1, ?2, ?3) \
+                 ON CONFLICT (flow_id) DO NOTHING",
+            )?
+            .execute(params![self.flow_id, transcript, secrets])?;
+        }
         Ok(())
     }
 
@@ -331,7 +336,8 @@ fn conditions(filter: &TelnetFilter) -> Conditions {
         c.push(
             "t.client_ip LIKE ? ESCAPE '\\' OR t.server_ip LIKE ? ESCAPE '\\' \
              OR t.username LIKE ? ESCAPE '\\' OR t.env_user LIKE ? ESCAPE '\\' \
-             OR t.terminal LIKE ? ESCAPE '\\' OR t.transcript LIKE ? ESCAPE '\\'",
+             OR t.terminal LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM telnet_transcripts x \
+             WHERE x.flow_id = t.flow_id AND x.transcript LIKE ? ESCAPE '\\')",
             std::iter::repeat_n(Value::Text(p), 6),
         );
     }
@@ -387,7 +393,10 @@ pub struct TelnetDetail {
 
 /// The session of flow `flow_id`, `None` when unknown.
 pub fn session_detail(conn: &Connection, flow_id: i64) -> Result<Option<TelnetDetail>> {
-    let sql = format!("SELECT {SELECT}, t.transcript, t.secrets FROM {FROM} WHERE t.flow_id = ?1");
+    let sql = format!(
+        "SELECT {SELECT}, coalesce(x.transcript, '[]'), coalesce(x.secrets, '[]') FROM {FROM} \
+         LEFT JOIN telnet_transcripts x ON x.flow_id = t.flow_id WHERE t.flow_id = ?1"
+    );
     let row = conn
         .query_row(&sql, params![flow_id], |r| {
             let transcript: String = r.get(26)?;

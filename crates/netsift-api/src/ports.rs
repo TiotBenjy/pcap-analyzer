@@ -2,10 +2,12 @@
 //!
 //! | Method | Path | Response |
 //! |---|---|---|
-//! | GET | `/sessions/{id}/open-ports?limit&cursor&category&port&service&q` | `Page<HostOpenPorts>` |
-//! | GET | `/sessions/{id}/open-ports/stats?category&n` | [`OpenPortStats`] |
+//! | GET | `/sessions/{id}/open-ports?limit&cursor&category&port&service&q&from_us&to_us` | `Page<HostOpenPorts>` |
+//! | GET | `/sessions/{id}/open-ports/stats?category&n&from_us&to_us` | [`OpenPortStats`] |
 //!
-//! Like the overview routes: 404 for an unknown session, 409 while importing or failed.
+//! Like the overview routes: 404 for an unknown session, 409 while importing or failed. Under a
+//! time range (ADR-030): ports seen answering during the range, clients counted on the flows active
+//! in it (range database, `crate::range::open_view`).
 
 use std::sync::Arc;
 
@@ -21,7 +23,7 @@ use crate::connections::page_request;
 use crate::contract::Page;
 use crate::endpoint::{Endpoint, parse_categories};
 use crate::extract::ApiQuery;
-use crate::overview::open_ready;
+use crate::range::{AggregateRange, RangeParams, open_view};
 use crate::sessions::parse_id;
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -157,6 +159,8 @@ fn build_list(
     state: &AppState,
     id: &SessionId,
     q: ListQuery,
+    range: RangeParams,
+    cancel: &netsift_store::ranges::CancelFlag,
 ) -> Result<Page<HostOpenPorts>, ApiError> {
     let filter = PortFilter {
         categories: parse_categories(q.category.as_deref())?,
@@ -165,8 +169,8 @@ fn build_list(
         text: text("q", q.q)?,
     };
     let first = q.cursor.is_none();
-    let (_, session) = open_ready(state, id)?;
-    let conn = session.conn();
+    let (_, view) = open_view(state, id, range, cancel)?;
+    let conn = view.conn();
     let page = store::hosts_page(conn, &filter, &page_request(q.limit, q.cursor))?;
     let total = if first {
         Some(store::count_hosts(conn, &filter)?)
@@ -184,9 +188,11 @@ async fn list(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<ListQuery>,
+    range: AggregateRange,
 ) -> Result<Json<Page<HostOpenPorts>>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_list(s, &id, query))
+    let (params, cancel) = (range.params, range.flag());
+    blocking(&state, move |s| build_list(s, &id, query, params, &cancel))
         .await
         .map(Json)
 }
@@ -224,6 +230,7 @@ async fn stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<StatsQuery>,
+    range: AggregateRange,
 ) -> Result<Json<OpenPortStats>, ApiError> {
     let id = parse_id(&id)?;
     let n = query.n.unwrap_or(DEFAULT_TOP).clamp(1, MAX_TOP);
@@ -231,9 +238,10 @@ async fn stats(
         categories: parse_categories(query.category.as_deref())?,
         ..PortFilter::default()
     };
+    let (params, cancel) = (range.params, range.flag());
     blocking(&state, move |s| {
-        let (_, session) = open_ready(s, &id)?;
-        let (top, distinct_ports, open_ports) = store::port_stats(session.conn(), &filter, n)?;
+        let (_, view) = open_view(s, &id, params, &cancel)?;
+        let (top, distinct_ports, open_ports) = store::port_stats(view.conn(), &filter, n)?;
         Ok(OpenPortStats {
             top: top
                 .into_iter()

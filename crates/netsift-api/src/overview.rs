@@ -15,6 +15,7 @@ use axum::extract::{Path as UrlPath, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use netsift_store::range::ModuleRows;
+use netsift_store::ranges::CancelFlag;
 use netsift_store::traffic::{self, BucketPlan};
 use netsift_store::{Session, SessionId, SessionInfo, SessionState as StoreState, TimeRange};
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,7 @@ use ts_rs::TS;
 
 use crate::contract::SessionState;
 use crate::extract::ApiQuery;
-use crate::range::{ApiRange, RangeParams};
+use crate::range::{AggregateRange, RangeParams, range_view};
 use crate::sessions::{Stats, info, parse_id, session_dir};
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -292,13 +293,24 @@ pub(crate) fn open_ready(
     Ok((info, session))
 }
 
+/// Modules of the aggregated views: counted under a range in its range database (ADR-030).
+fn aggregated(module: &str) -> bool {
+    matches!(
+        module,
+        "connections" | "hosts" | "network" | "openPorts" | "servers"
+    )
+}
+
 fn build_summary(
     state: &AppState,
     id: &SessionId,
     range: RangeParams,
+    cancel: &CancelFlag,
 ) -> Result<OverviewSummary, ApiError> {
     let (info, session) = open_ready(state, id)?;
     let range = range.resolve(&session)?;
+    // Opened on first use: the build of the range database is the cost of a new range.
+    let mut range_db: Option<netsift_store::ranges::RangeView> = None;
     let conn = session.conn();
     let stats = Stats::of(&session);
     let (bytes, ts_packets) = traffic::traffic_totals(conn)?;
@@ -320,6 +332,15 @@ fn build_summary(
             let (count, scope) = match (range, ranged_rows(module)) {
                 (None, _) => (session_count, None),
                 (Some(r), Some(rows)) => (rows.count(conn, r)?, Some(CountScope::Range)),
+                (Some(r), None) if aggregated(module) => {
+                    let view = match range_db.take() {
+                        Some(view) => view,
+                        None => range_view(state, id, &session, r, cancel)?,
+                    };
+                    let n = traffic::count_rows(view.conn(), table)?.unwrap_or(0);
+                    range_db = Some(view);
+                    (n, Some(CountScope::Range))
+                }
                 (Some(_), None) => (session_count, Some(CountScope::Session)),
             };
             modules.push(ModuleCount {
@@ -386,10 +407,11 @@ fn range_summary(
 async fn summary(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
-    ApiRange(range): ApiRange,
+    range: AggregateRange,
 ) -> Result<Json<OverviewSummary>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_summary(s, &id, range))
+    let (params, cancel) = (range.params, range.flag());
+    blocking(&state, move |s| build_summary(s, &id, params, &cancel))
         .await
         .map(Json)
 }

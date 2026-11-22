@@ -233,6 +233,8 @@ impl From<netsift_store::StoreError> for ApiError {
             ),
             E::UpgradeNeeded => Self::SessionUpgradeNeeded,
             E::SessionBusy => Self::SessionBusy,
+            // The client is gone (time range build abandoned): nobody reads the answer.
+            E::Cancelled => Self::Conflict("the request was cancelled".to_owned()),
             E::UpgradeFailed(source) => {
                 tracing::error!("session upgrade failed: {source}");
                 Self::SessionUpgradeFailed

@@ -21,6 +21,7 @@ semver = "1.0.28"
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.11.1"
+tempfile = "3.27.0"
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "time"] }
 tower-http.workspace = true
@@ -34,7 +35,6 @@ insta = { version = "1.49.0", features = ["json"] }
 netsift-capture.workspace = true
 netsift-fixtures.workspace = true
 netsift-geo = { workspace = true, features = ["test-util"] }
-tempfile = "3.27.0"
 tokio = { workspace = true, features = ["io-util"] }
 tower.workspace = true
 

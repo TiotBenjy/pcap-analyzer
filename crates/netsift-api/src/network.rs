@@ -2,13 +2,15 @@
 //!
 //! | Method | Path | Response |
 //! |---|---|---|
-//! | GET | `/sessions/{id}/network/graph?mode&protocols&category&ipv6&include_orphans&limit&expand` | [`NetworkGraph`] |
-//! | GET | `/sessions/{id}/network/node/{ip}` | [`NetworkNodeDetail`] |
+//! | GET | `/sessions/{id}/network/graph?mode&protocols&category&ipv6&include_orphans&limit&expand&from_us&to_us` | [`NetworkGraph`] |
+//! | GET | `/sessions/{id}/network/node/{ip}?from_us&to_us` | [`NetworkNodeDetail`] |
 //!
 //! The graph is read from the tables that the end-of-import step `network` folds from the
 //! conversations (`netsift_store::network`, ADR-018): at most 150 host nodes plus 15 country
 //! clusters and one "other" node, at most 400 edges. Like the other analysis routes: 404 for an
-//! unknown session, 409 while importing or failed.
+//! unknown session, 409 while importing or failed. Under a time range (ADR-030) both read the
+//! tables of the range database (`crate::range::open_view`): hosts active in the range, their
+//! conversations, traffic, open ports and roles; a host not active in the range is not found.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -25,8 +27,8 @@ use ts_rs::TS;
 
 use crate::endpoint::{Endpoint, parse_categories};
 use crate::extract::ApiQuery;
-use crate::overview::open_ready;
 use crate::ports::PortTransport;
+use crate::range::{AggregateRange, RangeParams, open_view};
 use crate::servers::ServerRole;
 use crate::sessions::parse_id;
 use crate::{ApiError, AppState, blocking, convert};
@@ -300,6 +302,8 @@ fn build_graph(
     state: &AppState,
     id: &netsift_store::SessionId,
     q: GraphQuery,
+    range: RangeParams,
+    cancel: &netsift_store::ranges::CancelFlag,
 ) -> Result<NetworkGraph, ApiError> {
     let filter = GraphFilter {
         protocols: parse_protocols(q.protocols.as_deref())?,
@@ -315,8 +319,8 @@ fn build_graph(
         },
         NetworkMode::Countries => GraphMode::Countries { limit },
     };
-    let (_, session) = open_ready(state, id)?;
-    let conn = session.conn();
+    let (_, view) = open_view(state, id, range, cancel)?;
+    let conn = view.conn();
     let g = store::graph(conn, &filter, &mode)?;
     let hosts: Vec<IpAddr> = g
         .nodes
@@ -356,9 +360,11 @@ async fn graph(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<GraphQuery>,
+    range: AggregateRange,
 ) -> Result<Json<NetworkGraph>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_graph(s, &id, query))
+    let (params, cancel) = (range.params, range.flag());
+    blocking(&state, move |s| build_graph(s, &id, query, params, &cancel))
         .await
         .map(Json)
 }
@@ -412,15 +418,17 @@ pub struct NetworkNodeDetail {
 async fn node(
     State(state): State<Arc<AppState>>,
     UrlPath((id, ip)): UrlPath<(String, String)>,
+    range: AggregateRange,
 ) -> Result<Json<NetworkNodeDetail>, ApiError> {
     let id = parse_id(&id)?;
     let ip: IpAddr = ip
         .parse()
         .map_err(|_| ApiError::BadRequest("ip: invalid address".to_owned()))?;
+    let (params, cancel) = (range.params, range.flag());
     blocking(&state, move |s| {
-        let (_, session) = open_ready(s, &id)?;
-        let d = store::node_detail(session.conn(), ip)?.ok_or(ApiError::NotFound)?;
-        let roles = server_roles(store::host_roles(session.conn(), &[ip])?.remove(&ip));
+        let (_, view) = open_view(s, &id, params, &cancel)?;
+        let d = store::node_detail(view.conn(), ip)?.ok_or(ApiError::NotFound)?;
+        let roles = server_roles(store::host_roles(view.conn(), &[ip])?.remove(&ip));
         Ok(NetworkNodeDetail {
             endpoint: Endpoint::new(d.ip, d.info),
             macs: d.macs,

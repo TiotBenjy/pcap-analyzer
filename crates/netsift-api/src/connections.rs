@@ -2,13 +2,15 @@
 //!
 //! | Method | Path | Response |
 //! |---|---|---|
-//! | GET | `/sessions/{id}/connections?limit&cursor&sort&order&from&to&protocol&category` | `Page<ConversationInfo>` |
-//! | GET | `/sessions/{id}/connections/stats` | [`ConnectionStats`] |
-//! | GET | `/sessions/{id}/connections/top?n&exclude_dns` | [`ConnectionMatrix`] |
-//! | GET | `/sessions/{id}/connections/{conversation}/flows?limit&cursor` | `Page<FlowInfo>` |
+//! | GET | `/sessions/{id}/connections?limit&cursor&sort&order&from&to&protocol&category&from_us&to_us` | `Page<ConversationInfo>` |
+//! | GET | `/sessions/{id}/connections/stats?from_us&to_us` | [`ConnectionStats`] |
+//! | GET | `/sessions/{id}/connections/top?n&exclude_dns&from_us&to_us` | [`ConnectionMatrix`] |
+//! | GET | `/sessions/{id}/connections/{conversation}/flows?limit&cursor&from_us&to_us` | `Page<FlowInfo>` |
 //!
 //! A conversation gathers the flows initiated by one host (`src`) towards another (`dst`).
 //! Like the overview routes: 404 for an unknown session, 409 while importing or failed.
+//! Under a time range (ADR-030), conversations and traffic per host come from the flows active in
+//! the range, each counted in full (range database, `crate::range::open_view`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -27,6 +29,7 @@ use crate::contract::Page;
 use crate::endpoint::{Endpoint, parse_categories};
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
+use crate::range::{AggregateRange, ApiRange, RangeParams, open_view};
 use crate::sessions::{DEFAULT_LIMIT, MAX_LIMIT, parse_id};
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -156,6 +159,8 @@ fn build_list(
     state: &AppState,
     id: &SessionId,
     q: ListQuery,
+    range: RangeParams,
+    cancel: &netsift_store::ranges::CancelFlag,
 ) -> Result<Page<ConversationInfo>, ApiError> {
     let filter = ConversationFilter {
         from: text("from", q.from)?,
@@ -171,8 +176,8 @@ fn build_list(
         SortKey::LastTs => ConversationSort::LastTs,
     };
     let first = q.cursor.is_none();
-    let (_, session) = open_ready(state, id)?;
-    let conn = session.conn();
+    let (_, view) = open_view(state, id, range, cancel)?;
+    let conn = view.conn();
     let page = store::conversations_page(
         conn,
         &filter,
@@ -197,9 +202,11 @@ async fn list(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<ListQuery>,
+    range: AggregateRange,
 ) -> Result<Json<Page<ConversationInfo>>, ApiError> {
     let id = parse_id(&id)?;
-    blocking(&state, move |s| build_list(s, &id, query))
+    let (params, cancel) = (range.params, range.flag());
+    blocking(&state, move |s| build_list(s, &id, query, params, &cancel))
         .await
         .map(Json)
 }
@@ -252,22 +259,26 @@ struct FlowsQuery {
 }
 
 /// `GET /sessions/{id}/connections/{conversation}/flows`: flows of one conversation, oldest
-/// first. 404 when the conversation does not exist.
+/// first; under a time range, those active in it (no range database: the conversation index
+/// serves them). 404 when the conversation does not exist.
 async fn conversation_flows(
     State(state): State<Arc<AppState>>,
     UrlPath((id, conversation)): UrlPath<(String, String)>,
     ApiQuery(query): ApiQuery<FlowsQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<FlowInfo>>, ApiError> {
     let id = parse_id(&id)?;
     let conversation: i64 = conversation.parse().map_err(|_| ApiError::NotFound)?;
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
+        let range = range.resolve(&session)?;
         let conn = session.conn();
         let (src, dst) = store::conversation_ends(conn, conversation)?.ok_or(ApiError::NotFound)?;
         let page = netsift_store::query::conversation_flows_page(
             conn,
             src,
             dst,
+            range,
             &page_request(query.limit, query.cursor),
         )?;
         Ok(Page {
@@ -347,11 +358,13 @@ pub struct ConnectionStats {
 async fn stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
+    range: AggregateRange,
 ) -> Result<Json<ConnectionStats>, ApiError> {
     let id = parse_id(&id)?;
+    let (params, cancel) = (range.params, range.flag());
     blocking(&state, move |s| {
-        let (_, session) = open_ready(s, &id)?;
-        let conn = session.conn();
+        let (_, view) = open_view(s, &id, params, &cancel)?;
+        let conn = view.conn();
         let (sent, received) = store::country_traffic_both(conn)?;
         Ok(ConnectionStats {
             sources: CountrySide::of(sent),
@@ -464,6 +477,7 @@ async fn top(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<TopQuery>,
+    range: AggregateRange,
 ) -> Result<Json<ConnectionMatrix>, ApiError> {
     let id = parse_id(&id)?;
     let n = query.n.unwrap_or(TOP_SIZES[0]);
@@ -471,9 +485,10 @@ async fn top(
         return Err(ApiError::BadRequest("n: expected 10, 20 or 50".to_owned()));
     }
     let exclude_dns = query.exclude_dns;
+    let (params, cancel) = (range.params, range.flag());
     blocking(&state, move |s| {
-        let (_, session) = open_ready(s, &id)?;
-        let entries = store::top_conversations(session.conn(), n, exclude_dns)?;
+        let (_, view) = open_view(s, &id, params, &cancel)?;
+        let entries = store::top_conversations(view.conn(), n, exclude_dns)?;
         Ok(matrix(&entries, exclude_dns))
     })
     .await

@@ -1,7 +1,9 @@
 //! Global time filter over the routes of P5.2a, on the spread fixture: three bursts of mixed
 //! traffic ten minutes apart and one long connection across them (`netsift_fixtures::spread`).
+//! The aggregated views (P5.2b) are tested in `aggregate_tests.rs` with the same environment.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
@@ -13,19 +15,30 @@ use netsift_store::Catalog;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-use crate::{ApiConfig, DEFAULT_MAX_IMPORTS, build};
+use crate::{ApiConfig, AppState, DEFAULT_MAX_IMPORTS, build};
 
 const TOKEN: &str = "range-token";
 
-struct Env {
-    _tmp: tempfile::TempDir,
+pub(super) struct Env {
+    pub(super) tmp: tempfile::TempDir,
     app: Router,
-    id: String,
-    spread: Spread,
+    pub(super) id: String,
+    pub(super) spread: Spread,
+    pub(super) state: Arc<AppState>,
 }
 
-/// The filtered routes of P5.2a (paths relative to the session).
+/// The filtered routes (paths relative to the session): P5.2a, then the aggregated views (P5.2b).
 const ROUTES: &[&str] = &[
+    "/connections",
+    "/connections?sort=first_ts&order=asc",
+    "/connections/stats",
+    "/connections/top",
+    "/open-ports",
+    "/open-ports/stats",
+    "/servers",
+    "/network/graph",
+    "/network/graph?mode=countries",
+    "/network/graph?include_orphans=true",
     "/summary",
     "/dns/stats",
     "/dns/pairs",
@@ -53,16 +66,21 @@ const ROUTES: &[&str] = &[
 ];
 
 impl Env {
-    fn new() -> Self {
-        Self::with(spread())
+    pub(super) fn new() -> Self {
+        Self::with(spread(), true)
+    }
+
+    /// A server that may write: range databases go to the session directory.
+    pub(super) fn writable() -> Self {
+        Self::with(spread(), false)
     }
 
     /// Many bursts: one burst is a narrow share of every table (narrow plan of the aggregates).
     fn many() -> Self {
-        Self::with(spread_with(40))
+        Self::with(spread_with(40), true)
     }
 
-    fn with(spread: Spread) -> Self {
+    fn with(spread: Spread, read_only: bool) -> Self {
         let tmp = tempfile::TempDir::new().unwrap();
         let data = tmp.path().join("data");
         let captures = tmp.path().join("captures");
@@ -82,22 +100,35 @@ impl Env {
             token: TOKEN.to_owned(),
             data_dir: data,
             captures_roots: vec![captures],
-            read_only: true,
+            read_only,
             cors_origins: vec![HeaderValue::from_static("tauri://localhost")],
             allow_any_path: false,
             max_imports: DEFAULT_MAX_IMPORTS,
             geoip_fallback_path: None,
         };
-        let (app, _) = build(config, IngestOptions::default());
+        let (app, state) = build(config, IngestOptions::default());
         Self {
-            _tmp: tmp,
+            tmp,
             app,
             id: report.session.to_string(),
             spread,
+            state,
         }
     }
 
-    async fn raw(&self, path: &str) -> (StatusCode, Vec<u8>) {
+    /// `method` on a path of the session.
+    pub(super) async fn request(&self, method: &str, path: &str) -> StatusCode {
+        let req = Request::builder()
+            .method(method)
+            .uri(format!("/api/v1/sessions/{}{path}", self.id))
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .header(header::ORIGIN, "tauri://localhost")
+            .body(Body::empty())
+            .unwrap();
+        self.app.clone().oneshot(req).await.unwrap().status()
+    }
+
+    pub(super) async fn raw(&self, path: &str) -> (StatusCode, Vec<u8>) {
         let req = Request::get(format!("/api/v1/sessions/{}{path}", self.id))
             .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
             .body(Body::empty())
@@ -110,7 +141,7 @@ impl Env {
         (status, bytes.to_vec())
     }
 
-    async fn json(&self, path: &str) -> Value {
+    pub(super) async fn json(&self, path: &str) -> Value {
         let (status, body) = self.raw(path).await;
         let json: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(status, StatusCode::OK, "{path}: {json}");
@@ -118,12 +149,12 @@ impl Env {
     }
 
     /// `path` with the range of burst `i` (its first and last packet, inclusive microseconds).
-    fn burst(&self, path: &str, i: usize) -> String {
+    pub(super) fn burst(&self, path: &str, i: usize) -> String {
         self.bursts(path, i, i)
     }
 
     /// `path` with the range from the start of burst `first` to the end of burst `last`.
-    fn bursts(&self, path: &str, first: usize, last: usize) -> String {
+    pub(super) fn bursts(&self, path: &str, first: usize, last: usize) -> String {
         with_range(
             path,
             self.spread.bursts[first].0.div_euclid(1000),
@@ -132,20 +163,20 @@ impl Env {
     }
 }
 
-fn with_range(path: &str, from_us: i64, to_us: i64) -> String {
+pub(super) fn with_range(path: &str, from_us: i64, to_us: i64) -> String {
     let sep = if path.contains('?') { '&' } else { '?' };
     format!("{path}{sep}from_us={from_us}&to_us={to_us}")
 }
 
-fn total(page: &Value) -> u64 {
+pub(super) fn total(page: &Value) -> u64 {
     page["total_estimate"].as_u64().unwrap()
 }
 
-fn items(page: &Value) -> &Vec<Value> {
+pub(super) fn items(page: &Value) -> &Vec<Value> {
     page["items"].as_array().unwrap()
 }
 
-fn module(summary: &Value, id: &str) -> (u64, Value) {
+pub(super) fn module(summary: &Value, id: &str) -> (u64, Value) {
     let m = summary["modules"]
         .as_array()
         .unwrap()
@@ -232,6 +263,8 @@ async fn a_range_outside_the_session_is_empty() {
         "/credentials",
         "/objects",
         "/tls/certificates",
+        "/connections",
+        "/open-ports",
     ] {
         let page = env.json(&path(route)).await;
         assert!(items(&page).is_empty(), "{route}: {page}");
@@ -249,6 +282,23 @@ async fn a_range_outside_the_session_is_empty() {
     assert_eq!(env.json(&path("/dns/stats")).await["total"], 0);
     assert_eq!(env.json(&path("/http/stats")).await["transactions"], 0);
     assert_eq!(env.json(&path("/tls/stats")).await["sessions"], 0);
+    let stats = env.json(&path("/connections/stats")).await;
+    assert_eq!(stats["sources"]["total_bytes"], 0);
+    assert_eq!(
+        env.json(&path("/connections/top")).await["conversations"],
+        0
+    );
+    assert_eq!(env.json(&path("/open-ports/stats")).await["open_ports"], 0);
+    assert_eq!(env.json(&path("/network/graph")).await["hosts"], 0);
+    let servers = env.json(&path("/servers")).await;
+    assert!(
+        servers["roles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["total"] == 0),
+        "{servers}"
+    );
 }
 
 #[tokio::test]
@@ -417,9 +467,9 @@ async fn credentials_and_pictures_keep_the_records_of_the_middle_burst() {
     assert_eq!(objects_stats["occurrences"], 2);
     assert_eq!(module(&summary, "pictures"), (2, json!("range")));
 
-    // Aggregated modules keep the session count (P5.2b).
-    for id in ["connections", "hosts", "openPorts"] {
-        assert_eq!(module(&summary, id).1, json!("session"), "{id}");
+    // Every module counts the range (aggregated ones since P5.2b).
+    for m in summary["modules"].as_array().unwrap() {
+        assert_eq!(m["scope"], "range", "{m}");
     }
 }
 

@@ -79,9 +79,10 @@ export function widen(range: TimeRange, firstUs: number | null, lastUs: number |
 export function rangeText(range: TimeRange, compact: boolean, join: (from: string, to: string) => string): string {
   const oneDay = sameLocalDay(range.fromUs, range.toUs);
   if (compact) {
-    return oneDay
-      ? join(formatClock(range.fromUs), formatClock(range.toUs))
-      : join(formatDate(range.fromUs), formatDate(range.toUs));
+    if (!oneDay) return join(formatDate(range.fromUs), formatDate(range.toUs));
+    // Minutes are enough unless both ends fall within the same minute.
+    const seconds = Math.floor(range.fromUs / 60_000_000) === Math.floor(range.toUs / 60_000_000);
+    return join(formatClock(range.fromUs, seconds), formatClock(range.toUs, seconds));
   }
   return join(formatTimestamp(range.fromUs), formatTimestamp(range.toUs, !oneDay));
 }

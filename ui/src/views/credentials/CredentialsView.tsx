@@ -607,9 +607,11 @@ function CredentialCard({
               </span>
             )}
           </span>
-          <span className="flex shrink-0 items-center gap-3 text-muted">
-            <span className="num" {...(ranged ? { title: t('timeRange.wholeSession') } : {})}>
-              {t('views.credentials.card.seen', { count: c.seen_count })}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-muted">
+            <span className="num">
+              {ranged
+                ? t('timeRange.wholeSessionColumn', { label: t('views.credentials.card.seen', { count: c.seen_count }) })
+                : t('views.credentials.card.seen', { count: c.seen_count })}
             </span>
             <Timestamp us={c.first_ts_us} />
           </span>

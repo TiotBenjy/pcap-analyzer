@@ -55,7 +55,8 @@ describe('time range', () => {
     const join = (a: string, b: string) => `${a} to ${b}`;
     const r = { fromUs: T0, toUs: T0 + 3_600_000_000 };
     expect(rangeText(r, false, join)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} to \d{2}:\d{2}:\d{2}$/);
-    expect(rangeText(r, true, join)).toMatch(/^\d{2}:\d{2}:\d{2} to \d{2}:\d{2}:\d{2}$/);
+    expect(rangeText(r, true, join)).toMatch(/^\d{2}:\d{2} to \d{2}:\d{2}$/);
+    expect(rangeText({ fromUs: T0, toUs: T0 + 5_000_000 }, true, join)).toMatch(/^\d{2}:\d{2}:\d{2} to \d{2}:\d{2}:\d{2}$/);
     const days = { fromUs: T0, toUs: T0 + 3 * 86_400_000_000 };
     expect(rangeText(days, true, join)).toMatch(/^\d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/);
   });

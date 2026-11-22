@@ -15,8 +15,9 @@ interface EmptyStateProps {
 
 /**
  * Explicit empty state: neutral icon, one short sentence, optional action. Never a blank block.
- * Under the time range of a view that applies it (and without action of its own), it says that
- * the range is empty and offers to clear it (docs/specs/time-filter.md).
+ * Under the time range of a view that applies it, a plain empty state (no explanation nor action
+ * of its own: nothing at all to show) says that the range is empty and offers to clear it
+ * (docs/specs/time-filter.md).
  */
 export function EmptyState({ title, description, icon: Icon = Inbox, action }: EmptyStateProps) {
   // Rendered outside the router in some tests: the range part needs it.
@@ -27,7 +28,7 @@ export function EmptyState({ title, description, icon: Icon = Inbox, action }: E
       <p className="font-medium">{title}</p>
       {description !== undefined && <p className="max-w-prose text-muted">{description}</p>}
       {action !== undefined && <div className="mt-2">{action}</div>}
-      {action === undefined && inRouter && <RangeHint />}
+      {action === undefined && description === undefined && inRouter && <RangeHint />}
     </div>
   );
 }

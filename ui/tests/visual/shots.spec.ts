@@ -60,6 +60,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'settings-update-notes': '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
   'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
+  'smb-range': async (page) => rangedPath(page, 'smb'),
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   'sources-backwards': async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
@@ -111,9 +112,22 @@ async function rangedPath(page: Page, view: string): Promise<string> {
   if (!res.ok()) return `/sessions/${id}/${view}`;
   const s = (await res.json()) as { first_ts_us: number | null; last_ts_us: number | null };
   if (s.first_ts_us === null || s.last_ts_us === null) return `/sessions/${id}/${view}`;
-  const quarter = Math.floor((s.last_ts_us - s.first_ts_us) / 4);
-  const from = s.first_ts_us + quarter;
-  return `/sessions/${id}/${view}?from_us=${from}&to_us=${from + quarter}`;
+  // The busiest fifth of the period (by bytes, over 20 buckets), so that the views have rows.
+  const series = await page.request.get(`/api/v1/sessions/${id}/timeseries?points=20&metric=bytes`);
+  const t = (await series.json()) as { start_us: number; step_us: number; points: number; series: { bytes: number[] | null }[] };
+  const totals = Array.from({ length: t.points }, (_, i) => t.series.reduce((sum, p) => sum + (p.bytes?.[i] ?? 0), 0));
+  const width = Math.max(1, Math.floor(t.points / 5));
+  let best = 0;
+  let bestSum = -1;
+  for (let i = 0; i + width <= t.points; i++) {
+    const sum = totals.slice(i, i + width).reduce((a, b) => a + b, 0);
+    if (sum > bestSum) {
+      best = i;
+      bestSum = sum;
+    }
+  }
+  const from = t.start_us + best * t.step_us;
+  return `/sessions/${id}/${view}?from_us=${from}&to_us=${from + width * t.step_us - 1}`;
 }
 
 /**

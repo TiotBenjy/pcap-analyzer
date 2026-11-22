@@ -200,6 +200,9 @@ export function buildTrafficOption(input: TrafficChartInput): EChartsCoreOption 
       // ECharts rounds the time step down (13 min / 3 gives 2 min ticks): 2 keeps narrow axes airy.
       ...(compact ? { splitNumber: 2 } : {}),
       axisLabel: {
+        // A range aligned on the clock (time filter) puts a tick at the very start of the axis,
+        // whose label would sit on the "0" of the value axis: the start is never labelled.
+        showMinLabel: false,
         // Level-based format: the axis picks the unit from its ticks, so it adapts to the
         // captured duration and to the zoom. Local time, ISO-like, no localized month names.
         formatter: {

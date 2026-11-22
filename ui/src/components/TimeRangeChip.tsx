@@ -33,7 +33,7 @@ export function TimeRangeChip() {
     <div
       data-testid="time-range-chip"
       data-applied={String(applied)}
-      className={cn('flex min-w-0 items-center rounded-md border border-line', !applied && 'opacity-60')}
+      className={cn('flex shrink-0 items-center rounded-md border border-line', !applied && 'opacity-60')}
     >
       <button
         type="button"

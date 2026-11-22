@@ -30,6 +30,7 @@ pub mod schema;
 pub mod servers;
 pub mod session;
 pub mod smb;
+pub mod ssdp;
 mod time;
 pub mod tls;
 pub mod traffic;

@@ -6,6 +6,7 @@
 //! - [`credentials`]: SMTP AUTH, POP3, IMAP, LDAP simple bind, HTTP Basic and HTTP NTLM
 //!   exchanges (Credentials view).
 //! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
+//! - [`ssdp`]: SSDP announcements, searches, answers and malformed datagrams (SSDP view).
 //! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip,
 //!   zstd, LZ4 frame.
 //! - [`split`]: chunk splitter by size, duration, packet count or explicit boundaries, with
@@ -43,6 +44,7 @@ pub mod scenarios;
 pub mod servers;
 pub mod split;
 pub mod spread;
+pub mod ssdp;
 pub mod time;
 pub mod writer;
 

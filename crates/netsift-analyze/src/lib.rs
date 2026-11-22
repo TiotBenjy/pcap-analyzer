@@ -14,7 +14,8 @@
 //! - [`ports`]: open ports (SYN-ACK, UDP replies) with services detected by content;
 //! - [`servers`]: DHCP, NTP and Kerberos servers (the Servers view derives the other roles);
 //! - [`services`]: IANA service names of ports (embedded registry);
-//! - [`smb`]: NetBIOS browser announcements, SMB negotiation and NTLMSSP.
+//! - [`smb`]: NetBIOS browser announcements, SMB negotiation and NTLMSSP;
+//! - [`ssdp`]: SSDP announcements, searches and answers (`UPnP` devices).
 //!
 //! [`geo`] (address categories, countries) is re-exported for the engine, which loads the
 //! country database shared by every shard ([`AnalyzerConfig::geo`]).
@@ -46,6 +47,7 @@ pub mod registry;
 pub mod servers;
 pub mod services;
 pub mod smb;
+pub mod ssdp;
 #[cfg(test)]
 mod testutil;
 pub mod tls;

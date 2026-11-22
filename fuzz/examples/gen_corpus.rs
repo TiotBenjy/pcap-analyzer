@@ -24,7 +24,7 @@ use netsift_fixtures::proto::{smb, x509};
 use netsift_fixtures::scenario::Scenario;
 use netsift_fixtures::scenarios::{self, Kind};
 use netsift_fixtures::writer::{Encoding, encode};
-use netsift_fixtures::{Packet, credentials, http_mix, images, servers};
+use netsift_fixtures::{Packet, credentials, http_mix, images, servers, ssdp};
 use netsift_fuzz::{Conversation, conversation_head, push_frame, push_segment};
 use netsift_geo::test_util::MmdbBuilder;
 
@@ -120,6 +120,12 @@ fn sources() -> Vec<(String, Vec<Packet>)> {
         build(&credentials::credentials_showcase),
     ));
     out.push(("servers".into(), build(&servers::servers_showcase)));
+    out.push((
+        "ssdp".into(),
+        build(&|sc: &mut Scenario| {
+            ssdp::ssdp_showcase(sc);
+        }),
+    ));
     out.push(("httpmix".into(), build(&http_mix::round)));
     out.push(("images".into(), build(&images::gallery)));
     out.push(("tlsshow".into(), build(&scenarios::tls_showcase)));
@@ -278,7 +284,7 @@ fn from_scenario(out: &mut Out, name: &str, packets: &[Packet]) -> Result<(), Bo
             for (_, _, payload) in flow.pieces.iter().take(MAX_PER_SOURCE) {
                 let target = match sport {
                     53 | 137 | 5353 | 5355 => "dns",
-                    67 | 68 | 88 | 123 => "udp_services",
+                    67 | 68 | 88 | 123 | 1900 => "udp_services",
                     138 => "smb",
                     161 | 162 => "snmp",
                     _ => continue,

@@ -518,9 +518,22 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       premier-dernier message (A, B, A lu comme simultané) ; filtre `ip` sur une IP très présente (tri temporaire) ;
       deux commits intermédiaires ne compilent pas seuls (`Record::Arp` sans bras dans `translate.rs`) ; libellé de
       `StatCard` sans infobulle quand il est tronqué (composant commun).
-- [~] **P5.4** `feat/ethernet` — Référence `private/ethernet.png`. Adresses MAC, constructeur d'après l'OUI (registre
+- [x] **P5.4** `feat/ethernet` — Référence `private/ethernet.png`. Adresses MAC, constructeur d'après l'OUI (registre
       IEEE, licence et mode de mise à jour à vérifier, pas de fichier GPL), broadcast/multicast, VLAN, EtherTypes,
       volumes ; paires source -> cibles. Barres des constructeurs à la place des bulles.
+      Fusionné le 2026-11-22 (94ece65, ADR-031) : listes publiques IEEE RA (MA-L, MA-M, MA-S, IAB) en TSV commité
+      (59 099 entrées, 1,8 Mo, `scripts/gen-ieee-oui.py`, mise à jour manuelle), constructeur résolu à l'import ;
+      agrégats par adresse, paire, EtherType et pile VLAN en deltas additifs (16 plus petites valeurs dans un ordre
+      total, test d'équivalence chunks et shards) ; plage ADR-030 par chevauchement, trames et octets de session.
+      **À faire par l'utilisateur avant la prochaine release** : lire la page de conditions de l'IEEE RA (citée de
+      seconde main via le paquet Debian `ieee-data`, page bloquée pour un client automatique). Suivis : < 300 ms non
+      mesuré sur le banc ; inondation de MAC aléatoires (`count(DISTINCT)`, `q LIKE` en parcours complet au-delà de
+      10 M lignes) ; mention « session entière » des colonnes Paires rognée d'un caractère à 768 px ; StatCards sur
+      2 colonnes à 375 px (composant commun) ; défilement imbriqué à 375 px ; `MacAddress` local à la vue (à
+      partager avec ARP) ; pas d'IP par MAC (Hosts P5.12).
+      Suivi transverse de la vague 5.A : la mention « session entière » sous plage a été bloquante dans SMB, ARP et
+      Ethernet -> composant commun d'en-tête de colonne repliée (en-tête court + ligne « Session entière »), à
+      utiliser par les onglets suivants.
 - [x] **P5.5** `feat/ssdp` — Référence `private/ssdp.png`. Messages NOTIFY / M-SEARCH / réponses, appareils UPnP (USN,
       types NT/ST, `SERVER`, `LOCATION`), émetteurs ; message brut dépliable. Le graphe de la référence est
       illisible : tableau groupé par appareil, graphe facultatif borné.

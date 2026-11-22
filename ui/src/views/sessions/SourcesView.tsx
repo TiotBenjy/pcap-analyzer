@@ -156,12 +156,13 @@ function ChunkTable({ query, oneDay }: TableProps<ChunkInfo>) {
         id: 'seq',
         accessorFn: (c) => c.seq ?? -1,
         header: t('views.sources.col.seq'),
-        meta: { align: 'right' },
+        meta: { align: 'right', card: 'title' },
         size: 64,
         cell: ({ row }) => <span className="num font-mono text-meta">{row.original.seq ?? ''}</span>,
       },
       {
         id: 'name',
+        meta: { card: 'title' },
         accessorFn: (c) => baseName(c.path),
         header: t('views.sources.col.name'),
         size: 264,
@@ -239,6 +240,7 @@ function ChunkTable({ query, oneDay }: TableProps<ChunkInfo>) {
       {(items) => (
         <DataTable
           ariaLabel={t('views.sources.chunksLabel')}
+          cards
           columns={columns}
           data={items}
           getRowId={(c) => String(c.id)}
@@ -257,6 +259,7 @@ function AnomalyTable({ query, oneDay, chunks }: TableProps<AnomalyInfo> & { chu
     () => [
       {
         id: 'type',
+        meta: { card: 'title' },
         accessorFn: (a) => anomalyLabel(t, a),
         header: t('views.sources.anomalyCol.type'),
         size: 240,
@@ -315,6 +318,7 @@ function AnomalyTable({ query, oneDay, chunks }: TableProps<AnomalyInfo> & { chu
       {(items) => (
         <DataTable
           ariaLabel={t('views.sources.anomalies')}
+          cards
           columns={columns}
           data={items}
           getRowId={(a, i) => a.id ?? `${a.code}-${i}`}

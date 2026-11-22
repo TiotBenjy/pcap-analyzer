@@ -25,7 +25,7 @@ import { StatCard } from '../../components/StatCard';
 import type { en } from '../../i18n/en';
 import { cn } from '../../lib/cn';
 import { formatCount } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
 import { Timestamp } from '../../components/Timestamp';
@@ -41,7 +41,6 @@ function tokenKey<G extends Group>(group: G, value: string): TokenKey<G> {
   return `views.credentials.${group}.${value}` as TokenKey<G>;
 }
 
-const MD_QUERY = '(min-width: 768px)';
 const SELECT_CLASS = 'h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-body sm:w-auto sm:max-w-64';
 
 /** Protocol names as written in the protocols' specifications (not translated). */

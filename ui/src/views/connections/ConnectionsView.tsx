@@ -25,7 +25,7 @@ import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { Toggle } from '../../components/Toggle';
 import { formatBytes, formatCount, formatDuration, formatPercent, labelled } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { ChordDiagram, type ChordNodeView } from './ChordDiagram';
 import { FlowsDialog } from './FlowsDialog';
 import { countryName } from '../../lib/countries';
@@ -39,8 +39,6 @@ import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
-/** From this viewport width the chord diagram replaces the ranked list (spec). */
-const MD_QUERY = '(min-width: 768px)';
 /** Countries listed next to each other card. */
 const TOP_COUNTRIES = 5;
 /** Pairs listed by the narrow layout. */
@@ -315,6 +313,7 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
     () => [
       {
         id: 'actions',
+        meta: { card: 'action' },
         header: () => <span className="sr-only">{t('views.exportPcap.flows.title')}</span>,
         size: 60,
         cell: ({ row }) => {
@@ -337,6 +336,7 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
       },
       {
         id: 'from',
+        meta: { card: 'title' },
         header: t('views.connections.table.from'),
         size: 200,
         cell: ({ row }) => <Endpoint endpoint={row.original.src} />,
@@ -455,6 +455,7 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
             data={rows}
             getRowId={(r) => r.id}
             ariaLabel={t('views.connections.table.label')}
+          cards
             emptyText={filtered ? t('views.connections.table.noMatch') : t('views.connections.table.empty')}
           />
           <LoadMore

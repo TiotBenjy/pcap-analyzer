@@ -152,6 +152,7 @@ describe('Connections view', () => {
 
   it('lists the conversations sorted by the server and filters them by source', async () => {
     const user = setupUser();
+    setViewportWide(true);
     renderApp(`/sessions/${ID}/connections`);
     const table = await screen.findByRole('table', { name: 'Conversations between hosts' });
     const rows = within(table).getAllByRole('row');
@@ -169,6 +170,18 @@ describe('Connections view', () => {
     await waitFor(() => {
       expect(within(screen.getByRole('table', { name: 'Conversations between hosts' })).getAllByRole('row')).toHaveLength(2);
     });
+  });
+
+  it('stacks the conversations as cards below 768 px', async () => {
+    renderApp(`/sessions/${ID}/connections`);
+    const list = await screen.findByRole('list', { name: 'Conversations between hosts' });
+    expect(screen.queryByRole('table', { name: 'Conversations between hosts' })).toBeNull();
+    const cards = within(list).getAllByRole('listitem');
+    expect(cards).toHaveLength(2);
+    // Source on the first line with the flows action, the other columns as labelled lines.
+    expect(cards[0]).toHaveTextContent('192.168.1.3');
+    expect(within(cards[0] as HTMLElement).getByRole('button', { name: /192\.168\.1\.3/ })).toBeInTheDocument();
+    expect(within(cards[0] as HTMLElement).getAllByRole('term').map((t) => t.textContent)).toContain('To');
   });
 
   it('shows explicit empty states for a session without traffic', async () => {

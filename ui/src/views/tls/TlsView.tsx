@@ -278,6 +278,7 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
           data={list.data.items}
           getRowId={(s) => s.id}
           ariaLabel={t('views.tls.table.label')}
+          cards
           emptyText={t('views.tls.table.empty')}
           onRowClick={(s) => {
             setSelected((cur) => (cur === s.id ? null : s.id));
@@ -447,6 +448,7 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
       },
       {
         id: 'server',
+        meta: { card: 'title' },
         accessorFn: (s) => s.server_ip,
         header: t('views.tls.table.col.server'),
         size: 152,
@@ -468,6 +470,7 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
       },
       {
         id: 'version',
+        meta: { card: 'title' },
         accessorFn: (s) => s.version ?? 0,
         header: t('views.tls.table.col.version'),
         size: 84,

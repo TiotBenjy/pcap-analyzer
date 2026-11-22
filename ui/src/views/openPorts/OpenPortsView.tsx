@@ -17,7 +17,7 @@ import { FilterBar } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
 import { formatCount, formatTimestamp, labelled } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { LoadMore } from '../connections/LoadMore';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
@@ -27,8 +27,6 @@ import { portBars } from './portsChart';
 import { portLabel, serviceMismatch, serviceName } from './services';
 
 const route = getRouteApi('/sessions/$sessionId');
-
-const MD_QUERY = '(min-width: 768px)';
 
 /** Open ports: services seen answering, most exposed ports and hosts with their ports. */
 export default function OpenPortsView() {

@@ -12,13 +12,11 @@ import { ErrorState } from '../../components/ErrorState';
 import { Skeleton } from '../../components/Skeleton';
 import { cn } from '../../lib/cn';
 import { formatCount } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { protocolLabel } from './dnsFormat';
 import { MessagesPanel } from './MessagesPanel';
 import { useElementWidth } from '../../lib/useElementWidth';
 
-/** Below 768 px the layout is always the cards one (docs/UI_GUIDELINES.md). */
-const MD_QUERY = '(min-width: 768px)';
 /** Container width from which the columns of the tables fit; cards below. */
 const TABLE_MIN_WIDTH = 860;
 

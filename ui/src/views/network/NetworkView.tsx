@@ -21,7 +21,7 @@ import { Skeleton } from '../../components/Skeleton';
 import { Toggle } from '../../components/Toggle';
 import { countryName } from '../../lib/countries';
 import { formatBytes, formatCount } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { useTheme } from '../../theme/theme';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
@@ -36,8 +36,6 @@ import { hasWebGL } from './webgl';
 
 const route = getRouteApi('/sessions/$sessionId');
 
-/** From this viewport width the graph is drawn; below, the links are listed (spec). */
-const MD_QUERY = '(min-width: 768px)';
 /** Links listed by the narrow and fallback layouts. */
 const LISTED_PAIRS = 15;
 /** Address categories of the legend (the others use the "Other" grey). */

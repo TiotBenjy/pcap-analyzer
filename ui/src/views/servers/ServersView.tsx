@@ -21,14 +21,12 @@ import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
 import { cn } from '../../lib/cn';
 import { formatCount } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
 import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
-
-const MD_QUERY = '(min-width: 768px)';
 
 const ROLE_ICONS: Record<ServerRole, LucideIcon> = {
   dns: Globe,

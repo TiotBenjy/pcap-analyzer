@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../api/client';
 import * as api from '../../api/sessions';
 import i18n from '../../i18n';
-import { renderApp } from '../../test/renderApp';
+import { renderApp, setViewportWide } from '../../test/renderApp';
 import { anomaly, chunks, page, session } from '../../test/sessionFixtures';
 import { anomalyDetail, anomalyLabel, anomalySummary } from './anomalies';
 import { buildCoverage, MAX_LANES, ticks } from './coverage';
@@ -141,6 +141,7 @@ const VIEW_ANOMALIES = [
 describe('Sources view', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    setViewportWide(true);
     vi.mocked(client.apiGet).mockResolvedValue({ version: 'test', read_only: true, can_browse: false, status: 'ok' });
     m.getSession.mockResolvedValue(session());
     m.listChunks.mockResolvedValue(page(VIEW_CHUNKS));

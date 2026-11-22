@@ -27,6 +27,7 @@ export function CertificatesPanel({ sessionId, enabled, total }: { sessionId: st
     () => [
       {
         id: 'subject',
+        meta: { card: 'title' },
         accessorFn: (r) => r.certificate.subject_cn ?? '',
         header: t('views.tls.certificates.col.subject'),
         size: 220,
@@ -110,6 +111,7 @@ export function CertificatesPanel({ sessionId, enabled, total }: { sessionId: st
       },
       {
         id: 'download',
+        meta: { card: 'action' },
         header: t('views.tls.certificates.col.download'),
         size: 152,
         enableSorting: false,
@@ -139,6 +141,7 @@ export function CertificatesPanel({ sessionId, enabled, total }: { sessionId: st
           data={list.data.items}
           getRowId={(r) => r.certificate.sha256}
           ariaLabel={t('views.tls.certificates.label')}
+          cards
           emptyText={t('views.tls.certificates.empty')}
           onRowClick={(r) => {
             setSelected((s) => (s === r.certificate.sha256 ? null : r.certificate.sha256));

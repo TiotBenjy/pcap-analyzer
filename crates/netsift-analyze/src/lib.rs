@@ -6,6 +6,7 @@
 //!   into store rows (registration point: one variant per analyzer);
 //! - [`Registry`]: the list of built-in analyzers, instantiated once per shard
 //!   (registration point: one line per analyzer);
+//! - [`arp`]: ARP messages (requests, replies, gratuitous ARP, probes, unsolicited replies);
 //! - [`classify`]: application protocol labels ([`AppProto`]) from flows and well-known ports;
 //! - [`core`]: the built-in `core` analyzer (traffic time series, hosts, flows);
 //! - [`connections`]: conversations between hosts and traffic per host;
@@ -32,6 +33,7 @@
 )]
 
 pub mod analyzer;
+pub mod arp;
 pub mod classify;
 pub mod connections;
 pub mod core;

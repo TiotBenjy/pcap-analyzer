@@ -74,6 +74,53 @@ fn gen_split_by_size_with_dumpcap_names() {
 }
 
 #[test]
+fn gen_compressed_with_zstd_and_lz4() {
+    for (flag, suffix) in [("zst", ".zst"), ("lz4", ".lz4")] {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().to_str().unwrap();
+        let res = run(&[
+            "gen",
+            "--out",
+            out,
+            "--scenario",
+            "dns",
+            "--compress",
+            flag,
+            "--split",
+            "packets=3",
+        ]);
+        assert!(
+            res.status.success(),
+            "{}",
+            String::from_utf8_lossy(&res.stderr)
+        );
+        let names: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.len() > 1, "{names:?}");
+        assert!(
+            names
+                .iter()
+                .all(|n| n.ends_with(&format!(".pcapng{suffix}")))
+        );
+        let total: usize = names
+            .iter()
+            .map(|n| common::read_file(&dir.path().join(n)).len())
+            .sum();
+        assert_eq!(total, 8);
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().to_str().unwrap();
+    // `--gzip` and `--compress` are exclusive.
+    assert!(
+        !run(&["gen", "--out", out, "--gzip", "--compress", "zst"])
+            .status
+            .success()
+    );
+}
+
+#[test]
 fn gen_rejects_bad_arguments() {
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().to_str().unwrap();

@@ -2551,6 +2551,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lz4_flex"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f56455fff36934a9500d69062aec1c77037179b6f0669e4d5d6b72b84722d6a3"
+dependencies = [
+ "twox-hash",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2775,11 +2784,14 @@ version = "0.1.1"
 dependencies = [
  "bytes",
  "flate2",
+ "lz4_flex",
  "netsift-fixtures",
  "proptest",
+ "ruzstd",
  "sha2 0.11.1",
  "tempfile",
  "thiserror 2.0.21",
+ "twox-hash",
 ]
 
 [[package]]
@@ -2864,8 +2876,10 @@ dependencies = [
  "httparse",
  "image",
  "insta",
+ "lz4_flex",
  "pcap-file",
  "png",
+ "ruzstd",
  "sha2 0.11.1",
  "simple-dns",
  "snmp-parser",
@@ -3996,6 +4010,15 @@ dependencies = [
  "quick-error 1.2.3",
  "tempfile",
  "wait-timeout",
+]
+
+[[package]]
+name = "ruzstd"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69e4ce4a039f42bf25920b95667e4d789e98749ab11bbb8d2c2936f788421bb5"
+dependencies = [
+ "twox-hash",
 ]
 
 [[package]]
@@ -5452,6 +5475,12 @@ dependencies = [
  "syn 2.0.119",
  "termcolor",
 ]
+
+[[package]]
+name = "twox-hash"
+version = "2.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
 
 [[package]]
 name = "typeid"

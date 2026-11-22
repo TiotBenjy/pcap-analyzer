@@ -31,20 +31,29 @@ impl From<&Packet> for ReadPacket {
     }
 }
 
-/// Decompresses gzip input (by magic), returns raw capture bytes.
+/// Decompresses gzip, zstd or LZ4 frame input (by magic), returns raw capture bytes.
 pub fn raw_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
     if bytes.starts_with(&[0x1f, 0x8b]) {
-        let mut out = Vec::new();
         GzDecoder::new(bytes)
             .read_to_end(&mut out)
             .expect("valid gzip");
-        out
+    } else if bytes.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
+        ruzstd::decoding::StreamingDecoder::new(bytes)
+            .expect("zstd header")
+            .read_to_end(&mut out)
+            .expect("valid zstd");
+    } else if bytes.starts_with(&[0x04, 0x22, 0x4d, 0x18]) {
+        lz4_flex::frame::FrameDecoder::new(bytes)
+            .read_to_end(&mut out)
+            .expect("valid lz4");
     } else {
-        bytes.to_vec()
+        out = bytes.to_vec();
     }
+    out
 }
 
-/// Reads every packet of a pcap / pcapng (optionally gzip) file.
+/// Reads every packet of a pcap / pcapng (optionally compressed) file.
 pub fn read_bytes(bytes: &[u8]) -> Vec<ReadPacket> {
     let raw = raw_bytes(bytes);
     if raw.starts_with(&[0x0a, 0x0d, 0x0d, 0x0a]) {

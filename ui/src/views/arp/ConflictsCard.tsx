@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ArpConflict } from '../../api/types/ArpConflict';
 import type { ArpConflicts } from '../../api/types/ArpConflicts';
 import type { ArpSign } from '../../api/types/ArpSign';
+import { useViewRange } from '../../app/timeRange';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -72,6 +73,8 @@ export function ConflictsCard({ query, unsolicited, onShowMessages, onShowUnsoli
 
 function ConflictItem({ conflict: c, onShowMessages }: { conflict: ArpConflict; onShowMessages: (ip: string) => void }) {
   const { t } = useTranslation();
+  // Under a range, the period and counters of each MAC address are those of its folded binding.
+  const ranged = useViewRange() !== null;
   return (
     <li className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0" data-testid="arp-conflict">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -98,6 +101,7 @@ function ConflictItem({ conflict: c, onShowMessages }: { conflict: ArpConflict; 
               </span>
               <CopyButton value={m.mac} name={t('views.arp.mac')} />
             </span>
+            {ranged && <span className="text-faint">{t('timeRange.wholeSession')}</span>}
             <span className="num text-muted">{t('views.arp.conflicts.seen', { period: formatPeriod(m.first_ts_us, m.last_ts_us) })}</span>
             <span className="num text-muted">{t('views.arp.conflicts.messages', { count: m.messages })}</span>
             {m.gratuitous > 0 && <span className="num text-muted">{t('views.arp.conflicts.gratuitous', { count: m.gratuitous })}</span>}

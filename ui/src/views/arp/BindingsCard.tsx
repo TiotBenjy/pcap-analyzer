@@ -90,7 +90,17 @@ function useBindingColumns(
 ): ColumnDef<ArpBindingInfo, unknown>[] {
   const { t } = useTranslation();
   return useMemo<ColumnDef<ArpBindingInfo, unknown>[]>(() => {
-    const counter = (label: string) => (ranged ? t('timeRange.wholeSessionColumn', { label }) : label);
+    // Folded rows: under a range, their span and counters stay those of the session (short
+    // header, the mention on a second line, as in the SMB view).
+    const folded = (label: string) =>
+      ranged
+        ? () => (
+            <span className="block leading-tight">
+              {label}
+              <span className="block font-normal text-faint">{t('timeRange.wholeSession')}</span>
+            </span>
+          )
+        : label;
     const all: ColumnDef<ArpBindingInfo, unknown>[] = [
       {
         id: 'ip',
@@ -125,15 +135,15 @@ function useBindingColumns(
       {
         id: 'first',
         accessorFn: (b) => b.first_ts_us,
-        header: t('views.arp.bindings.col.first'),
-        size: oneDay ? 96 : 168,
+        header: folded(t('views.arp.bindings.col.first')),
+        size: oneDay ? (ranged ? 120 : 96) : 168,
         cell: ({ row }) => <Timestamp us={row.original.first_ts_us} withDate={!oneDay} />,
       },
       {
         id: 'last',
         accessorFn: (b) => b.last_ts_us,
-        header: t('views.arp.bindings.col.last'),
-        size: oneDay ? 96 : 168,
+        header: folded(t('views.arp.bindings.col.last')),
+        size: oneDay ? (ranged ? 120 : 96) : 168,
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
       {
@@ -147,8 +157,8 @@ function useBindingColumns(
         id: 'messages',
         meta: { align: 'right' },
         accessorFn: (b) => b.messages,
-        header: counter(t('views.arp.bindings.col.messages')),
-        size: ranged ? 190 : 104,
+        header: folded(t('views.arp.bindings.col.messages')),
+        size: 104,
         cell: ({ row }) => {
           const b = row.original;
           const detail = [

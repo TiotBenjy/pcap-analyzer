@@ -199,7 +199,9 @@ describe('ARP view', () => {
       expect(arpApi.listArpBindings).toHaveBeenCalledWith(ID, expect.anything(), expect.anything(), expect.anything(), range);
     });
     expect(arpApi.listArpMessages).toHaveBeenCalledWith(ID, expect.anything(), expect.anything(), expect.anything(), range);
-    expect(await screen.findByText('Messages (whole session)')).toBeInTheDocument();
+    // Folded rows: the binding columns and the conflict lines carry the mention.
+    await screen.findByRole('table', { name: 'IP to MAC address pairs' });
+    expect(screen.getAllByText('Whole session').length).toBeGreaterThanOrEqual(5);
   });
 
   it('says when the range is empty', async () => {

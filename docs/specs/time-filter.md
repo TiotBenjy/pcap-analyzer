@@ -282,7 +282,7 @@ index de tri sert aussi aux statistiques.
 | `dns_messages` | `dns_messages_proto_error` -> `(proto, is_error, has_query, has_response, ts)` ; `dns_messages_rcode` -> `(rcode, ts)` ; `dns_messages_qtype` -> `(qtype, has_query, ts)` ; `dns_messages_latency` -> `(latency_ns, ts) WHERE latency_ns IS NOT NULL` | `/dns/stats` |
 | `dns_messages` | nouveau `(pair_id, ts, is_error, qname)` (`dns_messages_pair_ts` reste pour la liste d'une paire) | paires et serveurs regroupés |
 | `http_transactions` | `method_group`, `status_class`, `content_type`, `host`, `user_agent` : `ts` ajouté en dernière colonne ; nouveau `(status_key, ts)` (l'index de tri `status_key` reste) | `/http/stats`, `/http/headers/stats` (méthodes) |
-| `http_headers` | colonne `ts` (copie de l'heure de la transaction, écrite par le writer ; remplie par l'étape `http` en version 2 sur une session existante, 1,1 s sur le banc) ; `http_headers_name` -> `(name_lc, transaction_id, ts)` | noms d'en-têtes sous plage (120 ms à 6 j au lieu de 811) |
+| `http_headers` | colonne `ts` (copie de l'heure de la transaction, écrite par le writer ; remplie par la migration 0202 elle-même sur une session existante, 1,1 s sur le banc) ; `http_headers_name` -> `(name_lc, transaction_id, ts)` | noms d'en-têtes sous plage (120 ms à 6 j au lieu de 811) |
 | `tls_sessions` | `tls_sessions_suite_version` et `tls_sessions_cert_status` : `ts` ajouté en dernière colonne ; `tls_sessions_sni` -> `(sni, ts)` | `/tls/stats` |
 
 Flux actifs, en deux branches disjointes réunies par `UNION ALL` (`Δ` = 1 h, constante du code) :
@@ -312,9 +312,15 @@ Aucune référence : proposition.
 
 - La plage vit dans l'URL de la session : search params `from_us` et `to_us` de la route
   `/sessions/$sessionId` (`validateSearch` : deux entiers, les deux requis côté UI, alors que l'API accepte
-  une borne seule ; valeur invalide, borne seule ou plage inversée -> ignorée, jamais d'écran d'erreur). Elle est conservée en changeant d'onglet par le
-  middleware `retainSearchParams(['from_us', 'to_us'])` de TanStack Router (sidebar, cartes de modules,
-  liens internes), et suit le retour arrière (chaque plage validée est une entrée d'historique).
+  une borne seule ; valeur invalide, borne seule ou plage inversée -> ignorée, jamais d'écran d'erreur ; les
+  autres paramètres passent tels quels). Elle est conservée en changeant d'onglet par le middleware
+  `retainSearchParams(['from_us', 'to_us'])` de TanStack Router (sidebar, cartes de modules, liens internes),
+  et suit le retour arrière (chaque plage validée est une entrée d'historique).
+- Une plage appartient à **une** session. Le middleware ne connaît pas la destination d'une navigation et
+  recopie donc la plage aussi vers une autre session (« Ouvrir » de l'assistant d'import, etc.) : la
+  session de la plage est notée par routeur (`useRangeGuard` du layout de session), une plage vue avec
+  une autre session est ignorée dès le premier rendu (aucune requête ne la porte) puis retirée de l'URL
+  (entrée d'historique remplacée). Revenir en arrière vers la première session retrouve sa plage.
 - Un seul hook, `useTimeRange()` (`ui/src/app/timeRange.ts`), lit la plage et expose `set`, `clear` ;
   les fonctions de `ui/src/api/*.ts` reçoivent la plage et ajoutent `from_us` / `to_us` aux routes
   filtrées. La plage entre dans **toutes** les clés TanStack Query des routes filtrées (dernier élément
@@ -335,19 +341,22 @@ Aucune référence : proposition.
   résolution jusqu'à la seconde, au lieu d'étirer la série chargée. Le zoom de la nouvelle série repart à
   100 %.
 - Contrôles de la carte (bande `actions`, après Linéaire / Log) : « Dézoomer » (double la plage autour de
-  son centre, bornée à la session ; désactivé sans plage), « Plage... » (dialogue de saisie),
+  son centre, bornée à la session ; désactivé sans plage), « Plage… » (dialogue de saisie),
   « Réinitialiser le zoom » devient « Toute la session » (efface la plage).
 - Dialogue « Plage horaire » : deux champs Début / Fin en heure locale ISO (comme Save PCAP), préremplis
   avec la plage active ou la période de la session ; erreurs en ligne (format, fin avant début) ;
   Appliquer, Effacer, Annuler. Même dialogue depuis la pastille d'en-tête, donc depuis toute vue.
-- Bandeau résumé sous plage : Durée (de la plage, avec la période en indice), Paquets, Volume (de la
-  plage), Hôtes et Flux actifs dans la plage ; Chunks inchangé. Indice commun « Dans la plage ».
+- Bandeau résumé sous plage : Durée et, en indice, « Capturé <période> » : la plage bornée à la période
+  capturée, c'est-à-dire là où des paquets existent (la pastille, elle, montre la plage telle que posée,
+  qui peut commencer avant le premier paquet) ; plage hors de la session -> « Aucun paquet ». Paquets,
+  Volume (de la plage), Hôtes et Flux actifs dans la plage ; Chunks inchangé. Indice « Dans la plage ».
 
 ### Afficher la plage hors Overview
 
 - Pastille dans l'en-tête de l'application (`AppShell`, entre le titre et l'indicateur d'import), visible
   sur toute route de session dès qu'une plage est active : icône `CalendarRange` 16 px, plage en texte
-  (`formatTimestamp`, la date omise quand début et fin tombent le même jour que la session), bouton
+  (`formatTimestamp` ; heures seules quand la session et la plage tiennent dans un même jour, sinon la date une
+  fois si la plage tient dans un jour), bouton
   icône « Effacer la plage » (`X`, cible 32 px). Un clic sur le texte ouvre le dialogue de saisie.
   Infobulle et `aria-label` : plage complète à la microseconde avec le fuseau.
 - Sur une vue absente du registre (Sources, et les vues de lot b avant P5.2b), la pastille est estompée,
@@ -419,7 +428,7 @@ Décidé le 2026-11-22 : **P5.2 est scindée en deux tâches** (ROADMAP).
 
 - **P5.2a `feat/time-filter`** (cette branche) — socle et vues à enregistrements horodatés :
   - API : extracteur de plage (`range.rs`), `TimeRange` et fragments de `Conditions` du store,
-    normalisation, erreurs ; migrations d'index 0003, 0101, 0202, 0302 et étape `http` version 2
+    normalisation, erreurs ; migrations d'index 0003, 0101, 0202 (avec le remplissage de l'heure des en-têtes) et 0302
     (heure des en-têtes) ;
   - routes filtrées : `/summary` (objet `range`, `scope` des compteurs), DNS (4 routes), HTTP et
     HTTP Headers (4), TLS (3), SMB (3), Credentials (4), Objects (2) ;
@@ -459,8 +468,11 @@ ADR-030 (`docs/DECISIONS.md`).
   `components/TimeRangeChip.tsx`, `components/TimeRangeDialog.tsx`. Les hooks de requête des vues filtrées
   lisent eux-mêmes la plage (`useViewRange`) : les vues ne la manipulent pas. Un état vide sans action propre
   affiche « Rien n'a été enregistré entre ces heures » et « Effacer la plage » sous plage.
-- Compteurs repliés sous plage : en-tête « Vu (session entière) » (SMB, tableau des annonces), libellé du
-  détail et infobulle de la carte (Credentials).
+- Compteurs repliés sous plage : en-tête court « Vu » avec « Session entière » en seconde ligne (SMB, tableau
+  des annonces), « 147 fois (session entière) » sur les cartes SMB et « Vu 296 fois (session entière) » sur
+  les cartes Credentials, libellé du détail Credentials.
+- Un agrégat fixe qui reçoit une plage sans porter ses bornes `?98` / `?99` est une erreur, jamais une
+  réponse non filtrée.
 - Mesures : `docs/PERFORMANCE.md`, section « Filtre temporel (P5.2a) ».
 
 ## Décisions (2026-11-22)
@@ -469,7 +481,7 @@ Validées avec la spec (utilisateur et orchestrateur) :
 
 1. Découpage en P5.2a (cette spec, socle et vues à enregistrements horodatés) et P5.2b (vues agrégées).
 2. Zoom implicite : la plage suit le zoom du graphique dès qu'il se stabilise (400 ms), avec refetch
-   serveur ; Dézoomer, Plage..., Toute la session.
+   serveur ; Dézoomer, Plage…, Toute la session.
 3. Vues agrégées (P5.2b) : la première requête d'une plage attend la matérialisation, sans 202 ; exception
    écrite à la règle des 300 ms (ADR-030).
 4. Compteurs d'éléments repliés : valeurs de session conservées, mention « session entière » dans l'en-tête

@@ -1170,8 +1170,9 @@ acceptée : la remplacer par une nouvelle qui la référence.
     matérialisent leurs tables par plage dans une base annexe (LRU) : la première requête d'une plage
       large attend la construction et peut dépasser 300 ms (pas de réponse 202 ; état de chargement de
     l'UI), les suivantes non ;
-  - **UI** : la plage vit dans l'URL de la session (`from_us`, `to_us`), conservée entre onglets
-    (`retainSearchParams`), et entre dans la clé de requête de chaque route filtrée.
+  - **UI** : la plage vit dans l'URL de la session (`from_us`, `to_us`), conservée entre les onglets de
+    cette session (`retainSearchParams`), jamais reportée sur une autre session (garde du layout de
+    session), et entre dans la clé de requête de chaque route filtrée.
 - Conséquences : environ 5 s d'index et +6 % de taille de session sur le banc (aussi à la première
   ouverture d'une session existante) ; les compteurs repliés (`seen_count`, octets d'un flux long)
   restent ceux de la session, avec la mention « session entière » dans l'en-tête de leur colonne sous

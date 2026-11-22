@@ -2,10 +2,11 @@ import { useRouterState } from '@tanstack/react-router';
 import { CalendarRange, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSession } from '../api/sessionQueries';
 import { appliesTimeRange, useTimeRange } from '../app/timeRange';
 import { parseSessionPath } from '../app/session';
 import { cn } from '../lib/cn';
-import { formatPreciseTimestamp, timeZoneLabel } from '../lib/format';
+import { formatPreciseTimestamp, sameLocalDay, timeZoneLabel } from '../lib/format';
 import { rangeText } from '../lib/timeRange';
 import { useMediaQuery } from '../lib/useMediaQuery';
 import { Button } from './Button';
@@ -25,7 +26,13 @@ export function TimeRangeChip() {
   const { range, setRange } = useTimeRange();
   const [editing, setEditing] = useState(false);
   const wide = useMediaQuery(SM_QUERY);
-  if (range === null || parseSessionPath(pathname) === null) return null;
+  const sessionId = parseSessionPath(pathname)?.sessionId ?? null;
+  const session = useSession(sessionId ?? '', sessionId !== null && range !== null);
+  if (range === null || sessionId === null) return null;
+  // The date is left out when the whole session and the range fall on one day.
+  const first = session.data?.first_ts_us ?? null;
+  const last = session.data?.last_ts_us ?? null;
+  const sessionDay = first !== null && last !== null && sameLocalDay(first, last) ? first : null;
   const applied = appliesTimeRange(pathname);
   const join = (from: string, to: string) => t('timeRange.rangeText', { from, to });
   const precise = `${join(formatPreciseTimestamp(range.fromUs), formatPreciseTimestamp(range.toUs))} ${timeZoneLabel()}`;
@@ -37,7 +44,7 @@ export function TimeRangeChip() {
     >
       <button
         type="button"
-        title={applied ? precise : `${t('timeRange.notApplied')}. ${precise}`}
+        title={applied ? precise : t('timeRange.notAppliedTitle', { range: precise })}
         aria-label={t('timeRange.chipLabel', { range: precise })}
         onClick={() => {
           setEditing(true);
@@ -45,7 +52,7 @@ export function TimeRangeChip() {
         className="flex h-8 min-w-0 items-center gap-1.5 rounded-l-md pr-1 pl-2 text-fg hover:bg-subtle"
       >
         <CalendarRange aria-hidden size={16} strokeWidth={1.75} className="shrink-0 text-muted" />
-        <span className="num truncate">{rangeText(range, !wide, join)}</span>
+        <span className="num truncate">{rangeText(range, !wide, join, sessionDay)}</span>
       </button>
       <Button
         variant="ghost"

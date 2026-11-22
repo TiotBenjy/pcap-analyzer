@@ -75,14 +75,27 @@ export function widen(range: TimeRange, firstUs: number | null, lastUs: number |
   return { fromUs, toUs };
 }
 
-/** Short text of a range: the date once when both ends fall on the same day. */
-export function rangeText(range: TimeRange, compact: boolean, join: (from: string, to: string) => string): string {
+/**
+ * Short text of a range. Times only when both ends fall on the day of a session captured within
+ * one day (`sessionDayUs`: any instant of that day, `null` otherwise); the date once when the range
+ * stays within one day; both dates otherwise. Compact (narrow screens): minutes, or dates only for
+ * a range over several days.
+ */
+export function rangeText(
+  range: TimeRange,
+  compact: boolean,
+  join: (from: string, to: string) => string,
+  sessionDayUs: number | null = null,
+): string {
   const oneDay = sameLocalDay(range.fromUs, range.toUs);
   if (compact) {
     if (!oneDay) return join(formatDate(range.fromUs), formatDate(range.toUs));
     // Minutes are enough unless both ends fall within the same minute.
     const seconds = Math.floor(range.fromUs / 60_000_000) === Math.floor(range.toUs / 60_000_000);
     return join(formatClock(range.fromUs, seconds), formatClock(range.toUs, seconds));
+  }
+  if (oneDay && sessionDayUs !== null && sameLocalDay(range.fromUs, sessionDayUs)) {
+    return join(formatClock(range.fromUs), formatClock(range.toUs));
   }
   return join(formatTimestamp(range.fromUs), formatTimestamp(range.toUs, !oneDay));
 }

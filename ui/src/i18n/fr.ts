@@ -609,7 +609,6 @@ export const fr: Dictionary = {
         scale: 'Échelle',
         linear: 'Linéaire',
         log: 'Log',
-        resetZoom: 'Réinitialiser le zoom',
         total: 'Total',
         bucket: '{{time}}, intervalle de {{step}}',
         empty: 'Aucun trafic enregistré dans cette session',

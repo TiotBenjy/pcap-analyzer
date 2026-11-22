@@ -20,7 +20,7 @@ Vue d'ensemble d'une session : volume de trafic dans le temps par protocole, ré
 1. Bandeau résumé (grille de `StatCard`) : durée capturée, paquets, volume, hôtes, flux, chunks (+ anomalies).
 2. Carte « Trafic par protocole » :
    - contrôles : échelle Linéaire / Log (bascule), métrique Octets / Paquets, sélecteur multi-protocoles
-     (avec Tout / Aucun), Dézoomer, Plage... et Toute la session (plage temporelle, `time-filter.md`) ;
+     (avec Tout / Aucun), Dézoomer, Plage… et Toute la session (plage temporelle, `time-filter.md`) ;
    - aires empilées, axe Y en unités IEC, axe X horodaté (format adapté à la durée), brush de zoom
      (dataZoom inside + slider fin) ; infobulle listant les protocoles du bucket triés par valeur ;
    - sous 640 px : légende masquée au profit du sélecteur, hauteur 240 px.
@@ -53,5 +53,5 @@ Vue d'ensemble d'une session : volume de trafic dans le temps par protocole, ré
 - Compteurs de modules : registre `MODULES` (une ligne triée par module, `(id de vue, table)`), présent
   seulement si la table existe dans la session. Aujourd'hui : `connections` (`conversations`), `hosts` et `openPorts` (`open_ports`).
 - L'UI demande 500 points (200 sous 640 px). Depuis P5.2a, le zoom stabilisé (400 ms) devient la plage
-  temporelle de toutes les vues et la série de la plage est redemandée au serveur ; Dézoomer, Plage... et
+  temporelle de toutes les vues et la série de la plage est redemandée au serveur ; Dézoomer, Plage… et
   Toute la session remplacent « Réinitialiser le zoom » (`docs/specs/time-filter.md`).

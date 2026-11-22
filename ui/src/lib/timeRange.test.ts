@@ -57,6 +57,8 @@ describe('time range', () => {
     expect(rangeText(r, false, join)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} to \d{2}:\d{2}:\d{2}$/);
     expect(rangeText(r, true, join)).toMatch(/^\d{2}:\d{2} to \d{2}:\d{2}$/);
     expect(rangeText({ fromUs: T0, toUs: T0 + 5_000_000 }, true, join)).toMatch(/^\d{2}:\d{2}:\d{2} to \d{2}:\d{2}:\d{2}$/);
+    // Times only when the session and the range fall on one day.
+    expect(rangeText(r, false, join, T0 + 60_000_000)).toMatch(/^\d{2}:\d{2}:\d{2} to \d{2}:\d{2}:\d{2}$/);
     const days = { fromUs: T0, toUs: T0 + 3 * 86_400_000_000 };
     expect(rangeText(days, true, join)).toMatch(/^\d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/);
   });

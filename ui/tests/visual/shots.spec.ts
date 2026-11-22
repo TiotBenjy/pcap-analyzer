@@ -60,6 +60,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'settings-update-notes': '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
   'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
+  'smb-auth-range': async (page) => rangedPath(page, 'smb', 'tab=auth'),
   'smb-range': async (page) => rangedPath(page, 'smb'),
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   'sources-backwards': async (page) => `/sessions/${await demoSessionId(page)}/sources`,
@@ -106,7 +107,7 @@ async function demoSessionId(page: Page): Promise<string> {
  * `view` of the demo session under a time range (P5.2): the second quarter of its captured period,
  * so that the header shows the range chip and the view the figures of the range.
  */
-async function rangedPath(page: Page, view: string): Promise<string> {
+async function rangedPath(page: Page, view: string, extra = ''): Promise<string> {
   const id = await demoSessionId(page);
   const res = await page.request.get(`/api/v1/sessions/${id}/summary`);
   if (!res.ok()) return `/sessions/${id}/${view}`;
@@ -127,7 +128,8 @@ async function rangedPath(page: Page, view: string): Promise<string> {
     }
   }
   const from = t.start_us + best * t.step_us;
-  return `/sessions/${id}/${view}?from_us=${from}&to_us=${from + width * t.step_us - 1}`;
+  const more = extra === '' ? '' : `&${extra}`;
+  return `/sessions/${id}/${view}?from_us=${from}&to_us=${from + width * t.step_us - 1}${more}`;
 }
 
 /**
@@ -467,6 +469,11 @@ for (const lang of LANGS) {
             // The header chip shows the active range (dimmed on a view that does not apply it).
             await expect(page.getByTestId('time-range-chip')).toBeVisible();
             await page.waitForLoadState('networkidle');
+          }
+          if (view === 'smb-auth-range' && !path.includes(NO_SESSION)) {
+            // No NTLM session in the busiest fifth of the demo: the empty state of a range.
+            await expect(page.getByText(D.timeRange.emptyText).first()).toBeVisible();
+            await expect(page.getByRole('button', { name: D.timeRange.clear }).last()).toBeVisible();
           }
           if (view === 'overview-range-dialog' && !path.includes(NO_SESSION)) {
             await page.getByRole('button', { name: D.timeRange.controls.edit, exact: true }).click();

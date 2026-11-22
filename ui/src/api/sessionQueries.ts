@@ -52,10 +52,11 @@ export function useSessions() {
   });
 }
 
-export function useSession(id: string) {
+export function useSession(id: string, enabled = true) {
   return useQuery({
     queryKey: sessionKeys.detail(id),
     queryFn: ({ signal }) => getSession(id, signal),
+    enabled,
     refetchInterval: (q) => (q.state.data?.state === 'importing' ? LIVE_REFRESH_MS : false),
   });
 }

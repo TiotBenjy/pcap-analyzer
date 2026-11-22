@@ -609,7 +609,6 @@ export const en = {
         scale: 'Scale',
         linear: 'Linear',
         log: 'Log',
-        resetZoom: 'Reset zoom',
         total: 'Total',
         bucket: '{{time}}, {{step}} bucket',
         empty: 'No traffic recorded in this session',

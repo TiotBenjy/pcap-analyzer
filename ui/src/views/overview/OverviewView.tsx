@@ -236,8 +236,18 @@ function SummaryBand({
   // Under a time range, the figures of the range (chunks stay those of the capture files).
   const r = s?.range ?? null;
   const inRange = t('timeRange.inRange');
-  const hasPeriod = r !== null || (s !== null && s.first_ts_us !== null && s.last_ts_us !== null);
-  const period = r !== null ? formatPeriod(r.from_us, r.to_us) : s === null ? '' : formatPeriod(s.first_ts_us, s.last_ts_us);
+  // The range bounded to the captured period: the packets actually observed in it. A range
+  // outside the session has no such period (`to_us < from_us`).
+  const disjoint = r !== null && r.to_us < r.from_us;
+  const hasPeriod = r !== null ? !disjoint : s !== null && s.first_ts_us !== null && s.last_ts_us !== null;
+  const period =
+    r !== null
+      ? disjoint
+        ? ''
+        : t('timeRange.captured', { period: formatPeriod(r.from_us, r.to_us) })
+      : s === null
+        ? ''
+        : formatPeriod(s.first_ts_us, s.last_ts_us);
   const packets = r?.packets ?? s?.packets ?? 0;
   const bytes = r?.bytes ?? s?.bytes ?? 0;
   const avg = s !== null && packets > 0 ? formatBytes(bytes / packets) : null;

@@ -25,7 +25,8 @@ describe('Endpoint', () => {
     expect(text).toHaveTextContent('[2001:db8::1]:8080');
     expect(text).toHaveClass('font-mono');
     expect(text).toHaveAttribute('title', '[2001:db8::1]:8080 web.example.test alias.test FR');
-    expect(screen.getByText(':8080')).toHaveClass('text-faint');
+    // Muted, not faint: the port keeps a 4.5:1 contrast in both themes (WCAG AA).
+    expect(screen.getByText(':8080')).toHaveClass('text-muted');
     // Flag (decorative image) before the address.
     expect(document.querySelector('img')).toHaveAttribute('aria-hidden', 'true');
   });

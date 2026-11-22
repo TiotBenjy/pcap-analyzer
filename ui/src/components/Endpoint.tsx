@@ -43,7 +43,7 @@ export function Endpoint({ endpoint, port, show = 'name', copy = false, classNam
   const addressText = (
     <>
       {endpointHost(e, port)}
-      {port != null && <span className="text-faint">:{port}</span>}
+      {port != null && <span className="text-muted">:{port}</span>}
     </>
   );
   const text = (content: ReactNode, mono: boolean, extra?: string) => (

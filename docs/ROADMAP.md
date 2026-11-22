@@ -483,8 +483,17 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 - [ ] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
       statut), REGISTER, user-agents (scanners comme `friendly-scanner`), messages bruts dépliables, flux RTP
       associés sans lecture audio, identifiants SIP Digest vers Credentials.
-- [~] **P5.7** `feat/compressed-captures` — Lecture `.zst` et `.lz4` (`netsift-capture`), comme `.gz` ; en
+- [x] **P5.7** `feat/compressed-captures` — Lecture `.zst` et `.lz4` (`netsift-capture`), comme `.gz` ; en
       parallèle de n'importe quelle vague.
+      Fusionné le 2026-11-22 (ADR-029 : `ruzstd`, blocs `lz4_flex` et couche frame LZ4 écrite d'après la spec,
+      fenêtre zstd bornée à 32 Mio, détection par magic). Suivis de revue : mot de bloc LZ4 `0x80000000` lu comme
+      bloc vide (la référence y voit un marqueur de fin ; entrée forgée seulement) ; tests manquants des blocs LZ4
+      non compressés en mode chaîné et de l'erreur `content size mismatch` ; `skip_leading_frames` accepte un pcap
+      non compressé précédé d'une trame ignorable ; taille de contenu zstd non comparée sans somme de contrôle ;
+      fichier compressé sans suffixe connu sans indication dans Sources (exposer le codec dans l'API) ; `panic!`
+      internes de ruzstd -> campagne `./x.sh fuzz capture` longue avant la prochaine release ; snapshot de
+      déterminisme lié aux versions des encodeurs (le dire dans le test) ; budget mémoire global des lecteurs en
+      fusion k-voies (64 x 32 Mio en zstd, pire cas déjà dépassé par `MAX_PACKET_LEN` x `max_open`).
 
 ### Vague 5.B — Protocoles à flux et fichiers (parallèle, après 5.A)
 

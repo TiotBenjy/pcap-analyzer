@@ -355,6 +355,34 @@ fn pages_of_dialogs_and_messages_have_no_gap() {
     assert_eq!(seen.iter().map(|s| s.2).sum::<usize>(), 2);
 }
 
+/// Time and query plan of each aggregate of `/sip/stats` without range (measurement only).
+#[allow(clippy::print_stdout)]
+fn print_plans(conn: &Connection) {
+    for sql in [
+        "SELECT kind, method, count(*) FROM sip_messages GROUP BY kind, method",
+        "SELECT status, reason, count(*) FROM sip_messages WHERE status IS NOT NULL \
+         GROUP BY status, reason",
+        "SELECT count(*) FROM sip_messages WHERE scanner IS NOT NULL",
+        "SELECT count(DISTINCT src_ip) FROM sip_messages",
+        "SELECT software, scanner, count(*) AS n FROM sip_messages WHERE software IS NOT NULL \
+         GROUP BY software, scanner",
+        "SELECT method, state, count(*), coalesce(sum(duration_ns), 0) FROM sip_dialogs \
+         GROUP BY method, state",
+    ] {
+        let t = std::time::Instant::now();
+        let mut stmt = conn.prepare(sql).unwrap();
+        let n = stmt.query_map([], |_| Ok(())).unwrap().count();
+        let plan: Vec<String> = conn
+            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .unwrap()
+            .query_map([], |r| r.get(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        println!("{:?} {n} rows {sql}\n  {}", t.elapsed(), plan.join(" | "));
+    }
+}
+
 /// `cargo test -p netsift-store --release sip::tests::timings -- --ignored --nocapture`.
 #[test]
 #[ignore = "measurement"]
@@ -409,6 +437,7 @@ fn timings() {
     finalize(&conn).unwrap();
     conn.execute_batch("COMMIT; ANALYZE").unwrap();
     println!("finalize {:?}", t.elapsed());
+    print_plans(&conn);
     let total = calls * 4 * S;
     for (name, range) in [
         ("whole", None),

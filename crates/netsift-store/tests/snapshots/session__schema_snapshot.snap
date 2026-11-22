@@ -1152,7 +1152,10 @@ CREATE TABLE sip_dialogs (
 CREATE INDEX sip_dialogs_method ON sip_dialogs (method, first_ts);
 
 -- index sip_dialogs_span
-CREATE INDEX sip_dialogs_span ON sip_dialogs (first_ts, last_ts);
+CREATE INDEX sip_dialogs_span ON sip_dialogs (first_ts, last_ts, method, state, duration_ns);
+
+-- index sip_dialogs_state
+CREATE INDEX sip_dialogs_state ON sip_dialogs (method, state, duration_ns);
 
 -- table sip_media
 CREATE TABLE sip_media (

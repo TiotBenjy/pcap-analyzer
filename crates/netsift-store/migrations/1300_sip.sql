@@ -88,9 +88,11 @@ CREATE TABLE sip_dialogs (
     scanner       TEXT,
     media_count   INTEGER NOT NULL DEFAULT 0
 );
--- List order (keyset (first_ts, id)) and overlap with a range; the list of one type.
-CREATE INDEX sip_dialogs_span ON sip_dialogs (first_ts, last_ts);
+-- List order (keyset (first_ts, id)) and overlap with a range, covering the counters of
+-- /sip/stats under a range; the list of one type; the counters without range (covering).
+CREATE INDEX sip_dialogs_span ON sip_dialogs (first_ts, last_ts, method, state, duration_ns);
 CREATE INDEX sip_dialogs_method ON sip_dialogs (method, first_ts);
+CREATE INDEX sip_dialogs_state ON sip_dialogs (method, state, duration_ns);
 
 -- Media announced in the SDP bodies of a dialog, joined to the UDP flows of their address and port.
 CREATE TABLE sip_media (

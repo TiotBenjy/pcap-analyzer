@@ -45,7 +45,7 @@ quelle que soit la quantité de données. Les captures de `docs/reference/` serv
 | Besoin | Graphique | Règles |
 |---|---|---|
 | Part de ≤ 5 catégories | donut | libellés dans la légende, pas sur le graphique ; total au centre |
-| Part de > 5 catégories | barres horizontales | top 10 + « Autres », libellé tronqué + infobulle |
+| Part de > 5 catégories | barres horizontales (`BarList`, HTML) | top 10 + « Autres », libellé tronqué + infobulle, valeur toujours entière |
 | Évolution temporelle | aires empilées / lignes | ≤ 2 000 points, zoom par brush, échelle lin/log |
 | Deux dimensions croisées | heatmap | (remplace les nuages de bulles) |
 | Répartition géographique | carte choroplèthe + liste top pays | pas de points superposés illisibles |
@@ -89,9 +89,15 @@ Points de rupture : `sm` 640, `md` 768, `lg` 1024, `xl` 1280, `2xl` 1536.
 - Rangée de graphiques : `grid` avec `minmax(320px, 1fr)` ; jamais de largeur fixe en px supérieure à 320.
 - Barres de filtres (bascules + recherche) : retour à la ligne propre (`flex-wrap`, `gap-2`) ;
   sous 768 px, les bascules passent dans un menu « Filtres ».
+- Filtres d'une carte (recherche `SearchInput`, bascules, listes, puces de filtre actives) : dans la bande
+  `filters` de l'en-tête de `Card`, sous le titre ; les options d'affichage (tri, Top N, mode) restent dans
+  `actions`, à droite du titre. Seuls les filtres qui s'appliquent à plusieurs cartes (Open Ports) restent
+  sous l'en-tête de page.
 - Tableaux : en-tête collant, virtualisés (TanStack Virtual) au-delà de 200 lignes, colonnes
-  redimensionnables ; sous 768 px, défilement horizontal **à l'intérieur** du conteneur du tableau
-  (la page elle-même ne défile jamais horizontalement) ou affichage en cartes empilées selon la spec.
+  redimensionnables ; sous 768 px, cartes empilées (`DataTable cards` : colonnes `meta.card` `title` et
+  `action` sur la première ligne, les autres en lignes libellées, `hidden` omises), sinon défilement
+  horizontal **à l'intérieur** du conteneur du tableau (la page elle-même ne défile jamais horizontalement).
+  Le point de rupture est `MD_QUERY` (`lib/useMediaQuery.ts`), jamais redéfini dans une vue.
 - Le document ne défile jamais : seule la colonne `#main` défile (et la liste de la sidebar), puis les
   panneaux internes (tableaux, listes). `html` et `body` masquent leur débordement par sécurité, mais un
   débordement reste un bogue. Un conteneur qui défile est positionné (`relative`) dès qu'il peut
@@ -105,8 +111,18 @@ Points de rupture : `sm` 640, `md` 768, `lg` 1024, `xl` 1280, `2xl` 1536.
 `AppShell`, `Sidebar`, `PageHeader` (titre, sous-titre, actions), `Card`, `StatCard`, `Chart`,
 `DataTable`, `FilterBar` (bascules avec compteurs, recherche, Tout activer / Tout désactiver),
 `Toggle`, `Badge`, `Tabs`, `Endpoint` (IP:port + drapeau + nom résolu), `SecretValue`
-(masqué, révéler, copier), `CopyButton`, `EmptyState`, `ErrorState`, `Skeleton`, `Pagination`.
-Une vue n'invente pas de composant visuel ad hoc s'il en existe un.
+(masqué, révéler, copier), `CopyButton`, `EmptyState`, `ErrorState`, `Skeleton`, `Pagination`,
+`BarList`, `Timestamp`, `SearchInput`.
+Une vue n'invente pas de composant visuel ad hoc s'il en existe un. En particulier :
+
+- toute adresse IP passe par `Endpoint` (DTO ou adresse seule ; `show` : `name` par défaut, `address`,
+  `both`, `stacked` ; `copy` dans les panneaux de détail). Le lien vers la fiche hôte (P5.12) se
+  branchera par `HostLinkContext` (`components/hostLink.ts`), sans toucher aux vues ;
+- toute copie passe par `CopyButton` (icône 16 px, cible 32 px, « Copier <nom> » puis « Copié ») ;
+- toutes les barres horizontales avec valeurs passent par `BarList` (libellé tronqué + infobulle,
+  valeur jamais tronquée, segments pour les deux sens d'une paire, lignes cliquables pour filtrer) ;
+- toute heure de paquet affichée passe par `Timestamp` (`<time>`, heure locale ISO, infobulle à la
+  microseconde avec le fuseau) ; dans un texte (infobulle, phrase), `formatTimestamp`.
 
 ## États
 

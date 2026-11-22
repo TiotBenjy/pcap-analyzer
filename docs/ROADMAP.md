@@ -462,7 +462,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 
 ### Vague 5.0 — Socle commun (séquentiel, avant les nouveaux onglets)
 
-- [ ] **P5.1** `refactor/views-harmonize` — Tâche transverse notée après la vague 3.B : composant `Endpoint`
+- [~] **P5.1** `refactor/views-harmonize` — Tâche transverse notée après la vague 3.B : composant `Endpoint`
       commun, `CopyButton` partagé (16 px, cible 32 px), helper unique de barres horizontales avec valeurs,
       format d'heure, filtres dans l'en-tête de carte, tableaux en cartes sous `md`.
 - [ ] **P5.2** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
@@ -483,7 +483,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 - [ ] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
       statut), REGISTER, user-agents (scanners comme `friendly-scanner`), messages bruts dépliables, flux RTP
       associés sans lecture audio, identifiants SIP Digest vers Credentials.
-- [ ] **P5.7** `feat/compressed-captures` — Lecture `.zst` et `.lz4` (`netsift-capture`), comme `.gz` ; en
+- [~] **P5.7** `feat/compressed-captures` — Lecture `.zst` et `.lz4` (`netsift-capture`), comme `.gz` ; en
       parallèle de n'importe quelle vague.
 
 ### Vague 5.B — Protocoles à flux et fichiers (parallèle, après 5.A)

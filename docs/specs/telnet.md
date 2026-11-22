@@ -168,7 +168,8 @@ Ordre des blocs (une colonne sous 768 px) :
      la saisie du client en couleur d'accent atténuée, le serveur en couleur de texte ; un run secret
      est un `SecretValue` en ligne (masqué par défaut) ;
    - mention « Transcription tronquée à 64 Kio / 2 000 lignes » le cas échéant.
-   Une liste d'une seule session est dépliée d'emblée (comme la référence).
+   Les lignes sont repliées au chargement, même pour une session unique (la référence la montre
+   dépliée) : le composant commun `ExpandableList` n'a pas d'état initial déplié (suivi).
 
 États : chargement (squelettes), erreur (réessayer), session en import ou en échec (`SessionGate`),
 aucune session (« Aucune session Telnet »), plage vide (état vide commun « Rien dans la plage » avec

@@ -356,6 +356,39 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
   environ 2 Kio par message sur disque, plus les index (300 à 400 octets de brut pour un message courant) ;
   10 M messages de taille maximale pèseraient environ 20 Go.
 
+## Filtre temporel (P5.2b, 2026-11-22, `feat/time-filter-aggregates`)
+
+Même machine et même jeu régénéré (8 894 735 paquets sur 7 jours, 843 955 flux, 676 978 conversations),
+`./x.sh bench queries` (9 appels chronométrés après un premier appel compté à part, colonne « 1re ») sous les
+plages `{r1h}`, `{r24h}`, `{r6d}`. Le banc supprime d'abord `sessions/<id>/ranges/` : la première requête
+d'une plage (`/connections?limit=50`, la première route agrégée mesurée) construit sa base. Machine partagée
+avec trois autres agents pendant la mesure (charge moyenne de 7 à 30 sur 22 threads selon les essais) :
+ordres de grandeur, à refaire sur une machine au repos.
+
+| Plage | Flux actifs | Construction (1re requête) | Requêtes suivantes des vues agrégées (médianes, ms) |
+|---|---|---|---|
+| 1 h | 4 692 | 0,9 s | `/connections` 6-7, `stats` 11, `top` 5, `/open-ports` 8, `stats` 38, `/servers` 13, `/network/graph` 11, `node` 5 |
+| 24 h | 122 857 | 4,3 s | `/connections` 6, `stats` 33, `top` 5, `/open-ports` 11, `stats` 72, `/servers` 14, `/network/graph` 32, `node` 15 |
+| 6 j | 726 364 | 9,4 s | `/connections` 6-7, `stats` 131, `top` 5, `/open-ports` 9, `stats` 109, `/servers` 11, `/network/graph` 22, `node` 7 |
+
+- `/summary` sous plage (compteurs des cinq modules agrégés lus dans la base de la plage) : 110 / 218 / 268 ms
+  une fois la base construite ; sa première requête sur une plage nouvelle attend la construction comme les vues.
+- Répartition de la construction à 6 jours (essai instrumenté, charge environ 20) : copie des hôtes et des ports
+  ouverts actifs 0,8 s, lecture des 726 364 flux actifs et agrégation (conversations, trafic par hôte, catégories,
+  clients des ports) 2,0 s, insertion de 600 000 conversations 2,4 s, leurs 7 index 1,1 s, preuves de serveurs
+  0,5 s, étape `network` 2,4 s. Taille des bases : 15 Mo (1 h), 36 Mo (24 h), 122 Mo (6 jours) ; hôtes et ports ouverts actifs, copiés, font l'essentiel des petites.
+- Ce qui a compté : agréger en Rust en une lecture des flux au lieu d'un `GROUP BY` SQL (8 s pour les seules
+  conversations, tri et insertions dans le désordre) ; lire toute la table des flux dans l'ordre de stockage
+  pour une plage large plutôt que l'index du début (3 s de lectures ligne à ligne à 6 jours) ; catégories et
+  clients des ports dans la même lecture (l'étape `connections` relancée coûtait 2 s) ; 128 Mio de cache pour
+  la base en construction ; `mmap` sur la session attachée.
+- Écart à l'estimation de la spec (0,3 s à 24 h, 2 à 5 s à 6 jours) : 4,3 s et 9,4 s mesurés sous charge.
+  Pistes : construire les tables du graphe à la première requête de Network seulement (2,4 s épargnées aux autres
+  vues et au résumé), index des conversations construits à la demande d'un tri, compteurs de modules agrégés
+  dans une route à part pour que le résumé de l'Overview n'attende pas la construction (prévu par la spec P5.2a).
+- Hors périmètre, relevé pendant la mesure : `/dns/servers` sous plage 414 ms (24 h) et 1,5 s (6 jours), au-dessus
+  des 74 ms notés pour P5.2a ; `/http/stats` et `/http/headers/stats` à 24 h autour de 300 ms.
+
 ## Suivis restants (chiffres de la dernière mesure)
 
 1. **Fin d'import : 44,5 s**, publiée mais pas réduite : index secondaires 18,5 s (environ 90 index, un

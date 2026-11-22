@@ -147,15 +147,15 @@ agrégées), **—** = non filtrée (voir « Découpage »).
 
 | Route | Règle | Lot |
 |---|---|---|
-| `/connections` | conversations recalculées depuis les flux qui *chevauchent(`first_ts`, `last_ts`)* : `GROUP BY src_ip, dst_ip` (octets, paquets, flux, part DNS, protocoles, premier et dernier horodatage des flux retenus) ; l'identifiant reste `conversations.id` (clé `UNIQUE (src_ip, dst_ip)`) ; filtres et tris inchangés | b |
-| `/connections/stats` | octets envoyés et reçus par pays depuis les mêmes flux (au lieu de `host_traffic`) | b |
+| `/connections` | conversations recalculées depuis les flux qui *chevauchent(`first_ts`, `last_ts`)*, regroupés par (client, serveur) : octets, paquets, flux, part DNS, protocoles, premier et dernier horodatage des flux retenus, **chaque flux compté en entier** ; l'identifiant reste `conversations.id` (une conversation absente de la session, import interrompu, reçoit un identifiant au-delà) ; filtres et tris inchangés (mêmes index, table de la base de la plage) | b |
+| `/connections/stats` | octets envoyés et reçus par pays depuis les mêmes conversations (trafic par hôte de la plage) | b |
 | `/connections/top` | matrice du chord sur les conversations recalculées | b |
-| `/connections/{conversation}/flows` | flux de la conversation qui chevauchent la plage | b |
-| `/open-ports` | ports ouverts qui *chevauchent(`first_ts`, `last_ts`)* (vus répondre pendant la plage), regroupés par hôte (au lieu de `open_port_hosts`) ; clients comptés sur les flux de la plage | b |
+| `/connections/{conversation}/flows` | flux de la conversation qui chevauchent la plage (index de la conversation, sans base de la plage) | b |
+| `/open-ports` | ports ouverts qui *chevauchent(`first_ts`, `last_ts`)* (vus répondre au moins une fois entre le premier et le dernier instant de la plage), regroupés par hôte ; `first_ts` / `last_ts` d'un port : session ; clients (par port et par hôte) comptés sur les flux de la plage | b |
 | `/open-ports/stats` | mêmes ports | b |
-| `/servers` | preuves recalculées sur les enregistrements de la plage (chaque branche de `server_evidence_source` filtrée par sa colonne horodatée : `dns_messages.ts`, `dhcp_messages.ts`, `http_transactions.resp_ts`, chevauchement pour les tables repliées `open_ports`, `ntp_responses`, `kerberos_replies`, `smb_sessions`, `smb_announces`), rangs recalculés (au lieu de `server_ranks`) | b |
-| `/network/graph` | graphe reconstruit par l'algorithme de l'étape `network` sur les conversations et le trafic par hôte de la plage | b |
-| `/network/node/{ip}` | octets, pairs, protocoles et voisins sur les conversations de la plage ; MAC, noms, ports ouverts : session | b |
+| `/servers` | preuves recalculées sur les enregistrements de la plage (chaque branche de `server_evidence_source` filtrée par sa colonne horodatée : `dns_messages.ts`, `dhcp_messages.ts`, `http_transactions.resp_ts` ; chevauchement pour les tables repliées `open_ports`, `ntp_responses`, `kerberos_replies`, `smb_sessions`, `smb_announces`), rangs recalculés ; preuve « port ouvert » : flux et clients de la plage ; réponses NTP, réponses KDC et annonces SMB : compteurs de session des lignes retenues | b |
+| `/network/graph` | graphe reconstruit par l'étape `network` sur les hôtes actifs, les conversations et le trafic par hôte de la plage | b |
+| `/network/node/{ip}` | octets, paquets, pairs, protocoles, voisins, ports ouverts et rôles sur les tables de la plage ; MAC, noms, premier et dernier horodatage : session ; un hôte sans activité dans la plage répond 404 | b |
 
 Une vue de lot **b** livrée avant P5.2b n'applique pas la plage et le dit (« Mise en page »).
 
@@ -163,8 +163,11 @@ Une vue de lot **b** livrée avant P5.2b n'applique pas la plage et le dit (« M
 
 Sous plage, chaque entrée de `modules` porte `scope: "range" | "session"` : `range` quand le compteur est
 celui de la plage (même règle que la liste de la vue), `session` sinon. Lot **a** : `credentials`, `dns`,
-`http`, `httpHeaders`, `pictures`, `smb`, `tls` passent en `range` ; `connections`, `hosts`, `network`,
-`openPorts`, `servers` restent `session` jusqu'à P5.2b. Sans plage : `scope` absent (ou `session`).
+`http`, `httpHeaders`, `pictures`, `smb`, `tls` passent en `range` ; lot **b** (P5.2b) : `connections`
+(conversations), `hosts` (hôtes actifs, égal à `range.host_count`), `network` (hôtes du graphe), `openPorts`
+(ports ouverts) et `servers` (couples rôle, serveur) passent en `range`, comptés dans la base de la plage :
+la première requête `/summary` d'une plage attend sa construction, comme les vues. Sans plage : `scope`
+absent (ou `session`).
 
 ## Coût
 
@@ -249,7 +252,9 @@ Constats :
 | `server_evidence`, `server_roles`, `server_ranks` (`servers`) | Servers, rôles du résumé et du graphe | l'étape coûte 0,9 s sur la session entière ; la vue recalculée à la lecture coûtait 1 094 ms avant P4.8 (lot b) |
 | `network_*` (`network`) | Network | l'étape coûte 2,7 s sur la session entière, après le regroupement des conversations (lot b) |
 
-Proposition pour le lot b (à confirmer par sa propre mesure) : **matérialisation par plage**. À la première
+Retenu pour le lot b (P5.2b, détails dans « Notes d'implémentation (P5.2b) ») : **matérialisation par
+plage**, une base par plage dans `sessions/<id>/ranges/` plutôt qu'un fichier `ranges.db` commun. Proposition
+initiale, gardée pour l'historique : à la première
 requête d'une famille sous une plage, les tables dérivées de la famille sont construites pour cette plage par
 le code des étapes de fin d'import, paramétré par la plage (conversations et trafic par hôte depuis les flux
 actifs, puis ports par hôte, preuves et rangs de serveurs, tables du graphe), dans une base annexe de la
@@ -475,6 +480,66 @@ ADR-030 (`docs/DECISIONS.md`).
   réponse non filtrée.
 - Mesures : `docs/PERFORMANCE.md`, section « Filtre temporel (P5.2a) ».
 
+## Notes d'implémentation (P5.2b)
+
+- **Base d'une plage** (`crates/netsift-store/src/ranges.rs`, `ranges/build.rs`, `ranges/fold.rs`) : un
+  fichier SQLite par plage, `sessions/<id>/ranges/<début ns>_<fin ns>_<empreinte>.db`, qui contient les
+  tables dérivées des quatre vues **sous les noms et avec le schéma de la session** (DDL et index recopiés de
+  son `sqlite_master`) : `hosts`, `conversations`, `host_traffic`, `conversation_categories`, `open_ports`,
+  `open_port_hosts`, `server_evidence`, `server_roles`, `server_ranks`, `network_*`, plus une copie de `meta`
+  (étapes `connections`, `ports`, `servers`, `network` marquées faites) et deux tables propres
+  (`open_port_clients`, `open_port_host_clients`). Une vue l'ouvre en `main` en lecture seule, la session
+  attachée sous le nom `session` (URI `mode=ro`) : un nom non qualifié trouve d'abord la table de la plage,
+  sinon celle de la session, donc **les requêtes des vues sont inchangées** (seule exception : les clients des
+  ports, lus dans `open_port_clients` quand la connexion est une base de plage). Un fichier par plage plutôt
+  qu'un `ranges.db` commun : publication atomique (construction dans `<nom>.db.partial` puis renommage),
+  éviction par suppression, aucune écriture dans un fichier lu par une autre requête.
+- **Construction** (code des étapes, paramétré par la plage) : hôtes et ports ouverts qui chevauchent la plage
+  copiés tels quels ; une lecture en continu des flux actifs (deux branches de `count_active_flows` pour une
+  plage étroite, toute la table dans l'ordre de stockage au-delà d'un vingtième des flux) agrège en mémoire les
+  conversations (identifiant de la session gardé), le trafic par hôte, les comptes par paire de catégories
+  (règle de l'étape `connections`) et les flux et clients distincts de chaque port ouvert ; mémoire bornée par
+  des passes (un million de flux actifs par passe au plus, conversations réparties par hachage de leurs
+  extrémités) ; preuves de serveurs par la requête de `server_evidence_source` filtrée branche par branche,
+  rôles et rangs par l'étape `servers` ; tables du graphe par l'étape `network` telle quelle. Un `GROUP BY`
+  SQL des flux coûtait 8 s à 6 jours sur le banc (tri et insertions dans le désordre des identifiants).
+- **Cache** (`RangeCache`, un par processus dans l'état de l'API) : une seule construction à la fois par
+  fichier (les requêtes concurrentes l'attendent), au plus 2 constructions simultanées tous fichiers confondus,
+  4 plages gardées par session (les moins récemment utilisées supprimées, date de modification du fichier
+  mise à jour à chaque lecture). Une plage est bornée à la période capturée avant de nommer son fichier (deux
+  plages qui ne diffèrent qu'hors de la session partagent une base ; une plage disjointe donne une base vide).
+- **Invalidation** : l'empreinte du nom de fichier hache la version de la construction, les migrations
+  appliquées, les étapes de fin d'import faites et les statistiques de la session : une session migrée ou dont
+  une étape est rejouée obtient de nouveaux fichiers, les anciens sortent du cache par l'éviction. Une session
+  ne se réimporte pas sur place (un import crée une session) ; `ranges/` est supprimé avec la session.
+- **Annulation** : l'extracteur `AggregateRange` (API) lève le drapeau d'annulation de la requête quand le
+  gestionnaire est abandonné (client parti, nouvelle plage dans l'UI qui annule la requête précédente) ; une
+  construction s'interrompt (`sqlite3_interrupt` et contrôles entre étapes) quand toutes les requêtes qui
+  l'attendent sont annulées, sans rien laisser sur le disque ; une requête qui reste la reprend.
+- **Serveur `--read-only`** : jamais d'écriture dans le dossier de données ; les bases de plage vont dans un
+  dossier temporaire du processus (créé à la première plage, supprimé à l'arrêt), avec les mêmes règles.
+  Une session qui attend des migrations répond 409 comme avant.
+- **Sémantique retenue** (tableau « Connections, Open Ports, Servers, Network ») : quand la base de la plage
+  permet une valeur de la plage, c'est elle qui est servie (clients des ports, preuves ponctuelles des
+  serveurs, ports ouverts et rôles du panneau de nœud, trafic par hôte). Restent des valeurs de session : les
+  octets et paquets d'un flux actif (compté en entier), `first_ts` / `last_ts` d'un port ouvert, les
+  compteurs des preuves repliées (réponses NTP, réponses KDC, annonces SMB), MAC, noms et dates d'un hôte.
+- **UI** : les quatre vues sont dans `timeFilterViews.ts` ; leurs hooks envoient la plage (dialogue des flux
+  et panneau de nœud compris). Mentions sous plage : « Les flux actifs dans la plage sont comptés en entier. »
+  sous le titre de Connections et de Network (`components/WholeFlowsNote.tsx`) ; « (session entière) » après
+  la période d'un port dans l'infobulle de son badge (Open Ports) et après le libellé d'une preuve repliée dans
+  le détail d'un serveur (Servers).
+- **Tests** : `crates/netsift-store/src/ranges/tests.rs` (contenu d'une base, plage couvrante égale aux tables
+  de session, LRU à 4, plages bornées, empreinte, construction partagée par 8 requêtes, annulation seule et
+  avec une requête restante, URI, fichiers partiels) ; `crates/netsift-api/src/range/aggregate_tests.rs` sur la
+  fixture `spread` (rafale du milieu : liste, stats, top, flux d'une conversation et compteur de module
+  cohérents ; entre deux rafales seul le flux long ; ports, serveurs et graphe ; pagination sans trou ni
+  doublon ; une construction par plage et 4 plages gardées ; requêtes concurrentes ; serveur inscriptible et
+  suppression de la session ; snapshot `middle_burst_aggregates`), routes agrégées ajoutées aux tests de
+  plage couvrante et disjointe. Aucune migration : pas de test d'upgrade propre (l'empreinte couvre une
+  session migrée).
+- **Mesures** : `docs/PERFORMANCE.md`, section « Filtre temporel (P5.2b) ».
+
 ## Décisions (2026-11-22)
 
 Validées avec la spec (utilisateur et orchestrateur) :
@@ -483,7 +548,8 @@ Validées avec la spec (utilisateur et orchestrateur) :
 2. Zoom implicite : la plage suit le zoom du graphique dès qu'il se stabilise (400 ms), avec refetch
    serveur ; Dézoomer, Plage…, Toute la session.
 3. Vues agrégées (P5.2b) : la première requête d'une plage attend la matérialisation, sans 202 ; exception
-   écrite à la règle des 300 ms (ADR-030).
+   écrite à la règle des 300 ms (ADR-030). Les compteurs de modules du résumé attendent aussi la base de la
+   plage (pas de route `/modules` à part).
 4. Compteurs d'éléments repliés : valeurs de session conservées, mention « session entière » dans l'en-tête
    de colonne sous plage active.
 5. Sources (chunks, anomalies) non filtrée ; expiration des certificats jugée sur la période de capture ;

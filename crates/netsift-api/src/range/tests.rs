@@ -29,6 +29,7 @@ pub(super) struct Env {
 
 /// The filtered routes (paths relative to the session): P5.2a, then the aggregated views (P5.2b).
 const ROUTES: &[&str] = &[
+    "/modules",
     "/connections",
     "/connections?sort=first_ts&order=asc",
     "/connections/stats",
@@ -289,6 +290,15 @@ async fn a_range_outside_the_session_is_empty() {
         0
     );
     assert_eq!(env.json(&path("/open-ports/stats")).await["open_ports"], 0);
+    let modules = env.json(&path("/modules")).await;
+    assert!(
+        modules["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["count"] == 0),
+        "{modules}"
+    );
     assert_eq!(env.json(&path("/network/graph")).await["hosts"], 0);
     let servers = env.json(&path("/servers")).await;
     assert!(
@@ -467,9 +477,15 @@ async fn credentials_and_pictures_keep_the_records_of_the_middle_burst() {
     assert_eq!(objects_stats["occurrences"], 2);
     assert_eq!(module(&summary, "pictures"), (2, json!("range")));
 
-    // Every module counts the range (aggregated ones since P5.2b).
+    // Every module counts the range; the aggregated ones in /modules (P5.2b).
     for m in summary["modules"].as_array().unwrap() {
-        assert_eq!(m["scope"], "range", "{m}");
+        let aggregated = ["connections", "hosts", "network", "openPorts", "servers"]
+            .contains(&m["id"].as_str().unwrap());
+        assert_eq!(
+            m["scope"],
+            if aggregated { "pending" } else { "range" },
+            "{m}"
+        );
     }
 }
 

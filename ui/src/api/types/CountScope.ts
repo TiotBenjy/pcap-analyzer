@@ -3,4 +3,4 @@
 /**
  * What a module counter covers under a time range (ADR-030).
  */
-export type CountScope = "range" | "session";
+export type CountScope = "range" | "session" | "pending";

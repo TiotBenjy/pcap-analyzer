@@ -11,6 +11,7 @@ export type ModuleCount = {
 id: string, count: number, 
 /**
  * Under a time range: whether `count` is that of the range (same rule as the list of the
- * view) or of the whole session (module not filtered yet). `null` without range.
+ * view), of the whole session (module not filtered), or still to be read from `/modules`
+ * (`pending`: `count` is then that of the session). `null` without range.
  */
 scope: CountScope | null, };

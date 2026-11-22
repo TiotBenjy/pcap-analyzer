@@ -225,4 +225,6 @@ impl RangeParams {
 #[cfg(test)]
 mod aggregate_tests;
 #[cfg(test)]
+mod equivalence_tests;
+#[cfg(test)]
 mod tests;

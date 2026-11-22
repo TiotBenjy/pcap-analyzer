@@ -130,13 +130,14 @@ async fn connections_keep_the_flows_of_the_middle_burst() {
     assert_eq!(top["conversations"].as_u64().unwrap(), total(&page));
     assert_eq!(top["total_bytes"].as_u64().unwrap(), bytes);
     let summary = env.json(&b("/summary")).await;
+    let modules = env.json(&b("/modules")).await;
     assert_eq!(
-        module(&summary, "connections"),
+        module(&modules, "connections"),
         (total(&page), json!("range"))
     );
     // Hosts active in the range: those of the summary figures.
     assert_eq!(
-        module(&summary, "hosts"),
+        module(&modules, "hosts"),
         (
             summary["range"]["host_count"].as_u64().unwrap(),
             json!("range")
@@ -154,7 +155,7 @@ async fn between_two_bursts_only_the_long_connection_is_active() {
     assert_eq!(total(&page), 1, "{page}");
     assert_eq!(items(&page)[0]["flows"], 1);
     let summary = env.json(&r("/summary")).await;
-    assert_eq!(module(&summary, "connections").0, 1);
+    assert_eq!(module(&env.json(&r("/modules")).await, "connections").0, 1);
     assert_eq!(summary["range"]["flow_count"], 1);
     // The open ports seen before and after the gap overlap it, without client in the gap.
     let ports = env.json(&r("/open-ports")).await;
@@ -172,7 +173,7 @@ async fn between_two_bursts_only_the_long_connection_is_active() {
 async fn open_ports_servers_and_network_follow_the_range() {
     let env = Env::new();
     let b = |p: &str| env.burst(p, 1);
-    let summary = env.json(&b("/summary")).await;
+    let summary = env.json(&b("/modules")).await;
 
     let ports = env.json(&b("/open-ports")).await;
     let port_stats = env.json(&b("/open-ports/stats")).await;
@@ -308,7 +309,7 @@ async fn a_range_is_built_once_and_the_last_four_are_kept() {
         "/open-ports",
         "/servers",
         "/network/graph",
-        "/summary",
+        "/modules",
     ] {
         env.json(&b(route)).await;
     }
@@ -351,7 +352,7 @@ async fn concurrent_requests_on_a_new_range_share_one_build() {
         "/open-ports/stats",
         "/servers",
         "/network/graph",
-        "/summary",
+        "/modules",
     ]
     .iter()
     .map(|p| env.bursts(p, 0, 1))
@@ -436,4 +437,55 @@ async fn the_middle_burst_snapshot_of_the_aggregated_views() {
                        "total_bytes": graph["total_bytes"] },
         })
     );
+}
+
+#[tokio::test]
+async fn the_summary_never_waits_for_the_range_database() {
+    let env = Env::new();
+    let b = |p: &str| env.burst(p, 1);
+    let summary = env.json(&b("/summary")).await;
+    assert_eq!(env.state.ranges.builds(), 0, "no build for the summary");
+    let session = env.json("/summary").await;
+    for id in ["connections", "hosts", "network", "openPorts", "servers"] {
+        // Pending, with the count of the session; the range ones come from /modules.
+        let (count, scope) = module(&summary, id);
+        assert_eq!(scope, json!("pending"), "{id}");
+        assert_eq!(count, module(&session, id).0, "{id}");
+    }
+    for id in ["arp", "dns", "ethernet", "ssdp", "tls"] {
+        if summary["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["id"] == id)
+        {
+            assert_eq!(module(&summary, id).1, json!("range"), "{id}");
+        }
+    }
+    let modules = env.json(&b("/modules")).await;
+    assert_eq!(env.state.ranges.builds(), 1);
+    let ids: Vec<&str> = modules["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        ["connections", "hosts", "network", "openPorts", "servers"]
+    );
+    assert!(
+        modules["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["scope"] == "range")
+    );
+    // Without range: the session counts, no scope, no build.
+    let plain = env.json("/modules").await;
+    assert_eq!(
+        module(&plain, "connections"),
+        (module(&session, "connections").0, Value::Null)
+    );
+    assert_eq!(env.state.ranges.builds(), 1);
 }

@@ -181,3 +181,27 @@ fn pending_requests_are_bounded() {
     a.remember(3, asker, IpAddr::V4(Ipv4Addr::from(0)));
     assert_eq!(a.pending.len(), MAX_PENDING);
 }
+
+#[test]
+fn a_sweep_that_frees_too_little_clears_the_map() {
+    let asker = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+    let live = 1 + 2 * ANSWER_WINDOW_NS;
+    // `expired` of the entries are old, the others live when the map overflows.
+    let fill = |expired: usize| {
+        let mut a = ArpAnalyzer::default();
+        for i in 0..MAX_PENDING {
+            let ts = if i < expired { 1 } else { live };
+            a.remember(
+                ts,
+                asker,
+                IpAddr::V4(Ipv4Addr::from(u32::try_from(i).unwrap())),
+            );
+        }
+        a.remember(live, asker, IpAddr::V4(Ipv4Addr::from(u32::MAX)));
+        a.pending.len()
+    };
+    // Half freed: the live half stays.
+    assert_eq!(fill(MAX_PENDING / 2), MAX_PENDING / 2 + 1);
+    // An eighth freed: not enough room, the map is cleared (no sweep at every packet).
+    assert_eq!(fill(MAX_PENDING / 8), 1);
+}

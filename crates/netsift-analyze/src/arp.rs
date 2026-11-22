@@ -110,8 +110,9 @@ impl ArpAnalyzer {
         if self.pending.len() >= MAX_PENDING && !self.pending.contains_key(&(asker, asked)) {
             let horizon = ts.saturating_sub(ANSWER_WINDOW_NS);
             self.pending.retain(|_, t| *t >= horizon);
-            if self.pending.len() >= MAX_PENDING {
+            if self.pending.len() > MAX_PENDING - MAX_PENDING / 4 {
                 // A flood of distinct live requests: forget them (later replies may be flagged).
+                // Below a quarter freed, the next requests would sweep the map at every packet.
                 self.pending.clear();
             }
         }

@@ -13,10 +13,23 @@ les ordonne, vérifie la continuité et les analyse comme **une seule capture co
 | editcap | `-c N` / `-i N` | `prefix_NNNNN_YYYYmmddHHMMSS.ext` |
 | tcpdump | `-C N` (taille) | `name`, `name1`, `name2`, ... (ou zéro-paddé avec `-W`) |
 | tcpdump | `-G N` (rotation temporelle) | nom libre avec motif `strftime`, ex. `cap-%Y%m%d-%H%M%S.pcap` |
-| tout outil | compression | même nom suffixé `.gz` |
+| tout outil | compression (gzip, zstd, LZ4 frame) | même nom suffixé `.gz`, `.zst` ou `.lz4` |
 
 Extensions acceptées : `.pcap`, `.pcapng`, `.cap`, `.dmp`, sans extension (tcpdump `-C`),
-chacune éventuellement `.gz`. Le format est déterminé par le **magic number**, jamais par l'extension.
+chacune éventuellement suffixée `.gz`, `.zst` ou `.lz4` (insensible à la casse). Le format **et la
+compression** sont déterminés par le **magic number**, jamais par l'extension : un `.pcap` compressé
+en zstd est lu, un `.pcap.zst` non compressé aussi. Le suffixe de compression ne sert qu'au nommage
+(motifs ci-dessous, copie compressée d'un fichier).
+
+Compression (`netsift_capture::reader`, ADR-029) : décompression en flux, mémoire bornée, progression
+sur les octets compressés lus. gzip multi-membres ; zstd (trames concaténées, trames ignorables,
+somme de contrôle vérifiée, fenêtre de 32 Mio au plus : `zstd --long` et `--ultra -21/-22` refusés
+avec la raison) ; LZ4 au format frame de l'outil `lz4` (blocs indépendants ou chaînés, sommes de
+contrôle vérifiées ; ancien format `lz4 -l` et dictionnaires non pris en charge). Fichier compressé
+coupé : `truncated_tail` comme un `.gz` tronqué ; flux corrompu : erreur de lecture du chunk. Limite :
+le décodeur zstd ne rend la dernière fenêtre d'une trame qu'à sa fin, et LZ4 un bloc entier (4 Mio par
+défaut avec l'outil `lz4`), donc un fichier coupé perd au plus cette quantité avant la coupure ; un
+petit fichier coupé avant son premier bloc complet est signalé illisible (`unreadable_chunk`).
 
 ## Algorithme d'import d'un dossier
 
@@ -24,9 +37,10 @@ chacune éventuellement `.gz`. Le format est déterminé par le **magic number**
    et le premier paquet (magic, format, linktype(s), snaplen, précision, `first_ts`). Ignorer les
    fichiers non reconnus en les listant dans le rapport. Fichiers vides : signalés, ignorés.
 2. **Regroupement** en jeux de chunks par motif de nom, dans cet ordre de priorité :
-   - `^(?P<prefix>.+)_(?P<num>\d{5,})_(?P<ts>\d{14})\.(?P<ext>[^.]+)(\.gz)?$`
-   - `^(?P<prefix>.+)_(?P<ts>\d{14})_(?P<num>\d{5,})\.(?P<ext>[^.]+)(\.gz)?$`
-   - tcpdump `-C` : même nom de base + suffixe numérique final (`cap.pcap`, `cap.pcap1`, ...)
+   - `^(?P<prefix>.+)_(?P<num>\d{5,})_(?P<ts>\d{14})\.(?P<ext>[^.]+)(\.(gz|zst|lz4))?$`
+   - `^(?P<prefix>.+)_(?P<ts>\d{14})_(?P<num>\d{5,})\.(?P<ext>[^.]+)(\.(gz|zst|lz4))?$`
+   - tcpdump `-C` : même nom de base + suffixe numérique final (`cap.pcap`, `cap.pcap1`, ...), avant
+     un éventuel suffixe de compression (`cap.pcap1.zst`, tcpdump `-z zstd`)
    - sinon : un groupe par préfixe commun ; à défaut, tout le dossier = un groupe.
    Plusieurs groupes détectés -> l'UI propose de choisir (un groupe = une session) ou de tout fusionner.
 3. **Ordonnancement** dans un groupe : par numéro de séquence s'il existe, sinon par `first_ts`,
@@ -36,6 +50,9 @@ chacune éventuellement `.gz`. Le format est déterminé par le **magic number**
    - trou temporel entre `last_ts(i)` et `first_ts(i+1)` > seuil (défaut 5 s ou 2 x l'intervalle médian) ;
    - chevauchement temporel entre chunks consécutifs ;
    - doublon (même taille + même empreinte des 64 premiers Kio + même `first_ts`) -> ignoré ;
+   - copie compressée à côté de l'original (`cap.pcap` et `cap.pcap.gz`, `.zst` ou `.lz4` : même nom
+     sans suffixe, même premier paquet) -> doublon, le fichier non compressé est gardé (à défaut, la
+     première copie compressée) ;
    - linktype ou snaplen différents d'un chunk à l'autre (accepté : chaque paquet garde son linktype) ;
    - dernier paquet tronqué (fichier en cours d'écriture au moment de la copie) -> ignoré proprement ;
    - horodatages qui reculent à l'intérieur d'un chunk -> signalés, paquets conservés.
@@ -71,7 +88,8 @@ conventions de nommage dumpcap (les deux ordres), editcap et tcpdump `-C`. Cas �
 - requête DNS dans le chunk N, réponse dans le chunk N+1 -> une transaction appariée ;
 - fichiers fournis dans le désordre, numérotation > 99 999, tri numérique ;
 - chunk manquant, trou temporel, chunk dupliqué, dernier paquet tronqué, fichier vide ;
-- mélange pcap / pcapng / `.gz` dans un même jeu ;
+- mélange pcap / pcapng / `.gz` / `.zst` / `.lz4` dans un même jeu, et même résultat que le fichier
+  non compressé ;
 - deux jeux de préfixes différents dans le même dossier -> deux groupes proposés ;
 - chevauchement (deux interfaces) -> fusion k-voies, ordre global croissant vérifié ;
 - résultat identique (snapshot `insta` des tables) entre « fichier unique » et « même trafic découpé ».

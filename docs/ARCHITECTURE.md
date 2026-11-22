@@ -6,7 +6,7 @@
  dossier de chunks / fichier unique
             |
    [capture]  détection du jeu de chunks, ordre, contrôle de continuité,
-            |  lecture pcap/pcapng(.gz), fusion k-voies si chevauchement
+            |  lecture pcap/pcapng(.gz/.zst/.lz4), fusion k-voies si chevauchement
             v
    [decode]   couche liaison -> IP (défragmentation) -> TCP/UDP
             |  (Ethernet, VLAN, Linux SLL/SLL2, raw IP, loopback, radiotap + 802.11)
@@ -34,7 +34,7 @@
 Cargo.toml                 workspace (resolver 3, lints partagés)
 rust-toolchain.toml        Rust 1.99.1
 crates/
-  netsift-capture/         lecture pcap/pcapng/gz, détection & ordonnancement des chunks, écriture pcapng
+  netsift-capture/         lecture pcap/pcapng (gzip, zstd, LZ4), détection & ordonnancement des chunks, écriture pcapng
   netsift-dissect/         parseurs purs, sans I/O, fuzzables (L2..L7)
   netsift-flow/            défragmentation IP, table de flux, réassemblage TCP
   netsift-analyze/         trait Analyzer + analyseurs par protocole + classification

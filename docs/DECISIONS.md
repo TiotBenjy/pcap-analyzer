@@ -1112,3 +1112,36 @@ acceptée : la remplacer par une nouvelle qui la référence.
 - Conséquences : une release sans titre affiche seulement la version ; le titre fait partie de la
   publication (à choisir avec l'accord de l'utilisateur, comme le numéro de version). Le message du
   tag n'est jamais modifié après coup (tag publié) : seul le nom de la release peut l'être.
+
+## ADR-029 — Captures compressées zstd et LZ4 : décodeurs purs Rust, bornés
+
+- Contexte : P5.7. Les captures archivées sont souvent compressées en zstd (`zstd`, tcpdump `-z zstd`)
+  ou LZ4 (`lz4`), en plus de gzip (lu par `flate2` depuis P1.1). Le projet parse 100 % en Rust, sans
+  bibliothèque C, et les fichiers sont des entrées hostiles.
+- Décision :
+  - **détection** par magic number (gzip `1f 8b`, zstd `28 b5 2f fd`, LZ4 frame `04 22 4d 18`), après
+    d'éventuelles trames ignorables en tête (`pzstd`, 1 Mio au plus), jamais par l'extension ; même
+    chemin que gzip (`reader::from_reader`) pour l'import, les jeux de chunks et l'export « Save PCAP ».
+    Compression imbriquée refusée ;
+  - **zstd** : `ruzstd` (MIT, pur Rust), un `FrameDecoder` neuf par trame (fenêtre allouée au fil des
+    données, pas réservée d'après l'en-tête), fenêtre bornée à 32 Mio (`MAX_ZSTD_WINDOW`, tous les
+    niveaux de l'outil jusqu'à `--ultra -20`), trames concaténées et ignorables, somme de contrôle de
+    contenu vérifiée, dictionnaires refusés. La liaison C (`zstd`) n'est pas retenue : décoder une
+    entrée hostile avec du code C contredit le parti pris du projet, et le débit mesuré suffit
+    largement (lecture complète d'un pcapng synthétique de 66 Mo en mémoire, build release : environ
+    730 Mo/s en zstd et en LZ4 contre 160 Mo/s en gzip et 680 Mo/s sans compression, pour une cible
+    d'ingestion de 80 Mo/s) ;
+  - **LZ4** : couche frame écrite ici (spécification publique du format frame : en-tête, sommes de
+    contrôle xxHash32 d'en-tête, de bloc et de contenu, taille de contenu) et décompression des blocs
+    par `lz4_flex` (MIT, pur Rust, mode `safe-decode`) ; `lz4_flex::frame::FrameDecoder` n'est pas
+    utilisé car il prend une fin de fichier entre deux blocs pour une fin propre, ce qui masquerait un
+    fichier coupé. Blocs au plus de la taille déclarée (4 Mio), historique de 64 Kio en mode chaîné ;
+    ancien format (`lz4 -l`) et dictionnaires non pris en charge ;
+  - **erreurs** : flux coupé -> `UnexpectedEof` -> `TruncatedTail`, comme gzip ; flux corrompu ->
+    `Malformed` (« corrupt zstd stream: … ») ; hors bornes -> `Malformed` (« unsupported … ») avec la
+    raison, y compris à l'ouverture (chunk « illisible » plutôt que « non reconnu »).
+- Conséquences : `CaptureInfo::compressed` reste un booléen (pas de migration ; l'onglet Sources
+  déduit le suffixe affiché du nom de fichier). `ruzstd` ne rend la dernière fenêtre d'une trame qu'à
+  sa fin et LZ4 un bloc entier : un fichier coupé perd au plus une fenêtre (zstd) ou un bloc (LZ4)
+  avant la coupure. Mémoire au pire par lecteur ouvert : 32 Mio (zstd) ou 8 Mio (LZ4), multipliée par
+  le nombre de chunks ouverts en fusion k-voies (64 au plus) dans un cas pathologique.

@@ -6,7 +6,8 @@
 //! - [`credentials`]: SMTP AUTH, POP3, IMAP, LDAP simple bind, HTTP Basic and HTTP NTLM
 //!   exchanges (Credentials view).
 //! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
-//! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip.
+//! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip,
+//!   zstd, LZ4 frame.
 //! - [`split`]: chunk splitter by size, duration, packet count or explicit boundaries, with
 //!   the dumpcap, dumpcap `nametimenum`, editcap and tcpdump `-C` naming conventions.
 //! - [`mix`]: large mixed-traffic captures streamed window by window (benchmarks).

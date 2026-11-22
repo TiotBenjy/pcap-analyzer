@@ -1,6 +1,6 @@
 [package]
 name = "netsift-capture"
-description = "Reading pcap/pcapng/gz files, detecting and ordering chunk sets."
+description = "Reading pcap/pcapng files (plain, gzip, zstd, lz4), detecting and ordering chunk sets."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,13 +11,18 @@ repository.workspace = true
 [dependencies]
 bytes = "1.12.1"
 flate2 = "1.1.11"
+lz4_flex = { version = "0.14.2", default-features = false, features = ["std", "safe-decode"] }
+ruzstd = "0.9.1"
 sha2 = "0.11.1"
 thiserror.workspace = true
+twox-hash = { version = "2.1.5", default-features = false, features = ["xxhash32"] }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+# Frame encoder parameters (linked blocks, checksums) in the tests.
+lz4_flex = { version = "0.14.2", features = ["frame"] }
 netsift-fixtures.workspace = true
 proptest = "1.12.0"
 tempfile = "3.27.0"

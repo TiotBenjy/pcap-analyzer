@@ -3,6 +3,7 @@ import i18n from '../i18n';
 import {
   baseName,
   colon,
+  compressionSuffix,
   formatByteCount,
   formatBytes,
   formatCompact,
@@ -189,5 +190,19 @@ describe('parseTimestamp', () => {
     for (const bad of ['', '2026-11-08', '14:03:12', '2026-02-30 10:00:00', '2026-11-08 25:00:00', '2026-11-08 14:03:12.1234567', 'abc']) {
       expect(parseTimestamp(bad)).toBeNull();
     }
+  });
+});
+
+describe('compressionSuffix', () => {
+  it('takes the suffix of compressed files from their name', () => {
+    expect(compressionSuffix('/c/cap_00001_20260101000000.pcapng.gz', true)).toBe('.gz');
+    expect(compressionSuffix('/c/cap.pcap.ZST', true)).toBe('.zst');
+    expect(compressionSuffix('C:\\c\\cap.pcap1.lz4', true)).toBe('.lz4');
+  });
+
+  it('is empty for plain files and unknown suffixes', () => {
+    expect(compressionSuffix('/c/cap.pcap.gz', false)).toBe('');
+    expect(compressionSuffix('/c/cap.pcap', true)).toBe('');
+    expect(compressionSuffix('/c/gz', true)).toBe('');
   });
 });

@@ -14,8 +14,8 @@ use flate2::{Compression, GzBuilder};
 use crate::packet::Packet;
 use crate::time::compact_timestamp;
 use crate::writer::{
-    Encoding, FileFormat, Interface, PcapNgWriter, PcapWriter, encode_with_interfaces, header_size,
-    record_size, resolve_interfaces,
+    Compress, Encoding, FileFormat, Interface, PcapNgWriter, PcapWriter, encode_with_interfaces,
+    header_size, lz4_frame_info, record_size, resolve_interfaces, zstd,
 };
 
 /// Rotation criterion.
@@ -65,7 +65,8 @@ pub struct SplitOptions {
     /// set). Empty means pcapng.
     pub encodings: Vec<Encoding>,
     /// Extension without the dot; `None` derives it from the format (`pcap`/`pcapng`),
-    /// `Some("")` writes no extension. `.gz` is always appended for compressed chunks.
+    /// `Some("")` writes no extension. The compression suffix (`.gz`, `.zst`, `.lz4`) is always
+    /// appended for compressed chunks.
     pub extension: Option<String>,
     /// First sequence number (dumpcap 1, editcap 0 by default). For tcpdump `-C`, the
     /// number of the second file (the first one has no number).
@@ -306,7 +307,7 @@ fn file_name(opts: &SplitOptions, enc: &Encoding, index: usize, number: u64, ts_
     } else {
         format!(".{ext}")
     };
-    let gz = if enc.gzip { ".gz" } else { "" };
+    let gz = enc.compress.suffix();
     let prefix = &opts.prefix;
     let ts = compact_timestamp(ts_ns);
     match opts.naming {
@@ -341,23 +342,31 @@ pub fn split_to_dir(
     Ok((chunks, paths))
 }
 
-/// Underlying file of a streamed chunk, optionally gzip-compressed.
+/// Underlying file of a streamed chunk, optionally compressed.
 enum FileSink {
     Plain(BufWriter<File>),
     Gz(GzEncoder<BufWriter<File>>),
+    /// The pure Rust zstd encoder reads its whole input: the chunk is buffered, then compressed
+    /// when it is closed (chunks are small).
+    Zstd(BufWriter<File>, Vec<u8>),
+    Lz4(Box<lz4_flex::frame::FrameEncoder<BufWriter<File>>>),
 }
 
 impl FileSink {
-    fn create(path: &Path, gzip: bool) -> io::Result<Self> {
+    fn create(path: &Path, compress: Compress) -> io::Result<Self> {
         let file = BufWriter::new(File::create(path)?);
-        Ok(if gzip {
-            Self::Gz(
+        Ok(match compress {
+            Compress::None => Self::Plain(file),
+            Compress::Gzip => Self::Gz(
                 GzBuilder::new()
                     .mtime(0)
                     .write(file, Compression::default()),
-            )
-        } else {
-            Self::Plain(file)
+            ),
+            Compress::Zstd => Self::Zstd(file, Vec::new()),
+            Compress::Lz4 => Self::Lz4(Box::new(lz4_flex::frame::FrameEncoder::with_frame_info(
+                lz4_frame_info(),
+                file,
+            ))),
         })
     }
 
@@ -365,6 +374,11 @@ impl FileSink {
         match self {
             Self::Plain(mut w) => w.flush(),
             Self::Gz(gz) => gz.finish()?.flush(),
+            Self::Zstd(mut w, data) => {
+                w.write_all(&zstd(&data))?;
+                w.flush()
+            }
+            Self::Lz4(lz4) => lz4.finish().map_err(io::Error::other)?.flush(),
         }
     }
 }
@@ -374,6 +388,8 @@ impl Write for FileSink {
         match self {
             Self::Plain(w) => w.write(buf),
             Self::Gz(w) => w.write(buf),
+            Self::Zstd(_, data) => data.write(buf),
+            Self::Lz4(w) => w.write(buf),
         }
     }
 
@@ -381,6 +397,8 @@ impl Write for FileSink {
         match self {
             Self::Plain(w) => w.flush(),
             Self::Gz(w) => w.flush(),
+            Self::Zstd(..) => Ok(()),
+            Self::Lz4(w) => w.flush(),
         }
     }
 }
@@ -444,7 +462,7 @@ impl ChunkSink {
                 number,
                 p.ts_ns,
             ));
-            let sink = FileSink::create(&path, plan.encoding.gzip)?;
+            let sink = FileSink::create(&path, plan.encoding.compress)?;
             self.open = Some(match &plan.encoding.format {
                 FileFormat::Pcap(o) => OpenWriter::Pcap(PcapWriter::new(sink, *o, p.linktype)?),
                 FileFormat::PcapNg(o) => {

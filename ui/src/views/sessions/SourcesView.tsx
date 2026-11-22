@@ -14,7 +14,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { MiddleTruncate } from '../../components/MiddleTruncate';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
-import { baseName, formatBytes, formatCount, formatSpan, formatTimestamp, sameLocalDay, timeZoneLabel } from '../../lib/format';
+import { baseName, compressionSuffix, formatBytes, formatCount, formatSpan, formatTimestamp, sameLocalDay, timeZoneLabel } from '../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalySummary, anomalyWhere } from './anomalies';
 import { buildCoverage } from './coverage';
 import { CoverageTimeline } from './CoverageTimeline';
@@ -226,7 +226,7 @@ function ChunkTable({ query, oneDay }: TableProps<ChunkInfo>) {
         cell: ({ row }) => (
           <span className="font-mono text-meta">
             {row.original.format}
-            {row.original.compressed ? '.gz' : ''}
+            {compressionSuffix(row.original.path, row.original.compressed)}
           </span>
         ),
       },

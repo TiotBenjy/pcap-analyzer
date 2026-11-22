@@ -1,17 +1,20 @@
-//! Single-file readers: pcap, pcapng, gzip, detection by magic number (task P1.1).
+//! Single-file readers: pcap, pcapng, possibly compressed (gzip, zstd, LZ4 frame), detection by
+//! magic number (task P1.1, compression P5.7).
 //!
 //! The parsers are hand-written rather than built on `pcap-file`: that gives full control over
 //! truncated tails, length caps and warnings, which matter more here than API convenience.
 //!
 //! Design rules (captures are hostile input):
-//! - the format is detected from the magic number, never from the file extension;
-//! - reading is streaming through a [`BufReader`]: memory stays bounded whatever the file size;
+//! - the format and the compression are detected from magic numbers, never from the extension;
+//! - reading is streaming through a [`BufReader`]: memory stays bounded whatever the file size
+//!   (decompressors included, see [`decompress`]);
 //! - no buffer is sized from an unchecked length field: lengths are capped first, and buffers
 //!   grow with the bytes actually present in the file;
 //! - timestamps are converted to `i64` nanoseconds with checked arithmetic;
 //! - an incomplete last record yields [`ReadWarning::TruncatedTail`] then `Ok(None)`;
 //! - any error from `next_packet` ends the stream: later calls return `Ok(None)`.
 
+mod decompress;
 mod pcap;
 mod pcapng;
 
@@ -25,6 +28,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use flate2::read::MultiGzDecoder;
 
 use crate::source::{CaptureError, CaptureFormat, CaptureInfo, PacketSource, ReadWarning};
+use decompress::{Codec, Lz4Reader, ZstdReader};
+
+pub use decompress::MAX_ZSTD_WINDOW;
 
 /// Largest captured packet accepted (pcap `incl_len`, pcapng packet blocks): 64 MiB.
 pub const MAX_PACKET_LEN: u32 = 64 * 1024 * 1024;
@@ -45,9 +51,13 @@ const INITIAL_ALLOC_CAP: usize = 64 * 1024;
 /// Bytes needed to recognize every supported format (pcapng: block type, length, byte order).
 const PREFIX_LEN: usize = 12;
 
-const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+/// Bytes of skippable frames accepted before the first compressed frame (`pzstd` writes one
+/// 12-byte skippable frame before each frame). Beyond it the file is not recognized, so that
+/// probing a hostile file never reads it whole.
+const MAX_LEADING_SKIP: u64 = 1024 * 1024;
 
-/// Opens a capture file, detecting pcap, pcapng and gzip-compressed variants by magic number.
+/// Opens a capture file, detecting pcap, pcapng and their gzip, zstd and LZ4 compressed
+/// variants by magic number.
 pub fn open(path: &Path) -> Result<Box<dyn PacketSource>, CaptureError> {
     let file = File::open(path)?;
     from_reader(file)
@@ -56,7 +66,7 @@ pub fn open(path: &Path) -> Result<Box<dyn PacketSource>, CaptureError> {
 /// Same as [`open`] on any byte stream (tests, in-memory data).
 ///
 /// [`PacketSource::bytes_read`] counts the bytes consumed from `reader` itself, i.e. the
-/// compressed bytes when the stream is gzip.
+/// compressed bytes when the stream is gzip, zstd or LZ4.
 pub fn from_reader<R: Read + Send + 'static>(
     reader: R,
 ) -> Result<Box<dyn PacketSource>, CaptureError> {
@@ -65,43 +75,118 @@ pub fn from_reader<R: Read + Send + 'static>(
         inner: reader,
         counter: Arc::clone(&counter),
     };
-    let prefix = read_prefix(&mut counted)?;
+    let prefix = skip_leading_frames(read_prefix(&mut counted)?, &mut counted)?;
 
-    if prefix.starts_with(&GZIP_MAGIC) {
-        let mut decoder = MultiGzDecoder::new(Cursor::new(prefix).chain(counted));
-        let inner = match read_prefix(&mut decoder) {
-            Ok(inner) => inner,
-            // A broken gzip header means this is not a capture we can read.
-            Err(CaptureError::Io(e))
-                if matches!(
-                    e.kind(),
-                    io::ErrorKind::InvalidInput | io::ErrorKind::InvalidData
-                ) =>
-            {
-                return Err(CaptureError::UnknownFormat);
-            }
-            Err(e) => return Err(e),
-        };
-        // Nested gzip is not supported.
-        if inner.starts_with(&GZIP_MAGIC) {
-            return Err(CaptureError::UnknownFormat);
-        }
-        let format = detect(&inner).ok_or(CaptureError::UnknownFormat)?;
-        build(
-            format,
-            Box::new(Cursor::new(inner).chain(decoder)),
-            counter,
-            true,
-        )
-    } else {
+    let Some(codec) = Codec::detect(&prefix) else {
         let format = detect(&prefix).ok_or(CaptureError::UnknownFormat)?;
-        build(
+        return build(
             format,
             Box::new(Cursor::new(prefix).chain(counted)),
             counter,
-            false,
-        )
+            None,
+        );
+    };
+    let stream = Cursor::new(prefix).chain(counted);
+    let mut decoder: Box<dyn Read + Send> = match codec {
+        Codec::Gzip => Box::new(MultiGzDecoder::new(stream)),
+        Codec::Zstd => Box::new(ZstdReader::new(stream)),
+        Codec::Lz4 => Box::new(Lz4Reader::new(stream)),
+    };
+    let inner = match read_inner_prefix(&mut decoder, codec) {
+        Ok(inner) => inner,
+        // A broken compression header means this is not a capture we can read.
+        Err(CaptureError::Io(e))
+            if matches!(
+                e.kind(),
+                io::ErrorKind::InvalidInput | io::ErrorKind::InvalidData
+            ) =>
+        {
+            return Err(CaptureError::UnknownFormat);
+        }
+        // A valid stream outside our bounds (zstd window too large, dictionary): say why.
+        Err(CaptureError::Io(e)) if e.kind() == io::ErrorKind::Unsupported => {
+            return Err(CaptureError::Malformed {
+                offset: 0,
+                reason: format!("unsupported {} stream: {e}", codec.name()),
+            });
+        }
+        Err(e) => return Err(e),
+    };
+    // Nested compression is not supported.
+    if Codec::detect(&inner).is_some() {
+        return Err(CaptureError::UnknownFormat);
     }
+    let format = detect(&inner).ok_or(CaptureError::UnknownFormat)?;
+    build(
+        format,
+        Box::new(Cursor::new(inner).chain(decoder)),
+        counter,
+        Some(codec),
+    )
+}
+
+/// [`read_prefix`] on a decompressed stream, where a stream cut short before the capture header
+/// is a truncated capture rather than an unknown format (a small zstd file keeps all its data in
+/// the decoder window until its frame ends, so a truncated one yields nothing).
+fn read_inner_prefix(decoder: &mut dyn Read, codec: Codec) -> Result<Vec<u8>, CaptureError> {
+    let mut buf = [0u8; PREFIX_LEN];
+    let mut filled = 0;
+    while let Some(dst) = buf.get_mut(filled..) {
+        if dst.is_empty() {
+            break;
+        }
+        match decoder.read(dst) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                return Err(CaptureError::Malformed {
+                    offset: u64::try_from(filled).unwrap_or(0),
+                    reason: format!(
+                        "{} stream cut short before the capture header",
+                        codec.name()
+                    ),
+                });
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(buf.get(..filled).unwrap_or_default().to_vec())
+}
+
+/// Skips the skippable frames (zstd and LZ4 share their layout) that may precede the first
+/// compressed frame, at most [`MAX_LEADING_SKIP`] bytes; returns the prefix that follows them.
+fn skip_leading_frames<R: Read>(
+    mut prefix: Vec<u8>,
+    reader: &mut R,
+) -> Result<Vec<u8>, CaptureError> {
+    let mut skipped: u64 = 0;
+    while decompress::is_skippable(&prefix) {
+        let len = prefix
+            .get(4..8)
+            .and_then(|b| <[u8; 4]>::try_from(b).ok())
+            .map(u32::from_le_bytes)
+            .ok_or(CaptureError::UnknownFormat)?;
+        skipped = skipped.saturating_add(8 + u64::from(len));
+        if skipped > MAX_LEADING_SKIP {
+            return Err(CaptureError::UnknownFormat);
+        }
+        let rest = prefix.get(8..).unwrap_or_default();
+        let from_prefix = rest.len().min(usize::try_from(len).unwrap_or(usize::MAX));
+        let mut next = rest.get(from_prefix..).unwrap_or_default().to_vec();
+        let left = u64::from(len) - u64::try_from(from_prefix).unwrap_or(0);
+        match decompress::skip(reader, left) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                return Err(CaptureError::UnknownFormat);
+            }
+            Err(e) => return Err(e.into()),
+        }
+        // The prefix may exceed PREFIX_LEN: it is replayed in front of the stream anyway.
+        next.extend(read_prefix(reader)?);
+        prefix = next;
+    }
+    Ok(prefix)
 }
 
 /// Recognizes the container from the first bytes of the (decompressed) stream.
@@ -124,9 +209,9 @@ fn build(
     format: CaptureFormat,
     stream: Box<dyn Read + Send>,
     counter: Arc<AtomicU64>,
-    compressed: bool,
+    codec: Option<Codec>,
 ) -> Result<Box<dyn PacketSource>, CaptureError> {
-    let core = Core::new(Input::new(stream, compressed), counter, format, compressed);
+    let core = Core::new(Input::new(stream, codec), counter, format, codec.is_some());
     Ok(match format {
         CaptureFormat::Pcap => Box::new(pcap::PcapReader::open(core)?),
         CaptureFormat::PcapNg => Box::new(pcapng::PcapNgReader::open(core)?),
@@ -169,41 +254,41 @@ impl<R: Read> Read for CountingReader<R> {
 
 /// Buffered (decompressed) input stream that tracks its byte position.
 ///
-/// A premature end of stream reported by the decompressor (`UnexpectedEof`, a truncated `.gz`)
+/// A premature end of stream reported by the decompressor (`UnexpectedEof`, a truncated file)
 /// is treated like an end of file and remembered, so that it surfaces as a truncated tail even
 /// when it falls on a record boundary.
 struct Input {
     inner: BufReader<Box<dyn Read + Send>>,
     pos: u64,
     cut_short: bool,
-    compressed: bool,
+    codec: Option<Codec>,
 }
 
 impl Input {
-    fn new(stream: Box<dyn Read + Send>, compressed: bool) -> Self {
+    fn new(stream: Box<dyn Read + Send>, codec: Option<Codec>) -> Self {
         Self {
             inner: BufReader::with_capacity(BUF_CAPACITY, stream),
             pos: 0,
             cut_short: false,
-            compressed,
+            codec,
         }
     }
 
-    /// Maps a read error: corrupt gzip data (bad deflate stream, wrong CRC, garbage after the
-    /// last member) is a malformed capture, anything else stays an I/O error.
+    /// Maps a read error: corrupt compressed data (bad block, wrong checksum, garbage after the
+    /// last member or frame) or a stream outside our bounds is a malformed capture, anything
+    /// else stays an I/O error.
     fn error(&self, e: io::Error) -> CaptureError {
-        if self.compressed
-            && matches!(
-                e.kind(),
-                io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput
-            )
-        {
-            CaptureError::Malformed {
-                offset: self.pos,
-                reason: format!("corrupt gzip stream: {e}"),
-            }
-        } else {
-            CaptureError::Io(e)
+        let Some(codec) = self.codec else {
+            return CaptureError::Io(e);
+        };
+        let what = match e.kind() {
+            io::ErrorKind::InvalidData | io::ErrorKind::InvalidInput => "corrupt",
+            io::ErrorKind::Unsupported => "unsupported",
+            _ => return CaptureError::Io(e),
+        };
+        CaptureError::Malformed {
+            offset: self.pos,
+            reason: format!("{what} {} stream: {e}", codec.name()),
         }
     }
 

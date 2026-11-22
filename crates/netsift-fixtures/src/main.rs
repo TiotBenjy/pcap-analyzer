@@ -11,7 +11,7 @@ use netsift_fixtures::scenario::Scenario;
 use netsift_fixtures::scenarios::Kind;
 use netsift_fixtures::split::{ChunkSink, Naming, SplitBy, SplitOptions};
 use netsift_fixtures::time::NS_PER_SEC;
-use netsift_fixtures::writer::{Encoding, Interface};
+use netsift_fixtures::writer::{Compress, Encoding, Interface};
 
 #[derive(Debug, Parser)]
 #[command(name = "netsift-fixtures", version, about)]
@@ -74,9 +74,12 @@ struct GenArgs {
     /// Container format.
     #[arg(long, value_enum, default_value_t = FormatArg::Pcapng)]
     format: FormatArg,
-    /// Gzip-compress every file.
-    #[arg(long)]
+    /// Gzip-compress every file (same as `--compress gz`).
+    #[arg(long, conflicts_with = "compress")]
     gzip: bool,
+    /// Compress every file: gz, zst or lz4 (LZ4 frame format).
+    #[arg(long, value_enum)]
+    compress: Option<CompressArg>,
     /// File name prefix.
     #[arg(long, default_value = "capture")]
     prefix: String,
@@ -94,6 +97,13 @@ enum NamingArg {
     Nametimenum,
     Editcap,
     Tcpdump,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum CompressArg {
+    Gz,
+    Zst,
+    Lz4,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -200,7 +210,12 @@ fn gen_capture(args: &GenArgs) -> Result<()> {
         FormatArg::PcapNs => Encoding::pcap_ns(),
         FormatArg::Pcapng => Encoding::pcapng(),
     };
-    encoding.gzip = args.gzip;
+    encoding.compress = match (args.compress, args.gzip) {
+        (Some(CompressArg::Gz), _) | (None, true) => Compress::Gzip,
+        (Some(CompressArg::Zst), _) => Compress::Zstd,
+        (Some(CompressArg::Lz4), _) => Compress::Lz4,
+        (None, false) => Compress::None,
+    };
     let naming = match args.naming {
         NamingArg::Dumpcap => Naming::Dumpcap,
         NamingArg::Nametimenum => Naming::DumpcapNameTimeNum,

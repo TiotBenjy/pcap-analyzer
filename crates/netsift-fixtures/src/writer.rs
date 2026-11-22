@@ -1,5 +1,5 @@
 //! Capture file writers: libpcap (micro/nanosecond, either endianness), pcapng (SHB + one
-//! IDB per interface + EPB, custom `if_tsresol`) and gzip compression.
+//! IDB per interface + EPB, custom `if_tsresol`) and gzip, zstd or LZ4 frame compression.
 
 use std::fs;
 use std::io::{self, Write};
@@ -150,11 +150,44 @@ impl FileFormat {
     }
 }
 
-/// How a file is encoded on disk: container format plus optional gzip compression.
+/// Compression applied to a whole capture file.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Compress {
+    #[default]
+    None,
+    Gzip,
+    Zstd,
+    /// LZ4 frame format (the `lz4` tool).
+    Lz4,
+}
+
+impl Compress {
+    /// File-name suffix, including the dot (empty when uncompressed).
+    pub fn suffix(self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::Gzip => ".gz",
+            Self::Zstd => ".zst",
+            Self::Lz4 => ".lz4",
+        }
+    }
+
+    /// Compresses `data` (deterministic output).
+    pub fn apply(self, data: &[u8]) -> io::Result<Vec<u8>> {
+        match self {
+            Self::None => Ok(data.to_vec()),
+            Self::Gzip => gzip(data),
+            Self::Zstd => Ok(zstd(data)),
+            Self::Lz4 => lz4(data),
+        }
+    }
+}
+
+/// How a file is encoded on disk: container format plus optional compression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Encoding {
     pub format: FileFormat,
-    pub gzip: bool,
+    pub compress: Compress,
 }
 
 impl Default for Encoding {
@@ -184,19 +217,32 @@ impl Encoding {
 
     /// Same encoding, gzip-compressed.
     #[must_use]
-    pub fn gz(mut self) -> Self {
-        self.gzip = true;
+    pub fn gz(self) -> Self {
+        self.compressed(Compress::Gzip)
+    }
+
+    /// Same encoding, zstd-compressed.
+    #[must_use]
+    pub fn zst(self) -> Self {
+        self.compressed(Compress::Zstd)
+    }
+
+    /// Same encoding, LZ4-compressed (frame format).
+    #[must_use]
+    pub fn lz4(self) -> Self {
+        self.compressed(Compress::Lz4)
+    }
+
+    /// Same encoding with `compress`.
+    #[must_use]
+    pub fn compressed(mut self, compress: Compress) -> Self {
+        self.compress = compress;
         self
     }
 
-    /// File extension, including `.gz` when compressed.
+    /// File extension, including the compression suffix (`pcapng.zst`).
     pub fn extension(&self) -> String {
-        let ext = self.format.extension();
-        if self.gzip {
-            format!("{ext}.gz")
-        } else {
-            ext.to_owned()
-        }
+        format!("{}{}", self.format.extension(), self.compress.suffix())
     }
 }
 
@@ -204,7 +250,7 @@ impl From<FileFormat> for Encoding {
     fn from(format: FileFormat) -> Self {
         Self {
             format,
-            gzip: false,
+            compress: Compress::None,
         }
     }
 }
@@ -487,7 +533,10 @@ pub fn encode_with_interfaces(
             w.into_inner()
         }
     };
-    if encoding.gzip { gzip(&raw) } else { Ok(raw) }
+    match encoding.compress {
+        Compress::None => Ok(raw),
+        other => other.apply(&raw),
+    }
 }
 
 /// Encodes `packets` into the bytes of a complete capture file.
@@ -511,6 +560,31 @@ pub fn gzip(data: &[u8]) -> io::Result<Vec<u8>> {
         .write(Vec::new(), Compression::default());
     encoder.write_all(data)?;
     encoder.finish()
+}
+
+/// Zstd-compresses `data` (one frame, content checksum, pure Rust encoder).
+pub fn zstd(data: &[u8]) -> Vec<u8> {
+    ruzstd::encoding::compress_to_vec(data, ruzstd::encoding::CompressionLevel::Fastest)
+}
+
+/// LZ4-compresses `data` in the frame format of the `lz4` tool ([`lz4_frame_info`]).
+pub fn lz4(data: &[u8]) -> io::Result<Vec<u8>> {
+    lz4_with(data, lz4_frame_info())
+}
+
+/// Frame parameters of [`lz4`] and of streamed LZ4 chunks: independent 64 KiB blocks (fixed, so
+/// that the output does not depend on write sizes), content checksum.
+pub fn lz4_frame_info() -> lz4_flex::frame::FrameInfo {
+    lz4_flex::frame::FrameInfo::new()
+        .block_size(lz4_flex::frame::BlockSize::Max64KB)
+        .content_checksum(true)
+}
+
+/// LZ4 frame compression with explicit frame parameters (block size, linked blocks, checksums).
+pub fn lz4_with(data: &[u8], info: lz4_flex::frame::FrameInfo) -> io::Result<Vec<u8>> {
+    let mut encoder = lz4_flex::frame::FrameEncoder::with_frame_info(info, Vec::new());
+    encoder.write_all(data)?;
+    encoder.finish().map_err(io::Error::other)
 }
 
 #[cfg(test)]

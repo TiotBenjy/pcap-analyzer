@@ -50,7 +50,7 @@ par l'application) : l'API publique n'est pas élargie.
 
 | Cible | Entrée | Couvre |
 |---|---|---|
-| `capture` | fichier de capture | lecteurs pcap / pcapng / gzip (`netsift_capture::reader`) |
+| `capture` | fichier de capture | lecteurs pcap / pcapng et décompression gzip / zstd / LZ4 frame (`netsift_capture::reader`) |
 | `dissect` | linktype + trame | Ethernet, VLAN, SLL/SLL2, raw IP, loopback, radiotap + 802.11, IPv4/IPv6 et extensions, TCP/UDP/ICMP |
 | `flow_table` | linktype + trames horodatées | défragmentation IP, table de flux (expiration, LRU), réassemblage TCP, bornes réduites |
 | `dns` | message | DNS / mDNS / LLMNR et NBNS (`netsift_dissect::dns`) |
@@ -85,7 +85,7 @@ Formats d'entrée (`fuzz/src/lib.rs`, partagés avec le générateur de graines)
 `./x.sh fuzz corpus` (`fuzz/examples/gen_corpus.rs`) rejoue les scénarios de `netsift-fixtures`
 (démo, DNS, HTTP, TLS, NBNS, SMB, SNMP, FTP, vitrines credentials / servers / TLS, mélange HTTP,
 galerie d'images, fragmentation) dans une table de flux et découpe ce qu'elle rapporte en entrées de
-chaque cible : fichiers pcap / pcapng / gzip, trames, charges UDP, conversations TCP par port,
+chaque cible : fichiers pcap / pcapng / gzip / zstd / LZ4, trames, charges UDP, conversations TCP par port,
 messages NTLMSSP, en-têtes HTTP d'authentification, certificats, bases mmdb (écrites par
 `netsift_geo::test_util`), images de chaque format. Rien de binaire n'est commité ; le générateur
 est déterministe.

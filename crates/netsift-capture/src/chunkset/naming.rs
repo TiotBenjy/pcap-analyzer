@@ -5,6 +5,9 @@
 //! 2. dumpcap `-b nametimenum:2`: `prefix_YYYYmmddHHMMSS_NNNNN.ext[.gz]`;
 //! 3. tcpdump `-C`: `name`, `name1`, `name2`, ... (optionally `.gz`);
 //! 4. fallback: common prefix, i.e. the name up to its first digit.
+//!
+//! `.gz` stands for any compression suffix of [`COMPRESSION_SUFFIXES`] (`.gz`, `.zst`, `.lz4`).
+//! The suffix only matters for naming: the compression itself is detected by magic number.
 
 /// Length of a dumpcap `YYYYmmddHHMMSS` timestamp.
 const TS_DIGITS: usize = 14;
@@ -21,11 +24,16 @@ pub(crate) struct DumpcapName {
     pub(crate) seq: u64,
 }
 
-/// Strips a trailing `.gz` (any case), when something remains before it.
-pub(crate) fn strip_gz(name: &str) -> Option<&str> {
-    let cut = name.len().checked_sub(3)?;
-    let (head, tail) = (name.get(..cut)?, name.get(cut..)?);
-    (tail.eq_ignore_ascii_case(".gz") && !head.is_empty()).then_some(head)
+/// File-name suffixes of compressed captures: gzip, zstd, LZ4.
+pub const COMPRESSION_SUFFIXES: [&str; 3] = [".gz", ".zst", ".lz4"];
+
+/// Strips a trailing compression suffix (any case), when something remains before it.
+pub(crate) fn strip_compression(name: &str) -> Option<&str> {
+    COMPRESSION_SUFFIXES.iter().find_map(|suffix| {
+        let cut = name.len().checked_sub(suffix.len())?;
+        let (head, tail) = (name.get(..cut)?, name.get(cut..)?);
+        (tail.eq_ignore_ascii_case(suffix) && !head.is_empty()).then_some(head)
+    })
 }
 
 fn all_digits(s: &str) -> bool {
@@ -37,14 +45,17 @@ fn parse_seq(s: &str) -> Option<u64> {
     if all_digits(s) { s.parse().ok() } else { None }
 }
 
-/// Candidate stems (name without its last extension), with and without a `.gz` suffix, mirroring
+/// Candidate stems (name without its last extension), with and without a compression suffix, mirroring
 /// `\.(?P<ext>[^.]+)(\.gz)?$`.
 fn stems(name: &str) -> impl Iterator<Item = &str> {
-    let gz = strip_gz(name);
-    gz.into_iter().chain(std::iter::once(name)).filter_map(|n| {
-        let (stem, ext) = n.rsplit_once('.')?;
-        (!ext.is_empty() && !stem.is_empty()).then_some(stem)
-    })
+    let stripped = strip_compression(name);
+    stripped
+        .into_iter()
+        .chain(std::iter::once(name))
+        .filter_map(|n| {
+            let (stem, ext) = n.rsplit_once('.')?;
+            (!ext.is_empty() && !stem.is_empty()).then_some(stem)
+        })
 }
 
 /// Pattern 1: `prefix_NNNNN_YYYYmmddHHMMSS.ext[.gz]`.
@@ -85,15 +96,15 @@ pub(crate) fn parse_nametimenum(name: &str) -> Option<DumpcapName> {
 
 /// Pattern 3 (tcpdump `-C`): splits `name` into its base and trailing number.
 ///
-/// `cap.pcap3` -> (`cap.pcap`, Some(3)); `cap.pcap` -> (`cap.pcap`, None). A `.gz` suffix is
-/// ignored.
+/// `cap.pcap3` -> (`cap.pcap`, Some(3)); `cap.pcap` -> (`cap.pcap`, None). A compression suffix
+/// is ignored.
 ///
 /// tcpdump appends the number directly to the file name, so a name is rejected (`None`) when
 /// its trailing number is longer than [`MAX_ROTATION_DIGITS`] or follows a separator
 /// (`-`, `_`, `.`, space): such names are timestamps of tcpdump `-G` (`cap-20240101-120000`)
 /// and belong to the common-prefix fallback, ordered by first timestamp.
 pub(crate) fn split_rotation(name: &str) -> Option<(&str, Option<u64>)> {
-    let name = strip_gz(name).unwrap_or(name);
+    let name = strip_compression(name).unwrap_or(name);
     let base = name.trim_end_matches(|c: char| c.is_ascii_digit());
     if base.is_empty() {
         return None;
@@ -111,7 +122,7 @@ pub(crate) fn split_rotation(name: &str) -> Option<(&str, Option<u64>)> {
 /// Fallback grouping key: the name without extension, cut at its first digit, trailing
 /// separators trimmed (`cap-20240101-1200.pcap` -> `cap`, `trace7.pcapng.gz` -> `trace`).
 pub(crate) fn common_prefix_key(name: &str) -> &str {
-    let name = strip_gz(name).unwrap_or(name);
+    let name = strip_compression(name).unwrap_or(name);
     let stem = match name.rsplit_once('.') {
         Some((stem, _)) if !stem.is_empty() => stem,
         _ => name,
@@ -152,6 +163,14 @@ mod tests {
         );
         // `.gz` alone is the extension.
         assert_eq!(parse_dumpcap("cap_00007_20240101120000.gz"), dc("cap", 7));
+        assert_eq!(
+            parse_dumpcap("cap_00008_20240101120000.pcapng.zst"),
+            dc("cap", 8)
+        );
+        assert_eq!(
+            parse_dumpcap("cap_00009_20240101120000.pcap.LZ4"),
+            dc("cap", 9)
+        );
         assert_eq!(parse_dumpcap("cap_0001_20240101120000.pcapng"), None);
         assert_eq!(parse_dumpcap("cap_00001_2024010112000.pcapng"), None);
         assert_eq!(parse_dumpcap("cap_00001_20240101120000"), None);
@@ -174,6 +193,10 @@ mod tests {
             parse_nametimenum("a_b_20240101120000_100000.pcapng.GZ"),
             dc("a_b", 100_000)
         );
+        assert_eq!(
+            parse_nametimenum("cap_20240101120000_00002.pcap.zst"),
+            dc("cap", 2)
+        );
         assert_eq!(parse_nametimenum("cap_00001_20240101120000.pcapng"), None);
     }
 
@@ -182,6 +205,8 @@ mod tests {
         assert_eq!(split_rotation("cap.pcap"), Some(("cap.pcap", None)));
         assert_eq!(split_rotation("cap.pcap12"), Some(("cap.pcap", Some(12))));
         assert_eq!(split_rotation("cap.pcap03.gz"), Some(("cap.pcap", Some(3))));
+        assert_eq!(split_rotation("cap.pcap4.zst"), Some(("cap.pcap", Some(4))));
+        assert_eq!(split_rotation("cap.pcap.lz4"), Some(("cap.pcap", None)));
         assert_eq!(split_rotation("trace"), Some(("trace", None)));
         assert_eq!(
             split_rotation("cap.pcap123456"),
@@ -203,6 +228,8 @@ mod tests {
     fn prefix_keys() {
         assert_eq!(common_prefix_key("cap-20240101-1200.pcap"), "cap");
         assert_eq!(common_prefix_key("trace7.pcapng.gz"), "trace");
+        assert_eq!(common_prefix_key("trace8.pcapng.zst"), "trace");
+        assert_eq!(common_prefix_key("trace9.pcap.lz4"), "trace");
         assert_eq!(common_prefix_key("eth0.pcap"), "eth");
         assert_eq!(common_prefix_key("20240101.pcap"), "");
         assert_eq!(common_prefix_key("plain.pcap"), "plain");
@@ -211,12 +238,17 @@ mod tests {
     }
 
     #[test]
-    fn strip_gz_keeps_bare_gz() {
-        assert_eq!(strip_gz(".gz"), None);
-        assert_eq!(strip_gz("a.gz"), Some("a"));
-        assert_eq!(strip_gz("a.pcap"), None);
+    fn strip_compression_keeps_bare_suffix() {
+        assert_eq!(strip_compression(".gz"), None);
+        assert_eq!(strip_compression(".zst"), None);
+        assert_eq!(strip_compression("a.gz"), Some("a"));
+        assert_eq!(strip_compression("a.pcap.ZST"), Some("a.pcap"));
+        assert_eq!(strip_compression("a.pcapng.lz4"), Some("a.pcapng"));
+        assert_eq!(strip_compression("a.pcap"), None);
+        assert_eq!(strip_compression("a.xz"), None);
         // Multi-byte names never split inside a character.
-        assert_eq!(strip_gz("é"), None);
+        assert_eq!(strip_compression("é"), None);
+        assert_eq!(strip_compression("éé"), None);
         assert_eq!(split_rotation("éé1"), Some(("éé", Some(1))));
     }
 }

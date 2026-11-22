@@ -7,7 +7,7 @@ use netsift_fixtures::anomaly::{merge_interfaces, two_interface_traffic};
 use netsift_fixtures::scenario::Scenario;
 use netsift_fixtures::scenarios;
 use netsift_fixtures::writer::{
-    Encoding, Endian, FileFormat, Interface, PcapNgOptions, PcapOptions, PcapPrecision,
+    Compress, Encoding, Endian, FileFormat, Interface, PcapNgOptions, PcapOptions, PcapPrecision,
     TsResolution, encode, write_file,
 };
 use netsift_fixtures::{LINKTYPE_ETHERNET, LINKTYPE_RAW, Packet};
@@ -133,20 +133,25 @@ fn pcapng_derives_one_interface_per_id() {
 }
 
 #[test]
-fn gzip_variants_round_trip() {
+fn compressed_variants_round_trip() {
     let packets = odd_timestamps();
     let dir = tempfile::tempdir().unwrap();
-    for (enc, unit) in [
-        (Encoding::pcap().gz(), 1_000),
-        (Encoding::pcap_ns().gz(), 1),
-        (Encoding::pcapng().gz(), 1_000),
+    for (enc, unit, magic) in [
+        (Encoding::pcap().gz(), 1_000, &[0x1f, 0x8b][..]),
+        (Encoding::pcap_ns().gz(), 1, &[0x1f, 0x8b]),
+        (Encoding::pcapng().gz(), 1_000, &[0x1f, 0x8b]),
+        (Encoding::pcap().zst(), 1_000, &[0x28, 0xb5, 0x2f, 0xfd]),
+        (Encoding::pcapng().zst(), 1_000, &[0x28, 0xb5, 0x2f, 0xfd]),
+        (Encoding::pcap_ns().lz4(), 1, &[0x04, 0x22, 0x4d, 0x18]),
+        (Encoding::pcapng().lz4(), 1_000, &[0x04, 0x22, 0x4d, 0x18]),
     ] {
         let path = dir.path().join(format!("capture.{}", enc.extension()));
         write_file(&path, &packets, &enc).unwrap();
+        assert!(path.to_str().unwrap().ends_with(enc.compress.suffix()));
         let bytes = std::fs::read(&path).unwrap();
-        assert_eq!(&bytes[..2], &[0x1f, 0x8b], "gzip magic");
+        assert!(bytes.starts_with(magic), "{:?} magic", enc.compress);
         let plain = Encoding {
-            gzip: false,
+            compress: Compress::None,
             ..enc.clone()
         };
         assert_eq!(raw_bytes(&bytes), encode(&packets, &plain).unwrap());

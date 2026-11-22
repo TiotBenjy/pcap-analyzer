@@ -143,9 +143,11 @@ fn chunks_dir(tmp: &TempDir, packets: &[Packet]) -> (PathBuf, Vec<PathBuf>) {
         Encoding::pcapng(),
         Encoding::pcap_ns(),
         Encoding::pcapng().gz(),
+        Encoding::pcap().zst(),
+        Encoding::pcapng().lz4(),
     ]);
     let files = split_to_dir(&dir, packets, &opts).unwrap().1;
-    assert!(files.len() >= 4, "{} chunks", files.len());
+    assert!(files.len() >= 5, "{} chunks", files.len());
     (dir, files)
 }
 

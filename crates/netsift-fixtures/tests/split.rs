@@ -203,6 +203,10 @@ fn streaming_sink_matches_in_memory_split() {
         (SplitBy::Size(30_000), vec![Encoding::pcapng()]),
         (SplitBy::Duration(5 * NS_PER_SEC), mixed_encodings()),
         (SplitBy::Packets(77), vec![Encoding::pcap().gz()]),
+        (
+            SplitBy::Packets(90),
+            vec![Encoding::pcapng().zst(), Encoding::pcap().lz4()],
+        ),
     ] {
         let opts = SplitOptions::new(by, Naming::Dumpcap).with_encodings(encs);
         let a = tempfile::tempdir().unwrap();
@@ -228,8 +232,11 @@ fn missing_duplicate_truncated_and_empty_chunks() {
         Encoding::pcap(),
         Encoding::pcapng(),
         Encoding::pcap_ns().gz(),
+        Encoding::pcapng().zst(),
+        Encoding::pcap().lz4(),
     ]);
     let (chunks, paths) = split_to_dir(dir.path(), &packets, &opts).unwrap();
+    assert!(paths.len() > 4);
 
     remove_chunk(&paths[1]).unwrap();
     assert!(!paths[1].exists());

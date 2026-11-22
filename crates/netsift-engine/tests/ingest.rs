@@ -183,6 +183,24 @@ fn single_file_and_chunks_give_identical_tables() {
     }
     insta::assert_snapshot!("reference_tables", expected.render());
 
+    // The same capture compressed: identical tables, chunk marked compressed.
+    for (name, encoding) in [
+        ("single.pcapng.zst", Encoding::pcapng().zst()),
+        ("single.pcap.lz4", Encoding::pcap().lz4()),
+        ("single.pcap.gz", Encoding::pcap().gz()),
+    ] {
+        let file = tmp.path().join(name);
+        write_file(&file, &packets, &encoding).unwrap();
+        let report = run(&catalog, &file, &options(3));
+        assert_eq!(report.state, SessionState::Ready, "{name}");
+        assert_eq!(report.packets, packets.len() as u64, "{name}");
+        assert_eq!(report.anomalies, 0, "{name}");
+        assert_eq!(report.name, "single", "{name}");
+        assert_eq!(tables(&catalog, &report), expected, "{name}");
+        let compressed = scalar(&catalog, &report, "SELECT sum(compressed) FROM chunks");
+        assert_eq!(compressed, 1, "{name}");
+    }
+
     let sets = [
         ("dumpcap", Naming::Dumpcap, vec![Encoding::pcapng()]),
         ("tcpdump", Naming::TcpdumpC, vec![Encoding::pcap()]),

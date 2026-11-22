@@ -2220,6 +2220,16 @@
    ]
   },
   {
+   "name": "lz4_flex",
+   "version": "0.14.2",
+   "source": "cargo",
+   "declared": "MIT",
+   "license": "MIT",
+   "texts": [
+    121
+   ]
+  },
+  {
    "name": "markup5ever",
    "version": "0.39.0",
    "source": "cargo",
@@ -2236,7 +2246,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    121
+    122
    ]
   },
   {
@@ -2246,8 +2256,8 @@
    "declared": "MIT AND BSD-3-Clause",
    "license": "MIT AND BSD-3-Clause",
    "texts": [
-    122,
-    123
+    123,
+    124
    ]
   },
   {
@@ -2257,7 +2267,7 @@
    "declared": "ISC",
    "license": "ISC",
    "texts": [
-    124
+    125
    ]
   },
   {
@@ -2267,7 +2277,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    125
+    126
    ]
   },
   {
@@ -2287,7 +2297,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    126
+    127
    ]
   },
   {
@@ -2297,7 +2307,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    127
+    128
    ]
   },
   {
@@ -2317,8 +2327,8 @@
    "declared": "MIT OR Zlib OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    128,
-    129
+    129,
+    130
    ]
   },
   {
@@ -2328,8 +2338,8 @@
    "declared": "MIT OR Zlib OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    128,
-    129
+    129,
+    130
    ]
   },
   {
@@ -2339,7 +2349,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    130
+    131
    ]
   },
   {
@@ -2349,7 +2359,7 @@
    "declared": "BSD-3-Clause OR Apache-2.0",
    "license": "Apache-2.0",
    "texts": [
-    131
+    132
    ]
   },
   {
@@ -2359,7 +2369,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    132
+    133
    ]
   },
   {
@@ -2369,7 +2379,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    133
+    134
    ]
   },
   {
@@ -2379,7 +2389,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    134
+    135
    ]
   },
   {
@@ -2409,7 +2419,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    135
+    136
    ]
   },
   {
@@ -2449,7 +2459,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    136
+    137
    ]
   },
   {
@@ -2589,7 +2599,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    137
+    138
    ]
   },
   {
@@ -2609,7 +2619,7 @@
    "declared": "MPL-2.0",
    "license": "MPL-2.0",
    "texts": [
-    138
+    139
    ]
   },
   {
@@ -2689,7 +2699,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    139
+    140
    ]
   },
   {
@@ -2699,7 +2709,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    139
+    140
    ]
   },
   {
@@ -2709,7 +2719,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    139
+    140
    ]
   },
   {
@@ -2719,7 +2729,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    139
+    140
    ]
   },
   {
@@ -2729,7 +2739,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    139
+    140
    ]
   },
   {
@@ -2739,7 +2749,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    139
+    140
    ]
   },
   {
@@ -2769,7 +2779,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    140
+    141
    ]
   },
   {
@@ -2779,7 +2789,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    141
+    142
    ]
   },
   {
@@ -2809,7 +2819,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    142
+    143
    ]
   },
   {
@@ -2819,7 +2829,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    143
+    144
    ]
   },
   {
@@ -2859,7 +2869,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    144
+    145
    ]
   },
   {
@@ -2869,7 +2879,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    144
+    145
    ]
   },
   {
@@ -2889,7 +2899,7 @@
    "declared": "BSD-3-Clause OR Apache-2.0",
    "license": "Apache-2.0",
    "texts": [
-    131
+    132
    ]
   },
   {
@@ -2899,7 +2909,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    145
+    146
    ]
   },
   {
@@ -2909,7 +2919,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    146
+    147
    ]
   },
   {
@@ -2929,7 +2939,7 @@
    "declared": "MIT OR Apache-2.0 OR Zlib",
    "license": "MIT",
    "texts": [
-    147
+    148
    ]
   },
   {
@@ -2939,7 +2949,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    148
+    149
    ]
   },
   {
@@ -2949,7 +2959,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    148
+    149
    ]
   },
   {
@@ -2959,7 +2969,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    149
+    150
    ]
   },
   {
@@ -2999,7 +3009,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    150
+    151
    ]
   },
   {
@@ -3009,8 +3019,8 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    151,
-    152
+    152,
+    153
    ]
   },
   {
@@ -3020,9 +3030,9 @@
    "declared": "Apache-2.0 AND ISC",
    "license": "Apache-2.0 AND ISC",
    "texts": [
-    153,
     154,
-    155
+    155,
+    156
    ]
   },
   {
@@ -3092,7 +3102,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    156
+    157
    ]
   },
   {
@@ -3102,7 +3112,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    157
+    158
    ]
   },
   {
@@ -3112,7 +3122,7 @@
    "declared": "ISC",
    "license": "ISC",
    "texts": [
-    158
+    159
    ]
   },
   {
@@ -3123,6 +3133,16 @@
    "license": "MIT",
    "texts": [
     8
+   ]
+  },
+  {
+   "name": "ruzstd",
+   "version": "0.9.1",
+   "source": "cargo",
+   "declared": "MIT",
+   "license": "MIT",
+   "texts": [
+    160
    ]
   },
   {
@@ -3142,7 +3162,7 @@
    "declared": "Unlicense OR MIT",
    "license": "MIT",
    "texts": [
-    159
+    161
    ]
   },
   {
@@ -3152,7 +3172,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    160
+    162
    ]
   },
   {
@@ -3162,7 +3182,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    148
+    149
    ]
   },
   {
@@ -3172,7 +3192,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    161
+    163
    ]
   },
   {
@@ -3182,8 +3202,8 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    162,
-    161
+    164,
+    163
    ]
   },
   {
@@ -3193,7 +3213,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    163
+    165
    ]
   },
   {
@@ -3203,7 +3223,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    164
+    166
    ]
   },
   {
@@ -3213,7 +3233,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    164
+    166
    ]
   },
   {
@@ -3223,7 +3243,7 @@
    "declared": "MPL-2.0",
    "license": "MPL-2.0",
    "texts": [
-    138
+    139
    ]
   },
   {
@@ -3313,7 +3333,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    165
+    167
    ]
   },
   {
@@ -3323,7 +3343,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    166
+    168
    ]
   },
   {
@@ -3333,7 +3353,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    167
+    169
    ]
   },
   {
@@ -3343,7 +3363,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    167
+    169
    ]
   },
   {
@@ -3363,7 +3383,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    168
+    170
    ]
   },
   {
@@ -3373,7 +3393,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    168
+    170
    ]
   },
   {
@@ -3383,7 +3403,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    169
+    171
    ]
   },
   {
@@ -3393,7 +3413,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    169
+    171
    ]
   },
   {
@@ -3413,7 +3433,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    125
+    126
    ]
   },
   {
@@ -3423,7 +3443,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    170
+    172
    ]
   },
   {
@@ -3433,7 +3453,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    125
+    126
    ]
   },
   {
@@ -3443,7 +3463,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    171
+    173
    ]
   },
   {
@@ -3453,7 +3473,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    172
+    174
    ]
   },
   {
@@ -3463,7 +3483,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    173
+    175
    ]
   },
   {
@@ -3473,7 +3493,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    174
+    176
    ]
   },
   {
@@ -3493,7 +3513,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    175
+    177
    ]
   },
   {
@@ -3503,7 +3523,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    176
+    178
    ]
   },
   {
@@ -3533,7 +3553,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    177
+    179
    ]
   },
   {
@@ -3563,7 +3583,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    178
+    180
    ]
   },
   {
@@ -3583,7 +3603,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    179
+    181
    ]
   },
   {
@@ -3593,7 +3613,7 @@
    "declared": "BSD-3-Clause",
    "license": "BSD-3-Clause",
    "texts": [
-    180
+    182
    ]
   },
   {
@@ -3603,7 +3623,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    181
+    183
    ]
   },
   {
@@ -3653,7 +3673,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    182
+    184
    ]
   },
   {
@@ -3663,7 +3683,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    182
+    184
    ]
   },
   {
@@ -3683,7 +3703,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    183
+    185
    ]
   },
   {
@@ -3693,7 +3713,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    183
+    185
    ]
   },
   {
@@ -3703,7 +3723,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    183
+    185
    ]
   },
   {
@@ -3753,7 +3773,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    183
+    185
    ]
   },
   {
@@ -3763,7 +3783,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    183
+    185
    ]
   },
   {
@@ -3773,7 +3793,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    183
+    185
    ]
   },
   {
@@ -3783,7 +3803,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    184
+    186
    ]
   },
   {
@@ -3793,7 +3813,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    185
+    187
    ]
   },
   {
@@ -3863,7 +3883,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    186
+    188
    ]
   },
   {
@@ -3873,7 +3893,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    186
+    188
    ]
   },
   {
@@ -3883,7 +3903,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    186
+    188
    ]
   },
   {
@@ -3913,7 +3933,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    187
+    189
    ]
   },
   {
@@ -3923,7 +3943,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    188
+    190
    ]
   },
   {
@@ -3933,7 +3953,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    189
+    191
    ]
   },
   {
@@ -3943,7 +3963,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    165
+    167
    ]
   },
   {
@@ -3963,7 +3983,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    165
+    167
    ]
   },
   {
@@ -3973,7 +3993,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    165
+    167
    ]
   },
   {
@@ -3983,7 +4003,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    165
+    167
    ]
   },
   {
@@ -3993,7 +4013,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    165
+    167
    ]
   },
   {
@@ -4003,7 +4023,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    165
+    167
    ]
   },
   {
@@ -4013,7 +4033,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    165
+    167
    ]
   },
   {
@@ -4023,7 +4043,7 @@
    "declared": "ISC",
    "license": "ISC",
    "texts": [
-    190
+    192
    ]
   },
   {
@@ -4033,7 +4053,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    191
+    193
    ]
   },
   {
@@ -4043,7 +4063,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    192
+    194
    ]
   },
   {
@@ -4053,7 +4073,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    191
+    193
    ]
   },
   {
@@ -4063,7 +4083,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    191
+    193
    ]
   },
   {
@@ -4073,7 +4093,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    193
+    195
    ]
   },
   {
@@ -4083,7 +4103,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    193
+    195
    ]
   },
   {
@@ -4093,8 +4113,8 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    193,
-    194
+    195,
+    196
    ]
   },
   {
@@ -4104,7 +4124,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    193
+    195
    ]
   },
   {
@@ -4114,7 +4134,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    193
+    195
    ]
   },
   {
@@ -4124,7 +4144,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    195
+    197
    ]
   },
   {
@@ -4154,8 +4174,18 @@
    "declared": "0BSD",
    "license": "0BSD",
    "texts": [
-    196,
-    197
+    198,
+    199
+   ]
+  },
+  {
+   "name": "twox-hash",
+   "version": "2.1.5",
+   "source": "cargo",
+   "declared": "MIT",
+   "license": "MIT",
+   "texts": [
+    200
    ]
   },
   {
@@ -4175,7 +4205,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    198
+    201
    ]
   },
   {
@@ -4185,8 +4215,8 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    199,
-    200
+    202,
+    203
    ]
   },
   {
@@ -4197,7 +4227,7 @@
    "license": "MIT AND Unicode-3.0",
    "texts": [
     8,
-    201
+    204
    ]
   },
   {
@@ -4217,7 +4247,7 @@
    "declared": "ISC",
    "license": "ISC",
    "texts": [
-    202
+    205
    ]
   },
   {
@@ -4237,7 +4267,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    203
+    206
    ]
   },
   {
@@ -4247,7 +4277,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    148
+    149
    ]
   },
   {
@@ -4257,7 +4287,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    204
+    207
    ]
   },
   {
@@ -4267,7 +4297,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    204
+    207
    ]
   },
   {
@@ -4277,7 +4307,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    205
+    208
    ]
   },
   {
@@ -4297,7 +4327,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    206
+    209
    ]
   },
   {
@@ -4317,7 +4347,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    207
+    210
    ]
   },
   {
@@ -4327,7 +4357,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    208
+    211
    ]
   },
   {
@@ -4337,7 +4367,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    209
+    212
    ]
   },
   {
@@ -4377,7 +4407,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    210
+    213
    ]
   },
   {
@@ -4387,7 +4417,7 @@
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",
    "texts": [
-    211
+    214
    ]
   },
   {
@@ -4397,7 +4427,7 @@
    "declared": "Unlicense OR MIT",
    "license": "MIT",
    "texts": [
-    159
+    161
    ]
   },
   {
@@ -4407,7 +4437,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    212
+    215
    ]
   },
   {
@@ -4547,7 +4577,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    213
+    216
    ]
   },
   {
@@ -4557,7 +4587,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    213
+    216
    ]
   },
   {
@@ -4567,7 +4597,7 @@
    "declared": "ISC",
    "license": "ISC",
    "texts": [
-    214
+    217
    ]
   },
   {
@@ -4587,7 +4617,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    215
+    218
    ]
   },
   {
@@ -4647,7 +4677,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    216
+    219
    ]
   },
   {
@@ -4657,7 +4687,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    216
+    219
    ]
   },
   {
@@ -4667,7 +4697,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    216
+    219
    ]
   },
   {
@@ -4677,7 +4707,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    217
+    220
    ]
   },
   {
@@ -4707,7 +4737,7 @@
    "declared": "Apache-2.0 OR MIT",
    "license": "MIT",
    "texts": [
-    218
+    221
    ]
   },
   {
@@ -4757,7 +4787,7 @@
    "declared": "BSD-3-Clause",
    "license": "BSD-3-Clause",
    "texts": [
-    219
+    222
    ]
   },
   {
@@ -4767,7 +4797,7 @@
    "declared": "MIT OR Apache-2.0 OR Zlib",
    "license": "MIT",
    "texts": [
-    220
+    223
    ]
   },
   {
@@ -4777,7 +4807,7 @@
    "declared": "MIT OR Apache-2.0 OR Zlib",
    "license": "MIT",
    "texts": [
-    220
+    223
    ]
   },
   {
@@ -4787,7 +4817,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    216
+    219
    ]
   },
   {
@@ -4797,7 +4827,7 @@
    "declared": "MIT",
    "license": "MIT",
    "texts": [
-    216
+    219
    ]
   },
   {
@@ -5298,6 +5328,10 @@
   },
   {
    "title": "MIT License",
+   "text": "The MIT License (MIT)\n\nCopyright (c) 2020 Pascal Seitz\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software is furnished to do so,\nsubject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS\nFOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR\nCOPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\nIN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN\nCONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE."
+  },
+  {
+   "title": "MIT License",
    "text": "Copyright (c) 2019 Eliza Weisman\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
   },
   {
@@ -5447,6 +5481,10 @@
   {
    "title": "ISC License",
    "text": "Except as otherwise noted, this project is licensed under the following\n(ISC-style) terms:\n\nCopyright 2015 Brian Smith.\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHORS DISCLAIM ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF\nOR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n\nThe files under third-party/chromium are licensed as described in\nthird-party/chromium/LICENSE."
+  },
+  {
+   "title": "MIT License",
+   "text": "MIT License\n\nCopyright (c) 2019 Moritz Borcherding\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
   },
   {
    "title": "MIT License",
@@ -5603,6 +5641,10 @@
   {
    "title": "CopyrightNotice.txt",
    "text": "/*! *****************************************************************************\nCopyright (c) Microsoft Corporation.\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY\nAND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM\nLOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR\nOTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR\nPERFORMANCE OF THIS SOFTWARE.\n***************************************************************************** */"
+  },
+  {
+   "title": "MIT License",
+   "text": "The MIT License (MIT)\n\nCopyright (c) 2015 Jake Goulding\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
   },
   {
    "title": "MIT License",

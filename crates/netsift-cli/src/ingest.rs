@@ -18,7 +18,8 @@ pub const EXIT_INCOMPLETE: u8 = 130;
 
 #[derive(Debug, Args)]
 pub struct IngestArgs {
-    /// Capture file, or folder of chunk files.
+    /// Capture file (pcap or pcapng, plain or compressed with gzip, zstd or LZ4), or folder of
+    /// chunk files.
     pub input: PathBuf,
     /// Data directory (catalog and sessions); created if needed.
     #[arg(long)]

@@ -12,7 +12,7 @@ use crate::proto::dns::DnsType;
 use crate::scenario::{DnsExchange, HttpGet, Scenario, TcpOptions};
 use crate::scenarios::{EXCHANGE_GAP_NS, hosts};
 use crate::split::{SplitBy, SplitOptions, split_to_dir};
-use crate::writer::{Encoding, Endian, FileFormat, PcapOptions, PcapPrecision, gzip};
+use crate::writer::{Compress, Encoding, Endian, FileFormat, PcapOptions, PcapPrecision};
 
 /// Deletes a chunk file (sequence gap, as left by a `-b files:` ring buffer).
 pub fn remove_chunk(path: &Path) -> io::Result<()> {
@@ -34,23 +34,37 @@ pub fn create_empty_file(dir: &Path, name: &str) -> io::Result<PathBuf> {
 }
 
 /// Cuts the file in the middle of its last packet record, as when a capture is copied while
-/// still being written. Gzip files are decompressed, cut and recompressed (a well-formed
-/// gzip stream around a truncated capture). Returns the new uncompressed capture length.
+/// still being written. Compressed files (gzip, zstd, LZ4) are decompressed, cut and
+/// recompressed (a well-formed compressed stream around a truncated capture). Returns the new
+/// uncompressed capture length.
 pub fn truncate_last_packet(path: &Path) -> io::Result<u64> {
     let bytes = fs::read(path)?;
-    let compressed = bytes.starts_with(&[0x1f, 0x8b]);
-    let raw = if compressed {
-        let mut out = Vec::new();
-        GzDecoder::new(bytes.as_slice()).read_to_end(&mut out)?;
-        out
-    } else {
-        bytes
-    };
+    let (compress, raw) = decompress(bytes)?;
     let (offset, len) = last_record(&raw)?;
     let keep = offset + (len / 2).max(1);
     let cut = raw.get(..keep).unwrap_or_default();
-    fs::write(path, if compressed { gzip(cut)? } else { cut.to_vec() })?;
+    fs::write(path, compress.apply(cut)?)?;
     Ok(keep as u64)
+}
+
+/// Detects the compression of a file by magic number and decompresses it.
+pub fn decompress(bytes: Vec<u8>) -> io::Result<(Compress, Vec<u8>)> {
+    let mut out = Vec::new();
+    let compress = if bytes.starts_with(&[0x1f, 0x8b]) {
+        GzDecoder::new(bytes.as_slice()).read_to_end(&mut out)?;
+        Compress::Gzip
+    } else if bytes.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
+        ruzstd::decoding::StreamingDecoder::new(bytes.as_slice())
+            .map_err(io::Error::other)?
+            .read_to_end(&mut out)?;
+        Compress::Zstd
+    } else if bytes.starts_with(&[0x04, 0x22, 0x4d, 0x18]) {
+        lz4_flex::frame::FrameDecoder::new(bytes.as_slice()).read_to_end(&mut out)?;
+        Compress::Lz4
+    } else {
+        return Ok((Compress::None, bytes));
+    };
+    Ok((compress, out))
 }
 
 /// Offset and length of the last packet record of a pcap or pcapng file.
@@ -107,8 +121,8 @@ fn read_u32(raw: &[u8], off: usize, endian: Endian) -> Option<u32> {
     })
 }
 
-/// Encoding cycle mixing every container variant: pcapng, pcap (us), pcapng.gz,
-/// pcap (ns).gz and big-endian pcap.
+/// Encoding cycle mixing every container and compression variant: pcapng, pcap (us),
+/// pcapng.gz, pcap (ns).gz, big-endian pcap, pcapng.zst and pcap.lz4.
 pub fn mixed_encodings() -> Vec<Encoding> {
     vec![
         Encoding::pcapng(),
@@ -120,6 +134,8 @@ pub fn mixed_encodings() -> Vec<Encoding> {
             endian: Endian::Big,
             ..PcapOptions::default()
         })),
+        Encoding::pcapng().zst(),
+        Encoding::pcap().lz4(),
     ]
 }
 

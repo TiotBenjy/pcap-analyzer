@@ -136,7 +136,7 @@ export const arpFr: typeof arpEn = {
     addresses: 'Adresses IP',
     conflicts: 'Conflits',
     conflictsHint: 'Adresses IP revendiquées par plusieurs adresses MAC',
-    unsolicited: 'Réponses non sollicitées',
+    unsolicited: 'Non sollicitées',
     unsolicitedHint: "Réponses qu'aucune requête n'a précédées",
   },
   kind: {

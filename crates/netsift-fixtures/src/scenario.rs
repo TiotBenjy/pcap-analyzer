@@ -582,6 +582,40 @@ pub struct TcpSession<'a> {
     start: usize,
 }
 
+/// An open TCP connection set aside by [`TcpSession::park`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParkedTcp {
+    client: Host,
+    server: Host,
+    cport: u16,
+    sport: u16,
+    client_next: u32,
+    server_next: u32,
+    mss: usize,
+    mss_option: u16,
+    window: u16,
+    start: usize,
+}
+
+impl Scenario {
+    /// Continues a connection set aside by [`TcpSession::park`].
+    pub fn resume(&mut self, conn: &ParkedTcp) -> TcpSession<'_> {
+        TcpSession {
+            sc: self,
+            client: conn.client,
+            server: conn.server,
+            cport: conn.cport,
+            sport: conn.sport,
+            client_next: conn.client_next,
+            server_next: conn.server_next,
+            mss: conn.mss,
+            mss_option: conn.mss_option,
+            window: conn.window,
+            start: conn.start,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Side {
     Client,
@@ -658,6 +692,23 @@ impl TcpSession<'_> {
     /// Server -> client data; returns the indices of the data segments.
     pub fn server_send(&mut self, data: &[u8]) -> Range<usize> {
         self.send(Side::Server, data)
+    }
+
+    /// Keeps the connection open without borrowing the scenario, so that another connection can
+    /// exchange in between (FTP control and data); [`Scenario::resume`] continues it.
+    pub fn park(self) -> ParkedTcp {
+        ParkedTcp {
+            client: self.client,
+            server: self.server,
+            cport: self.cport,
+            sport: self.sport,
+            client_next: self.client_next,
+            server_next: self.server_next,
+            mss: self.mss,
+            mss_option: self.mss_option,
+            window: self.window,
+            start: self.start,
+        }
     }
 
     /// Client-initiated close (FIN, FIN, ACK); returns the range of the whole connection.

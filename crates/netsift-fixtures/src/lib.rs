@@ -7,6 +7,7 @@
 //!   exchanges (Credentials view).
 //! - [`arp`]: ARP requests, replies, probes, gratuitous ARP and cache poisoning (ARP view).
 //! - [`ethernet`]: link-layer showcase (vendors, VLAN and Q-in-Q tags, EtherTypes, LLC).
+//! - [`ftp`]: FTP control sessions with passive, active and EPSV data connections (FTP view).
 //! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
 //! - [`ssdp`]: SSDP announcements, searches, answers and malformed datagrams (SSDP view).
 //! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip,
@@ -37,6 +38,7 @@ pub mod arp;
 pub mod craft;
 pub mod credentials;
 pub mod ethernet;
+pub mod ftp;
 pub mod http_mix;
 pub mod images;
 pub mod mix;

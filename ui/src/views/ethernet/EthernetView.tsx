@@ -585,7 +585,8 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
         meta: { align: 'right' },
         accessorFn: (m) => m.bytes_sent + m.bytes_received,
         header: counter(t('views.ethernet.macs.col.bytes')),
-        size: 100,
+        // Under a range, room for the "Whole session" line of the header (not cut at 768 px).
+        size: ranged ? 116 : 100,
         cell: ({ row }) => <span className="num">{formatBytes(row.original.bytes_sent + row.original.bytes_received)}</span>,
       },
       {
@@ -603,7 +604,7 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ],
-    [t, counter, oneDay],
+    [t, counter, oneDay, ranged],
   );
 
   return (
@@ -765,7 +766,8 @@ function PairsCard({
         meta: { align: 'right' },
         accessorFn: (p) => p.frames,
         header: counter(t('views.ethernet.pairs.col.frames')),
-        size: 100,
+        // Under a range, room for the "Whole session" line of the header (not cut at 768 px).
+        size: ranged ? 116 : 100,
         cell: ({ row }) => <span className="num">{formatCount(row.original.frames)}</span>,
       },
       {
@@ -773,7 +775,8 @@ function PairsCard({
         meta: { align: 'right' },
         accessorFn: (p) => p.bytes,
         header: counter(t('views.ethernet.pairs.col.bytes')),
-        size: 100,
+        // Under a range, room for the "Whole session" line of the header (not cut at 768 px).
+        size: ranged ? 116 : 100,
         cell: ({ row }) => <span className="num">{formatBytes(row.original.bytes)}</span>,
       },
       {
@@ -798,7 +801,7 @@ function PairsCard({
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ],
-    [t, counter, oneDay],
+    [t, counter, oneDay, ranged],
   );
 
   return (

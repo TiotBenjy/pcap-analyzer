@@ -481,7 +481,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       collée au bord à 1280 px ; cartes mobiles hautes (Conversations, Sources) ; donuts TLS et SMB sans total ;
       couleur de `Timestamp` inégale ; nom de certificat très court dans la colonne Certificate de TLS à 1280 px ;
       drapeau en double sur la ligne Adresse de `NodePanel`.
-- [~] **P5.2a** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
+- [x] **P5.2a** `feat/time-filter` — Filtre temporel global : la plage choisie dans la Vue d'ensemble s'applique à
       toutes les vues (`from_us`/`to_us` dans l'API et l'URL, refetch serveur du zoom Overview, suivi de P4.2).
       Spec `docs/specs/time-filter.md`, ADR-030. Scindée le 2026-11-22 après mesure sur le banc 5 Go, choix validés
       par l'utilisateur : socle API (`TimeRange`, `point`/`overlap`) et UI (search params conservés entre onglets,
@@ -490,6 +490,15 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       serveur, Dézoomer / Plage... / Toute la session), Save PCAP prérempli, vues DNS, HTTP, HTTP Headers, TLS, SMB,
       Credentials, Pictures. Compteurs d'éléments repliés gardés à leur valeur de session avec la mention
       « session entière » dans l'en-tête de colonne sous plage. Sources non filtrée.
+      Fusionné le 2026-11-22 (b03e24e) : 20 routes filtrées, aucune requête > 300 ms sur le banc 8,9 M paquets
+      (pire : `/http/stats` 293 ms à 6 jours, `docs/PERFORMANCE.md`), migrations 7,2 s à la première ouverture d'une
+      session existante ; garde `useRangeGuard` qui retire la plage en changeant de session. Suivis : `/summary` et
+      `/http/stats` proches de la cible (sinon compteurs de modules dans une route à part) ; coût de `RANGE_PAIRS`
+      (sous-requêtes corrélées par paire DNS) sur un gros LAN mDNS/LLMNR ; `/objects` trié par `o.id` sous plage
+      alors que `first_ts` est celui de la plage ; une borne seule acceptée par l'API mais pas par l'UI ;
+      indicateur d'import à côté de la pastille à 375 px jamais capturé ; colonne Rôles SMB étroite à 768 px
+      (badges tronqués avec infobulle) ; couleurs SMB/NetBIOS et DNS/DHCP identiques dans le graphique de
+      l'Overview ; voile du dialogue peu visible en sombre (aussi Save PCAP).
 - [ ] **P5.2b** `feat/time-filter-aggregates` — Plage appliquée aux vues agrégées (Connections, Open Ports,
       Servers, Network) et à leurs compteurs de modules : tables dérivées calculées à la première requête d'une
       plage (code des étapes de fin d'import paramétré), base annexe `sessions/<id>/ranges.db` des 4 dernières

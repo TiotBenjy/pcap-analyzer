@@ -15,7 +15,7 @@ use rusqlite::{Connection, OptionalExtension, Row, ToSql, params};
 
 use crate::error::Result;
 use crate::query::{Keyset, Page, PageRequest, keyset_page};
-use crate::range::{TimeRange, and_point, query_ranged, query_row_ranged, where_point};
+use crate::range::{PointSql, TimeRange, query_ranged, query_row_ranged};
 use crate::records::{conversion, id_i64};
 
 /// Bits of `tls_sessions.cert_issues` (set over the whole chain).
@@ -651,8 +651,9 @@ pub fn stats(
     limits: StatsLimits,
     range: Option<TimeRange>,
 ) -> Result<TlsStatsRows> {
-    let w = where_point(range, "ts");
-    let a = and_point(range, "ts");
+    let plan = PointSql::new(conn, "tls_sessions", "ts", range)?;
+    let w = plan.where_();
+    let a = plan.and();
     let (sessions, weak, issues, encrypted, with_suite): (i64, i64, i64, i64, i64) =
         query_row_ranged(
             conn,
@@ -676,7 +677,7 @@ pub fn stats(
             conn,
             "SELECT count(DISTINCT sc.sha256) FROM tls_sessions s \
              JOIN tls_session_certificates sc ON sc.session_id = s.id \
-             WHERE s.ts >= :from AND s.ts < :to",
+             WHERE s.ts >= ?98 AND s.ts < ?99",
             &[],
             range,
             |r| r.get(0),
@@ -898,9 +899,16 @@ const CERT_FILTER: &str = "(?1 IS NULL OR c.subject LIKE ?1 ESCAPE '\\' \
     OR c.issuer LIKE ?1 ESCAPE '\\' OR c.san LIKE ?1 ESCAPE '\\') \
     AND (?2 = 0 OR (c.self_signed = 1 AND c.is_ca = 0) OR c.not_after < ?3 OR c.not_before > ?4)";
 
-/// Certificates seen in a session of the range (`?5`, `?6`).
+/// Certificates seen in a session of a narrow range (`?5`, `?6`): the sessions of the range,
+/// by the time index, give the set of their certificates.
 const CERT_RANGE_FILTER: &str = "c.sha256 IN (SELECT sc.sha256 FROM tls_sessions s \
     JOIN tls_session_certificates sc ON sc.session_id = s.id WHERE s.ts >= ?5 AND s.ts < ?6)";
+
+/// Same for a wide range: the sessions of each certificate are probed until one is in the range
+/// (the first one, most of the time), instead of collecting most of the sessions.
+const CERT_WIDE_RANGE_FILTER: &str = "EXISTS (SELECT 1 FROM tls_session_certificates sc \
+    JOIN tls_sessions s ON s.id = sc.session_id \
+    WHERE sc.sha256 = c.sha256 AND s.ts >= ?5 AND s.ts < ?6)";
 
 const CERT_SELECT: &str = "c.sha256, c.sha1, c.size, c.stored, c.parsed, c.subject, c.subject_cn, \
     c.issuer, c.issuer_cn, c.serial, c.not_before, c.not_after, c.san, \
@@ -915,15 +923,20 @@ const CERT_RANGE_SELECT: &str = "c.sha256, c.sha1, c.size, c.stored, c.parsed, c
      ON s.id = sc.session_id WHERE sc.sha256 = c.sha256 AND s.ts >= ?5 AND s.ts < ?6)";
 
 /// Filter and values of the certificates list.
-fn cert_filter(f: &CertificateFilter) -> (String, Vec<Value>) {
+fn cert_filter(conn: &Connection, f: &CertificateFilter) -> Result<(String, Vec<Value>)> {
     let mut values = cert_params(f).to_vec();
-    match f.range {
+    Ok(match f.range {
         None => (CERT_FILTER.to_owned(), values),
         Some(r) => {
             values.extend(r.values());
-            (format!("{CERT_FILTER} AND {CERT_RANGE_FILTER}"), values)
+            let range = if PointSql::new(conn, "tls_sessions", "ts", Some(r))?.wide() {
+                CERT_WIDE_RANGE_FILTER
+            } else {
+                CERT_RANGE_FILTER
+            };
+            (format!("{CERT_FILTER} AND {range}"), values)
         }
-    }
+    })
 }
 
 /// One page of certificates by subject CN (case-insensitive for ASCII).
@@ -932,7 +945,7 @@ pub fn certificates_page(
     filter: &CertificateFilter,
     request: &PageRequest,
 ) -> Result<Page<CertificateEntry>> {
-    let (where_sql, values) = cert_filter(filter);
+    let (where_sql, values) = cert_filter(conn, filter)?;
     let query = Keyset {
         from: "tls_certificates AS c",
         select: if filter.range.is_some() {
@@ -965,7 +978,7 @@ fn cert_params(f: &CertificateFilter) -> [Value; 4] {
 
 /// Number of certificates matching `filter`.
 pub fn count_certificates(conn: &Connection, filter: &CertificateFilter) -> Result<u64> {
-    let (where_sql, values) = cert_filter(filter);
+    let (where_sql, values) = cert_filter(conn, filter)?;
     let sql = format!("SELECT count(*) FROM tls_certificates AS c WHERE {where_sql}");
     let n: i64 = conn.query_row(&sql, rusqlite::params_from_iter(values.iter()), |r| {
         r.get(0)

@@ -575,25 +575,48 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
         }
     }
 
+    // Time ranges centered on the session (first and last packet of the summary).
+    let (_, body) = api.get("/summary").await?;
+    let summary: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+    if let (Some(first), Some(last)) = (
+        summary["first_ts_us"].as_i64(),
+        summary["last_ts_us"].as_i64(),
+    ) {
+        let mid = first + (last - first) / 2;
+        for (name, hours) in RANGES {
+            let half = hours * 3_600_000_000 / 2;
+            values.insert(name, format!("from_us={}&to_us={}", mid - half, mid + half));
+        }
+    }
+    let mut cases: Vec<(String, String)> = CASES
+        .iter()
+        .map(|c| (c.view.to_owned(), c.path.to_owned()))
+        .collect();
+    for (name, _) in RANGES {
+        for (view, route) in RANGE_ROUTES {
+            let sep = if route.contains('?') { '&' } else { '?' };
+            cases.push(((*view).to_owned(), format!("{route}{sep}{{{name}}}")));
+        }
+    }
+
     writeln!(
         out,
         "| Vue | Requête | Médiane (ms) | p95 (ms) | Max (ms) | Statut | Taille |"
     )?;
     writeln!(out, "|---|---|---|---|---|---|---|")?;
     let mut slow = Vec::new();
-    for c in CASES {
+    for (view, case_path) in &cases {
         if args
             .only
             .as_ref()
-            .is_some_and(|o| !c.path.contains(o.as_str()) && c.view != o)
+            .is_some_and(|o| !case_path.contains(o.as_str()) && view != o)
         {
             continue;
         }
-        let Some(path) = fill(c.path, &values) else {
+        let Some(path) = fill(case_path, &values) else {
             writeln!(
                 out,
-                "| {} | `{}` | - | - | - | sans donnée | - |",
-                c.view, c.path
+                "| {view} | `{case_path}` | - | - | - | sans donnée | - |"
             )?;
             continue;
         };
@@ -609,7 +632,7 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
         let p95 = percentile(&times, 0.95);
         let max = times.last().copied().unwrap_or_default();
         let flag = if median >= Duration::from_millis(300) {
-            slow.push(c.path);
+            slow.push(case_path.clone());
             " **lent**"
         } else {
             ""
@@ -617,8 +640,8 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
         writeln!(
             out,
             "| {} | `{}` | {}{flag} | {} | {} | {} | {} o |",
-            c.view,
-            c.path,
+            view,
+            case_path,
             ms(median),
             ms(p95),
             ms(max),
@@ -644,6 +667,35 @@ fn encode(v: &str) -> String {
 }
 
 /// Replaces the `{name}` placeholders; `None` if one has no value.
+/// Routes measured under the time ranges `{r1h}`, `{r24h}` and `{r6d}` (P5.2, ADR-030):
+/// windows of one hour, one day and six days centered on the session.
+const RANGE_ROUTES: &[(&str, &str)] = &[
+    ("overview", "/summary"),
+    ("overview", "/timeseries?points=500"),
+    ("dns", "/dns/stats"),
+    ("dns", "/dns/pairs?limit=50"),
+    ("dns", "/dns/servers?limit=500"),
+    ("dns", "/dns/messages?limit=50"),
+    ("http", "/http/stats"),
+    ("http", "/http/transactions?limit=50"),
+    ("http", "/http/transactions?limit=50&sort=size&order=desc"),
+    ("http-headers", "/http/headers/stats"),
+    ("http-headers", "/http/headers?limit=50"),
+    ("tls", "/tls/stats"),
+    ("tls", "/tls/sessions?limit=50"),
+    ("tls", "/tls/certificates?limit=50"),
+    ("smb", "/smb/stats"),
+    ("smb", "/smb/announces"),
+    ("credentials", "/credentials?limit=50"),
+    ("credentials", "/credentials/stats"),
+    ("credentials", "/credentials/paths"),
+    ("pictures", "/objects/stats"),
+    ("pictures", "/objects?limit=50"),
+];
+
+/// Names and widths (hours) of the ranges of [`RANGE_ROUTES`].
+const RANGES: &[(&str, i64)] = &[("r1h", 1), ("r24h", 24), ("r6d", 144)];
+
 fn fill(path: &str, values: &BTreeMap<&str, String>) -> Option<String> {
     let mut out = String::new();
     let mut rest = path;

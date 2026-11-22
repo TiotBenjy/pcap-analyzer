@@ -8,7 +8,10 @@
 //!   span overlaps it: `first < to AND last >= from`. Its counters stay those of the session.
 //!
 //! Lists add the conditions through [`Conditions`] (plain `?` placeholders); fixed aggregate
-//! statements use the named parameters `:from` and `:to`, bound by [`query_ranged`]. In
+//! statements use the reserved parameters `?98` (from) and `?99` (to), bound by
+//! [`query_ranged`]: explicit numbers, so they never share an index with the `?1`, `?2`...
+//! of the statement whatever their place in its text (a named `:from` written before `?1`
+//! would take index 1). In
 //! aggregates the column is written `+col`: SQLite then cannot range-scan the timestamp index
 //! (row lookups, slow on a wide range) and picks the covering index that ends with the
 //! timestamp instead, without naming it (ADR-023 forbids `INDEXED BY` on deferred indexes).
@@ -84,36 +87,106 @@ impl TimeRange {
     }
 }
 
-/// ` AND +col >= :from AND +col < :to` when a range is set, else nothing: appended to the
-/// `WHERE` clause of a fixed aggregate.
-pub(crate) fn and_point(range: Option<TimeRange>, col: &str) -> String {
-    range.map_or_else(String::new, |_| {
-        format!(" AND +{col} >= :from AND +{col} < :to")
-    })
-}
+/// Index of the start of the range in fixed aggregates (`?98`).
+const FROM_PARAM: usize = 98;
+/// Index of the (exclusive) end of the range in fixed aggregates (`?99`).
+const TO_PARAM: usize = 99;
 
-/// Same as [`and_point`] for a statement without `WHERE` clause.
-pub(crate) fn where_point(range: Option<TimeRange>, col: &str) -> String {
-    range.map_or_else(String::new, |_| {
-        format!(" WHERE +{col} >= :from AND +{col} < :to")
-    })
-}
-
-/// ` AND first < :to AND last >= :from` when a range is set (folded rows).
+/// ` AND first < ?99 AND last >= ?98` when a range is set (folded rows).
 pub(crate) fn and_overlap(range: Option<TimeRange>, first: &str, last: &str) -> String {
     range.map_or_else(String::new, |_| {
-        format!(" AND {first} < :to AND {last} >= :from")
+        format!(" AND {first} < ?99 AND {last} >= ?98")
     })
 }
 
 /// Same as [`and_overlap`] for a statement without `WHERE` clause.
 pub(crate) fn where_overlap(range: Option<TimeRange>, first: &str, last: &str) -> String {
     range.map_or_else(String::new, |_| {
-        format!(" WHERE {first} < :to AND {last} >= :from")
+        format!(" WHERE {first} < ?99 AND {last} >= ?98")
     })
 }
 
-/// Prepares `sql`, binds `positional` to `?1`, `?2`... and the range to `:from` / `:to` when the
+/// How the aggregates of one table read its timestamp under a range (ADR-030, spec « Coût »):
+/// through the index of the column for a narrow range (a few rows read one by one), or without
+/// it (`+col`) for a wide one, so that SQLite reads the covering index ending with the column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PointSql {
+    col: &'static str,
+    range: Option<TimeRange>,
+    scan: bool,
+}
+
+impl PointSql {
+    /// Plan chosen from the share of `table` within `range` (two index counts): wider than a
+    /// twentieth of the table, the covering indexes are read whole.
+    pub(crate) fn new(
+        conn: &Connection,
+        table: &'static str,
+        col: &'static str,
+        range: Option<TimeRange>,
+    ) -> Result<Self> {
+        let scan = match range {
+            None => false,
+            Some(r) => is_wide(conn, table, col, r)?,
+        };
+        Ok(Self { col, range, scan })
+    }
+
+    /// Always without the index of `col` (a table without index on it).
+    pub(crate) fn scan(col: &'static str, range: Option<TimeRange>) -> Self {
+        Self {
+            col,
+            range,
+            scan: true,
+        }
+    }
+
+    pub(crate) fn range(self) -> Option<TimeRange> {
+        self.range
+    }
+
+    /// True when the plan reads the covering indexes whole.
+    pub(crate) fn wide(self) -> bool {
+        self.scan
+    }
+
+    fn condition(self) -> String {
+        let plus = if self.scan { "+" } else { "" };
+        format!("{plus}{c} >= ?98 AND {plus}{c} < ?99", c = self.col)
+    }
+
+    /// ` AND <condition>` with a range, else nothing.
+    pub(crate) fn and(self) -> String {
+        self.range
+            .map_or_else(String::new, |_| format!(" AND {}", self.condition()))
+    }
+
+    /// ` WHERE <condition>` with a range, else nothing.
+    pub(crate) fn where_(self) -> String {
+        self.range
+            .map_or_else(String::new, |_| format!(" WHERE {}", self.condition()))
+    }
+}
+
+/// True when more than a twentieth of `table` is within `range` (`col` indexed).
+fn is_wide(
+    conn: &Connection,
+    table: &'static str,
+    col: &'static str,
+    range: TimeRange,
+) -> Result<bool> {
+    let wide: bool = conn.query_row(
+        &format!(
+            "SELECT (SELECT count(*) FROM {table} WHERE {col} >= ?1 AND {col} < ?2) * 20 \
+                    >= (SELECT count(*) FROM {table})"
+        ),
+        rusqlite::params![range.from_ns, range.to_ns],
+        |r| r.get(0),
+    )?;
+    Ok(wide)
+}
+
+/// Prepares `sql`, binds `positional` to `?1`, `?2`... and the range to `?98` / `?99` when the
 /// statement names them, then maps every row.
 pub(crate) fn query_ranged<T>(
     conn: &Connection,
@@ -126,13 +199,11 @@ pub(crate) fn query_ranged<T>(
     for (i, p) in positional.iter().enumerate() {
         stmt.raw_bind_parameter(i + 1, p)?;
     }
-    if let Some(r) = range {
-        if let Some(i) = stmt.parameter_index(":from")? {
-            stmt.raw_bind_parameter(i, r.from_ns)?;
-        }
-        if let Some(i) = stmt.parameter_index(":to")? {
-            stmt.raw_bind_parameter(i, r.to_ns)?;
-        }
+    if let Some(r) = range
+        && stmt.parameter_count() >= TO_PARAM
+    {
+        stmt.raw_bind_parameter(FROM_PARAM, r.from_ns)?;
+        stmt.raw_bind_parameter(TO_PARAM, r.to_ns)?;
     }
     let mut rows = stmt.raw_query();
     let mut out = Vec::new();
@@ -263,8 +334,11 @@ mod tests {
             c.sql().unwrap(),
             "(m.ts >= ? AND m.ts < ?) AND (first_ts < ? AND last_ts >= ?)"
         );
-        assert_eq!(and_point(None, "ts"), "");
-        assert_eq!(and_point(Some(r), "ts"), " AND +ts >= :from AND +ts < :to");
+        assert_eq!(PointSql::scan("ts", None).and(), "");
+        assert_eq!(
+            PointSql::scan("ts", Some(r)).and(),
+            " AND +ts >= ?98 AND +ts < ?99"
+        );
     }
 
     #[test]
@@ -276,13 +350,17 @@ mod tests {
         )
         .unwrap();
         let r = TimeRange::new(5, 12).unwrap();
+        // The range comes first in the text: it must not take the index of `?1`.
         let sql = format!(
-            "SELECT count(*) FROM t WHERE k = ?1{}",
-            and_point(Some(r), "ts")
+            "SELECT count(*) FROM t WHERE 1{} AND k = ?1",
+            PointSql::scan("ts", Some(r)).and()
         );
         let n: i64 = query_row_ranged(&conn, &sql, &[&"a"], Some(r), |row| row.get(0)).unwrap();
         assert_eq!(n, 1);
-        let all = format!("SELECT count(*) FROM t{}", where_point(None, "ts"));
+        let all = format!(
+            "SELECT count(*) FROM t{}",
+            PointSql::scan("ts", None).where_()
+        );
         let n: i64 = query_row_ranged(&conn, &all, &[], None, |row| row.get(0)).unwrap();
         assert_eq!(n, 4);
     }

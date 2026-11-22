@@ -26,7 +26,7 @@ use serde_json::json;
 use crate::connections::EndpointInfo;
 use crate::error::Result;
 use crate::query::{Conditions, Keyset, Page, PageRequest, keyset_page};
-use crate::range::{TimeRange, and_point, query_ranged, query_row_ranged, where_point};
+use crate::range::{PointSql, TimeRange, query_ranged, query_row_ranged};
 use crate::records::{MAX_HOST_NAMES, conversion};
 
 /// Response window of the end-of-import pairing (same as the analyzer's default).
@@ -400,43 +400,67 @@ fn top(mut all: Vec<Bucket>, n: usize) -> (Vec<Bucket>, u64) {
     (all, rest.iter().map(|b| b.count).sum())
 }
 
-/// Pairs with their messages (`rn`) and errors (`re`) within the range bound to `:from` and
-/// `:to`, by a probe of the covering index `(pair_id, ts, ...)` of each pair: 29 ms for the
-/// 2 988 pairs of the bench over six days, where grouping the messages took 1.6 s.
-const RANGE_PAIRS_NAMED: &str = "(SELECT p.*, \
-    (SELECT count(*) FROM dns_messages m WHERE m.pair_id = p.id AND m.ts >= :from \
-     AND m.ts < :to) AS rn, \
-    (SELECT count(*) FROM dns_messages m WHERE m.pair_id = p.id AND m.ts >= :from \
-     AND m.ts < :to AND m.is_error = 1) AS re \
-    FROM dns_pairs p)";
+/// Pairs with their messages within the range (`rn`, bound to `?98` and `?99`).
+const RANGE_PAIR_COUNTS: &str = "(SELECT p.*, \
+    (SELECT count(*) FROM dns_messages m WHERE m.pair_id = p.id AND m.ts >= ?98 \
+     AND m.ts < ?99) AS rn FROM dns_pairs p)";
 
-/// Statistics of the session, or of the messages within `range` (ADR-030).
-pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<DnsStats> {
-    let w = where_point(range, "ts");
-    let a = and_point(range, "ts");
-    let (total, errors, answered): (i64, i64, i64) = query_row_ranged(
+/// `(total, errors, answered, messages per protocol, errors per protocol)`.
+type ProtocolCounts = (i64, i64, i64, Vec<Bucket>, Vec<Bucket>);
+
+/// Totals, answered transactions and the messages and errors per protocol, from one pass over
+/// the covering index `(proto, is_error, has_query, has_response, ts)` (three passes before
+/// P5.2). `w`: the range condition of the plan (` WHERE ...`, or nothing).
+fn protocol_counts(conn: &Connection, w: &str, range: Option<TimeRange>) -> Result<ProtocolCounts> {
+    let groups: Vec<(String, bool, bool, i64)> = query_ranged(
         conn,
         &format!(
-            "SELECT count(*), coalesce(sum(is_error), 0), \
-             coalesce(sum(has_response AND has_query), 0) FROM dns_messages{w}"
+            "SELECT proto, is_error, has_query AND has_response, count(*) FROM dns_messages{w} \
+             GROUP BY proto, is_error, has_query, has_response"
         ),
         &[],
         range,
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
     )?;
-    let protocols = buckets(
-        conn,
-        &format!("SELECT proto, count(*) FROM dns_messages{w} GROUP BY proto ORDER BY 2 DESC, 1"),
-        range,
-    )?;
-    let protocol_errors = buckets(
-        conn,
-        &format!(
-            "SELECT proto, count(*) FROM dns_messages WHERE is_error = 1{a} GROUP BY proto \
-             ORDER BY 2 DESC, 1"
-        ),
-        range,
-    )?;
+    let (mut total, mut errors, mut answered) = (0_i64, 0_i64, 0_i64);
+    let mut per_proto: std::collections::BTreeMap<String, (i64, i64)> =
+        std::collections::BTreeMap::default();
+    for (proto, is_error, both, n) in groups {
+        total += n;
+        let entry = per_proto.entry(proto).or_default();
+        entry.0 += n;
+        if is_error {
+            errors += n;
+            entry.1 += n;
+        }
+        if both {
+            answered += n;
+        }
+    }
+    let ranked = |pick: fn(&(i64, i64)) -> i64| -> Vec<Bucket> {
+        let mut out: Vec<Bucket> = per_proto
+            .iter()
+            .filter(|(_, c)| pick(c) > 0)
+            .map(|(p, c)| Bucket {
+                key: Some(p.clone()),
+                count: u(pick(c)),
+            })
+            .collect();
+        // Most first, then by name (the order of the former `ORDER BY 2 DESC, 1`).
+        out.sort_by(|x, y| y.count.cmp(&x.count).then_with(|| x.key.cmp(&y.key)));
+        out
+    };
+    let protocols = ranked(|c| c.0);
+    let protocol_errors = ranked(|c| c.1);
+    Ok((total, errors, answered, protocols, protocol_errors))
+}
+
+/// Statistics of the session, or of the messages within `range` (ADR-030).
+pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<DnsStats> {
+    let plan = PointSql::new(conn, "dns_messages", "ts", range)?;
+    let w = plan.where_();
+    let a = plan.and();
+    let (total, errors, answered, protocols, protocol_errors) = protocol_counts(conn, &w, range)?;
     let (rcodes, rcode_other) = top(
         buckets(
             conn,
@@ -461,7 +485,7 @@ pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<DnsStats> {
     let countries_sql = if range.is_some() {
         format!(
             "SELECT h.country, count(DISTINCT p.server_ip), sum(p.rn) \
-             FROM {RANGE_PAIRS_NAMED} p LEFT JOIN hosts h ON h.ip = p.server_ip \
+             FROM {RANGE_PAIR_COUNTS} p LEFT JOIN hosts h ON h.ip = p.server_ip \
              WHERE p.rn > 0 GROUP BY h.country ORDER BY 3 DESC, 1"
         )
     } else {
@@ -480,7 +504,7 @@ pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<DnsStats> {
     let unknown_pos = countries.iter().position(|c| c.country.is_none());
     let country_unknown = unknown_pos.map_or_else(CountryBucket::default, |i| countries.remove(i));
     countries.truncate(STATS_TOP);
-    let (latency_p50_ns, latency_p95_ns) = latency_percentiles(conn, answered, range)?;
+    let (latency_p50_ns, latency_p95_ns) = latency_percentiles(conn, answered, plan)?;
     Ok(DnsStats {
         total: u(total),
         errors: u(errors),
@@ -501,12 +525,13 @@ pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<DnsStats> {
 fn latency_percentiles(
     conn: &Connection,
     answered: i64,
-    range: Option<TimeRange>,
+    plan: PointSql,
 ) -> Result<(Option<i64>, Option<i64>)> {
     if answered <= 0 {
         return Ok((None, None));
     }
-    let a = and_point(range, "ts");
+    let range = plan.range();
+    let a = plan.and();
     let n: i64 = query_row_ranged(
         conn,
         &format!("SELECT count(*) FROM dns_messages WHERE latency_ns IS NOT NULL{a}"),
@@ -517,18 +542,31 @@ fn latency_percentiles(
     if n == 0 {
         return Ok((None, None));
     }
-    let sql = format!(
-        "SELECT latency_ns FROM dns_messages WHERE latency_ns IS NOT NULL{a} \
-         ORDER BY latency_ns LIMIT 1 OFFSET ?1"
-    );
-    let at = |percent: i64| -> Result<Option<i64>> {
-        let offset = n.saturating_sub(1).saturating_mul(percent) / 100;
-        Ok(query_ranged(conn, &sql, &[&offset], range, |r| r.get(0))?
-            .into_iter()
-            .next())
-    };
-    let p50 = at(50)?;
-    let p95 = at(95)?;
+    // Both percentiles from one walk of the latency index, stopped at the 95th (two `OFFSET`
+    // walks before P5.2).
+    let at = |percent: i64| n.saturating_sub(1).saturating_mul(percent) / 100;
+    let (i50, i95) = (at(50), at(95));
+    let (mut row, mut p50, mut p95) = (0_i64, None, None);
+    // Rows are read one by one (nothing kept but the two values).
+    query_ranged(
+        conn,
+        &format!(
+            "SELECT latency_ns FROM dns_messages WHERE latency_ns IS NOT NULL{a} \
+             ORDER BY latency_ns LIMIT ?1"
+        ),
+        &[&(i95 + 1)],
+        range,
+        |r| {
+            if row == i50 {
+                p50 = Some(r.get::<_, i64>(0)?);
+            }
+            if row == i95 {
+                p95 = Some(r.get::<_, i64>(0)?);
+            }
+            row += 1;
+            Ok(())
+        },
+    )?;
     Ok((p50, p95))
 }
 
@@ -755,7 +793,9 @@ fn pair_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<DnsPairRow> {
     })
 }
 
-/// [`RANGE_PAIRS_NAMED`] with plain placeholders, bound to (from, to, from, to).
+/// Pairs with their messages (`rn`) and errors (`re`) within the range, bound to (from, to,
+/// from, to), by a probe of the covering index `(pair_id, ts, ...)` of each pair: 29 ms for the
+/// 2 988 pairs of the bench over six days, where grouping the messages took 1.6 s.
 const RANGE_PAIRS: &str = "(SELECT p.*, \
     (SELECT count(*) FROM dns_messages m WHERE m.pair_id = p.id AND m.ts >= ? \
      AND m.ts < ?) AS rn, \

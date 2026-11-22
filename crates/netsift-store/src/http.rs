@@ -14,7 +14,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use crate::connections::EndpointInfo;
 use crate::error::{Result, StoreError};
 use crate::query::{Conditions, Keyset, Page, PageRequest, keyset_page};
-use crate::range::{TimeRange, and_point, query_ranged, query_row_ranged, where_point};
+use crate::range::{PointSql, TimeRange, query_ranged, query_row_ranged};
 use crate::records::conversion;
 
 /// Method groups of the filters and charts, in display order (`other`: any other method, or no
@@ -768,7 +768,7 @@ fn ordered(found: Vec<Count>, order: &[&str]) -> Vec<Count> {
 
 /// Method groups with their transaction counts, in display order.
 pub fn method_counts(conn: &Connection, range: Option<TimeRange>) -> Result<Vec<Count>> {
-    let w = where_point(range, "ts");
+    let w = PointSql::new(conn, "http_transactions", "ts", range)?.where_();
     let found = counts(
         conn,
         &format!(
@@ -783,8 +783,11 @@ pub fn method_counts(conn: &Connection, range: Option<TimeRange>) -> Result<Vec<
 
 /// Aggregates of the HTTP view (of the transactions within `range` when set).
 pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<HttpStats> {
-    let w = where_point(range, "ts");
-    let a = and_point(range, "ts");
+    let plan = PointSql::new(conn, "http_transactions", "ts", range)?;
+    let w = plan.where_();
+    let a = plan.and();
+    // Header lines have no index on their time: the covering name index is read whole.
+    let hw = PointSql::scan("ts", range).where_();
     let transactions = scalar(
         conn,
         &format!("SELECT count(*) FROM http_transactions{w}"),
@@ -867,7 +870,7 @@ pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<HttpStats> {
         rare_headers: counts(
             conn,
             &format!(
-                "SELECT name_lc, count(DISTINCT transaction_id) c FROM http_headers{w} \
+                "SELECT name_lc, count(DISTINCT transaction_id) c FROM http_headers{hw} \
                  GROUP BY name_lc ORDER BY c, name_lc LIMIT ?1"
             ),
             TOP,
@@ -884,7 +887,7 @@ pub fn header_names(
     limit: usize,
     range: Option<TimeRange>,
 ) -> Result<Vec<Count>> {
-    let w = where_point(range, "ts");
+    let w = PointSql::scan("ts", range).where_();
     counts(
         conn,
         &format!(
@@ -898,7 +901,7 @@ pub fn header_names(
 
 /// Number of header lines.
 pub fn header_count(conn: &Connection, range: Option<TimeRange>) -> Result<u64> {
-    let w = where_point(range, "ts");
+    let w = PointSql::scan("ts", range).where_();
     scalar(
         conn,
         &format!("SELECT count(*) FROM http_headers{w}"),

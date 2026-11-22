@@ -324,7 +324,7 @@ pub fn stats(
     let images = i64::from(images_only);
     let in_range = range.map_or("", |_| {
         " AND EXISTS (SELECT 1 FROM http_transactions t WHERE t.resp_sha256 = o.sha256 \
-          AND t.ts >= :from AND t.ts < :to)"
+          AND t.ts >= ?98 AND t.ts < ?99)"
     });
     let (count, bytes, mut occurrences): (i64, i64, i64) = query_row_ranged(
         conn,
@@ -340,7 +340,7 @@ pub fn stats(
         occurrences = query_row_ranged(
             conn,
             "SELECT count(*) FROM http_transactions t JOIN objects o ON o.sha256 = t.resp_sha256 \
-             WHERE t.ts >= :from AND t.ts < :to AND (?1 = 0 OR o.mime LIKE 'image/%')",
+             WHERE t.ts >= ?98 AND t.ts < ?99 AND (?1 = 0 OR o.mime LIKE 'image/%')",
             &[&images],
             range,
             |r| r.get(0),

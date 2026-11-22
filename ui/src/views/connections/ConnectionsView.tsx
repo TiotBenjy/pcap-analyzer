@@ -358,14 +358,14 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
         id: 'sent',
         header: () => <span title={t('views.connections.table.sentTitle')}>{t('views.connections.table.sent')}</span>,
         size: 96,
-        meta: { align: 'right' },
+        meta: { align: 'right', card: 'hidden' },
         cell: ({ row }) => <span className="num text-muted">{formatBytes(row.original.bytes_fwd, lang)}</span>,
       },
       {
         id: 'received',
         header: () => <span title={t('views.connections.table.receivedTitle')}>{t('views.connections.table.received')}</span>,
         size: 96,
-        meta: { align: 'right' },
+        meta: { align: 'right', card: 'hidden' },
         cell: ({ row }) => <span className="num text-muted">{formatBytes(row.original.bytes_rev, lang)}</span>,
       },
       {

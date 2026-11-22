@@ -139,10 +139,11 @@ it('asks for the time range of the URL and marks folded counts as those of the s
   renderApp(`/sessions/${ID}/servers?from_us=${range.fromUs}&to_us=${range.toUs}`);
   const table = await screen.findByRole('table', { name: 'NTP servers' });
   expect(serversApi.getServers).toHaveBeenCalledWith(ID, expect.anything(), expect.anything(), range);
+  // The count holding folded evidence says it is that of the session.
+  expect(within(table).getByText('Whole session')).toBeInTheDocument();
+  expect(within(table).getByText('NTP responses')).toBeInTheDocument();
   await user.click(within(table).getByRole('button', { name: 'Show the evidence of 192.168.1.2' }));
   const detail = await screen.findByRole('table', { name: 'Evidence of 192.168.1.2' });
-  expect(within(detail).getByText('NTP responses (whole session)')).toBeInTheDocument();
-  // The badge of the row says it too.
-  expect(within(table).getAllByText('NTP responses (whole session)').length).toBeGreaterThan(1);
-  expect(within(detail).getByText('Open port')).toBeInTheDocument();
+  // In the detail, only the folded row (NTP), not the open port.
+  expect(within(detail).getAllByText('Whole session')).toHaveLength(1);
 });

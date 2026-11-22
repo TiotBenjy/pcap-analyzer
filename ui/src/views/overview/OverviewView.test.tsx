@@ -20,6 +20,7 @@ vi.mock('../../api/sessions');
 vi.mock('../../api/overview', async (importOriginal) => ({
   ...(await importOriginal<typeof overviewApi>()),
   getOverviewSummary: vi.fn(),
+  getModuleCounts: vi.fn(),
   getTraffic: vi.fn(),
 }));
 vi.mock('../../api/client', async (importOriginal) => ({
@@ -301,6 +302,43 @@ describe('Overview view', () => {
       expect(router.state.location.search).toMatchObject({ from_us: T0, to_us: to });
     });
     expect(await screen.findByTestId('time-range-chip')).toBeInTheDocument();
+  });
+
+  it('shows the counters of the aggregated views once their range is built', async () => {
+    const to = T0 + 120_000_000 - 1;
+    const range = { fromUs: T0, toUs: to };
+    vi.mocked(overviewApi.getOverviewSummary).mockResolvedValue(
+      summary({
+        range: { from_us: T0, to_us: to, duration_us: to - T0, packets: 2_000, bytes: 1_572_864, flow_count: 7, host_count: 3 },
+        modules: [
+          { id: 'connections', count: 1_234, scope: 'pending' },
+          { id: 'dns', count: 5, scope: 'range' },
+        ],
+      }),
+    );
+    const answer: { resolve?: (v: { modules: { id: string; count: number; scope: 'range' }[] }) => void } = {};
+    vi.mocked(overviewApi.getModuleCounts).mockReturnValue(
+      new Promise((resolve) => {
+        answer.resolve = resolve;
+      }),
+    );
+    renderApp(`/sessions/${ID}/overview?from_us=${T0}&to_us=${to}`);
+    const card = async () => (await screen.findByRole('heading', { name: 'Connections' })).closest('a') as HTMLElement;
+    // While the range database is built: the summary is there, the counter is a placeholder.
+    expect(await within(await screen.findByTestId('overview-summary')).findByText('2,000')).toBeInTheDocument();
+    expect(within(await card()).queryByText('1,234')).not.toBeInTheDocument();
+    expect(within(await card()).queryByText('Whole session')).not.toBeInTheDocument();
+    expect(overviewApi.getModuleCounts).toHaveBeenCalledWith(ID, expect.anything(), range);
+    answer.resolve?.({ modules: [{ id: 'connections', count: 42, scope: 'range' }] });
+    expect(await within(await card()).findByText('42')).toBeInTheDocument();
+    expect(within(await card()).getByText('In the range')).toBeInTheDocument();
+  });
+
+  it('never asks for the aggregated counters without a range', async () => {
+    renderApp(`/sessions/${ID}/overview`);
+    await screen.findByTestId('overview-summary');
+    await screen.findByRole('heading', { name: 'Connections' });
+    expect(overviewApi.getModuleCounts).not.toHaveBeenCalled();
   });
 
   it('shows no period for a range outside the session', async () => {

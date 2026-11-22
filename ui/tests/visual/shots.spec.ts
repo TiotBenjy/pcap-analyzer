@@ -693,6 +693,11 @@ for (const lang of LANGS) {
             await expect(dns).toBeVisible();
             // The first DNS server expanded: its evidence is laid out and checked too.
             await page.getByRole('button', { name: pattern(D.views.servers.showEvidence) }).first().click();
+            if (view === 'servers-range') {
+              // The file server too: its folded browser announcements, marked "whole session".
+              await page.getByRole('button', { name: filled(D.views.servers.showEvidence, { server: 'FILESRV01' }) }).click();
+              await expect(page.getByText(D.timeRange.wholeSession).first()).toBeVisible();
+            }
             await expect(
               page
                 .getByRole('table', { name: pattern(D.views.servers.evidenceLabel) })

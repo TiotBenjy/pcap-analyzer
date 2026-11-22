@@ -507,9 +507,17 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 
 ### Vague 5.A — Couche 2 et protocoles simples (parallèle, après 5.0)
 
-- [~] **P5.3** `feat/arp` — Référence `private/arp.png`. Requêtes, réponses, ARP gratuits (compteurs et filtres),
+- [x] **P5.3** `feat/arp` — Référence `private/arp.png`. Requêtes, réponses, ARP gratuits (compteurs et filtres),
       table IP <-> MAC dans le temps, conflits (une IP pour plusieurs MAC) et signes d'usurpation expliqués ;
       graphe lisible (réutiliser sigma de Network) ou tableau.
+      Fusionné le 2026-11-22 (a4997d3) : types request/reply/gratuitous/probe/other, réponses non sollicitées (fenêtre
+      10 s, état borné avec hystérésis, tout l'ARP au shard 0, test d'équivalence chunks et 1/4/7 shards), table
+      `arp_bindings` en upsert commutatif, conflits et signes calculés à la lecture et expliqués, tableaux plutôt
+      que graphe, plage ADR-030. Suivis : performance estimée, non mesurée (pas d'ARP dans le banc) ; `top_senders`
+      environ 500 ms dans le pire cas forgé ; signes limités aux 16 premières MAC ; « simultané » sur l'étendue
+      premier-dernier message (A, B, A lu comme simultané) ; filtre `ip` sur une IP très présente (tri temporaire) ;
+      deux commits intermédiaires ne compilent pas seuls (`Record::Arp` sans bras dans `translate.rs`) ; libellé de
+      `StatCard` sans infobulle quand il est tronqué (composant commun).
 - [~] **P5.4** `feat/ethernet` — Référence `private/ethernet.png`. Adresses MAC, constructeur d'après l'OUI (registre
       IEEE, licence et mode de mise à jour à vérifier, pas de fichier GPL), broadcast/multicast, VLAN, EtherTypes,
       volumes ; paires source -> cibles. Barres des constructeurs à la place des bulles.

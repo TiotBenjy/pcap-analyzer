@@ -121,8 +121,8 @@ fn read_u32(raw: &[u8], off: usize, endian: Endian) -> Option<u32> {
     })
 }
 
-/// Encoding cycle mixing every container variant: pcapng, pcap (us), pcapng.gz,
-/// pcap (ns).gz and big-endian pcap.
+/// Encoding cycle mixing every container and compression variant: pcapng, pcap (us),
+/// pcapng.gz, pcap (ns).gz, big-endian pcap, pcapng.zst and pcap.lz4.
 pub fn mixed_encodings() -> Vec<Encoding> {
     vec![
         Encoding::pcapng(),
@@ -134,6 +134,8 @@ pub fn mixed_encodings() -> Vec<Encoding> {
             endian: Endian::Big,
             ..PcapOptions::default()
         })),
+        Encoding::pcapng().zst(),
+        Encoding::pcap().lz4(),
     ]
 }
 

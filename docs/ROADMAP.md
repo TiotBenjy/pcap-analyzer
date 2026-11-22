@@ -456,6 +456,9 @@ FTP, Telnet, SSDP, SIP, ARP, Ethernet et WiFi (aucune pour Hosts). Chaque branch
 reprenant les fonctionnalités et non le style (graphes illisibles, emoji, bulles ombrées, bouton « To Details »).
 Au plus 4 agents en parallèle ; les ajouts voisins (navigation, routes, i18n, `shots.spec.ts`) se résolvent
 en gardant les deux côtés.
+Ajouts de l'utilisateur le 2026-11-22 : MQTT et protocoles associés (P5.15 à P5.17, sans référence) et rapports
+pour lecteurs techniques et non techniques (vague 5.E). Pour une vue sans référence, la spec propose la
+disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 
 ### Vague 5.0 — Socle commun (séquentiel, avant les nouveaux onglets)
 
@@ -494,6 +497,26 @@ en gardant les deux côtés.
       format actuel d'hashcat, au lieu de `.hccapx`), points d'accès (BSSID, SSID, canal, chiffrement,
       constructeur), broadcast, client à client, probe requests ; s'appuie sur le décodage 802.11/radiotap
       existant et sur l'OUI de P5.4.
+- [ ] **P5.15** `feat/mqtt` — Sans référence (spec à créer, soumise à l'utilisateur avant la vue). MQTT 3.1, 3.1.1
+      et 5.0 sur TCP (1883 et détection heuristique sur tout port, CONNECT valide en premier paquet) : CONNECT
+      (client id, version, keepalive, clean session, will), CONNACK (codes de retour, raisons 5.0), identifiants
+      `username`/`password` vers Credentials (masqués), SUBSCRIBE/UNSUBSCRIBE (filtres, QoS), PUBLISH (topic, QoS,
+      retain, dup, taille, extrait de charge utile borné et affiché en texte/hexa échappé), PING, DISCONNECT ;
+      clients, brokers, arbre des topics avec volumes, connexions sans authentification et brokers publics signalés.
+      MQTT sur WebSocket (Upgrade HTTP, sous-protocole `mqtt`, trames WebSocket démasquées dans l'analyseur HTTP
+      existant). MQTT sur TLS (8883) : pas de déchiffrement, sessions TLS du port ou d'ALPN `mqtt` reprises de
+      l'onglet TLS (SNI, JA3/JA4, certificat) et listées comme MQTT chiffré. Spec : OASIS MQTT 3.1.1 et 5.0.
+
+Après P5.15 (même onglet ou onglet voisin, en parallèle l'une de l'autre) :
+
+- [ ] **P5.16** `feat/mqtt-sn` — MQTT-SN 1.2 sur UDP (1883/1884, détection heuristique) dans l'onglet MQTT :
+      CONNECT, REGISTER (topic id -> nom, table par client), PUBLISH par topic id résolu, topics prédéfinis et courts,
+      SEARCHGW/GWINFO/ADVERTISE (passerelles), mode veille. Spec : MQTT-SN v1.2 (publication OASIS / IBM).
+- [ ] **P5.17** `feat/ibm-mq` — MQSeries / IBM MQ (TCP 1414 et détection sur l'en-tête `TSH`) : canaux, gestionnaire
+      de files, files, utilisateur annoncé (vers Credentials s'il est présent), opérations (CONNECT, OPEN, PUT, GET),
+      tailles de messages, version et plateforme. Risque : pas de RFC, format documenté seulement en partie par IBM
+      (structures MQMD, MQOD, TSH, ID) ; aucun portage du dissecteur GPL de Wireshark. La branche commence par
+      vérifier la documentation publique disponible et réduit le périmètre en conséquence (l'écrire dans la spec).
 
 ### Vague 5.C — Vues d'agrégation (après 5.A et 5.B)
 
@@ -509,4 +532,23 @@ en gardant les deux côtés.
       FlowId reprennent où ils s'étaient arrêtés (ADR-022), étapes de fin d'import rejouées (ADR-014, ADR-023).
 - [ ] **P5.14** `feat/watch-folder` — Surveillance d'un dossier en direct, après P5.13.
 
-Ordre suggéré : 5.0, puis 5.A (+ P5.7), puis 5.B, puis 5.C, puis P5.13 et P5.14.
+### Vague 5.E — Rapports (après 5.C)
+
+- [ ] **P5.18** `feat/reports` — Deux rapports générés depuis une session (ou une plage temporelle, filtre de P5.2),
+      en `en` ou `fr`, écrits dans `<données>/exports/` par un job comme Save PCAP (progression, annulation), aussi par
+      la CLI (`netsift report`) :
+      **synthèse non technique** (1 à 2 pages : période, volume, ce qui a été observé, risques classés en langage
+      clair, recommandations) et **rapport technique** (sources et intégrité des chunks, anomalies, hôtes, flux et
+      serveurs principaux, DNS, HTTP, TLS, SMB, MQTT et autres onglets analysés, indicateurs IP/domaines/empreintes,
+      identifiants masqués par défaut, annexes). Constats de risque issus de règles explicites et testées
+      (identifiants en clair, TLS obsolète, scanners, ports inhabituels, brokers sans authentification...), chacun
+      relié à ses preuves (n° de trame, flux). Format HTML autonome : aucune ressource externe ni script, CSP `meta`
+      restrictive, tout contenu de capture échappé, graphiques SVG générés côté Rust, mise en page imprimable ; jamais
+      rendu dans la webview (ouvert par `opener` comme les exports). Section « Rapports » dans l'UI (choix du rapport,
+      de la langue, des sections, option « afficher les identifiants » explicite). ADR pour le modèle de rapport.
+- [ ] **P5.19** `feat/reports-pdf` — PDF natif des deux rapports, généré côté Rust depuis le même modèle que P5.18
+      (crate pure Rust à licence permissive à choisir et justifier dans un ADR : polices embarquées, tableaux,
+      graphiques vectoriels, taille du binaire). Après P5.18.
+
+Ordre suggéré : 5.0, puis 5.A (+ P5.7), puis 5.B (FTP, Telnet, WiFi, MQTT, puis MQTT-SN et IBM MQ), puis 5.C,
+puis 5.E (rapports), puis P5.13 et P5.14.

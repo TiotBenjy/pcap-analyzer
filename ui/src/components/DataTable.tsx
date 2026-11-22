@@ -9,7 +9,7 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowUp } from 'lucide-react';
-import { type KeyboardEvent, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/cn';
 import { MD_QUERY, useMediaQuery } from '../lib/useMediaQuery';
@@ -94,6 +94,10 @@ export function DataTable<T>({
     estimateSize: () => (asCards ? CARD_HEIGHT : ROW_HEIGHT),
     overscan: asCards ? 6 : 12,
   });
+  // Sizes measured in one mode (cards) must not be applied to the other (rows).
+  useEffect(() => {
+    virtualizer.measure();
+  }, [asCards, virtualizer]);
 
   if (data.length === 0) {
     return <EmptyState title={emptyText ?? t('common.noData')} />;

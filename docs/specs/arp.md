@@ -41,11 +41,15 @@ Type de message (`kind`, disjoint) :
 
 - **Réponse non sollicitée** (`unsolicited`) : une réponse (`reply`) qu'aucune requête de sa cible pour
   son IP émettrice n'a précédée dans les 10 s. L'analyseur garde, borné à 16 384 entrées, l'heure de la
-  dernière requête par couple (demandeur, adresse demandée). Les réponses des 10 premières secondes de
+  dernière requête par couple (demandeur, adresse demandée) ; carte pleine : les requêtes de plus de 10 s
+  sont oubliées, et si cela libère moins d'un quart de la place, toutes (pas de balayage à chaque paquet
+  d'un flot forgé). Les réponses des 10 premières secondes de
   trafic ARP ne sont jamais marquées (la requête peut précéder le début de la capture). Les paquets sans
   couche IP (ARP compris) vont tous au même shard (`shard_hash` = 0) dans l'ordre de capture : l'état est
   complet. Si cette répartition changeait, le marquage deviendrait plus large, jamais faux en sens inverse
-  (une réponse précédée de sa requête n'est jamais marquée sur le même shard).
+  (une réponse précédée de sa requête n'est jamais marquée sur le même shard). Vérifié par
+  `arp_state_survives_shards_and_chunk_borders` (`netsift-engine/tests/ingest.rs` : 1, 4 et 7 shards,
+  fichier unique et chunks coupés entre une requête et sa réponse).
 - **Correspondance** (`binds`) : un message `request`, `reply` ou `gratuitous` dont l'IP émettrice est une
   IPv4 non nulle et la MAC émettrice une adresse unicast non nulle annonce que cette IP est joignable à
   cette MAC. Il alimente la table des correspondances.
@@ -59,7 +63,8 @@ Type de message (`kind`, disjoint) :
 | `arp_bindings` | une ligne par couple (IP, MAC) annoncé : `first_ts`, `last_ts`, `messages`, `requests`, `replies`, `gratuitous`, `unsolicited` | upsert commutatif (somme, min, max) écrit avec chaque message `binds` |
 
 Index : `arp_messages (ts)` (liste, pagination keyset `(ts, id)`), `(kind, unsolicited, ts)` (compteurs
-sous plage, filtre de type), `(sender_ip, ts)`, `(target_ip, ts)`, `(sender_mac, ts)` (filtre d'adresse),
+sous plage, filtre de type), `(ts) WHERE unsolicited = 1` (filtre « non sollicitées », partiel),
+`(sender_ip, ts)`, `(target_ip, ts)`, `(sender_mac, ts)` (filtre d'adresse),
 `(binds, sender_ip, sender_mac, ts)` (émetteurs les plus actifs sous plage) ; `arp_bindings (first_ts)`
 et la clé `(ip, mac)` (conflits, `EXISTS` par IP). Pas d'étape de fin d'import : la table des
 correspondances est tenue par le writer.
@@ -76,7 +81,8 @@ correspondances est tenue par le writer.
 `total_estimate` des listes : calculé sur la première page (sans curseur), absent ensuite (`fetchAll` ne le
 lit pas ; on évite un comptage par page).
 
-Signes d'un conflit (calculés à la lecture sur les correspondances de l'IP) :
+Signes d'un conflit (calculés à la lecture sur les correspondances de l'IP, limités aux 16 premières
+MAC par première activité, celles que la réponse liste) :
 
 | Signe | Règle | Texte (résumé) |
 |---|---|---|
@@ -115,12 +121,14 @@ adresses aléatoires).
   plage, `PointSql` choisit entre l'index de `ts` (plage étroite) et l'index couvrant (`+ts`, plage large).
   Au pire, lecture de l'index seul : environ 1 M d'entrées, de l'ordre de 50 à 100 ms.
 - Émetteurs les plus actifs : sans plage, tri des correspondances (petite table) ; sous plage,
-  `GROUP BY sender_ip, sender_mac` sur l'index couvrant `(binds, sender_ip, sender_mac, ts)`, même
-  ordre de grandeur que les compteurs.
+  `GROUP BY sender_ip, sender_mac` sur l'index couvrant `(binds, sender_ip, sender_mac, ts)` : même
+  ordre de grandeur que les compteurs tant que les couples distincts sont peu nombreux (cas réel) ; le
+  pire cas, une plage large sur 1 M de messages forgés tous de couples distincts, approche 500 ms (le
+  regroupement coûte alors autant de groupes que de lignes). Accepté : ce n'est pas un trafic ARP réel.
 - Correspondances et conflits : lecture de `arp_bindings` (chevauchement) et sondage de la clé `(ip, mac)` ;
   quelques ms pour quelques milliers de lignes, environ 100 ms pour 100 000.
 
-Aucune requête de la vue ne dépasse 300 ms dans ces hypothèses.
+Aucune requête de la vue ne dépasse 300 ms dans ces hypothèses (sauf le pire cas forgé ci-dessus).
 
 ## Mise en page
 
@@ -152,8 +160,10 @@ Une seule colonne de cartes, de haut en bas :
    cibles (MAC cible omise de 768 à 1024 px, gardée dans les cartes), puce « Non sollicitée ». La bascule
    « Autres » n'apparaît que s'il y en a. 5 000 lignes chargées au plus, mention quand la liste est coupée.
 
-Sous plage active : chiffres de la plage, colonnes de compteurs repliés de la table des correspondances
-avec « session entière », état vide « Rien n'a été enregistré entre ces heures » avec « Effacer la plage ».
+Sous plage active : chiffres de la plage ; colonnes Première, Dernière et Messages de la table des
+correspondances avec « Session entière » en seconde ligne de l'en-tête (libellé sur deux lignes dans les
+cartes) ; dans la carte des conflits, « Session entière » devant la période et les compteurs de chaque
+MAC (valeurs des correspondances repliées) ; état vide « Rien n'a été enregistré entre ces heures » avec « Effacer la plage ».
 Les filtres de la vue sont locaux (comme les autres vues : seule la plage est portée par l'URL,
 `time-filter.md`, décision 5).
 

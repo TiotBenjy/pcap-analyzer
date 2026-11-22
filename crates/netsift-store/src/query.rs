@@ -73,6 +73,13 @@ impl Conditions {
         self.params.extend(params);
     }
 
+    /// Adds a condition built from constant fragments (column names of the caller, never
+    /// input); `params` fill its `?` placeholders in order.
+    pub(crate) fn push_owned(&mut self, fragment: String, params: impl IntoIterator<Item = Value>) {
+        self.sql.push(fragment.into());
+        self.params.extend(params);
+    }
+
     /// Adds `prefix (inner conditions) suffix`, when `inner` holds at least one condition (a
     /// sub-query filtered by its own active filters).
     pub fn push_group(&mut self, prefix: &'static str, inner: Self, suffix: &'static str) {

@@ -6,7 +6,8 @@ use rusqlite::{Connection, params};
 
 use crate::connections::EndpointInfo;
 use crate::error::Result;
-use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::query::{Conditions, Keyset, Page, PageRequest, keyset_page};
+use crate::range::{TimeRange, and_overlap, query_ranged, query_row_ranged, where_overlap};
 use crate::records::conversion;
 
 /// Saturating `u64` to `i64`.
@@ -159,17 +160,40 @@ fn announce_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<SmbAnnounceEntry> {
     })
 }
 
-/// One page of announcements, newest activity last.
-pub fn announces_page(conn: &Connection, request: &PageRequest) -> Result<Page<SmbAnnounceEntry>> {
+/// One page of announcements, newest activity last; under a range, the hosts whose
+/// announcements span overlaps it (their count stays that of the session).
+pub fn announces_page(
+    conn: &Connection,
+    request: &PageRequest,
+    range: Option<TimeRange>,
+) -> Result<Page<SmbAnnounceEntry>> {
+    let mut c = Conditions::new();
+    if let Some(r) = range {
+        r.push_overlap(&mut c, "a.first_ts", "a.last_ts");
+    }
+    let where_sql = c.sql();
     let query = Keyset {
         from: ANNOUNCE_FROM,
         select: ANNOUNCE_SELECT,
         sort: "a.last_ts",
         tiebreak: "a.rowid",
         descending: false,
-        filter: None,
+        filter: where_sql.as_deref(),
     };
-    keyset_page(conn, &query, &[], request, announce_entry)
+    keyset_page(conn, &query, &c.params(), request, announce_entry)
+}
+
+/// Number of announcement rows (overlapping `range` when set).
+pub fn count_announces(conn: &Connection, range: Option<TimeRange>) -> Result<u64> {
+    let w = where_overlap(range, "first_ts", "last_ts");
+    let n: i64 = query_row_ranged(
+        conn,
+        &format!("SELECT count(*) FROM smb_announces{w}"),
+        &[],
+        range,
+        |r| r.get(0),
+    )?;
+    Ok(u64::try_from(n).unwrap_or(0))
 }
 
 /// One SMB session over TCP emitted by the analyzer (`smb_sessions`). No NTLM secret here.
@@ -296,38 +320,73 @@ fn session_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<SmbSessionEntry> {
 }
 
 /// One page of SMB sessions, by start time. `auth_only` keeps only sessions that carried NTLM.
+/// Under a range, the sessions whose span overlaps it.
 pub fn sessions_page(
     conn: &Connection,
     auth_only: bool,
     request: &PageRequest,
+    range: Option<TimeRange>,
 ) -> Result<Page<SmbSessionEntry>> {
+    let mut c = Conditions::new();
+    if auth_only {
+        c.push("s.ntlm_phase IS NOT NULL", []);
+    }
+    if let Some(r) = range {
+        r.push_overlap(&mut c, "s.first_ts", "s.last_ts");
+    }
+    let where_sql = c.sql();
     let query = Keyset {
         from: SESSION_FROM,
         select: SESSION_SELECT,
         sort: "s.first_ts",
         tiebreak: "s.flow_id",
         descending: false,
-        filter: auth_only.then_some("s.ntlm_phase IS NOT NULL"),
+        filter: where_sql.as_deref(),
     };
-    keyset_page(conn, &query, &[], request, session_entry)
+    keyset_page(conn, &query, &c.params(), request, session_entry)
+}
+
+/// Number of SMB sessions (with NTLM only when `auth_only`, overlapping `range` when set).
+pub fn count_sessions(conn: &Connection, auth_only: bool, range: Option<TimeRange>) -> Result<u64> {
+    let auth = if auth_only {
+        " AND ntlm_phase IS NOT NULL"
+    } else {
+        ""
+    };
+    let a = and_overlap(range, "first_ts", "last_ts");
+    let n: i64 = query_row_ranged(
+        conn,
+        &format!("SELECT count(*) FROM smb_sessions WHERE 1{auth}{a}"),
+        &[],
+        range,
+        |r| r.get(0),
+    )?;
+    Ok(u64::try_from(n).unwrap_or(0))
 }
 
 /// OS distribution of host announcements (`os_label` -> distinct announced servers), for the
 /// donut of the SMB view. Bounded to the most common labels.
-pub fn os_distribution(conn: &Connection, limit: u32) -> Result<Vec<(String, u64)>> {
-    let mut stmt = conn.prepare(
-        "SELECT os_label, count(DISTINCT server_name) AS n FROM smb_announces \
-         WHERE kind = 'host' GROUP BY os_label ORDER BY n DESC, os_label LIMIT ?1",
-    )?;
-    let rows = stmt.query_map([limit], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-    })?;
-    let mut out = Vec::new();
-    for row in rows {
-        let (label, n) = row?;
-        out.push((label, u64::try_from(n).unwrap_or(0)));
-    }
-    Ok(out)
+pub fn os_distribution(
+    conn: &Connection,
+    limit: u32,
+    range: Option<TimeRange>,
+) -> Result<Vec<(String, u64)>> {
+    let a = and_overlap(range, "first_ts", "last_ts");
+    query_ranged(
+        conn,
+        &format!(
+            "SELECT os_label, count(DISTINCT server_name) AS n FROM smb_announces \
+             WHERE kind = 'host'{a} GROUP BY os_label ORDER BY n DESC, os_label LIMIT ?1"
+        ),
+        &[&limit],
+        range,
+        |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                u64::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
+            ))
+        },
+    )
 }
 
 #[cfg(test)]
@@ -383,7 +442,7 @@ mod tests {
         announce(15, 2, "LEGACY", "Windows XP", "host")
             .insert(&conn)
             .unwrap();
-        let page = announces_page(&conn, &PageRequest::first(10)).unwrap();
+        let page = announces_page(&conn, &PageRequest::first(10), None).unwrap();
         assert_eq!(page.items.len(), 2);
         let srv = page
             .items
@@ -393,7 +452,7 @@ mod tests {
         assert_eq!(srv.announce_count, 3);
         assert_eq!((srv.first_ts, srv.last_ts), (10, 30));
 
-        let dist = os_distribution(&conn, 10).unwrap();
+        let dist = os_distribution(&conn, 10, None).unwrap();
         assert_eq!(
             dist,
             vec![
@@ -451,7 +510,7 @@ mod tests {
         };
         update.insert(&conn).unwrap();
 
-        let all = sessions_page(&conn, false, &PageRequest::first(10)).unwrap();
+        let all = sessions_page(&conn, false, &PageRequest::first(10), None).unwrap();
         assert_eq!(all.items.len(), 1);
         let s = &all.items[0];
         assert_eq!((s.first_ts, s.last_ts), (100, 200));
@@ -460,7 +519,7 @@ mod tests {
         assert_eq!(s.account.as_deref(), Some("alice"));
         assert_eq!(s.ntlm_phase.as_deref(), Some("authenticate"));
 
-        let auth = sessions_page(&conn, true, &PageRequest::first(10)).unwrap();
+        let auth = sessions_page(&conn, true, &PageRequest::first(10), None).unwrap();
         assert_eq!(auth.items.len(), 1);
     }
 }

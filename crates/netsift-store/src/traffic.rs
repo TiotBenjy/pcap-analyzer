@@ -298,6 +298,19 @@ pub fn traffic_totals(conn: &Connection) -> Result<(u64, u64)> {
     Ok((unsigned(bytes.unwrap_or(0)), unsigned(packets.unwrap_or(0))))
 }
 
+/// Bytes and packets of the one-second buckets that intersect `range` (the volumes of the
+/// overview chart over that range).
+pub fn traffic_totals_in(conn: &Connection, range: crate::TimeRange) -> Result<(u64, u64)> {
+    let first_s = range.from_ns().div_euclid(1_000_000_000);
+    let last_s = range.to_ns().saturating_sub(1).div_euclid(1_000_000_000);
+    let (bytes, packets): (Option<i64>, Option<i64>) = conn.query_row(
+        "SELECT sum(bytes), sum(packets) FROM timeseries WHERE bucket_s >= ?1 AND bucket_s <= ?2",
+        rusqlite::params![first_s, last_s],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    Ok((unsigned(bytes.unwrap_or(0)), unsigned(packets.unwrap_or(0))))
+}
+
 /// Distinct link types of the chunks, ascending.
 pub fn linktypes(conn: &Connection) -> Result<Vec<u32>> {
     let mut stmt = conn.prepare(

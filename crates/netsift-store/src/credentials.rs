@@ -13,6 +13,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::connections::EndpointInfo;
 use crate::error::Result;
 use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::range::{TimeRange, and_overlap, query_ranged, where_overlap};
 use crate::records::conversion;
 
 /// Largest number of entries returned by one [`export`].
@@ -240,11 +241,29 @@ pub struct CredentialFilter {
     pub secret_state: Option<String>,
     /// Only this hashcat mode.
     pub hashcat_mode: Option<u32>,
+    /// Only entries whose span (`first_ts`, `last_ts`) overlaps this range; their `seen_count`
+    /// stays that of the session.
+    pub range: Option<TimeRange>,
 }
 
 impl CredentialFilter {
+    /// `WHERE` text and its values: the static variant of [`Self::static_sql`], plus the range.
+    fn sql(&self) -> (Option<String>, Vec<Box<dyn ToSql>>) {
+        let (clause, mut values) = self.static_sql();
+        let Some(r) = self.range else {
+            return (clause.map(str::to_owned), values);
+        };
+        values.push(Box::new(r.to_ns()));
+        values.push(Box::new(r.from_ns()));
+        let span = "c.first_ts < ? AND c.last_ts >= ?";
+        (
+            Some(clause.map_or_else(|| span.to_owned(), |c| format!("{c} AND {span}"))),
+            values,
+        )
+    }
+
     /// Static `WHERE` text (one variant per combination, so indexes stay usable) and its values.
-    fn sql(&self) -> (Option<&'static str>, Vec<Box<dyn ToSql>>) {
+    fn static_sql(&self) -> (Option<&'static str>, Vec<Box<dyn ToSql>>) {
         let mut values: Vec<Box<dyn ToSql>> = Vec::new();
         let clause = match (&self.protocol, &self.secret_state, self.hashcat_mode) {
             (None, None, None) => None,
@@ -299,7 +318,7 @@ pub fn page(
         sort: "c.first_ts",
         tiebreak: "c.id",
         descending: false,
-        filter: clause,
+        filter: clause.as_deref(),
     };
     let params: Vec<&dyn ToSql> = values.iter().map(AsRef::as_ref).collect();
     keyset_page(conn, &query, &params, request, entry)
@@ -374,13 +393,20 @@ fn unsigned(n: i64) -> u64 {
     u64::try_from(n).unwrap_or(0)
 }
 
-/// Counts per state, hashcat mode and protocol (index-only scans, bounded by the few labels).
-pub fn stats(conn: &Connection) -> Result<CredentialStats> {
+/// Counts per state, hashcat mode and protocol (index-only scans, bounded by the few labels), of
+/// the entries overlapping `range` when set.
+pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<CredentialStats> {
+    let w = where_overlap(range, "first_ts", "last_ts");
+    let a = and_overlap(range, "first_ts", "last_ts");
     let mut s = CredentialStats::default();
-    let mut stmt = conn.prepare("SELECT secret_state, count(*) FROM credentials GROUP BY 1")?;
-    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
-    for row in rows {
-        let (state, n) = row?;
+    let rows = query_ranged(
+        conn,
+        &format!("SELECT secret_state, count(*) FROM credentials{w} GROUP BY 1"),
+        &[],
+        range,
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+    )?;
+    for (state, n) in rows {
         let n = unsigned(n);
         s.total += n;
         match state.as_str() {
@@ -389,23 +415,26 @@ pub fn stats(conn: &Connection) -> Result<CredentialStats> {
             _ => s.metadata_only += n,
         }
     }
-    let mut stmt = conn.prepare(
-        "SELECT hashcat_mode, count(*) FROM credentials WHERE hashcat_mode IS NOT NULL \
-         AND hashcat_line IS NOT NULL GROUP BY 1 ORDER BY 1 LIMIT 32",
+    s.hashcat_modes = query_ranged(
+        conn,
+        &format!(
+            "SELECT hashcat_mode, count(*) FROM credentials WHERE hashcat_mode IS NOT NULL \
+             AND hashcat_line IS NOT NULL{a} GROUP BY 1 ORDER BY 1 LIMIT 32"
+        ),
+        &[],
+        range,
+        |r| Ok((r.get::<_, u32>(0)?, unsigned(r.get::<_, i64>(1)?))),
     )?;
-    let rows = stmt.query_map([], |r| Ok((r.get::<_, u32>(0)?, r.get::<_, i64>(1)?)))?;
-    for row in rows {
-        let (mode, n) = row?;
-        s.hashcat_modes.push((mode, unsigned(n)));
-    }
-    let mut stmt = conn.prepare(
-        "SELECT protocol, count(*) AS n FROM credentials GROUP BY 1 ORDER BY n DESC, 1 LIMIT 32",
+    s.protocols = query_ranged(
+        conn,
+        &format!(
+            "SELECT protocol, count(*) AS n FROM credentials{w} GROUP BY 1 \
+             ORDER BY n DESC, 1 LIMIT 32"
+        ),
+        &[],
+        range,
+        |r| Ok((r.get::<_, String>(0)?, unsigned(r.get::<_, i64>(1)?))),
     )?;
-    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
-    for row in rows {
-        let (p, n) = row?;
-        s.protocols.push((p, unsigned(n)));
-    }
     Ok(s)
 }
 
@@ -424,25 +453,34 @@ pub struct CredentialPath {
 }
 
 /// The `limit` paths with the most entries, and the number of paths left out.
-pub fn paths(conn: &Connection, limit: u32) -> Result<(Vec<CredentialPath>, u64)> {
-    let total: i64 = conn.query_row(
-        "SELECT count(*) FROM (SELECT 1 FROM credentials \
-         GROUP BY client_ip, protocol, server_ip, server_port)",
-        [],
+pub fn paths(
+    conn: &Connection,
+    limit: u32,
+    range: Option<TimeRange>,
+) -> Result<(Vec<CredentialPath>, u64)> {
+    let w = where_overlap(range, "first_ts", "last_ts");
+    let total: i64 = crate::range::query_row_ranged(
+        conn,
+        &format!(
+            "SELECT count(*) FROM (SELECT 1 FROM credentials{w} \
+             GROUP BY client_ip, protocol, server_ip, server_port)"
+        ),
+        &[],
+        range,
         |r| r.get(0),
     )?;
-    let mut stmt = conn.prepare(
+    let sql = format!(
         "SELECT p.client_ip, NULL, p.server_ip, p.server_port, p.protocol, p.n, p.seen, p.plain, \
                 hc.names, hc.category, hc.country, hs.names, hs.category, hs.country \
          FROM (SELECT client_ip, protocol, server_ip, server_port, count(*) AS n, \
                       min(sum(seen_count), 9223372036854775807) AS seen, \
                       sum(secret_state = 'plaintext') AS plain \
-               FROM credentials GROUP BY client_ip, protocol, server_ip, server_port) p \
+               FROM credentials{w} GROUP BY client_ip, protocol, server_ip, server_port) p \
          LEFT JOIN hosts hc ON hc.ip = p.client_ip LEFT JOIN hosts hs ON hs.ip = p.server_ip \
          ORDER BY p.n DESC, p.seen DESC, p.client_ip, p.protocol, p.server_ip, p.server_port \
-         LIMIT ?1",
-    )?;
-    let rows = stmt.query_map([limit], |r| {
+         LIMIT ?1"
+    );
+    let out = query_ranged(conn, &sql, &[&limit], range, |r| {
         Ok(CredentialPath {
             client: end(r, 0, 1, 8)?,
             server: end(r, 2, 3, 11)?,
@@ -452,10 +490,6 @@ pub fn paths(conn: &Connection, limit: u32) -> Result<(Vec<CredentialPath>, u64)
             plaintext: unsigned(r.get(7)?),
         })
     })?;
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(row?);
-    }
     let shown = out.len() as u64;
     Ok((out, unsigned(total).saturating_sub(shown)))
 }

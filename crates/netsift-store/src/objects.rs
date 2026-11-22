@@ -19,6 +19,7 @@ use rusqlite::{Connection, OptionalExtension, ToSql, params};
 use crate::connections::EndpointInfo;
 use crate::error::Result;
 use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::range::{TimeRange, query_ranged, query_row_ranged};
 use crate::records::conversion;
 
 /// Thumbnail states (`objects.thumb`).
@@ -164,6 +165,9 @@ pub struct ObjectFilter {
     /// Size bounds, in bytes (inclusive).
     pub min_size: Option<u64>,
     pub max_size: Option<u64>,
+    /// Only objects carried by at least one transaction whose time (`ts`) is within this range;
+    /// their occurrences and times are then those of the range.
+    pub range: Option<TimeRange>,
 }
 
 /// Sort key of the object list.
@@ -181,6 +185,38 @@ const FILTER: &str = "(?1 = 0 OR o.mime LIKE 'image/%') \
      AND (?4 IS NULL OR o.host LIKE ?4 ESCAPE '\\' OR o.uri LIKE ?4 ESCAPE '\\') \
      AND (?5 IS NULL OR o.size >= ?5) \
      AND (?6 IS NULL OR o.size <= ?6)";
+
+/// Objects carried by a transaction of the range (`?7`, `?8`; index `(resp_sha256, ts)`).
+const RANGE_FILTER: &str = "EXISTS (SELECT 1 FROM http_transactions t \
+    WHERE t.resp_sha256 = o.sha256 AND t.ts >= ?7 AND t.ts < ?8)";
+
+/// [`FILTER`] and its values, plus the range when set.
+fn filter_sql(f: &ObjectFilter) -> (String, Vec<Value>) {
+    let mut values = filter_params(f).to_vec();
+    match f.range {
+        None => (FILTER.to_owned(), values),
+        Some(r) => {
+            values.extend(r.values());
+            (format!("{FILTER} AND {RANGE_FILTER}"), values)
+        }
+    }
+}
+
+/// Occurrences and first and last times of an object within `range`.
+fn fill_range(conn: &Connection, row: &mut ObjectRow, range: TimeRange) -> Result<()> {
+    let (n, first, last): (i64, Option<i64>, Option<i64>) = conn
+        .prepare_cached(
+            "SELECT count(*), min(coalesce(resp_ts, ts)), max(coalesce(resp_ts, ts)) \
+             FROM http_transactions WHERE resp_sha256 = ?1 AND ts >= ?2 AND ts < ?3",
+        )?
+        .query_row(params![row.sha256, range.from_ns(), range.to_ns()], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?;
+    row.occurrences = unsigned(n);
+    row.first_ts = first.unwrap_or(row.first_ts);
+    row.last_ts = last.unwrap_or(row.last_ts);
+    Ok(())
+}
 
 /// `%text%` with the LIKE wildcards of `text` escaped.
 fn like_pattern(q: Option<&str>) -> Option<String> {
@@ -223,6 +259,7 @@ pub fn objects_page(
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<ObjectRow>> {
+    let (where_sql, values) = filter_sql(filter);
     let query = Keyset {
         from: FROM,
         select: COLUMNS,
@@ -232,17 +269,22 @@ pub fn objects_page(
         },
         tiebreak: "o.id",
         descending,
-        filter: Some(FILTER),
+        filter: Some(&where_sql),
     };
-    let values = filter_params(filter);
     let params: Vec<&dyn ToSql> = values.iter().map(|v| v as &dyn ToSql).collect();
-    keyset_page(conn, &query, &params, request, ObjectRow::from_row)
+    let mut page = keyset_page(conn, &query, &params, request, ObjectRow::from_row)?;
+    if let Some(r) = filter.range {
+        for row in &mut page.items {
+            fill_range(conn, row, r)?;
+        }
+    }
+    Ok(page)
 }
 
 /// Number of objects matching `filter`.
 pub fn count_objects(conn: &Connection, filter: &ObjectFilter) -> Result<u64> {
-    let values = filter_params(filter);
-    let sql = format!("SELECT count(*) FROM objects AS o WHERE {FILTER}");
+    let (where_sql, values) = filter_sql(filter);
+    let sql = format!("SELECT count(*) FROM objects AS o WHERE {where_sql}");
     let n: i64 = conn.query_row(&sql, rusqlite::params_from_iter(values.iter()), |r| {
         r.get(0)
     })?;
@@ -271,37 +313,62 @@ pub struct ObjectStats {
     pub hosts: Vec<(String, u64)>,
 }
 
-/// Statistics over the objects (`images_only`: the Pictures view).
-pub fn stats(conn: &Connection, images_only: bool, top_hosts: u32) -> Result<ObjectStats> {
+/// Statistics over the objects (`images_only`: the Pictures view), of those carried by a
+/// transaction of `range` when set (occurrences: the transactions of the range).
+pub fn stats(
+    conn: &Connection,
+    images_only: bool,
+    top_hosts: u32,
+    range: Option<TimeRange>,
+) -> Result<ObjectStats> {
     let images = i64::from(images_only);
-    let (count, bytes, occurrences): (i64, i64, i64) = conn.query_row(
-        "SELECT count(*), coalesce(sum(size), 0), coalesce(sum(occurrences), 0) FROM objects \
-         WHERE ?1 = 0 OR mime LIKE 'image/%'",
-        [images],
+    let in_range = range.map_or("", |_| {
+        " AND EXISTS (SELECT 1 FROM http_transactions t WHERE t.resp_sha256 = o.sha256 \
+          AND t.ts >= :from AND t.ts < :to)"
+    });
+    let (count, bytes, mut occurrences): (i64, i64, i64) = query_row_ranged(
+        conn,
+        &format!(
+            "SELECT count(*), coalesce(sum(size), 0), coalesce(sum(occurrences), 0) \
+             FROM objects o WHERE (?1 = 0 OR mime LIKE 'image/%'){in_range}"
+        ),
+        &[&images],
+        range,
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
+    if range.is_some() {
+        occurrences = query_row_ranged(
+            conn,
+            "SELECT count(*) FROM http_transactions t JOIN objects o ON o.sha256 = t.resp_sha256 \
+             WHERE t.ts >= :from AND t.ts < :to AND (?1 = 0 OR o.mime LIKE 'image/%')",
+            &[&images],
+            range,
+            |r| r.get(0),
+        )?;
+    }
     let pairs = |sql: &str, limit: i64| -> Result<Vec<(String, u64)>> {
-        let mut stmt = conn.prepare(sql)?;
-        let rows = stmt
-            .query_map(params![images, limit], |r| {
-                Ok((r.get::<_, String>(0)?, unsigned(r.get(1)?)))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+        query_ranged(conn, sql, &[&images, &limit], range, |r| {
+            Ok((r.get::<_, String>(0)?, unsigned(r.get(1)?)))
+        })
     };
     Ok(ObjectStats {
         count: unsigned(count),
         bytes: unsigned(bytes),
         occurrences: unsigned(occurrences),
         types: pairs(
-            "SELECT mime, count(*) AS n FROM objects WHERE ?1 = 0 OR mime LIKE 'image/%' \
-             GROUP BY mime ORDER BY n DESC, mime LIMIT ?2",
+            &format!(
+                "SELECT mime, count(*) AS n FROM objects o \
+                 WHERE (?1 = 0 OR mime LIKE 'image/%'){in_range} \
+                 GROUP BY mime ORDER BY n DESC, mime LIMIT ?2"
+            ),
             64,
         )?,
         hosts: pairs(
-            "SELECT host, count(*) AS n FROM objects \
-             WHERE host IS NOT NULL AND (?1 = 0 OR mime LIKE 'image/%') \
-             GROUP BY host ORDER BY n DESC, host LIMIT ?2",
+            &format!(
+                "SELECT host, count(*) AS n FROM objects o \
+                 WHERE host IS NOT NULL AND (?1 = 0 OR mime LIKE 'image/%'){in_range} \
+                 GROUP BY host ORDER BY n DESC, host LIMIT ?2"
+            ),
             i64::from(top_hosts),
         )?,
     })

@@ -40,12 +40,16 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
         "core_timeseries_rollup",
         "0002_core_timeseries_rollup.sql"
     ),
+    migration!(3, "core_time_ranges", "0003_core_time_ranges.sql"),
     // --- analyzers (0100+): one line per migration, in numeric order ---
     migration!(100, "dns", "0100_dns.sql"),
+    migration!(101, "dns_time_ranges", "0101_dns_time_ranges.sql"),
     migration!(200, "http", "0200_http.sql"),
     migration!(201, "http_fts_deferred", "0201_http_fts_deferred.sql"),
+    migration!(202, "http_time_ranges", "0202_http_time_ranges.sql"),
     migration!(300, "tls", "0300_tls.sql"),
     migration!(301, "tls_stats_indexes", "0301_tls_stats_indexes.sql"),
+    migration!(302, "tls_time_ranges", "0302_tls_time_ranges.sql"),
     migration!(400, "flows", "0400_flows.sql"),
     migration!(401, "flows_conversation", "0401_flows_conversation.sql"),
     migration!(

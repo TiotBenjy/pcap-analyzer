@@ -15,6 +15,7 @@ use rusqlite::{Connection, OptionalExtension, Row, ToSql, params};
 
 use crate::error::Result;
 use crate::query::{Keyset, Page, PageRequest, keyset_page};
+use crate::range::{TimeRange, and_point, query_ranged, query_row_ranged, where_point};
 use crate::records::{conversion, id_i64};
 
 /// Bits of `tls_sessions.cert_issues` (set over the whole chain).
@@ -512,6 +513,8 @@ pub struct TlsSessionFilter {
     pub weak_only: bool,
     /// Only sessions whose chain has an issue (expired, self-signed...).
     pub cert_issues_only: bool,
+    /// Only sessions whose first handshake message (`ts`) is within this range.
+    pub range: Option<TimeRange>,
 }
 
 /// One static condition with NULL-able parameters, so that the SQL text never depends on input.
@@ -536,6 +539,21 @@ fn like_pattern(q: Option<&str>) -> Option<String> {
     Some(out)
 }
 
+/// [`SESSION_FILTER`], plus the range (`?6`, `?7`, through the time index) when set.
+fn session_filter(f: &TlsSessionFilter) -> (String, Vec<Value>) {
+    let mut values = filter_params(f).to_vec();
+    match f.range {
+        None => (SESSION_FILTER.to_owned(), values),
+        Some(r) => {
+            values.extend(r.values());
+            (
+                format!("{SESSION_FILTER} AND s.ts >= ?6 AND s.ts < ?7"),
+                values,
+            )
+        }
+    }
+}
+
 fn filter_params(f: &TlsSessionFilter) -> [Value; 5] {
     [
         f.version
@@ -555,23 +573,23 @@ pub fn sessions_page(
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<TlsSessionEntry>> {
+    let (where_sql, values) = session_filter(filter);
     let query = Keyset {
         from: SESSION_FROM,
         select: SESSION_COLUMNS,
         sort: "s.ts",
         tiebreak: "s.id",
         descending,
-        filter: Some(SESSION_FILTER),
+        filter: Some(&where_sql),
     };
-    let values = filter_params(filter);
     let params: Vec<&dyn ToSql> = values.iter().map(|v| v as &dyn ToSql).collect();
     keyset_page(conn, &query, &params, request, TlsSessionEntry::from_row)
 }
 
 /// Number of sessions matching `filter`.
 pub fn count_sessions(conn: &Connection, filter: &TlsSessionFilter) -> Result<u64> {
-    let values = filter_params(filter);
-    let sql = format!("SELECT count(*) FROM tls_sessions AS s WHERE {SESSION_FILTER}");
+    let (where_sql, values) = session_filter(filter);
+    let sql = format!("SELECT count(*) FROM tls_sessions AS s WHERE {where_sql}");
     let n: i64 = conn.query_row(&sql, rusqlite::params_from_iter(values.iter()), |r| {
         r.get(0)
     })?;
@@ -626,74 +644,105 @@ fn unsigned(v: i64) -> u64 {
     u64::try_from(v).unwrap_or(0)
 }
 
-/// Aggregates for the charts, grouped and bounded in SQL.
-pub fn stats(conn: &Connection, limits: StatsLimits) -> Result<TlsStatsRows> {
-    let (sessions, weak, issues, encrypted, with_suite): (i64, i64, i64, i64, i64) = conn
-        .query_row(
+/// Aggregates for the charts, grouped and bounded in SQL (of the sessions within `range` when
+/// set: every index read here ends with `ts`, migration 0302).
+pub fn stats(
+    conn: &Connection,
+    limits: StatsLimits,
+    range: Option<TimeRange>,
+) -> Result<TlsStatsRows> {
+    let w = where_point(range, "ts");
+    let a = and_point(range, "ts");
+    let (sessions, weak, issues, encrypted, with_suite): (i64, i64, i64, i64, i64) =
+        query_row_ranged(
+            conn,
             // One count per (partial or covering) index rather than a scan of the rows (P4.2). No
             // `INDEXED BY`: an index may be missing (deferred, ADR-023), the plan is checked by
             // `stats_queries_read_indexes_only`.
-            "SELECT (SELECT count(*) FROM tls_sessions), \
-             (SELECT count(*) FROM tls_sessions WHERE cipher_weak IS NOT NULL), \
-             (SELECT coalesce(sum(cert_issues != 0), 0) \
-              FROM tls_sessions), \
-             (SELECT count(*) FROM tls_sessions WHERE cert_status = 'encrypted'), \
-             (SELECT count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL)",
-            [],
+            &format!(
+                "SELECT (SELECT count(*) FROM tls_sessions{w}), \
+                 (SELECT count(*) FROM tls_sessions WHERE cipher_weak IS NOT NULL{a}), \
+                 (SELECT coalesce(sum(cert_issues != 0), 0) FROM tls_sessions{w}), \
+                 (SELECT count(*) FROM tls_sessions WHERE cert_status = 'encrypted'{a}), \
+                 (SELECT count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL{a})"
+            ),
+            &[],
+            range,
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
         )?;
-    let certificates: i64 =
-        conn.query_row("SELECT count(*) FROM tls_certificates", [], |r| r.get(0))?;
+    let certificates: i64 = match range {
+        None => conn.query_row("SELECT count(*) FROM tls_certificates", [], |r| r.get(0))?,
+        Some(_) => query_row_ranged(
+            conn,
+            "SELECT count(DISTINCT sc.sha256) FROM tls_sessions s \
+             JOIN tls_session_certificates sc ON sc.session_id = s.id \
+             WHERE s.ts >= :from AND s.ts < :to",
+            &[],
+            range,
+            |r| r.get(0),
+        )?,
+    };
 
-    let mut stmt = conn.prepare(
-        "SELECT version, count(*) AS n FROM tls_sessions GROUP BY version \
-         ORDER BY n DESC, version LIMIT ?1",
+    let versions: Vec<(Option<u16>, u64)> = query_ranged(
+        conn,
+        &format!(
+            "SELECT version, count(*) AS n FROM tls_sessions{w} GROUP BY version \
+             ORDER BY n DESC, version LIMIT ?1"
+        ),
+        &[&limits.versions],
+        range,
+        |r| Ok((r.get(0)?, unsigned(r.get(1)?))),
     )?;
-    let versions: Vec<(Option<u16>, u64)> = stmt
-        .query_map([limits.versions], |r| Ok((r.get(0)?, unsigned(r.get(1)?))))?
-        .collect::<rusqlite::Result<_>>()?;
     let listed: u64 = versions.iter().map(|(_, n)| n).sum();
 
-    let mut stmt = conn.prepare(
-        "SELECT cipher_suite, max(cipher_name), max(cipher_weak), count(*) AS n FROM tls_sessions \
-         WHERE cipher_suite IS NOT NULL GROUP BY cipher_suite ORDER BY n DESC, cipher_suite \
-         LIMIT ?1",
-    )?;
-    let suites: Vec<SuiteCount> = stmt
-        .query_map([limits.suites], |r| {
+    let suites: Vec<SuiteCount> = query_ranged(
+        conn,
+        &format!(
+            "SELECT cipher_suite, max(cipher_name), max(cipher_weak), count(*) AS n \
+             FROM tls_sessions WHERE cipher_suite IS NOT NULL{a} GROUP BY cipher_suite \
+             ORDER BY n DESC, cipher_suite LIMIT ?1"
+        ),
+        &[&limits.suites],
+        range,
+        |r| {
             Ok(SuiteCount {
                 suite: r.get(0)?,
                 name: r.get(1)?,
                 weak: r.get(2)?,
                 count: unsigned(r.get(3)?),
             })
-        })?
-        .collect::<rusqlite::Result<_>>()?;
+        },
+    )?;
     let listed_suites: u64 = suites.iter().map(|s| s.count).sum();
 
     // Same tops as above (same ordering), then every session folded into its cell.
-    let mut stmt = conn.prepare(
-        "WITH tv AS (SELECT version FROM tls_sessions WHERE version IS NOT NULL \
-                     GROUP BY version ORDER BY count(*) DESC, version LIMIT ?1), \
-              ts AS (SELECT cipher_suite FROM tls_sessions WHERE cipher_suite IS NOT NULL \
-                     GROUP BY cipher_suite ORDER BY count(*) DESC, cipher_suite LIMIT ?2) \
-         SELECT CASE WHEN version IN (SELECT version FROM tv) THEN version END AS v, \
-                CASE WHEN cipher_suite IN (SELECT cipher_suite FROM ts) THEN cipher_suite END AS c, \
-                count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL GROUP BY v, c",
+    let pairs = query_ranged(
+        conn,
+        &format!(
+            "WITH tv AS (SELECT version FROM tls_sessions WHERE version IS NOT NULL{a} \
+                         GROUP BY version ORDER BY count(*) DESC, version LIMIT ?1), \
+                  ts AS (SELECT cipher_suite FROM tls_sessions WHERE cipher_suite IS NOT NULL{a} \
+                         GROUP BY cipher_suite ORDER BY count(*) DESC, cipher_suite LIMIT ?2) \
+             SELECT CASE WHEN version IN (SELECT version FROM tv) THEN version END AS v, \
+                    CASE WHEN cipher_suite IN (SELECT cipher_suite FROM ts) THEN cipher_suite END \
+                    AS c, count(*) FROM tls_sessions WHERE cipher_suite IS NOT NULL{a} \
+             GROUP BY v, c"
+        ),
+        &[&limits.versions, &limits.suites],
+        range,
+        |r| Ok((r.get(0)?, r.get(1)?, unsigned(r.get(2)?))),
     )?;
-    let pairs = stmt
-        .query_map([limits.versions, limits.suites], |r| {
-            Ok((r.get(0)?, r.get(1)?, unsigned(r.get(2)?)))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    let mut stmt = conn.prepare(
-        "SELECT sni, count(*) AS n FROM tls_sessions WHERE sni IS NOT NULL \
-         GROUP BY sni ORDER BY n DESC, sni LIMIT ?1",
+    let sni = query_ranged(
+        conn,
+        &format!(
+            "SELECT sni, count(*) AS n FROM tls_sessions WHERE sni IS NOT NULL{a} \
+             GROUP BY sni ORDER BY n DESC, sni LIMIT ?1"
+        ),
+        &[&limits.sni],
+        range,
+        |r| Ok((r.get(0)?, unsigned(r.get(1)?))),
     )?;
-    let sni = stmt
-        .query_map([limits.sni], |r| Ok((r.get(0)?, unsigned(r.get(1)?))))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
 
     Ok(TlsStatsRows {
         sessions: unsigned(sessions),
@@ -840,11 +889,42 @@ pub struct CertificateFilter {
     /// Capture period (ns) used by `problems_only`.
     pub capture_start: Option<i64>,
     pub capture_end: Option<i64>,
+    /// Only certificates of at least one session within this range (`ts`); their session count
+    /// is then that of the range.
+    pub range: Option<TimeRange>,
 }
 
 const CERT_FILTER: &str = "(?1 IS NULL OR c.subject LIKE ?1 ESCAPE '\\' \
     OR c.issuer LIKE ?1 ESCAPE '\\' OR c.san LIKE ?1 ESCAPE '\\') \
     AND (?2 = 0 OR (c.self_signed = 1 AND c.is_ca = 0) OR c.not_after < ?3 OR c.not_before > ?4)";
+
+/// Certificates seen in a session of the range (`?5`, `?6`).
+const CERT_RANGE_FILTER: &str = "c.sha256 IN (SELECT sc.sha256 FROM tls_sessions s \
+    JOIN tls_session_certificates sc ON sc.session_id = s.id WHERE s.ts >= ?5 AND s.ts < ?6)";
+
+const CERT_SELECT: &str = "c.sha256, c.sha1, c.size, c.stored, c.parsed, c.subject, c.subject_cn, \
+    c.issuer, c.issuer_cn, c.serial, c.not_before, c.not_after, c.san, \
+    c.key_algorithm, c.key_bits, c.signature_algorithm, c.self_signed, c.is_ca, \
+    (SELECT count(*) FROM tls_session_certificates AS sc WHERE sc.sha256 = c.sha256)";
+
+/// [`CERT_SELECT`] counting the sessions of the range only.
+const CERT_RANGE_SELECT: &str = "c.sha256, c.sha1, c.size, c.stored, c.parsed, c.subject, \
+    c.subject_cn, c.issuer, c.issuer_cn, c.serial, c.not_before, c.not_after, c.san, \
+    c.key_algorithm, c.key_bits, c.signature_algorithm, c.self_signed, c.is_ca, \
+    (SELECT count(*) FROM tls_session_certificates AS sc JOIN tls_sessions s \
+     ON s.id = sc.session_id WHERE sc.sha256 = c.sha256 AND s.ts >= ?5 AND s.ts < ?6)";
+
+/// Filter and values of the certificates list.
+fn cert_filter(f: &CertificateFilter) -> (String, Vec<Value>) {
+    let mut values = cert_params(f).to_vec();
+    match f.range {
+        None => (CERT_FILTER.to_owned(), values),
+        Some(r) => {
+            values.extend(r.values());
+            (format!("{CERT_FILTER} AND {CERT_RANGE_FILTER}"), values)
+        }
+    }
+}
 
 /// One page of certificates by subject CN (case-insensitive for ASCII).
 pub fn certificates_page(
@@ -852,18 +932,19 @@ pub fn certificates_page(
     filter: &CertificateFilter,
     request: &PageRequest,
 ) -> Result<Page<CertificateEntry>> {
+    let (where_sql, values) = cert_filter(filter);
     let query = Keyset {
         from: "tls_certificates AS c",
-        select: "c.sha256, c.sha1, c.size, c.stored, c.parsed, c.subject, c.subject_cn, \
-                 c.issuer, c.issuer_cn, c.serial, c.not_before, c.not_after, c.san, \
-                 c.key_algorithm, c.key_bits, c.signature_algorithm, c.self_signed, c.is_ca, \
-                 (SELECT count(*) FROM tls_session_certificates AS sc WHERE sc.sha256 = c.sha256)",
+        select: if filter.range.is_some() {
+            CERT_RANGE_SELECT
+        } else {
+            CERT_SELECT
+        },
         sort: "lower(coalesce(c.subject_cn, ''))",
         tiebreak: "c.sha256",
         descending: false,
-        filter: Some(CERT_FILTER),
+        filter: Some(&where_sql),
     };
-    let values = cert_params(filter);
     let params: Vec<&dyn ToSql> = values.iter().map(|v| v as &dyn ToSql).collect();
     keyset_page(conn, &query, &params, request, |r| {
         Ok(CertificateEntry {
@@ -884,8 +965,8 @@ fn cert_params(f: &CertificateFilter) -> [Value; 4] {
 
 /// Number of certificates matching `filter`.
 pub fn count_certificates(conn: &Connection, filter: &CertificateFilter) -> Result<u64> {
-    let values = cert_params(filter);
-    let sql = format!("SELECT count(*) FROM tls_certificates AS c WHERE {CERT_FILTER}");
+    let (where_sql, values) = cert_filter(filter);
+    let sql = format!("SELECT count(*) FROM tls_certificates AS c WHERE {where_sql}");
     let n: i64 = conn.query_row(&sql, rusqlite::params_from_iter(values.iter()), |r| {
         r.get(0)
     })?;

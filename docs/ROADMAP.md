@@ -499,11 +499,22 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       indicateur d'import à côté de la pastille à 375 px jamais capturé ; colonne Rôles SMB étroite à 768 px
       (badges tronqués avec infobulle) ; couleurs SMB/NetBIOS et DNS/DHCP identiques dans le graphique de
       l'Overview ; voile du dialogue peu visible en sombre (aussi Save PCAP).
-- [~] **P5.2b** `feat/time-filter-aggregates` — Plage appliquée aux vues agrégées (Connections, Open Ports,
+- [x] **P5.2b** `feat/time-filter-aggregates` — Plage appliquée aux vues agrégées (Connections, Open Ports,
       Servers, Network) et à leurs compteurs de modules : tables dérivées calculées à la première requête d'une
       plage (code des étapes de fin d'import paramétré), base annexe `sessions/<id>/ranges.db` des 4 dernières
       plages. Attente simple validée par l'utilisateur (pas de 202) : exception écrite aux 300 ms pour la première
       requête d'une plage. Après P5.2a.
+      Fusionné le 2026-11-22 (3eb9645) : un fichier SQLite par plage (`sessions/<id>/ranges/`, publié par renommage,
+      LRU 4, empreinte migrations + étapes + stats), construit par une lecture des flux actifs agrégée en Rust par
+      passes (mémoire bornée, pic 223 Mio à 6 jours), une construction par plage et 2 au plus, annulée quand le
+      client part ; `/summary` n'attend plus (compteurs agrégés `pending`, route `/modules` à part, demandée par
+      l'utilisateur) ; test d'équivalence des 17 tables sur sessions importées. Banc au repos : première requête
+      0,6 s (1 h), 2,4 s (24 h), 11 s (6 jours), suivantes < 130 ms. Suivis : tables du graphe construites à la
+      première requête Network (environ 2,4 s, demande un second fichier attaché) ; index des conversations à la
+      demande ; **régression `/dns/servers` sous plage sur main** (1,39 s à 6 jours, 189 ms à 24 h, cible 300 ms,
+      vient de P5.2a) ; identifiants de conversations absentes après import interrompu instables ; chemins UNC
+      Windows ; `OnceLock` du dossier temporaire en `--read-only` ; pas de plafond disque global des plages ;
+      arrêt de l'application pendant des constructions en file (`STOP_LIMIT`).
 
 ### Vague 5.A — Couche 2 et protocoles simples (parallèle, après 5.0)
 

@@ -4,6 +4,7 @@ import type { TrafficProtocol } from '../../api/types/TrafficProtocol';
 import type { TrafficSeries } from '../../api/types/TrafficSeries';
 import { colorFor } from '../../charts/palette';
 import { formatShare } from '../../lib/format';
+import { escapeHtml } from '../../charts/text';
 
 // ECharts option of the Overview "Traffic by protocol" chart (pure: unit-tested without ECharts).
 
@@ -99,8 +100,6 @@ interface TooltipParam {
   axisValue?: unknown;
 }
 
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 
 /** Tooltip of one bucket: protocols sorted by value (zeros omitted), share of the bucket, total. */
 export function tooltipHtml(params: readonly TooltipParam[], format: TrafficFormat): string {

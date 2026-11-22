@@ -1,6 +1,7 @@
 import type { EChartsCoreOption } from 'echarts/core';
+import type { BarItem } from '../../components/BarList';
 import { CATEGORICAL, NEUTRAL, OTHER_COLOR } from '../../charts/palette';
-import { CHART_HEIGHT } from '../../charts/sizes';
+import { escapeHtml } from '../../charts/text';
 import { formatShare, labelled } from '../../lib/format';
 
 /** One slice or bar. */
@@ -10,13 +11,6 @@ export interface ChartEntry {
   label: string;
   value: number;
   color?: string;
-}
-
-/** Axis labels are cut at this many characters (full text in the tooltip). */
-export const LABEL_MAX = 24;
-
-export function truncateLabel(s: string, max = LABEL_MAX): string {
-  return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
 }
 
 interface ItemParam {
@@ -29,10 +23,6 @@ function tooltipLine(label: string, value: number, total: number, format: (n: nu
   const share = formatShare(value, total);
   // ECharts renders tooltips as HTML: escape the label (names come from the capture).
   return labelled(escapeHtml(label), share === '' ? format(value) : `${format(value)} (${share})`);
-}
-
-export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 /** Vertical position of the donut center, in percent of the chart height (the total goes there). */
@@ -70,56 +60,18 @@ export function donutOption(entries: readonly ChartEntry[], format: (n: number) 
   };
 }
 
-/** Height of a horizontal bar chart of `n` bars, at least `min` (the donut of the same row). */
-export function barsHeight(n: number, min = CHART_HEIGHT.donut): number {
-  return Math.max(CHART_HEIGHT.bars(n), min);
-}
-
-/** Horizontal bars, largest first, value at the end of each bar, labels cut with a tooltip. */
-export function barsOption(
-  entries: readonly ChartEntry[],
-  format: (n: number) => string,
-  color: string = NEUTRAL,
-): EChartsCoreOption {
+/** Rows of a `BarList`, largest first; the "Other" row is lighter. */
+export function entryBars(entries: readonly ChartEntry[], format: (n: number) => string, color: string = NEUTRAL): BarItem[] {
   const total = entries.reduce((s, e) => s + e.value, 0);
-  return {
-    grid: { left: 8, right: 56, top: 4, bottom: 4, containLabel: true },
-    tooltip: {
-      trigger: 'item',
-      formatter: (p: { dataIndex: number }) => {
-        const e = entries[p.dataIndex];
-        return e === undefined ? '' : tooltipLine(e.label, e.value, total, format);
-      },
-    },
-    xAxis: { type: 'value', show: false, max: 'dataMax' },
-    yAxis: {
-      type: 'category',
-      inverse: true,
-      data: entries.map((e) => e.label),
-      axisTick: { show: false },
-      axisLabel: { formatter: (s: string) => truncateLabel(s), width: 160, overflow: 'truncate' },
-    },
-    series: [
-      {
-        type: 'bar',
-        barMaxWidth: 18,
-        data: entries.map((e) => ({
-          value: e.value,
-          // "Other" is lighter than the ranked values (same neutral hue family).
-          itemStyle: {
-            color: e.color ?? color,
-            opacity: e.key === '__other' ? 0.5 : 1,
-            borderRadius: [0, 3, 3, 0],
-          },
-        })),
-        label: {
-          show: true,
-          position: 'right',
-          formatter: (p: { value: number }) => format(p.value),
-        },
-      },
-    ],
-  };
+  return entries.map((e) => ({
+    key: e.key,
+    label: e.label,
+    title: tooltipLine(e.label, e.value, total, format),
+    value: e.value,
+    valueText: format(e.value),
+    color: e.color ?? color,
+    muted: e.key === '__other',
+  }));
 }
 
 /** `entries` plus an "Other" entry when `other` is positive. */

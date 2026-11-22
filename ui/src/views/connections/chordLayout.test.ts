@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { layoutChord, MAX_LABEL_CHARS, rankedPairs, truncateLabel } from './chordLayout';
+import { truncateLabel } from '../../charts/text';
+import { layoutChord, MAX_LABEL_CHARS, rankedPairs } from './chordLayout';
 
 /** Star around node 0 with `n` leaves of decreasing volume, plus some leaf-to-leaf traffic. */
 function star(n: number): number[][] {
@@ -80,8 +81,8 @@ describe('chord layout', () => {
   });
 
   it('truncates labels to 18 characters', () => {
-    expect(truncateLabel('short')).toBe('short');
-    const t = truncateLabel('a-very-long-host-name.example.test');
+    expect(truncateLabel('short', MAX_LABEL_CHARS)).toBe('short');
+    const t = truncateLabel('a-very-long-host-name.example.test', MAX_LABEL_CHARS);
     expect(t).toHaveLength(18);
     expect(t.endsWith('…')).toBe(true);
   });

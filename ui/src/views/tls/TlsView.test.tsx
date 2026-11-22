@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../../api/client';
@@ -15,14 +15,14 @@ import { page, session } from '../../test/sessionFixtures';
 import { setupUser } from '../../test/user';
 import {
   buildMatrixOption,
-  buildSuitesOption,
   buildVersionsOption,
   matrixVersions,
   suiteOfRow,
   type TlsChartFormat,
   versionOfPie,
 } from './tlsCharts';
-import { alertName, suiteLabel, truncateLabel, versionLabel, versionTone } from './tlsFormat';
+import { alertName, suiteLabel, versionLabel, versionTone } from './tlsFormat';
+import { truncateMiddle } from '../../charts/text';
 
 vi.mock('../../api/sessions');
 vi.mock('../../api/tls', async (importOriginal) => ({
@@ -219,7 +219,10 @@ describe('TLS view', () => {
     expect(within(table).getByText('Encrypted')).toBeInTheDocument();
     expect(within(table).getAllByRole('img', { name: 'RC4' }).length).toBeGreaterThan(0);
     expect(charts.has('Negotiated TLS versions')).toBe(true);
-    expect(charts.has('Negotiated cipher suites, top 15')).toBe(true);
+    const suites = screen.getByRole('list', { name: 'Negotiated cipher suites, top 15' });
+    // Most frequent first, the weak one marked with its reason.
+    expect(within(suites).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(suites).getByRole('img', { name: 'RC4' })).toBeInTheDocument();
     expect(charts.has('Sessions by negotiated version and cipher suite')).toBe(true);
     expect(screen.getByText('Weak suites are marked with an amber dot.')).toBeInTheDocument();
   });
@@ -252,13 +255,14 @@ describe('TLS view', () => {
         expect.anything(),
       );
     });
-    // A click on a bar selects its suite (rows are drawn bottom-up).
-    act(() => {
-      charts.get('Negotiated cipher suites, top 15')?.onEvents?.click?.({ dataIndex: 0 });
-    });
-    await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: 'Cipher suite' })).toHaveValue(String(0x0005));
-    });
+    // A click on a bar selects its suite, a second click clears it.
+    const bar = screen.getByRole('button', { name: 'Show the sessions of RSA_WITH_RC4_128_SHA' });
+    await user.click(bar);
+    expect(screen.getByRole('combobox', { name: 'Cipher suite' })).toHaveValue(String(0x0005));
+    expect(bar).toHaveAttribute('aria-pressed', 'true');
+    await user.click(bar);
+    expect(screen.getByRole('combobox', { name: 'Cipher suite' })).toHaveValue('');
+    await user.click(bar);
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(screen.getByRole('radio', { name: 'All versions' })).toBeChecked();
     expect(screen.getByRole('combobox', { name: 'Cipher suite' })).toHaveValue('');
@@ -341,22 +345,11 @@ describe('TLS charts and formats', () => {
     expect(withNone.series[0]?.data[0]?.name).toBe('none');
   });
 
-  it('marks weak suites in the bar labels and keeps the most frequent on top', () => {
-    const option = buildSuitesOption(stats(), FORMAT) as {
-      xAxis: { show: boolean };
-      yAxis: { data: string[]; axisLabel: { formatter: (v: string, i: number) => string } };
-      series: { label: { show: boolean; position: string } }[];
-    };
-    expect(option.xAxis.show).toBe(false);
-    expect(option.series[0]?.label).toMatchObject({ show: true, position: 'right' });
-    expect(option.yAxis.data).toEqual(['RSA_WITH_RC4_128_SHA', 'AES_128_GCM_SHA256', 'ECDHE_RSA_WITH_AES_128_GCM_SHA256']);
-    expect(option.yAxis.axisLabel.formatter('RSA_WITH_RC4_128_SHA', 0)).toBe('{w|}{n|RSA_WITH_RC4_128_SHA}');
-    expect(option.yAxis.axisLabel.formatter('ECDHE_RSA_WITH_AES_128_GCM_SHA256', 2)).toBe(
-      '{s|}{n|ECDHE_RSA_WI…_GCM_SHA256}',
-    );
+  it('maps heatmap rows back to suites', () => {
     expect(suiteOfRow(stats(), 0)).toBe(5);
     const withOthers = stats({ suites: [...stats().suites, { suite: null, name: null, weak: null, count: 4 }] });
     expect(suiteOfRow(withOthers, 0)).toBeUndefined();
+    expect(truncateMiddle('ECDHE_RSA_WITH_AES_128_GCM_SHA256')).toBe('ECDHE_RSA_WI…_GCM_SHA256');
   });
 
   it('places the matrix cells on version columns and suite rows', () => {
@@ -386,7 +379,6 @@ describe('TLS charts and formats', () => {
     expect(versionTone(0x0301)).toBe('warning');
     expect(versionTone(0x0304)).toBe('success');
     expect(suiteLabel(null, 0xfafa)).toBe('0xfafa');
-    expect(truncateLabel('x'.repeat(30))).toHaveLength(24);
     expect(alertName(42)).toBe('bad_certificate');
     expect(alertName(250)).toBe('alert 250');
     expect(attachmentName('attachment; filename="shop-ab.der"')).toBe('shop-ab.der');

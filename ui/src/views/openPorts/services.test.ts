@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OpenPortStats } from '../../api/types/OpenPortStats';
-import { buildPortsOption, portsTooltip, truncateLabel } from './portsChart';
+import { portBars } from './portsChart';
 import { barLabel, portLabel, serviceMismatch, serviceName } from './services';
 
 describe('open port services', () => {
@@ -31,7 +31,7 @@ describe('open port services', () => {
     expect(barLabel({ port: 1863, transport: 'tcp', service: 'msnp', detected: null, hosts: 1 })).toBe('1863 msnp');
   });
 
-  it('builds horizontal bars, largest first, with escaped tooltips', () => {
+  it('builds one bar per port, most exposed first, the host count on hover', () => {
     const stats: OpenPortStats = {
       top: [
         { port: 80, transport: 'tcp', service: 'http', detected: 'http', hosts: 4 },
@@ -40,14 +40,11 @@ describe('open port services', () => {
       distinct_ports: 5,
       open_ports: 9,
     };
-    const option = buildPortsOption(stats, { hosts: (n) => `${n} hosts`, count: String }) as {
-      yAxis: { data: string[]; inverse: boolean };
-      series: { data: number[] }[];
-    };
-    expect(option.yAxis.data).toEqual(['80 http', '53/udp domain']);
-    expect(option.yAxis.inverse).toBe(true);
-    expect(option.series[0]?.data).toEqual([4, 2]);
-    expect(portsTooltip('<b>', '1 host')).toBe('<div style="font-weight:600">&lt;b&gt;</div><div>1 host</div>');
-    expect(truncateLabel('x'.repeat(30))).toHaveLength(24);
+    const bars = portBars(stats, { hosts: (n) => `${n} hosts`, count: String });
+    expect(bars.map((b) => [b.label, b.value, b.valueText, b.title])).toEqual([
+      ['80 http', 4, '4', '80 http: 4 hosts'],
+      ['53/udp domain', 2, '2', '53/udp domain: 2 hosts'],
+    ]);
+    expect(bars.every((b) => b.mono === true)).toBe(true);
   });
 });

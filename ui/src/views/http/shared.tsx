@@ -4,11 +4,12 @@ import { useTranslation } from 'react-i18next';
 import type { HttpCount } from '../../api/types/HttpCount';
 import type { HttpTransactionSummary } from '../../api/types/HttpTransactionSummary';
 import { Badge } from '../../components/Badge';
+import { BarList } from '../../components/BarList';
 import { Card } from '../../components/Card';
 import { Chart } from '../../components/Chart';
 import { Endpoint } from '../../components/Endpoint';
 import { formatCount } from '../../lib/format';
-import { barColor, barsHeight, barsOption, type ChartFormat, DONUT_CENTER_Y, DONUT_MAX, donutOption, METHOD_COLORS, PART_HEIGHT } from './charts';
+import { type ChartFormat, countBars, DONUT_CENTER_Y, DONUT_MAX, donutOption, METHOD_COLORS, PART_HEIGHT } from './charts';
 import { displayTarget, statusTone } from './format';
 
 /** Methods chart: donut up to five groups, horizontal bars beyond; total in the donut. */
@@ -30,18 +31,21 @@ export function MethodsChart({
   );
   const list = useMemo(() => counts ?? [], [counts]);
   const donut = list.length <= DONUT_MAX;
-  const option = useMemo(
-    () => (donut ? donutOption(list, METHOD_COLORS, fmt) : barsOption(list, barColor, fmt)),
-    [donut, list, fmt],
-  );
+  const option = useMemo(() => donutOption(list, METHOD_COLORS, fmt), [list, fmt]);
   const total = list.reduce((s, c) => s + c.count, 0);
-  const height = donut ? PART_HEIGHT : barsHeight(list.length);
+  if (!donut) {
+    return (
+      <Card title={t('views.http.methods')}>
+        <BarList ariaLabel={t('views.http.methodsLabel')} items={countBars(list, fmt)} />
+      </Card>
+    );
+  }
   return (
     <Card title={t('views.http.methods')}>
       <div className="relative">
         <Chart
           option={option}
-          height={height}
+          height={PART_HEIGHT}
           ariaLabel={t('views.http.methodsLabel')}
           loading={loading}
           error={error ? t('views.http.loadError') : null}
@@ -49,7 +53,7 @@ export function MethodsChart({
           empty={!loading && !error && list.length === 0}
           emptyText={t('views.http.noTransactions')}
         />
-        {donut && !loading && !error && list.length > 0 && (
+        {!loading && !error && list.length > 0 && (
           <div
             className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
             style={{ top: DONUT_CENTER_Y }}

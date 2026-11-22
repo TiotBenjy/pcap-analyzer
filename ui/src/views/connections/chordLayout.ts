@@ -1,5 +1,6 @@
 import { type Chord, type ChordSubgroup, chordDirected, ribbon } from 'd3-chord';
 import { arc } from 'd3-shape';
+import { truncateLabel } from '../../charts/text';
 
 // Geometry of the chord diagram (pure: unit-tested without a browser).
 //
@@ -33,10 +34,6 @@ function shifts(reach: number): number[] {
 export const MAX_SIZE = 640;
 /** Below this outer radius the diagram is unreadable: the caller shows a ranked list instead. */
 export const MIN_RADIUS = 70;
-
-export function truncateLabel(s: string, max = MAX_LABEL_CHARS): string {
-  return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
-}
 
 interface Box {
   left: number;
@@ -110,7 +107,7 @@ export function layoutChord(matrix: readonly (readonly number[])[], names: reado
   const n = matrix.length;
   const total = matrix.reduce((s, row) => s + row.reduce((a, b) => a + b, 0), 0);
   if (n === 0 || total <= 0) return null;
-  const texts = names.map((name) => truncateLabel(name));
+  const texts = names.map((name) => truncateLabel(name, MAX_LABEL_CHARS));
   const longest = Math.max(...texts.map((s) => s.length), 1);
   const labelSpace = LABEL_GAP + longest * CHAR_WIDTH + 4;
   const size = Math.floor(Math.min(width, MAX_SIZE));

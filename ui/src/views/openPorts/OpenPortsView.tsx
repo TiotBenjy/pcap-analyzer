@@ -7,10 +7,9 @@ import { useSession } from '../../api/sessionQueries';
 import type { AddressCategory } from '../../api/types/AddressCategory';
 import type { HostOpenPorts } from '../../api/types/HostOpenPorts';
 import type { OpenPortInfo } from '../../api/types/OpenPortInfo';
-import { CHART_HEIGHT } from '../../charts/sizes';
 import { Badge } from '../../components/Badge';
+import { BarList } from '../../components/BarList';
 import { Card } from '../../components/Card';
-import { Chart } from '../../components/Chart';
 import { Endpoint } from '../../components/Endpoint';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
@@ -24,7 +23,7 @@ import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
 import { useDebounced } from '../connections/useDebounced';
 import { categoriesOf } from './categories';
-import { buildPortsOption } from './portsChart';
+import { portBars } from './portsChart';
 import { portLabel, serviceMismatch, serviceName } from './services';
 
 const route = getRouteApi('/sessions/$sessionId');
@@ -119,26 +118,22 @@ function PortsChartCard({
   const { t } = useTranslation();
   const stats = useOpenPortStats(sessionId, categories, enabled);
   const data = stats.data;
-  const option = useMemo(
+  const items = useMemo(
     () =>
-      data === undefined
-        ? {}
-        : buildPortsOption(data, { hosts: (n) => t('views.openPorts.chart.hosts', { count: n }), count: (n) => formatCount(n) }),
+      data === undefined ? [] : portBars(data, { hosts: (n) => t('views.openPorts.chart.hosts', { count: n }), count: (n) => formatCount(n) }),
     [data, t],
   );
   const others = data === undefined ? 0 : Math.max(0, Number(data.distinct_ports) - data.top.length);
   return (
     <Card title={t('views.openPorts.chart.title')}>
-      <Chart
-        option={option}
-        height={CHART_HEIGHT.bars(data?.top.length ?? 5)}
+      <BarList
+        items={items}
         ariaLabel={t('views.openPorts.chart.label')}
         loading={!enabled || stats.isPending}
         error={stats.isError ? t('views.openPorts.chart.loadError') : null}
         onRetry={() => {
           void stats.refetch();
         }}
-        empty={data !== undefined && data.top.length === 0}
         emptyText={t('views.openPorts.chart.empty')}
       />
       {others > 0 && <p className="mt-2 text-meta text-muted">{t('views.openPorts.chart.others', { count: others })}</p>}

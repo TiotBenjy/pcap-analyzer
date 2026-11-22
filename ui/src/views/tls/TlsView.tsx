@@ -9,8 +9,10 @@ import { useTlsSessions, useTlsStats } from '../../api/tlsQueries';
 import type { TlsSessionItem } from '../../api/types/TlsSessionItem';
 import type { TlsStats } from '../../api/types/TlsStats';
 import type { ChartEvents } from '../../charts/EChartsRenderer';
+import { CATEGORICAL, OTHER_COLOR } from '../../charts/palette';
 import { CHART_HEIGHT } from '../../charts/sizes';
 import { Badge } from '../../components/Badge';
+import { type BarItem, BarList } from '../../components/BarList';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Chart } from '../../components/Chart';
@@ -27,15 +29,16 @@ import { formatCount, formatPercent, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { useTheme } from '../../theme/theme';
 import { CertificatesPanel } from './CertificatesPanel';
-import { IssueBadges, MonoValue, SuiteName } from './parts';
+import { IssueBadges, MonoValue, SuiteName, WeakDot } from './parts';
 import { SessionDetail } from './SessionDetail';
 import {
   buildMatrixOption,
-  buildSuitesOption,
   buildVersionsOption,
   matrixHeight,
   matrixVersions,
+  suiteFullName,
   suiteOfRow,
+  suiteRowLabel,
   type TlsChartFormat,
   versionOfPie,
 } from './tlsCharts';
@@ -44,6 +47,8 @@ import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
+/** Key of the "other suites" bar. */
+const OTHER_SUITES = 'other';
 /** Value of the "all versions" segment. */
 const ANY = 'any';
 /** From this width every column of the sessions table fits; below, secondary ones are hidden. */
@@ -202,7 +207,26 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
   const wideTable = useMediaQuery(WIDE_TABLE_QUERY);
 
   const versionsOption = useMemo(() => buildVersionsOption(stats, fmt), [stats, fmt]);
-  const suitesOption = useMemo(() => buildSuitesOption(stats, fmt), [stats, fmt]);
+  const suiteItems = useMemo<BarItem[]>(() => {
+    const total = stats.suites.reduce((n, x) => n + x.count, 0);
+    return stats.suites.map((x) => {
+      const name = suiteFullName(x, fmt.other);
+      return {
+        key: x.suite === null ? OTHER_SUITES : String(x.suite),
+        label: suiteRowLabel(x, fmt.other),
+        title: [name, fmt.share(x.count, total), ...(x.weak === null ? [] : [fmt.weak(x.weak)])].join('\n'),
+        lead: x.weak === null ? <span aria-hidden className="inline-block size-2 shrink-0" /> : <WeakDot weak={x.weak} />,
+        value: x.count,
+        valueText: fmt.count(x.count),
+        color: x.suite === null ? OTHER_COLOR : CATEGORICAL[1],
+        mono: true,
+        truncate: 'middle',
+        muted: x.suite === null,
+        selectable: x.suite !== null,
+        active: x.suite !== null && x.suite === suite,
+      };
+    });
+  }, [stats, fmt, suite]);
   const matrixOption = useMemo(() => buildMatrixOption(stats, fmt, theme === 'dark'), [stats, fmt, theme]);
   const columnsOfMatrix = useMemo(() => matrixVersions(stats), [stats]);
 
@@ -214,17 +238,6 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
       },
     }),
     [],
-  );
-  const barEvents = useMemo<ChartEvents>(
-    () => ({
-      click: (params) => {
-        const index = (params as { dataIndex?: number }).dataIndex;
-        if (index === undefined) return;
-        const s = suiteOfRow(stats, index);
-        if (s !== undefined) setSuite((cur) => (cur === s ? undefined : s));
-      },
-    }),
-    [stats],
   );
   const matrixEvents = useMemo<ChartEvents>(
     () => ({
@@ -291,12 +304,14 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
         </Card>
         <Card title={t('views.tls.charts.suites')}>
           <div className="flex flex-col gap-2">
-            <Chart
-              option={suitesOption}
-              height={CHART_HEIGHT.bars(suiteCount)}
+            <BarList
+              items={suiteItems}
               ariaLabel={t('views.tls.charts.suitesLabel')}
-              empty={suiteCount === 0}
-              onEvents={barEvents}
+              onSelect={(key) => {
+                const id = Number(key);
+                setSuite((cur) => (cur === id ? undefined : id));
+              }}
+              selectLabel={(item) => t('views.tls.charts.filterSuite', { suite: item.label })}
             />
             {stats.suites.some((s) => s.weak !== null) && (
               <p className="text-meta text-muted">{t('views.tls.charts.weakNote')}</p>

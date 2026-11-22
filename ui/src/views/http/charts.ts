@@ -1,6 +1,8 @@
 import type { EChartsCoreOption } from 'echarts/core';
 import type { HttpCount } from '../../api/types/HttpCount';
+import type { BarItem } from '../../components/BarList';
 import { CATEGORICAL, OTHER_COLOR } from '../../charts/palette';
+import { escapeHtml } from '../../charts/text';
 import { CHART_HEIGHT } from '../../charts/sizes';
 import { formatShare, labelled } from '../../lib/format';
 import { statusClass } from './format';
@@ -42,18 +44,12 @@ export const DONUT_MAX = 5;
 export const PART_HEIGHT = CHART_HEIGHT.donut;
 /** Vertical center of the donut, in px (the total is drawn there, over the chart). */
 export const DONUT_CENTER_Y = 104;
-const LABEL_MAX = 24;
 
 export interface ChartFormat {
   count: (n: number) => string;
   /** Display label of a key (`other` -> translated). */
   label: (key: string) => string;
 }
-
-export const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
-
-export const truncateLabel = (s: string, max = LABEL_MAX) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
 interface TooltipParam {
   name?: string;
@@ -68,10 +64,6 @@ function tooltipLine(marker: string, label: string, value: number, total: number
   const share = formatShare(value, total);
   const pct = share === '' ? '' : ` <span style="opacity:.7">${escapeHtml(share)}</span>`;
   return `${marker}${labelled(escapeHtml(label), `<b>${escapeHtml(fmt.count(value))}</b>`)}${pct}`;
-}
-
-export function barsHeight(n: number): number {
-  return Math.max(80, CHART_HEIGHT.bars(n));
 }
 
 /** Donut of at most [`DONUT_MAX`] categories, total drawn by the view in the middle. */
@@ -105,49 +97,23 @@ export function donutOption(counts: readonly HttpCount[], colors: Readonly<Recor
   };
 }
 
-/**
- * Horizontal bars, in the given order (top first), the value at the end of each bar (no value
- * axis; label color and outline come from the shared chart theme).
- */
-export function barsOption(
-  counts: readonly HttpCount[],
-  colors: (key: string) => string,
-  fmt: ChartFormat,
-): EChartsCoreOption {
+/** Rows of a `BarList` in the given order (top first); `other` is grey and lighter. */
+export function countBars(counts: readonly HttpCount[], fmt: ChartFormat): BarItem[] {
   const total = counts.reduce((s, c) => s + c.count, 0);
-  const labels = counts.map((c) => fmt.label(c.key));
-  return {
-    // Room on the right for the value labels (not counted by `containLabel`).
-    grid: { left: 8, right: 64, top: 4, bottom: 4, containLabel: true },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      formatter: (p: unknown) => {
-        const t = first(p);
-        return tooltipLine(t.marker ?? '', t.name ?? '', Number(t.value), total, fmt);
-      },
-    },
-    xAxis: { type: 'value', show: false },
-    yAxis: {
-      type: 'category',
-      inverse: true,
-      data: labels,
-      axisTick: { show: false },
-      axisLabel: { formatter: (v: string) => truncateLabel(v) },
-    },
-    series: [
-      {
-        type: 'bar',
-        barMaxWidth: 20,
-        label: {
-          show: true,
-          position: 'right',
-          formatter: (p: { value?: unknown }) => fmt.count(Number(p.value)),
-        },
-        data: counts.map((c) => ({ value: c.count, itemStyle: { color: colors(c.key) } })),
-      },
-    ],
-  };
+  return counts.map((c) => {
+    const label = fmt.label(c.key);
+    const share = formatShare(c.count, total);
+    const value = fmt.count(c.count);
+    return {
+      key: c.key,
+      label,
+      title: labelled(label, share === '' ? value : `${value} (${share})`),
+      value: c.count,
+      valueText: value,
+      color: barColor(c.key),
+      muted: c.key === 'other',
+    };
+  });
 }
 
 /** Status codes in ascending order, one bar each, colored (and stacked in a legend) by class. */

@@ -7,6 +7,7 @@ import { useHttpStats, useHttpTransactions } from '../../api/httpQueries';
 import type { HttpTransactionSummary } from '../../api/types/HttpTransactionSummary';
 import type { ChartEvents } from '../../charts/EChartsRenderer';
 import { Badge } from '../../components/Badge';
+import { BarList } from '../../components/BarList';
 import { Card } from '../../components/Card';
 import { Chart } from '../../components/Chart';
 import { Endpoint } from '../../components/Endpoint';
@@ -17,7 +18,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { formatBytes, formatCount } from '../../lib/format';
-import { barColor, barsHeight, barsOption, type ChartFormat, PART_HEIGHT, statusOption } from './charts';
+import { type ChartFormat, countBars, PART_HEIGHT, statusOption } from './charts';
 import { ExpandableList } from './ExpandableList';
 import { displayTarget } from './format';
 import { RankedList } from './RankedList';
@@ -238,16 +239,13 @@ function ContentTypesChart({ stats, loading, error, fmt }: ChartCardProps) {
     const other = stats?.content_types_other ?? 0;
     return other > 0 ? [...top, { key: 'other', count: other }] : top;
   }, [stats]);
-  const option = useMemo(() => barsOption(items, barColor, fmt), [items, fmt]);
   return (
     <Card title={t('views.http.contentTypes')}>
-      <Chart
-        option={option}
-        height={barsHeight(items.length)}
+      <BarList
         ariaLabel={t('views.http.contentTypesLabel')}
+        items={countBars(items, fmt)}
         loading={loading}
         error={error ? t('views.http.loadError') : null}
-        empty={!loading && !error && items.length === 0}
         emptyText={t('views.http.noContentTypes')}
       />
     </Card>

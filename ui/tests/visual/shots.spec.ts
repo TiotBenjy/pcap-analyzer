@@ -495,7 +495,7 @@ for (const lang of LANGS) {
             for (const secret of DEMO_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
           }
           if (view === 'open-ports' && !path.includes(NO_SESSION)) {
-            await expect(page.getByRole('img', { name: pattern(D.views.openPorts.chart.label) })).toBeVisible();
+            await expect(page.getByRole('list', { name: D.views.openPorts.chart.label })).toBeVisible();
             await expect(
               page
                 .getByRole('table', { name: D.views.openPorts.table.label })
@@ -515,6 +515,7 @@ for (const lang of LANGS) {
             await expect(page.getByTestId('tls-summary')).toBeVisible();
             await expect(page.getByRole('img', { name: pattern(D.views.tls.charts.versionsLabel) })).toBeVisible();
             await expect(page.getByRole('table', { name: D.views.tls.table.label })).toBeVisible();
+            await expect(page.getByRole('list', { name: D.views.tls.charts.suitesLabel })).toBeVisible();
           }
           if ((view === 'http' || view === 'http-headers') && !path.includes(NO_SESSION)) {
             const list = filled(view === 'http' ? D.views.http.listLabel : D.views.httpHeaders.listLabel);
@@ -533,7 +534,7 @@ for (const lang of LANGS) {
             await page.waitForLoadState('networkidle');
           }
           if (view === 'dns' && !path.includes(NO_SESSION)) {
-            await expect(page.getByRole('img', { name: D.views.dns.charts.resultsLabel })).toBeVisible();
+            await expect(page.getByRole('list', { name: D.views.dns.charts.resultsLabel })).toBeVisible();
             const pairs = page.getByRole('table', { name: D.views.dns.table.label });
             await expect(pairs.or(page.getByRole('list', { name: D.views.dns.table.label }))).toBeVisible();
             // The first pair expanded: its queries are laid out and checked too.

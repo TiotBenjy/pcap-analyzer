@@ -1,12 +1,10 @@
 import type { EChartsCoreOption } from 'echarts/core';
 import type { TlsStats } from '../../api/types/TlsStats';
 import { CATEGORICAL, OTHER_COLOR, SEQUENTIAL, SEQUENTIAL_DARK } from '../../charts/palette';
-import { suiteLabel, truncateMiddle } from './tlsFormat';
+import { escapeHtml, truncateMiddle } from '../../charts/text';
+import { suiteLabel } from './tlsFormat';
 
 // ECharts options of the TLS view (pure functions, unit tested).
-
-/** Amber of the weak-suite marker (semantic warning color). */
-export const WEAK_COLOR = '#d97706';
 
 /** One color per version, fixed everywhere (TLS 1.3 takes the TLS hue of the palette). */
 export function versionColor(v: number | null): string {
@@ -40,11 +38,6 @@ export interface TlsChartFormat {
   weak: (w: string) => string;
   /** Localized count (bar value labels). */
   count: (n: number) => string;
-}
-
-/** Plain text for tooltips (names come from the capture). */
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 /** Donut item names that are not versions (ECharts drops legend entries with an empty name). */
@@ -96,60 +89,9 @@ export function suiteRowLabel(s: { suite: number | null; name: string | null }, 
   return s.suite === null ? other : suiteLabel(s.name, s.suite);
 }
 
-/**
- * Horizontal bars of the top suites: weak ones get an amber dot before their label (cut in the
- * middle, full name in the tooltip), the count is written at the end of each bar (no value axis,
- * so that narrow cards keep a useful plot area). Label colors come from the chart theme.
- */
-export function buildSuitesOption(stats: TlsStats, fmt: TlsChartFormat): EChartsCoreOption {
-  const total = stats.suites.reduce((n, s) => n + s.count, 0);
-  // Category axes draw from the bottom: reverse so that the most frequent is on top.
-  const rows = [...stats.suites].reverse();
-  return {
-    // The right margin holds the value labels (series labels are outside `containLabel`).
-    grid: { left: 4, right: 56, top: 4, bottom: 4, containLabel: true },
-    tooltip: {
-      trigger: 'item',
-      formatter: (p: { dataIndex: number }) => {
-        const s = rows[p.dataIndex];
-        if (s === undefined) return '';
-        const weak = s.weak === null ? '' : `<br/>${escapeHtml(fmt.weak(s.weak))}`;
-        return `${escapeHtml(s.suite === null ? fmt.other : (s.name ?? suiteLabel(null, s.suite)))}<br/>${escapeHtml(fmt.share(s.count, total))}${weak}`;
-      },
-    },
-    xAxis: { type: 'value', show: false },
-    yAxis: {
-      type: 'category',
-      data: rows.map((s) => suiteRowLabel(s, fmt.other)),
-      axisTick: { show: false },
-      axisLabel: {
-        formatter: (value: string, index: number) => {
-          const weak = rows[index]?.weak !== null && rows[index]?.weak !== undefined;
-          return `{${weak ? 'w' : 's'}|}{n|${truncateMiddle(value)}}`;
-        },
-        rich: {
-          w: { width: 8, height: 8, borderRadius: 4, backgroundColor: WEAK_COLOR },
-          s: { width: 8, height: 8 },
-          n: { padding: [0, 0, 0, 6] },
-        },
-      },
-    },
-    series: [
-      {
-        type: 'bar',
-        barMaxWidth: 20,
-        label: {
-          show: true,
-          position: 'right',
-          formatter: (p: { value: number }) => fmt.count(p.value),
-        },
-        data: rows.map((s) => ({
-          value: s.count,
-          itemStyle: { color: s.suite === null ? OTHER_COLOR : CATEGORICAL[1] },
-        })),
-      },
-    ],
-  };
+/** Full name of a suite row, for tooltips. */
+export function suiteFullName(s: { suite: number | null; name: string | null }, other: string): string {
+  return s.suite === null ? other : (s.name ?? suiteLabel(null, s.suite));
 }
 
 /** Height of the heatmap for `rows` suites (plus the column labels). */
@@ -190,7 +132,7 @@ export function buildMatrixOption(stats: TlsStats, fmt: TlsChartFormat, dark: bo
       formatter: (p: { value: [number, number, number] }) => {
         const [x, y, count] = p.value;
         const s = rows[y];
-        const name = s === undefined ? '' : s.suite === null ? fmt.other : (s.name ?? suiteLabel(null, s.suite));
+        const name = s === undefined ? '' : suiteFullName(s, fmt.other);
         const v = versions[x] ?? null;
         return `${escapeHtml(v === null ? fmt.other : fmt.version(v))}<br/>${escapeHtml(name)}<br/>${escapeHtml(fmt.sessions(count))}`;
       },

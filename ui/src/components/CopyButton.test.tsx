@@ -49,6 +49,22 @@ describe('CopyButton', () => {
     expect(onRow).not.toHaveBeenCalled();
   });
 
+  it('does not claim "Copied" when the copy fails', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    // The selection fallback fails too.
+    Object.defineProperty(document, 'execCommand', { value: () => false, configurable: true });
+    render(<CopyButton value="secret" name="Token" />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy Token' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(writeText).toHaveBeenCalledWith('secret');
+    expect(screen.queryByRole('button', { name: 'Copied' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Copy Token' })).not.toHaveClass('text-success');
+  });
+
   it('is labelled in French', async () => {
     await act(async () => {
       await i18n.changeLanguage('fr');

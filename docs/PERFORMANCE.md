@@ -344,6 +344,18 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
 - Hors périmètre (P5.2b) : Connections, Open Ports, Servers et Network sous plage (regroupement des flux :
   0,3 s à 24 h, 1,7 s à 6 jours pour les seules conversations, mesuré dans la spec).
 
+## SSDP (P5.5, 2026-11-22, `feat/ssdp`)
+
+- Requêtes de la vue sur 500 000 messages de 2 000 appareils (`ssdp::tests::timings`, ignoré, mode
+  release, store seul) : `/ssdp/stats` 182 ms sur la session, 8 ms sur 1 h, 194 ms sur la moitié ; page de
+  messages 2 à 13 ms ; filtre de type avec recherche 72 ms au pire ; page d'appareils 11 ms. Chaque agrégat
+  lit un index couvrant terminé par `ts`, le coût est donc linéaire en nombre de messages de la plage :
+  environ 3 à 4 s pour `/ssdp/stats` sur 10 M messages SSDP, ce qu'une capture d'attaque par réflexion
+  SSDP peut contenir (au-delà des 300 ms ; agrégats précalculés à prévoir si le cas se présente).
+- Stockage : un enregistrement par datagramme avec son texte brut borné à 2 048 octets, soit au plus
+  environ 2 Kio par message sur disque, plus les index (300 à 400 octets de brut pour un message courant) ;
+  10 M messages de taille maximale pèseraient environ 20 Go.
+
 ## Suivis restants (chiffres de la dernière mesure)
 
 1. **Fin d'import : 44,5 s**, publiée mais pas réduite : index secondaires 18,5 s (environ 90 index, un

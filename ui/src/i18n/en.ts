@@ -5,6 +5,7 @@ import { exportsEn } from './exports';
 import { geoipPromptEn } from './geoipPrompt';
 import { onlineEn } from './online';
 import { picturesEn } from './pictures';
+import { ssdpEn } from './ssdp';
 import { tlsEn } from './tls';
 import { timeRangeEn } from './timeRange';
 import { updatesEn } from './updates';
@@ -990,6 +991,7 @@ export const en = {
     geoipPrompt: geoipPromptEn,
     online: onlineEn,
     pictures: picturesEn,
+    ssdp: ssdpEn,
     tls: tlsEn,
     updates: updatesEn,
   },

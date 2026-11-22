@@ -4,6 +4,7 @@ import { exportsFr } from './exports';
 import { geoipPromptFr } from './geoipPrompt';
 import { onlineFr } from './online';
 import { picturesFr } from './pictures';
+import { ssdpFr } from './ssdp';
 import { tlsFr } from './tls';
 import { timeRangeFr } from './timeRange';
 import { updatesFr } from './updates';
@@ -990,6 +991,7 @@ export const fr: Dictionary = {
     geoipPrompt: geoipPromptFr,
     online: onlineFr,
     pictures: picturesFr,
+    ssdp: ssdpFr,
     tls: tlsFr,
     updates: updatesFr,
   },

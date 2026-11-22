@@ -11,5 +11,6 @@ export const TIME_FILTER_VIEWS: ReadonlySet<NavId> = new Set<NavId>([
   'overview',
   'pictures',
   'smb',
+  'ssdp',
   'tls',
 ]);

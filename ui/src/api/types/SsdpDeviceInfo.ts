@@ -2,7 +2,7 @@
 import type { Endpoint } from "./Endpoint";
 
 /**
- * One UPnP device (USN identifier at one address), folded over the session.
+ * One `UPnP` device (USN identifier at one address), folded over the session.
  */
 export type SsdpDeviceInfo = { uuid: string, 
 /**

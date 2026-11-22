@@ -23,10 +23,15 @@ passerelles d'un réseau local, et les clients qui les découvrent.
 
 - Datagrammes UDP dont le port source **ou** destination est 1900 (multicast `239.255.255.250`,
   `ff02::c`, `ff05::c`, ou unicast pour les réponses). Une réponse émise depuis un autre port que 1900
-  vers un port éphémère n'est pas reconnue (rare ; documenté comme limite).
+  vers un port éphémère n'est pas reconnue (rare ; documenté comme limite). À l'inverse, tout autre
+  trafic UDP qui utilise le port 1900 (port éphémère tiré au hasard, sonde, réflexion) est enregistré
+  comme message `invalid` : c'est voulu (un balayage du port SSDP se voit), mais ces messages comptent
+  dans le total.
 - Parseur `ssdp::parser` (pur, sans I/O, fuzzé) : HTTPU (HTTP/1.1 sur UDP) lu avec `httparse`, en
   requête puis en réponse, en tolérant les écarts fréquents du terrain : fin de lignes en LF seul,
-  dernière ligne vide absente (datagramme tronqué), espaces après le nom d'en-tête, lignes d'en-tête
+  dernière ligne vide absente (datagramme tronqué), espaces avant les deux-points d'un nom d'en-tête
+  (`USN : ...`, dans les réponses par `httparse`, dans les requêtes par une réécriture préalable de la
+  tête), lignes d'en-tête
   invalides ignorées. Au plus 64 en-têtes ; au-delà, ou si la première ligne n'est pas HTTP, le
   message est `invalid`.
 - Types de message (`kind`) :
@@ -37,7 +42,8 @@ passerelles d'un réseau local, et les clients qui les découvrent.
   - `invalid` : tout autre contenu (autre méthode, binaire, première ligne illisible).
 - Champs extraits (chacun borné à 512 octets, texte nettoyé) : cible `NT` (notify) ou `ST` (search,
   response) dans `target`, `USN`, identifiant d'appareil `uuid` (préfixe `uuid:...` de l'USN, en
-  minuscules, sinon du `NT`), `SERVER`, `USER-AGENT`, `LOCATION`, `max-age` de `CACHE-CONTROL`, `MX`.
+  minuscules, sinon du `NT` d'un NOTIFY ; jamais du `ST` d'un M-SEARCH, qui désigne l'appareil cherché
+  et non l'émetteur), `SERVER`, `USER-AGENT`, `LOCATION`, `max-age` de `CACHE-CONTROL`, `MX`.
 - Message brut : les 2 048 premiers octets du datagramme, décodés en UTF-8 avec remplacement, fins de
   ligne normalisées en LF, caractères de contrôle autres que tabulation et LF remplacés par U+FFFD ;
   drapeau `raw_truncated` et taille d'origine `size`. Jamais interprété : l'UI l'affiche comme texte.
@@ -50,14 +56,16 @@ passerelles d'un réseau local, et les clients qui les découvrent.
   `status`, `target`, `usn`, `uuid`, `server`, `user_agent`, `location`, `max_age`, `mx`, `size`,
   `raw`, `raw_truncated`, et `software` pour le classement des logiciels).
 - `ssdp_devices` : appareils repliés par (`uuid`, adresse émettrice), écrits par le même upsert que le
-  message : compteurs `message_count`, `alive_count`, `byebye_count`, `response_count`, `first_ts`,
+  message pour les NOTIFY et les réponses (jamais pour un M-SEARCH) : compteurs `message_count`, `alive_count`, `byebye_count`, `response_count`, `first_ts`,
   `last_ts`, et les dernières valeurs non vides de `SERVER`, `LOCATION` et du type d'appareil
   (`urn:...:device:...` vu en `NT` / `ST`). La règle de fusion est commutative (compteurs additifs,
-  min / max des horodatages, valeur la plus récente gagnante, départage par la valeur) : le résultat ne
+  min / max des horodatages, valeur non vide la plus récente gagnante, une valeur vide perdant toujours,
+  départage par la valeur) : le résultat ne
   dépend ni de l'ordre ni du nombre de shards. Un appareil qui change d'adresse donne deux lignes.
 - Index (différés pendant l'import, ADR-023) : `(ts)` pour la liste, `(kind, ts)` et
   `(kind, nts, ts)` pour le filtre de type et les compteurs, `(target, ts)`, `(software, ts)`
-  (colonne `software` = `SERVER`, sinon `USER-AGENT`), `(src_ip, ts)` pour les classements, `(uuid, src_ip, ts)` et `(uuid, src_ip, target)` pour le détail
+  (colonne `software` = `SERVER`, sinon `USER-AGENT`), `(src_ip, ts)` pour les classements,
+  `(uuid, src_ip, ts)` et `(uuid, src_ip, target)` pour le détail
   d'un appareil ; `ssdp_devices (message_count)` pour l'ordre de la liste et `(first_ts, last_ts)` pour
   la plage.
 

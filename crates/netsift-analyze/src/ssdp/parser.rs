@@ -59,7 +59,8 @@ pub struct SsdpMessage {
     /// `NT` of a notification, `ST` of a search or response.
     pub target: Option<String>,
     pub usn: Option<String>,
-    /// Device identifier (lower case, without `uuid:`) from the USN, else from a `uuid:` target.
+    /// Device identifier (lower case, without `uuid:`) from the USN, else from a `uuid:` `NT` of a
+    /// notification (never from the `ST` of a search).
     pub uuid: Option<String>,
     /// `SERVER` header (notification, response).
     pub server: Option<String>,
@@ -184,11 +185,13 @@ pub fn parse(payload: &[u8]) -> SsdpMessage {
         SsdpKind::Notify => nt,
         _ => st,
     };
-    msg.uuid = msg
-        .usn
-        .as_deref()
-        .and_then(uuid_of)
-        .or_else(|| msg.target.as_deref().and_then(uuid_of));
+    // The device of a message is in its USN; a notification for `NT: uuid:...` names it too. A
+    // search for `ST: uuid:...` names the device looked for, not the sender: no device.
+    msg.uuid = msg.usn.as_deref().and_then(uuid_of).or_else(|| {
+        (msg.kind == SsdpKind::Notify)
+            .then(|| msg.target.as_deref().and_then(uuid_of))
+            .flatten()
+    });
     msg
 }
 
@@ -197,6 +200,14 @@ pub fn parse(payload: &[u8]) -> SsdpMessage {
 /// empty line. `None` when it is not HTTP.
 fn parse_head(data: &[u8]) -> Option<(Head, Vec<OwnedHeader>)> {
     let is_response = data.starts_with(b"HTTP/");
+    // `httparse` accepts spaces after a header name in responses only: requests are rewritten.
+    let normalized;
+    let data = if is_response {
+        data
+    } else {
+        normalized = strip_spaces_before_colons(data);
+        &normalized
+    };
     match try_head(data, is_response) {
         Attempt::Done(head, headers) => Some((head, headers)),
         Attempt::Invalid => None,
@@ -211,6 +222,33 @@ fn parse_head(data: &[u8]) -> Option<(Head, Vec<OwnedHeader>)> {
             }
         }
     }
+}
+
+/// Copy of a request head without the spaces and tabs between a header name and its colon
+/// (`USN : uuid:...`, sent by some devices). The request line is kept as is.
+fn strip_spaces_before_colons(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    for (i, line) in data.split_inclusive(|b| *b == b'\n').enumerate() {
+        let colon = line.iter().position(|b| *b == b':');
+        let Some(colon) = colon.filter(|_| i > 0) else {
+            out.extend_from_slice(line);
+            continue;
+        };
+        let (name, rest) = line.split_at(colon);
+        let trimmed = name.trim_ascii_end();
+        // Only a token followed by blanks: anything else is left for httparse to judge.
+        if trimmed.len() < name.len()
+            && !trimmed.is_empty()
+            && !trimmed.contains(&b' ')
+            && !trimmed.contains(&b'\t')
+        {
+            out.extend_from_slice(trimmed);
+        } else {
+            out.extend_from_slice(name);
+        }
+        out.extend_from_slice(rest);
+    }
+    out
 }
 
 enum Attempt {

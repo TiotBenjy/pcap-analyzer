@@ -10,6 +10,7 @@
 //! | 0200-0299 | http    |   | 0700-0799 | objects |
 //! | 0300-0399 | tls     |   | 0800-0899 | servers |
 //! | 0400-0499 | flows   |   | 0900-0999 | network |
+//! | 1200-1299 | ssdp    |   |           |         |
 //!
 //! To add a migration: create the SQL file, then add **one line** to [`SESSION_MIGRATIONS`]
 //! at its numeric position. Never edit or renumber a migration that has been merged into

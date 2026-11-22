@@ -73,15 +73,18 @@ pub struct SsdpRow {
     pub device_type: Option<String>,
 }
 
-/// `iif` choosing the incoming value of `col` when it is non-empty and newer than the stored one
-/// (its own timestamp column `col_ts`, ties broken by the value): order independent.
-macro_rules! latest {
+/// Condition under which the incoming value of `col` replaces the stored one: it is non-empty,
+/// and the stored one is empty, or older (its own timestamp column `col_ts`), or of the same
+/// time but smaller. An empty stored value always loses, whatever its timestamp: the result does
+/// not depend on the order of arrival.
+macro_rules! newer {
     ($col:literal) => {
         concat!(
+            "excluded.",
             $col,
-            " = iif(excluded.",
+            " <> '' AND (ssdp_devices.",
             $col,
-            " <> '' AND (excluded.",
+            " = '' OR excluded.",
             $col,
             "_ts > ssdp_devices.",
             $col,
@@ -93,27 +96,27 @@ macro_rules! latest {
             $col,
             " > ssdp_devices.",
             $col,
-            ")), excluded.",
+            "))"
+        )
+    };
+}
+
+/// `SET` of a text value and of its timestamp, by [`newer`].
+macro_rules! latest {
+    ($col:literal) => {
+        concat!(
+            $col,
+            " = iif(",
+            newer!($col),
+            ", excluded.",
             $col,
             ", ssdp_devices.",
             $col,
             "), ",
             $col,
-            "_ts = iif(excluded.",
-            $col,
-            " <> '' AND (excluded.",
-            $col,
-            "_ts > ssdp_devices.",
-            $col,
-            "_ts OR (excluded.",
-            $col,
-            "_ts = ssdp_devices.",
-            $col,
-            "_ts AND excluded.",
-            $col,
-            " > ssdp_devices.",
-            $col,
-            ")), excluded.",
+            "_ts = iif(",
+            newer!($col),
+            ", excluded.",
             $col,
             "_ts, ssdp_devices.",
             $col,
@@ -153,7 +156,8 @@ impl SsdpRow {
             self.raw,
             self.raw_truncated,
         ])?;
-        let Some(uuid) = &self.uuid else {
+        // Devices are those that announce (NOTIFY) or answer: a search names what it looks for.
+        let Some(uuid) = self.uuid.as_ref().filter(|_| self.kind != "search") else {
             return Ok(());
         };
         let text = |v: &Option<String>| v.clone().unwrap_or_default();

@@ -289,7 +289,8 @@ impl Scenario {
 /// 1. `ssdp:alive` of the gateway, TV and printer (IPv4) and of the NAS (IPv6, `ff02::c`);
 /// 2. the workstation searches `ssdp:all` and the gateway, TV and printer answer with their
 ///    device type; then it searches the DIAL service, which the TV answers;
-/// 3. the workstation searches over IPv6, the NAS answers;
+/// 3. the workstation searches the TV by its UUID (`ST: uuid:...`, no answer), then searches over
+///    IPv6 and the NAS answers;
 /// 4. `ssdp:byebye` of the printer;
 /// 5. malformed datagrams: binary bytes, and a `NOTIFY` with a 3000-byte `SERVER` header.
 pub fn ssdp_showcase(sc: &mut Scenario) -> ShowcaseCounts {
@@ -317,6 +318,12 @@ pub fn ssdp_showcase(sc: &mut Scenario) -> ShowcaseCounts {
     sc.ssdp_response(&tv, ws, port, dial);
     n.search += 1;
     n.response += 1;
+
+    // A search for one known device (`ST: uuid:...`): names the device looked for, not the sender.
+    let port = sc.ephemeral_port();
+    sc.advance(10 * NS_PER_MS);
+    sc.ssdp_search(ws, port, &format!("uuid:{}", tv.uuid));
+    n.search += 1;
 
     let ws6 = hosts::workstation_v6();
     let port = sc.ephemeral_port();

@@ -129,6 +129,50 @@ fn devices_fold_per_uuid_and_address() {
 }
 
 #[test]
+fn searches_never_create_devices() {
+    let conn = db();
+    // A search carrying an identifier (USN or a `uuid:` target) names what it looks for.
+    SsdpRow {
+        uuid: Some("tv".to_owned()),
+        target: Some("uuid:tv".to_owned()),
+        ..search(10, 10, "uuid:tv")
+    }
+    .insert(&conn)
+    .unwrap();
+    assert_eq!(count_devices(&conn, None, None).unwrap(), 0);
+    assert_eq!(
+        count_messages(&conn, &SsdpMessageFilter::default()).unwrap(),
+        1
+    );
+}
+
+#[test]
+fn an_empty_value_never_beats_a_later_arrival() {
+    // Negative times (before 1970) are valid packet times: the empty value of the first message
+    // must not win over them because of its placeholder timestamp.
+    let rows = [
+        SsdpRow {
+            server: None,
+            location: None,
+            ..notify(10, 1, "gw", IGD, "alive")
+        },
+        notify(-5, 1, "gw", "upnp:rootdevice", "alive"),
+    ];
+    for order in [[0, 1], [1, 0]] {
+        let conn = db();
+        for i in order {
+            rows[i].insert(&conn).unwrap();
+        }
+        let d = devices_page(&conn, None, None, &PageRequest::first(10))
+            .unwrap()
+            .items;
+        assert_eq!(d[0].server, "Server/-5", "{order:?}");
+        assert_eq!(d[0].location, "http://192.168.1.1/d-5.xml", "{order:?}");
+        assert_eq!(d[0].device_type, IGD, "{order:?}");
+    }
+}
+
+#[test]
 fn device_fold_is_order_independent() {
     let rows = [
         notify(10, 1, "gw", IGD, "alive"),

@@ -72,6 +72,26 @@ fn uuid_target_gives_the_device_and_lower_case() {
 }
 
 #[test]
+fn a_search_for_a_uuid_names_no_device() {
+    let m =
+        parse(b"M-SEARCH * HTTP/1.1\r\nMAN: \"ssdp:discover\"\r\nST: uuid:ABC\r\nMX: 1\r\n\r\n");
+    assert_eq!(m.kind, SsdpKind::Search);
+    assert_eq!(m.target.as_deref(), Some("uuid:ABC"));
+    assert_eq!(m.uuid, None);
+}
+
+#[test]
+fn spaces_before_colons_are_tolerated_in_requests() {
+    let m = parse(b"NOTIFY * HTTP/1.1\r\nNT : upnp:rootdevice\r\nNTS\t: ssdp:alive\r\nUSN  : uuid:aa::upnp:rootdevice\r\n\r\n");
+    assert_eq!(m.kind, SsdpKind::Notify);
+    assert_eq!(m.target.as_deref(), Some("upnp:rootdevice"));
+    assert_eq!(m.nts.as_deref(), Some("alive"));
+    assert_eq!(m.uuid.as_deref(), Some("aa"));
+    let s = parse(b"M-SEARCH * HTTP/1.1\r\nST : ssdp:all\r\nbad name : x\r\n\r\n");
+    assert_eq!(s.target.as_deref(), Some("ssdp:all"));
+}
+
+#[test]
 fn field_quirks_are_tolerated() {
     // LF-only line ends, lower-case names, spaces after a name (response), an invalid header
     // line, no final empty line, quoted max-age among other directives.

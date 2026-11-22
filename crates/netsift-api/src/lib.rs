@@ -20,6 +20,7 @@ mod ethernet;
 mod exports;
 mod extract;
 mod fs;
+mod ftp;
 mod geoip;
 mod guard;
 mod http;
@@ -262,6 +263,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(ethernet::routes())
         .merge(exports::routes())
         .merge(fs::routes())
+        .merge(ftp::routes())
         .merge(geoip::routes())
         .merge(http::routes())
         .merge(imports::routes())

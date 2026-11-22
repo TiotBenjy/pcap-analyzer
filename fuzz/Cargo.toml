@@ -134,6 +134,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "telnet"
+path = "fuzz_targets/telnet.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "thumbs"
 path = "fuzz_targets/thumbs.rs"
 test = false

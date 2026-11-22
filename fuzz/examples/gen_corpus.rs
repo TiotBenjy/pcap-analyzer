@@ -24,7 +24,7 @@ use netsift_fixtures::proto::{smb, x509};
 use netsift_fixtures::scenario::Scenario;
 use netsift_fixtures::scenarios::{self, Kind};
 use netsift_fixtures::writer::{Encoding, encode};
-use netsift_fixtures::{Packet, credentials, http_mix, images, servers, ssdp};
+use netsift_fixtures::{Packet, credentials, http_mix, images, servers, ssdp, telnet};
 use netsift_fuzz::{Conversation, conversation_head, push_frame, push_segment};
 use netsift_geo::test_util::MmdbBuilder;
 
@@ -126,6 +126,7 @@ fn sources() -> Vec<(String, Vec<Packet>)> {
             ssdp::ssdp_showcase(sc);
         }),
     ));
+    out.push(("telnet".into(), build(&telnet::telnet_showcase)));
     out.push(("httpmix".into(), build(&http_mix::round)));
     out.push(("images".into(), build(&images::gallery)));
     out.push(("tlsshow".into(), build(&scenarios::tls_showcase)));
@@ -312,6 +313,13 @@ fn from_scenario(out: &mut Out, name: &str, packets: &[Packet]) -> Result<(), Bo
                 let mut d = vec![sel];
                 d.extend_from_slice(&segs);
                 out.put("lineproto", name, &d)?;
+            }
+            23 | 2323 => {
+                for sel in [u8::from(sport == 2323), 0x80] {
+                    let mut d = vec![sel];
+                    d.extend_from_slice(&segs);
+                    out.put("telnet", name, &d)?;
+                }
             }
             443 | 8443 => {
                 let mut stream = vec![1u8];

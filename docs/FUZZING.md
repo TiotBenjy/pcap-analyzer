@@ -63,6 +63,7 @@ par l'application) : l'API publique n'est pas élargie.
 | `snmp` | datagramme | communautés SNMP v1 / v2c (`snmp-parser`) |
 | `ldap` | conversation, port 389 | `BerStream` + `ldap-parser` (simple bind) via l'analyseur credentials |
 | `lineproto` | port + conversation | `LineFlow` : FTP, SMTP AUTH, POP3, IMAP via l'analyseur credentials ; sur le port 21, analyseur `ftp` et parseurs `netsift_dissect::ftp` |
+| `telnet` | sélecteur + conversation | décodeur `IAC` pur et sous-négociations (`netsift_dissect::telnet`), ou analyseur `telnet` (transcription, échos, identifiants), ports 23 / 2323 |
 | `mmdb` | fichier `.mmdb` ou `.mmdb.gz` | `netsift_geo` (décodage borné, décodeur `maxminddb`, recherches) |
 | `thumbs` | fichier image | `netsift_engine::thumbs::render` (PNG, JPEG, GIF, WebP, BMP, ICO, limites de décodage) |
 | `analyzers` | protocole + ports + conversation | tous les analyseurs derrière une table de flux, trames IPv4 forgées (handshake, numéros de séquence cohérents, pertes), puis traduction en lignes du store |
@@ -83,7 +84,7 @@ Formats d'entrée (`fuzz/src/lib.rs`, partagés avec le générateur de graines)
 ## Graines
 
 `./x.sh fuzz corpus` (`fuzz/examples/gen_corpus.rs`) rejoue les scénarios de `netsift-fixtures`
-(démo, DNS, HTTP, TLS, NBNS, SMB, SNMP, FTP, vitrines credentials / servers / TLS, mélange HTTP,
+(démo, DNS, HTTP, TLS, NBNS, SMB, SNMP, FTP, vitrines credentials / servers / TLS / Telnet, mélange HTTP,
 galerie d'images, fragmentation) dans une table de flux et découpe ce qu'elle rapporte en entrées de
 chaque cible : fichiers pcap / pcapng / gzip / zstd / LZ4, trames, charges UDP, conversations TCP par port,
 messages NTLMSSP, en-têtes HTTP d'authentification, certificats, bases mmdb (écrites par

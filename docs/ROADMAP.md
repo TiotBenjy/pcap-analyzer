@@ -557,7 +557,11 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       pour `/stats` sur 10 M messages, environ 2 Kio stockés par message) ; réponses depuis un port autre que 1900
       non vues ; ordre des appareils à égalité selon `rowid` ; détail d'appareil coupé par la hauteur de
       `ExpandableList` à 375 px ; graphe facultatif.
-- [ ] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
+- [~] **P5.20** `refactor/view-shared-parts` — Suivis transverses de la vague 5.A, avant les onglets SIP, FTP et
+      Telnet : composant commun d'en-tête de colonne repliée sous plage (en-tête court + ligne « Session entière »)
+      appliqué à SMB, ARP, Ethernet, SSDP et aux autres usages ; `ExpandableList`, `FilterChip` et `useDebounced`
+      (deux copies) remontés dans `ui/src/components/` ; `MacAddress` partagé entre ARP et Ethernet.
+- [~] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
       statut), REGISTER, user-agents (scanners comme `friendly-scanner`), messages bruts dépliables, flux RTP
       associés sans lecture audio, identifiants SIP Digest vers Credentials.
 - [x] **P5.7** `feat/compressed-captures` — Lecture `.zst` et `.lz4` (`netsift-capture`), comme `.gz` ; en
@@ -574,10 +578,10 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 
 ### Vague 5.B — Protocoles à flux et fichiers (parallèle, après 5.A)
 
-- [ ] **P5.8** `feat/ftp` — Référence `private/ftp.png`. Sessions de contrôle en transcription (commandes, réponses,
+- [~] **P5.8** `feat/ftp` — Référence `private/ftp.png`. Sessions de contrôle en transcription (commandes, réponses,
       arguments mis en évidence, `PASS` masqué par défaut comme dans Credentials), canal de données associé
       (PORT/PASV/EPRT/EPSV), fichiers transférés extraits dans `objects` (taille, sens, nom).
-- [ ] **P5.9** `feat/telnet` — Référence `private/telnet.png`. Sessions en transcription (négociation d'options retirée,
+- [~] **P5.9** `feat/telnet` — Référence `private/telnet.png`. Sessions en transcription (négociation d'options retirée,
       échos fusionnés, bornée), identifiants login/password vers Credentials (masqués).
 - [ ] **P5.10** `feat/wifi` — Références `private/wifi-1-handshakes.png` à `private/wifi-5-probe-requests.png`. Onglets : handshakes WPA (export hc22000,
       format actuel d'hashcat, au lieu de `.hccapx`), points d'accès (BSSID, SSID, canal, chiffrement,

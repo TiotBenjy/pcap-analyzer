@@ -26,7 +26,7 @@ use crate::session::PAGE_SIZE;
 
 /// Tables copied from the session schema, in creation order. `meta` is copied too: the readers
 /// check the end-of-import steps there.
-const COPIED: &[&str] = &[
+pub(super) const COPIED: &[&str] = &[
     "meta",
     "hosts",
     "conversations",
@@ -87,7 +87,8 @@ fn overlap_copy(table: &str, wide: bool) -> String {
 
 /// `server_evidence_source` (migration 0801) over the range: point records by their timestamp,
 /// folded rows by overlap; open ports from the range database (with the flows of the range).
-/// A test compares it with the session table over a range covering the session.
+/// Kept in step with the view by `range/equivalence_tests.rs` (`netsift-api`): over a range
+/// covering imported sessions, every table equals that of the session.
 fn server_evidence_sql() -> String {
     let s = ATTACHED;
     format!(
@@ -183,9 +184,18 @@ GROUP BY server_ip"
     )
 }
 
-/// Roles: the servers of the evidence (same sources and conditions as `server_roles_source`).
-const SERVER_ROLES_SQL: &str = "INSERT INTO main.server_roles (role, ip) \
-    SELECT DISTINCT role, ip FROM main.server_evidence";
+/// Roles over the range, under the conditions of `server_roles_source`: the servers of the
+/// evidence, plus every DHCP server of a reply of the range, since that view keeps the relay leg of
+/// a relayed reply that the evidence drops (the relay is a DHCP server in the session roles).
+fn server_roles_sql() -> String {
+    format!(
+        "INSERT INTO main.server_roles (role, ip) \
+         SELECT role, ip FROM main.server_evidence \
+         UNION \
+         SELECT 'dhcp', server_ip FROM {ATTACHED}.dhcp_messages \
+         WHERE op = 2 AND msg_type IN ('offer', 'ack', 'nak') AND ts >= ?98 AND ts < ?99"
+    )
+}
 
 /// Builds the range database of `range` into `target` (a new file). Stops with
 /// [`StoreError::Cancelled`] as soon as `abandoned` returns true (polled by a watcher thread
@@ -327,7 +337,7 @@ fn steps(conn: &Connection, range: TimeRange, abandoned: &dyn Fn() -> bool) -> R
     check("conversations")?;
 
     exec(conn, &server_evidence_sql(), range)?;
-    exec(conn, SERVER_ROLES_SQL, range)?;
+    exec(conn, &server_roles_sql(), range)?;
     crate::servers::rank_servers(conn)?;
     check("servers")?;
 

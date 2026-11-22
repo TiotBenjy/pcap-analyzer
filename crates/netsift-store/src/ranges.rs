@@ -33,6 +33,12 @@ use crate::session::{Session, open_read_only};
 mod build;
 mod fold;
 
+pub use fold::MAX_LABELS;
+
+/// Tables of a range database copied from the session schema (`meta` first): the same names and
+/// columns as in the session, rows of the range.
+pub const RANGE_TABLES: &[&str] = build::COPIED;
+
 /// Range databases kept per session (least recently used evicted).
 pub const KEEP: usize = 4;
 /// Schema name of the session in the connection of a range database.
@@ -45,6 +51,8 @@ const BUILD_VERSION: u32 = 1;
 const EXTENSION: &str = "db";
 /// Suffix of a range database being built.
 const PARTIAL: &str = "partial";
+/// Age past which a partial file is left by a stopped process (a build writes continuously).
+const STALE_PARTIAL: Duration = Duration::from_secs(3600);
 /// How often a build checks whether its requests are gone.
 const POLL: Duration = Duration::from_millis(50);
 /// Attempts of [`RangeCache::open`] when the file it found disappears (evicted meanwhile) or a
@@ -277,15 +285,25 @@ impl RangeCache {
                     Err(e) => return Err(e),
                 }
             }
-            let (flight, builder) = self.join(&file, cancel);
+            let Some((flight, builder)) = self.join(&file, cancel) else {
+                // Published between the check above and the lock: open it.
+                continue;
+            };
             if builder {
+                // Even if the build panics, the waiters are released and the flight removed.
+                let mut guard = BuildGuard {
+                    cache: self,
+                    file: &file,
+                    flight: &flight,
+                    outcome: None,
+                };
                 let result = self.build(&session_db, dir, &file, range, &flight);
-                self.lock_flights().remove(&file);
-                flight.finish(match &result {
+                guard.outcome = Some(match &result {
                     Ok(()) => Outcome::Ready,
                     Err(StoreError::Cancelled) => Outcome::Cancelled,
                     Err(e) => Outcome::Failed(e.to_string()),
                 });
+                drop(guard);
                 result?;
             } else {
                 match flight.wait(cancel) {
@@ -305,17 +323,22 @@ impl RangeCache {
         self.flights.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Registers `cancel` as waiting for the build of `file`: `true` when the caller must build it.
-    fn join(&self, file: &Path, cancel: &CancelFlag) -> (Arc<Flight>, bool) {
+    /// Registers `cancel` as waiting for the build of `file`: `true` when the caller must build it;
+    /// `None` when the file is there (a build published it after the caller looked: the rename
+    /// happens before its flight is removed, both seen under the lock).
+    fn join(&self, file: &Path, cancel: &CancelFlag) -> Option<(Arc<Flight>, bool)> {
         let mut flights = self.lock_flights();
         if let Some(flight) = flights.get(file) {
             flight.lock().waiters.push(cancel.clone());
-            return (Arc::clone(flight), false);
+            return Some((Arc::clone(flight), false));
+        }
+        if file.is_file() {
+            return None;
         }
         let flight = Arc::new(Flight::default());
         flight.lock().waiters.push(cancel.clone());
         flights.insert(file.to_path_buf(), Arc::clone(&flight));
-        (flight, true)
+        Some((flight, true))
     }
 
     fn build(
@@ -329,9 +352,16 @@ impl RangeCache {
         let abandoned = || flight.abandoned();
         let _slot = self.gate.enter(&abandoned)?;
         self.builds.fetch_add(1, Ordering::Relaxed);
-        std::fs::create_dir_all(dir).map_err(|e| StoreError::io(dir, e))?;
+        // Never `create_dir_all`: a session deleted meanwhile must not get its directory back.
+        match std::fs::create_dir(dir) {
+            Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
+                return Err(StoreError::io(dir, e));
+            }
+            _ => {}
+        }
+        // A name of this build only: another process on the same data directory may build the
+        // same range (its partial file is never touched here, except once stale).
         let partial = partial_path(file);
-        remove_if_present(&partial)?;
         let started = std::time::Instant::now();
         match build::build(session_db, &partial, range, &abandoned) {
             Ok(()) => {
@@ -359,11 +389,6 @@ impl RangeCache {
             return;
         };
         let mut ready: Vec<(SystemTime, PathBuf)> = Vec::new();
-        let running: Vec<PathBuf> = self
-            .lock_flights()
-            .keys()
-            .map(|f| partial_path(f))
-            .collect();
         for entry in entries.flatten() {
             let path = entry.path();
             match path.extension().and_then(|e| e.to_str()) {
@@ -374,7 +399,16 @@ impl RangeCache {
                         .unwrap_or(SystemTime::UNIX_EPOCH);
                     ready.push((used, path));
                 }
-                Some(PARTIAL) if !running.contains(&path) => {
+                // Left by a process stopped during a build: only once stale, since a partial file
+                // of a running build (this process or another) is written continuously.
+                Some(PARTIAL)
+                    if entry
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|m| m.elapsed().ok())
+                        .is_some_and(|age| age >= STALE_PARTIAL) =>
+                {
                     let _ = std::fs::remove_file(&path);
                 }
                 _ => {}
@@ -387,15 +421,40 @@ impl RangeCache {
     }
 }
 
-fn partial_path(file: &Path) -> PathBuf {
-    file.with_extension(format!("{EXTENSION}.{PARTIAL}"))
+/// Releases the waiters of a build and removes its flight when the build ends, panic included
+/// ([`Outcome::Failed`] when no outcome was set).
+struct BuildGuard<'a> {
+    cache: &'a RangeCache,
+    file: &'a Path,
+    flight: &'a Flight,
+    outcome: Option<Outcome>,
 }
 
-fn remove_if_present(path: &Path) -> Result<()> {
-    match std::fs::remove_file(path) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(StoreError::io(path, e)),
-        _ => Ok(()),
+impl Drop for BuildGuard<'_> {
+    fn drop(&mut self) {
+        self.cache.lock_flights().remove(self.file);
+        let outcome = self
+            .outcome
+            .take()
+            .unwrap_or_else(|| Outcome::Failed("the build stopped".to_owned()));
+        self.flight.finish(outcome);
     }
+}
+
+/// `<range>.<pid>-<random>.db.partial`: unique per build, never confused with another process's.
+fn partial_path(file: &Path) -> PathBuf {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos()),
+    );
+    file.with_extension(format!(
+        "{}-{:08x}.{EXTENSION}.{PARTIAL}",
+        std::process::id(),
+        h.finish() & 0xffff_ffff
+    ))
 }
 
 /// Marks a range database as just used (its modification time orders the eviction).

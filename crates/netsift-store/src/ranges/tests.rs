@@ -41,6 +41,11 @@ fn env() -> Env {
          INSERT INTO open_ports (ip, transport, port, evidence, first_ts, last_ts) VALUES
              ('10.0.0.2', 17, 53, 'udp_reply', {a}, {c2}),
              ('10.0.0.2', 6, 80, 'syn_ack', {b}, {b});
+         -- A DHCP reply seen on both legs of a relay (10.0.0.7): the evidence drops the relay
+         -- leg, the session roles keep the relay as a DHCP server.
+         INSERT INTO dhcp_messages (ts, src_ip, dst_ip, op, msg_type, xid, client_mac, giaddr)
+         VALUES ({b}, '10.0.0.9', '10.0.0.7', 2, 'ack', 7, 'aa:bb:cc:dd:ee:ff', '10.0.0.7'),
+                ({b} + 1, '10.0.0.7', '10.0.0.30', 2, 'ack', 7, 'aa:bb:cc:dd:ee:ff', '10.0.0.7');
          INSERT INTO meta (key, value) VALUES ('stats.first_ts', '{a}'), ('stats.last_ts', '{e}'),
              ('stats.packets', '19');",
         a = 10 * S,
@@ -396,18 +401,64 @@ fn session_paths_become_read_only_uris() {
 }
 
 #[test]
-fn partial_files_of_dead_builds_are_removed() {
+fn only_stale_partial_files_are_removed() {
     let env = env();
     let cache = RangeCache::new();
     std::fs::create_dir_all(&env.dir).unwrap();
-    std::fs::write(env.dir.join("1_2_00.db.partial"), b"x").unwrap();
+    // Left by a stopped process long ago, and being written by another process now.
+    let stale = env.dir.join("1_2_00.1-0.db.partial");
+    let fresh = env.dir.join("1_2_00.2-0.db.partial");
+    std::fs::write(&stale, b"x").unwrap();
+    std::fs::write(&fresh, b"x").unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&stale)
+        .unwrap()
+        .set_modified(SystemTime::now() - Duration::from_secs(7200))
+        .unwrap();
     cache
         .open(&env.session, &env.dir, range(50, 150), &CancelFlag::new())
         .unwrap();
-    assert_eq!(files(&env.dir).len(), 1);
-    assert!(
-        Path::new(&files(&env.dir)[0])
-            .extension()
-            .is_some_and(|e| e == EXTENSION)
-    );
+    assert!(!stale.exists());
+    assert!(fresh.exists());
+    let ready: Vec<String> = files(&env.dir)
+        .into_iter()
+        .filter(|f| Path::new(f).extension().is_some_and(|e| e == EXTENSION))
+        .collect();
+    assert_eq!(ready.len(), 1);
+}
+
+#[test]
+fn a_deleted_session_does_not_get_its_directory_back() {
+    let env = env();
+    let gone = env.dir.join("deleted-session").join("ranges");
+    let err = RangeCache::new()
+        .open(&env.session, &gone, range(50, 150), &CancelFlag::new())
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Io { .. }), "{err}");
+    assert!(!gone.parent().unwrap().exists());
+}
+
+#[test]
+fn a_build_that_panics_releases_its_waiters() {
+    let env = env();
+    let cache = RangeCache::new();
+    let file = env.dir.join("x.db");
+    let (flight, builder) = cache.join(&file, &CancelFlag::new()).unwrap();
+    assert!(builder);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = BuildGuard {
+            cache: &cache,
+            file: &file,
+            flight: &flight,
+            outcome: None,
+        };
+        panic!("build failure");
+    }));
+    assert!(result.is_err());
+    assert!(cache.lock_flights().is_empty());
+    assert!(matches!(
+        flight.wait(&CancelFlag::new()),
+        Some(Outcome::Failed(_))
+    ));
 }

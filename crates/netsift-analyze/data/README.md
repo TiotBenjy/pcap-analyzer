@@ -39,10 +39,12 @@ l'exécution. Décision et conditions de réutilisation : ADR-031.
   <https://standards.ieee.org/products-programs/regauth/>) : MA-L (préfixes de 24 bits,
   <https://standards-oui.ieee.org/oui/oui.csv>), MA-M (28 bits, `oui28/mam.csv`), MA-S (36 bits,
   `oui36/oui36.csv`) et l'ancien registre IAB (36 bits, `iab/iab.csv`).
-- Conditions : l'IEEE ne revendique aucun droit d'auteur sur ces listes et n'en restreint pas la
-  diffusion ; il recommande seulement de les obtenir chez lui et de les mettre à jour régulièrement
-  (déclaration reprise par le paquet Debian `ieee-data`, fichier `debian/copyright`). Ce sont des faits
-  (préfixe attribué, nom de l'organisation). Aucune base GPL (fichier `manuf` de Wireshark, etc.) n'est utilisée.
+- Conditions : le paquet Debian `ieee-data` (fichier `debian/copyright`) consigne que l'IEEE ne revendique
+  aucun droit d'auteur sur ces listes, n'en restreint pas la diffusion et recommande seulement de les
+  obtenir chez lui et de les mettre à jour régulièrement. Nous n'avons pas trouvé cette déclaration sur le
+  site de l'IEEE lui-même (page de conditions à vérifier par un humain avant la prochaine release,
+  ADR-031). Ce sont des faits (préfixe attribué, nom de l'organisation). Aucune base GPL (fichier `manuf`
+  de Wireshark, etc.) n'est utilisée.
 - Contenu : seuls le préfixe et le nom de l'organisation sont gardés, jamais l'adresse postale ; espaces
   normalisés, caractères de contrôle retirés, noms bornés à 128 caractères, une entrée mal encodée de la
   source (UTF-8 lu comme Latin-1) réparée ; un préfixe attribué deux fois (anciens blocs MA-L) garde les deux

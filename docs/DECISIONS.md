@@ -1186,11 +1186,13 @@ acceptée : la remplacer par une nouvelle qui la référence.
   est sous GPL, et l'application ne fait aucun appel réseau hors des exceptions de `CLAUDE.md`.
 - Décision :
   - **source** : les listes publiques de l'IEEE, seules : MA-L (24 bits), MA-M (28 bits), MA-S (36 bits) et
-    l'ancien registre IAB (36 bits), en CSV sur `standards-oui.ieee.org`. L'IEEE ne revendique aucun droit
-    d'auteur sur ces listes et n'en restreint pas la diffusion ; il recommande seulement de les obtenir
-    chez lui et de les mettre à jour régulièrement (déclaration reprise par le paquet Debian `ieee-data`).
-    Ce sont des faits (préfixe, organisation), sans licence à respecter ; la mention de la source est faite
-    par courtoisie dans `THIRD_PARTY_LICENSES` ;
+    l'ancien registre IAB (36 bits), en CSV sur `standards-oui.ieee.org`. Le paquet Debian `ieee-data`
+    (`debian/copyright`) consigne que l'IEEE ne revendique aucun droit d'auteur sur ces listes, n'en
+    restreint pas la diffusion et recommande seulement de les obtenir chez lui et de les mettre à jour
+    régulièrement ; la page de conditions du site de l'IEEE, inaccessible à un client automatisé lors de
+    l'analyse, est **à vérifier par un humain avant la prochaine release**. Ce sont des faits (préfixe,
+    organisation), sans création protégeable ; la source est citée dans `THIRD_PARTY_LICENSES`, avec la
+    référence à Debian plutôt qu'une déclaration prêtée à l'IEEE ;
   - **contenu** : préfixe et nom de l'organisation seulement, jamais l'adresse postale (environ 59 000
     entrées, 1,8 Mo), dans `crates/netsift-analyze/data/ieee-oui.tsv`, généré par `scripts/gen-ieee-oui.py`
     (Python, bibliothèque standard, comme la table IANA des services) et **commité** : build hors ligne et

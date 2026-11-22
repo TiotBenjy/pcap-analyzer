@@ -25,11 +25,15 @@ IPv6, LLDP, 802.3/LLC...) et VLAN 802.1Q / Q-in-Q.
 - Agrégats bornés par shard, jamais une ligne par trame, vidés en deltas additifs (carte pleine à
   16 384 entrées, une heure de temps paquet, fin) comme `connections` : coût d'écriture proportionnel au
   nombre d'adresses et de paires, pas au nombre de trames (quelques hachages par trame dans le shard).
-- Par adresse : trames et octets émis et reçus, première et dernière trame, piles VLAN (16 au plus) ;
+- Par adresse : trames et octets émis et reçus, première et dernière trame, piles VLAN (les 16 plus
+  petites en ordre texte, `10` < `100.20` < `20`, même règle dans l'analyseur et dans le store : le
+  résultat ne dépend ni du nombre de shards ni des vidages) ;
   constructeur IEEE résolu au vidage (`netsift_analyze::oui`, ADR-031) et classe d'après les bits de
   l'adresse (unicast / multicast / diffusion, administrée localement, groupe connu : multicast IPv4
   `01:00:5e`, IPv6 `33:33`, réservé 802.1 `01:80:c2:00:00:0x`).
-- Par paire orientée (source -> destination) : trames, octets, dates, EtherTypes et piles VLAN (16 au plus).
+- Par paire orientée (source -> destination) : trames, octets, dates, EtherTypes (les 16 plus petits en
+  ordre numérique) et piles VLAN (comme les adresses). Pages départagées par les deux adresses, pas par
+  l'identifiant de ligne.
 - Par EtherType : clé `0x0600-0xffff` (EtherType), `0-255` (DSAP d'un en-tête 802.2 LLC sans EtherType,
   trames 802.3 : spanning tree, NetBIOS...), `-1` (en-tête de liaison tronqué).
 - Par pile VLAN (`10`, `100.20` = étiquette de service 100, client 20) : trames, octets, dates, TPID de
@@ -70,6 +74,18 @@ exacts, mais multiplient les lignes par la durée d'activité (un LAN de 2 000 p
 plus de 5 M lignes, contre 2 000), donc le coût du writer et des requêtes, pour une vue dont la question
 est l'inventaire plus que le volume. Les volumes exacts d'une plage restent dans la Vue d'ensemble
 (`timeseries`). À revoir si un besoin de volumes par adresse et par plage apparaît (Hosts, P5.12).
+
+### Inondation d'adresses aléatoires
+
+Un outil comme `macof` émet des trames à adresses source aléatoires : une ligne `eth_macs` par adresse
+et une ligne `eth_pairs` par paire, soit autant de lignes que de trames dans le pire cas (comme `hosts`
+pour des IP usurpées). L'import reste borné en mémoire (cartes de 16 384 entrées vidées en deltas), mais
+le writer écrit alors une ligne par trame. Sur plus de 10 M lignes, les requêtes suivantes dépassent les
+300 ms, faute d'index qui les serve : `count(DISTINCT vendor)` et les sommes de classes de `/stats`
+(parcours de l'index `eth_macs_vendor`), `count_macs` et `count_pairs` sous filtre (`total_estimate`),
+la recherche `q` (`LIKE '%…%'`, parcours complet) et les filtres `vlan` / `ethertype` (`json_each` par
+ligne). Les pages triées sans filtre restent servies par leurs index. Suivi possible si le cas se
+présente : compteurs précalculés en fin d'import et `total_estimate` borné.
 
 ## Mise en page
 

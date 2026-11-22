@@ -70,6 +70,6 @@ limité au dossier `exports/`).
 |---|---|---|
 | Base pays DB-IP IP to Country Lite | `resources/geoip/` (bundle) | CC BY 4.0, attribution dans « À propos » et `THIRD_PARTY_LICENSES` |
 | Noms de services IANA des ports | `crates/netsift-analyze/data/iana-services.csv` | domaine public (CC0 1.0) |
-| Constructeurs des préfixes MAC (IEEE MA-L, MA-M, MA-S, IAB) | `crates/netsift-analyze/data/ieee-oui.tsv` | listes publiques, sans droit d'auteur revendiqué par l'IEEE ; source citée dans `THIRD_PARTY_LICENSES` (ADR-031) |
+| Constructeurs des préfixes MAC (IEEE MA-L, MA-M, MA-S, IAB) | `crates/netsift-analyze/data/ieee-oui.tsv` | listes publiques, sans droit d'auteur revendiqué par l'IEEE selon le paquet Debian `ieee-data` (conditions de l'IEEE à vérifier avant la prochaine release) ; source citée dans `THIRD_PARTY_LICENSES` (ADR-031) |
 
 Origine, contenu et régénération des deux tables : `crates/netsift-analyze/data/README.md`.

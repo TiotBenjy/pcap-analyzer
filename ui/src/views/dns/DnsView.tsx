@@ -110,8 +110,10 @@ export default function DnsView() {
       <>
         <ChartsRow stats={stats.data ?? null} loading={stats.isPending && viewable} error={stats.isError} onRetry={() => void stats.refetch()} />
         <ServerMap sessionId={sessionId} enabled={viewable} />
-        <Card title={t('views.dns.table.title')} flush>
-          <div className="border-b border-line p-3 sm:px-4">
+        <Card
+          title={t('views.dns.table.title')}
+          flush
+          filters={
             <FilterBar
               filters={filters}
               onToggle={(id, active) => {
@@ -133,7 +135,8 @@ export default function DnsView() {
               onSearch={setSearch}
               searchPlaceholder={t('views.dns.filters.search')}
             />
-          </div>
+          }
+        >
           <PairsList sessionId={sessionId} filter={filter} enabled={viewable} hasTraffic={s === undefined ? null : s.total > 0} />
         </Card>
       </>

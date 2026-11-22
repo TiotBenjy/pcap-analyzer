@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '../../../components/Badge';
 import { Button } from '../../../components/Button';
 import { Dialog } from '../../../components/Dialog';
 import { ErrorState } from '../../../components/ErrorState';
+import { SearchInput } from '../../../components/SearchInput';
 import { labelled } from '../../../lib/format';
 import { type Group, groupPackages, loadLicenses } from './data';
 import type { ThirdPartyLicenses, ThirdPartyPackage } from './types';
@@ -38,20 +39,13 @@ export function ThirdPartyLicensesDialog({ onClose }: { onClose: () => void }) {
   } else {
     body = (
       <div className="flex min-w-0 flex-col gap-3">
-        <label className="relative flex h-8 min-w-0 items-center sm:max-w-xs">
-          <span className="sr-only">{t('views.settings.thirdParty.search')}</span>
-          <Search aria-hidden size={16} strokeWidth={1.75} className="pointer-events-none absolute left-2.5 text-faint" />
-          <input
-            type="search"
-            data-autofocus
-            value={query}
-            placeholder={t('views.settings.thirdParty.search')}
-            onChange={(e) => {
-              setQuery(e.target.value);
-            }}
-            className="h-8 w-full min-w-0 rounded-md border border-line bg-surface pr-2 pl-8 text-body placeholder:text-faint"
-          />
-        </label>
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder={t('views.settings.thirdParty.search')}
+          className="sm:max-w-xs"
+          autoFocus
+        />
         <p className="text-meta text-muted" data-testid="licenses-count" aria-live="polite">
           {t('views.settings.thirdParty.shown', { shown, count: list.data.packages.length })}
         </p>

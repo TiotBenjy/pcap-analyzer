@@ -137,48 +137,50 @@ export default function HttpView() {
               onChange={setSort}
             />
           }
+          filters={
+            <>
+              <FilterBar
+                filters={methodFilters(s?.methods, disabled, t('views.http.otherMethods'))}
+                onToggle={(id, active) => {
+                  setDisabled((prev) => {
+                    const next = new Set(prev);
+                    if (active) next.delete(id);
+                    else next.add(id);
+                    return next;
+                  });
+                }}
+                onSetAll={(active) => {
+                  setDisabled(active ? new Set() : new Set(METHOD_GROUPS));
+                }}
+                search={search}
+                onSearch={setSearch}
+                searchPlaceholder={t('views.http.searchPlaceholder')}
+              />
+              {(host !== null || status !== null) && (
+                <div className="flex flex-wrap gap-2">
+                  {host !== null && (
+                    <FilterChip
+                      label={t('views.http.hostChip', { host })}
+                      removeLabel={t('views.http.removeFilter', { label: host })}
+                      onRemove={() => {
+                        setHost(null);
+                      }}
+                    />
+                  )}
+                  {status !== null && (
+                    <FilterChip
+                      label={t('views.http.statusChip', { status })}
+                      removeLabel={t('views.http.removeFilter', { label: status })}
+                      onRemove={() => {
+                        setStatus(null);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </>
+          }
         >
-          <div className="flex flex-col gap-2 border-b border-line p-3 sm:p-4">
-            <FilterBar
-              filters={methodFilters(s?.methods, disabled, t('views.http.otherMethods'))}
-              onToggle={(id, active) => {
-                setDisabled((prev) => {
-                  const next = new Set(prev);
-                  if (active) next.delete(id);
-                  else next.add(id);
-                  return next;
-                });
-              }}
-              onSetAll={(active) => {
-                setDisabled(active ? new Set() : new Set(METHOD_GROUPS));
-              }}
-              search={search}
-              onSearch={setSearch}
-              searchPlaceholder={t('views.http.searchPlaceholder')}
-            />
-            {(host !== null || status !== null) && (
-              <div className="flex flex-wrap gap-2">
-                {host !== null && (
-                  <FilterChip
-                    label={t('views.http.hostChip', { host })}
-                    removeLabel={t('views.http.removeFilter', { label: host })}
-                    onRemove={() => {
-                      setHost(null);
-                    }}
-                  />
-                )}
-                {status !== null && (
-                  <FilterChip
-                    label={t('views.http.statusChip', { status })}
-                    removeLabel={t('views.http.removeFilter', { label: status })}
-                    onRemove={() => {
-                      setStatus(null);
-                    }}
-                  />
-                )}
-              </div>
-            )}
-          </div>
           <TransactionList sessionId={sessionId} query={list} oneDay={oneDay} />
         </Card>
       </>

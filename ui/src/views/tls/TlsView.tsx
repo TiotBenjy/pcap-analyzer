@@ -333,7 +333,7 @@ function SessionsPanel({ sessionId, stats, oneDay }: PanelProps) {
 
       <Card
         title={t('views.tls.table.label')}
-        actions={
+        filters={
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="tls-filters">
             <FilterBar
               filters={[

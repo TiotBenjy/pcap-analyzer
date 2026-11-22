@@ -156,16 +156,23 @@ export function CertificatesPanel({ sessionId, enabled, total }: { sessionId: st
 
   return (
     <div className="flex flex-col gap-4">
-      <FilterBar
-        filters={[{ id: 'problems', label: t('views.tls.certificates.problems'), active: problems }]}
-        onToggle={(_, active) => {
-          setProblems(active);
-        }}
-        search={search}
-        onSearch={setSearch}
-        searchPlaceholder={t('views.tls.certificates.search')}
-      />
-      <Card flush>{body}</Card>
+      <Card
+        title={t('views.tls.certificates.label')}
+        flush
+        filters={
+          <FilterBar
+            filters={[{ id: 'problems', label: t('views.tls.certificates.problems'), active: problems }]}
+            onToggle={(_, active) => {
+              setProblems(active);
+            }}
+            search={search}
+            onSearch={setSearch}
+            searchPlaceholder={t('views.tls.certificates.search')}
+          />
+        }
+      >
+        {body}
+      </Card>
       {current !== undefined && (
         <Card>
           <CertificateCard sessionId={sessionId} certificate={current.certificate} />

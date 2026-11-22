@@ -10,7 +10,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
-import { FilterBar } from '../../components/FilterBar';
+import { SearchInput } from '../../components/SearchInput';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
@@ -117,66 +117,60 @@ export default function PicturesView() {
               onChange={setSort}
             />
           }
-        >
-          <div role="search" className="flex min-w-0 flex-wrap items-center gap-2 border-b border-line p-3 sm:p-4">
-            <div className="min-w-0 flex-1 basis-48">
-              <FilterBar
-                filters={[]}
-                onToggle={() => undefined}
-                search={search}
-                onSearch={setSearch}
-                searchPlaceholder={t('views.pictures.filters.search')}
-              />
+          filters={
+            <div role="search" className="flex min-w-0 flex-wrap items-center gap-2">
+                <SearchInput value={search} onChange={setSearch} placeholder={t('views.pictures.filters.search')} />
+                <label htmlFor={typeId} className="sr-only">
+                  {t('views.pictures.filters.type')}
+                </label>
+                <select
+                  id={typeId}
+                  value={type}
+                  onChange={(e) => {
+                    setType(e.target.value);
+                  }}
+                  className={SELECT_CLASS}
+                >
+                  <option value="">{t('views.pictures.filters.anyType')}</option>
+                  {(st?.types ?? []).map((ty) => (
+                    <option key={ty.mime} value={ty.mime}>
+                      {`${typeLabel(ty.mime)} (${formatCount(ty.count)})`}
+                    </option>
+                  ))}
+                </select>
+                <label htmlFor={hostId} className="sr-only">
+                  {t('views.pictures.filters.host')}
+                </label>
+                <select
+                  id={hostId}
+                  value={host}
+                  onChange={(e) => {
+                    setHost(e.target.value);
+                  }}
+                  className={SELECT_CLASS}
+                >
+                  <option value="">{t('views.pictures.filters.anyHost')}</option>
+                  {(st?.hosts ?? []).map((h) => (
+                    <option key={h.host} value={h.host}>
+                      {`${h.host} (${formatCount(h.count)})`}
+                    </option>
+                  ))}
+                </select>
+                {filtered && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSearch('');
+                      setType('');
+                      setHost('');
+                    }}
+                  >
+                    {t('views.pictures.filters.clear')}
+                  </Button>
+                )}
             </div>
-            <label htmlFor={typeId} className="sr-only">
-              {t('views.pictures.filters.type')}
-            </label>
-            <select
-              id={typeId}
-              value={type}
-              onChange={(e) => {
-                setType(e.target.value);
-              }}
-              className={SELECT_CLASS}
-            >
-              <option value="">{t('views.pictures.filters.anyType')}</option>
-              {(st?.types ?? []).map((ty) => (
-                <option key={ty.mime} value={ty.mime}>
-                  {`${typeLabel(ty.mime)} (${formatCount(ty.count)})`}
-                </option>
-              ))}
-            </select>
-            <label htmlFor={hostId} className="sr-only">
-              {t('views.pictures.filters.host')}
-            </label>
-            <select
-              id={hostId}
-              value={host}
-              onChange={(e) => {
-                setHost(e.target.value);
-              }}
-              className={SELECT_CLASS}
-            >
-              <option value="">{t('views.pictures.filters.anyHost')}</option>
-              {(st?.hosts ?? []).map((h) => (
-                <option key={h.host} value={h.host}>
-                  {`${h.host} (${formatCount(h.count)})`}
-                </option>
-              ))}
-            </select>
-            {filtered && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSearch('');
-                  setType('');
-                  setHost('');
-                }}
-              >
-                {t('views.pictures.filters.clear')}
-              </Button>
-            )}
-          </div>
+          }
+        >
           <div className="p-3 sm:p-4">{body}</div>
         </Card>
         {open !== null && (

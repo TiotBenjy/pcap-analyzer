@@ -86,13 +86,12 @@ export default function ServersView() {
       <SessionGate session={session}>
         <Card
           title={t('views.servers.rolesTitle')}
-          actions={
+          filters={
             <MultiSelect
               label={t('views.servers.categories')}
               options={categoryOptions}
               selected={categories}
               onChange={setCategories}
-              align="end"
             />
           }
         >

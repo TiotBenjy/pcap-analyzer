@@ -155,8 +155,7 @@ export default function CredentialsView() {
                   }}
                 />
               }
-            >
-              <div className="flex flex-col gap-3">
+              filters={
                 <Filters
                   stats={stats.data}
                   state={stateFilter}
@@ -164,16 +163,17 @@ export default function CredentialsView() {
                   protocol={protocol}
                   onProtocol={setProtocol}
                 />
-                <CredentialList
-                  sessionId={sessionId}
-                  query={list}
-                  items={items}
-                  filtered={stateFilter !== 'all' || protocol !== ''}
-                  onExport={(request) => {
-                    setPending({ request, count: 1 });
-                  }}
-                />
-              </div>
+              }
+            >
+              <CredentialList
+                sessionId={sessionId}
+                query={list}
+                items={items}
+                filtered={stateFilter !== 'all' || protocol !== ''}
+                onExport={(request) => {
+                  setPending({ request, count: 1 });
+                }}
+              />
             </Card>
           </>
         )}

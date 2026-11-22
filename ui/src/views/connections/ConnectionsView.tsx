@@ -1,6 +1,6 @@
 import { getRouteApi } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Cable, Globe2, ListTree, Search } from 'lucide-react';
+import { Cable, Globe2, ListTree } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConnectionStats, useConnectionTop, useConversations } from '../../api/connectionQueries';
@@ -20,6 +20,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { Flag } from '../../components/Flag';
 import { PageHeader } from '../../components/PageHeader';
+import { SearchInput } from '../../components/SearchInput';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { Toggle } from '../../components/Toggle';
@@ -299,24 +300,6 @@ function PairList({ data, nodes }: { data: ConnectionMatrix; nodes: readonly Cho
   );
 }
 
-function FilterInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="relative flex h-8 min-w-0 flex-1 basis-40 items-center sm:max-w-56">
-      <span className="sr-only">{label}</span>
-      <Search aria-hidden size={16} strokeWidth={1.75} className="pointer-events-none absolute left-2.5 text-faint" />
-      <input
-        type="search"
-        value={value}
-        placeholder={label}
-        onChange={(e) => {
-          onChange(e.target.value);
-        }}
-        className="h-8 w-full min-w-0 rounded-md border border-line bg-surface pr-2 pl-8 text-body placeholder:text-faint"
-      />
-    </label>
-  );
-}
-
 function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled: boolean }) {
   const { t, i18n } = useTranslation();
   const [from, setFrom] = useState('');
@@ -446,10 +429,10 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
           {total !== null && <Badge>{formatCount(total)}</Badge>}
         </span>
       }
-      actions={
-        <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto">
-          <FilterInput label={t('views.connections.table.fromFilter')} value={from} onChange={setFrom} />
-          <FilterInput label={t('views.connections.table.toFilter')} value={to} onChange={setTo} />
+      filters={
+        <div className="flex min-w-0 flex-wrap gap-2">
+          <SearchInput placeholder={t('views.connections.table.fromFilter')} value={from} onChange={setFrom} className="flex-1 basis-40 sm:max-w-56" />
+          <SearchInput placeholder={t('views.connections.table.toFilter')} value={to} onChange={setTo} className="flex-1 basis-40 sm:max-w-56" />
         </div>
       }
       flush

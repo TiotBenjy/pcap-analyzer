@@ -1,6 +1,7 @@
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from './Button';
+import { SearchInput } from './SearchInput';
 import { Toggle } from './Toggle';
 
 export interface FilterOption {
@@ -64,19 +65,7 @@ export function FilterBar({ filters, onToggle, onSetAll, search, onSearch, searc
   return (
     <div className="relative flex min-w-0 flex-wrap items-center gap-2">
       {onSearch !== undefined && (
-        <label className="relative flex h-8 min-w-0 flex-1 basis-48 items-center sm:max-w-xs">
-          <span className="sr-only">{t('common.search')}</span>
-          <Search aria-hidden size={16} strokeWidth={1.75} className="pointer-events-none absolute left-2.5 text-faint" />
-          <input
-            type="search"
-            value={search ?? ''}
-            placeholder={searchPlaceholder ?? t('common.search')}
-            onChange={(e) => {
-              onSearch(e.target.value);
-            }}
-            className="h-8 w-full min-w-0 rounded-md border border-line bg-surface pr-2 pl-8 text-body placeholder:text-faint"
-          />
-        </label>
+        <SearchInput value={search ?? ''} onChange={onSearch} placeholder={searchPlaceholder ?? t('common.search')} />
       )}
 
       {filters.length > 0 && (

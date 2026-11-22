@@ -1,6 +1,7 @@
 import type { Dictionary } from './en';
 import { arpFr } from './arp';
 import { credentialsFr } from './credentials';
+import { ethernetFr } from './ethernet';
 import { exportsFr } from './exports';
 import { geoipPromptFr } from './geoipPrompt';
 import { onlineFr } from './online';
@@ -989,6 +990,7 @@ export const fr: Dictionary = {
     },
     // --- analysis views kept in their own module: one line each, sorted ---
     credentials: credentialsFr,
+    ethernet: ethernetFr,
     exportPcap: exportsFr,
     geoipPrompt: geoipPromptFr,
     online: onlineFr,

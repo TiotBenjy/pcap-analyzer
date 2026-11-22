@@ -50,9 +50,9 @@ const placeholders = (v: string) => [...v.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].m
 const SAME_IN_FRENCH = new Set(
   [
     'actions', 'anomalies', 'bits', 'captures', 'chunk', 'chunks', 'client', 'clients', 'communications',
-    'conversation', 'conversations', 'destination', 'destinations', 'dimensions', 'documents', 'extensions',
-    'format', 'images', 'import', 'message', 'messages', 'mode', 'modules', 'navigation', 'observations', 'occurrences', 'ports', 'position', 'public',
-    'secret', 'session', 'sessions', 'source', 'sources', 'total', 'transactions', 'type', 'version', 'versions', 'volume',
+    'conversation', 'conversations', 'destination', 'destinations', 'dimensions', 'documents', 'ethertype', 'ethertypes', 'extensions',
+    'format', 'images', 'import', 'message', 'messages', 'mode', 'modules', 'multicast', 'navigation', 'observations', 'occurrences', 'ports', 'position', 'public',
+    'secret', 'session', 'sessions', 'source', 'sources', 'total', 'transactions', 'type', 'unicast', 'version', 'versions', 'volume',
   ],
 );
 

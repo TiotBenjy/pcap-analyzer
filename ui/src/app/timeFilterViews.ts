@@ -7,6 +7,7 @@ export const TIME_FILTER_VIEWS: ReadonlySet<NavId> = new Set<NavId>([
   'arp',
   'credentials',
   'dns',
+  'ethernet',
   'http',
   'httpHeaders',
   'overview',

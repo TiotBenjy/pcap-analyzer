@@ -40,6 +40,8 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'credentials-open': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
   dns: async (page) => `/sessions/${await demoSessionId(page)}/dns`,
   'dns-range': async (page) => rangedPath(page, 'dns'),
+  ethernet: async (page) => `/sessions/${await demoSessionId(page)}/ethernet`,
+  'ethernet-range': async (page) => rangedPath(page, 'ethernet'),
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
   'http-range': async (page) => rangedPath(page, 'http'),
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
@@ -470,6 +472,12 @@ for (const lang of LANGS) {
                 ? page.getByRole('img', { name: pattern(D.views.connections.chord.chartLabel) })
                 : page.getByRole('list', { name: D.views.connections.chord.listLabel }),
             ).toBeVisible();
+          }
+          if (view.startsWith('ethernet') && !path.includes(NO_SESSION)) {
+            // Vendors of the link-layer showcase, its VLANs and the address list.
+            await expect(page.getByRole('list', { name: D.views.ethernet.vendors.label })).toBeVisible();
+            await expect(page.getByRole('table', { name: D.views.ethernet.vlans.label }).or(page.getByRole('list', { name: D.views.ethernet.vlans.label }))).toBeVisible();
+            await expect(page.getByRole('table', { name: D.views.ethernet.macs.label }).or(page.getByRole('list', { name: D.views.ethernet.macs.label }))).toBeVisible();
           }
           if (view === 'overview-export' && !path.includes(NO_SESSION)) {
             // Save PCAP dialog with the time range: left open for the capture (read-only server:

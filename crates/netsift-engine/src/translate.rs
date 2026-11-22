@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 mod arp;
 mod credentials;
 mod ethernet;
+mod ftp;
 mod servers;
 mod ssdp;
 mod tls;
@@ -39,6 +40,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
         Record::Credential(c) => StoreRecord::Credential(Box::new(credentials::credential_row(c))),
         Record::Dns(t) => StoreRecord::Dns(Box::new(dns_row(*t))),
         Record::Ethernet(e) => StoreRecord::Ethernet(ethernet::ethernet_row(e)),
+        Record::Ftp(f) => StoreRecord::Ftp(Box::new(ftp::ftp_row(f))),
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
         Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
@@ -171,6 +173,7 @@ pub fn approx_size(record: &StoreRecord) -> usize {
             p.vlans.iter().map(|v| v.len() + 24).sum::<usize>() + 4 * p.ethertypes.len()
         }
         StoreRecord::Ethernet(_) => 16,
+        StoreRecord::Ftp(f) => f.approx_size(),
         StoreRecord::Http(h) => h.heap_size(),
         StoreRecord::Server(s) => s.heap_size(),
         StoreRecord::Ssdp(s) => s.approx_size(),

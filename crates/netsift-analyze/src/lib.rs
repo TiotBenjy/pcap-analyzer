@@ -14,6 +14,7 @@
 //!   credentials (HTTP and SMB emit theirs from their own analyzers);
 //! - [`oui`]: MAC address vendors (embedded IEEE listings) and address classes;
 //! - [`ethernet`]: MAC addresses, pairs, EtherTypes and VLANs of the link layer;
+//! - [`ftp`]: FTP control sessions (transcripts), data connections and transferred files;
 //! - [`ports`]: open ports (SYN-ACK, UDP replies) with services detected by content;
 //! - [`servers`]: DHCP, NTP and Kerberos servers (the Servers view derives the other roles);
 //! - [`services`]: IANA service names of ports (embedded registry);
@@ -42,6 +43,7 @@ pub mod core;
 pub mod credentials;
 pub mod dns;
 pub mod ethernet;
+pub mod ftp;
 #[cfg(any(test, feature = "fuzzing"))]
 #[doc(hidden)]
 pub mod fuzz;

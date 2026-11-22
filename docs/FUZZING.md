@@ -62,7 +62,7 @@ par l'application) : l'API publique n'est pas élargie.
 | `smb` | octets | SMB1 / SMB2 sur NBSS, datagrammes NetBIOS du navigateur (UDP 138) |
 | `snmp` | datagramme | communautés SNMP v1 / v2c (`snmp-parser`) |
 | `ldap` | conversation, port 389 | `BerStream` + `ldap-parser` (simple bind) via l'analyseur credentials |
-| `lineproto` | port + conversation | `LineFlow` : FTP, SMTP AUTH, POP3, IMAP via l'analyseur credentials |
+| `lineproto` | port + conversation | `LineFlow` : FTP, SMTP AUTH, POP3, IMAP via l'analyseur credentials ; sur le port 21, analyseur `ftp` et parseurs `netsift_dissect::ftp` |
 | `mmdb` | fichier `.mmdb` ou `.mmdb.gz` | `netsift_geo` (décodage borné, décodeur `maxminddb`, recherches) |
 | `thumbs` | fichier image | `netsift_engine::thumbs::render` (PNG, JPEG, GIF, WebP, BMP, ICO, limites de décodage) |
 | `analyzers` | protocole + ports + conversation | tous les analyseurs derrière une table de flux, trames IPv4 forgées (handshake, numéros de séquence cohérents, pertes), puis traduction en lignes du store |

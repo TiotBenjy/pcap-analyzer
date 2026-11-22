@@ -557,6 +557,9 @@ impl RunCtx<'_> {
         http.max_retained_bytes = (http.max_retained_bytes / shards.max(1)).max(MIN_RETAINED_BYTES);
         http.max_decoders = (http.max_decoders / shards.max(1)).max(1);
         http.max_brotli_decoders = (http.max_brotli_decoders / shards.max(1)).max(1);
+        // The FTP data budget is shared by the shards (ADR-032): a fresh one per import.
+        let ftp = registry.config().ftp.clone();
+        registry.config_mut().ftp = ftp.with_fresh_budget();
         Parts {
             capacity: o.channel_batches.max(1),
             limits: BatchLimits {

@@ -116,7 +116,8 @@ shell_quote() {
 # avec le message qu'écrit ce script. --cleanup=whitespace : un titre qui commence par « # »
 # n'est pas pris pour un commentaire.
 tag_command() {
-  local cmd="git -C $(shell_quote "$1") tag -a --cleanup=whitespace $2 -m \"NetSift $2\""
+  local cmd
+  cmd="git -C $(shell_quote "$1") tag -a --cleanup=whitespace $2 -m \"NetSift $2\""
   [[ -n "${4:-}" ]] && cmd+=" -m $(shell_quote "$4")"
   printf '%s\n' "$cmd $3"
 }

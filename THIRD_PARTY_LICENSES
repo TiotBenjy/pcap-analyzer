@@ -146,7 +146,7 @@ foldhash 0.2.0 (Rust crate) - Zlib - [73]
 foreign-types 0.5.0 (Rust crate) - MIT OR Apache-2.0 - [74]
 foreign-types-macros 0.2.4 (Rust crate) - MIT OR Apache-2.0 - [74]
 foreign-types-shared 0.3.1 (Rust crate) - MIT OR Apache-2.0 - [74]
-form_urlencoded 1.2.2 (Rust crate) - MIT OR Apache-2.0 - [75]
+form_urlencoded 1.2.3 (Rust crate) - MIT OR Apache-2.0 - [75]
 futures-channel 0.3.34 (Rust crate) - MIT OR Apache-2.0 - [76]
 futures-core 0.3.34 (Rust crate) - MIT OR Apache-2.0 - [76]
 futures-executor 0.3.34 (Rust crate) - MIT OR Apache-2.0 - [76]
@@ -434,7 +434,7 @@ uds_windows 1.2.1 (Rust crate) - MIT - [200] [201]
 unicode-ident 1.0.27 (Rust crate) - (MIT OR Apache-2.0) AND Unicode-3.0 - [9] [202]
 unicode-segmentation 1.13.3 (Rust crate) - MIT OR Apache-2.0 - [87]
 untrusted 0.9.0 (Rust crate) - ISC - [203]
-url 2.5.8 (Rust crate) - MIT OR Apache-2.0 - [103]
+url 2.5.9 (Rust crate) - MIT OR Apache-2.0 - [103]
 urlpattern 0.6.0 (Rust crate) - MIT - [204]
 use-sync-external-store 1.7.0 (npm package) - MIT - [149]
 utf_types 1.0.0 (Rust crate) - Apache-2.0 OR MIT - [205]
@@ -3646,7 +3646,7 @@ SOFTWARE.
 
 ==============================================================================
 [75] MIT License
-Used by: form_urlencoded 1.2.2
+Used by: form_urlencoded 1.2.3
 ==============================================================================
 
 Copyright (c) 2013-2016 The rust-url developers
@@ -4474,7 +4474,7 @@ SOFTWARE.
 
 ==============================================================================
 [103] MIT License
-Used by: idna 1.1.0, percent-encoding 2.3.2, url 2.5.8
+Used by: idna 1.1.0, percent-encoding 2.3.2, url 2.5.9
 ==============================================================================
 
 Copyright (c) 2013-2025 The rust-url developers

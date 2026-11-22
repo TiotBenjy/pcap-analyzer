@@ -89,6 +89,7 @@ const SESSION_VIEWS: Partial<Record<string, () => Promise<{ default: ComponentTy
   '/servers': () => import('../views/servers/ServersView'),
   '/smb': () => import('../views/smb/SmbView'),
   '/sources': () => import('../views/sessions/SourcesView'),
+  '/ssdp': () => import('../views/ssdp/SsdpView'),
   '/tls': () => import('../views/tls/TlsView'),
 };
 

@@ -49,6 +49,8 @@ pub enum Record {
     Server(crate::servers::ServerRecord),
     /// SMB / NetBIOS browser announcement or SMB session (negotiation + NTLM auth metadata).
     Smb(SmbRecord),
+    /// One SSDP datagram on UDP 1900 (`ssdp` analyzer).
+    Ssdp(Box<crate::ssdp::SsdpRecord>),
     /// One TLS session (`tls` analyzer).
     Tls(Box<crate::tls::TlsSession>),
 }

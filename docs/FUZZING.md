@@ -54,7 +54,7 @@ par l'application) : l'API publique n'est pas élargie.
 | `dissect` | linktype + trame | Ethernet, VLAN, SLL/SLL2, raw IP, loopback, radiotap + 802.11, IPv4/IPv6 et extensions, TCP/UDP/ICMP |
 | `flow_table` | linktype + trames horodatées | défragmentation IP, table de flux (expiration, LRU), réassemblage TCP, bornes réduites |
 | `dns` | message | DNS / mDNS / LLMNR et NBNS (`netsift_dissect::dns`) |
-| `udp_services` | message | DHCP, NTP, Kerberos (UDP et préfixe TCP) |
+| `udp_services` | message | DHCP, NTP, Kerberos (UDP et préfixe TCP), SSDP (`ssdp::parser`) |
 | `http` | conversation, port 80 | analyseur HTTP : têtes, corps (longueur, chunked, fermeture), gzip / deflate / brotli, objets, identifiants |
 | `http_auth` | cible + en-têtes + corps | `http::auth` : Basic, NTLM / Negotiate, formulaires et chaînes de requête (`url_decode`) |
 | `tls` | mode + octets | pur : couche record, ClientHello / ServerHello, JA3 / JA4, X.509 ; ou analyseur TLS sur une conversation |

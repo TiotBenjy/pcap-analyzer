@@ -956,6 +956,81 @@ CREATE INDEX smb_sessions_ntlm_phase ON smb_sessions (ntlm_phase);
 -- index smb_sessions_server_ip
 CREATE INDEX smb_sessions_server_ip ON smb_sessions (server_ip);
 
+-- table ssdp_devices
+CREATE TABLE ssdp_devices (
+    uuid           TEXT NOT NULL,
+    ip             TEXT NOT NULL,
+    device_type    TEXT NOT NULL DEFAULT '',
+    device_type_ts INTEGER NOT NULL DEFAULT 0,
+    server         TEXT NOT NULL DEFAULT '',
+    server_ts      INTEGER NOT NULL DEFAULT 0,
+    location       TEXT NOT NULL DEFAULT '',
+    location_ts    INTEGER NOT NULL DEFAULT 0,
+    message_count  INTEGER NOT NULL DEFAULT 0,
+    alive_count    INTEGER NOT NULL DEFAULT 0,
+    byebye_count   INTEGER NOT NULL DEFAULT 0,
+    response_count INTEGER NOT NULL DEFAULT 0,
+    first_ts       INTEGER NOT NULL,
+    last_ts        INTEGER NOT NULL,
+    PRIMARY KEY (uuid, ip)
+);
+
+-- index ssdp_devices_count
+CREATE INDEX ssdp_devices_count ON ssdp_devices (message_count);
+
+-- index ssdp_devices_span
+CREATE INDEX ssdp_devices_span ON ssdp_devices (first_ts, last_ts);
+
+-- table ssdp_messages
+CREATE TABLE ssdp_messages (
+    id            INTEGER PRIMARY KEY,
+    ts            INTEGER NOT NULL,
+    src_ip        TEXT NOT NULL,
+    src_port      INTEGER NOT NULL,
+    dst_ip        TEXT NOT NULL,
+    dst_port      INTEGER NOT NULL,
+    multicast     INTEGER NOT NULL DEFAULT 0,   -- destination is a multicast group
+    kind          TEXT NOT NULL,                -- notify / search / response / invalid
+    nts           TEXT,                         -- notify: alive / byebye / update / other value
+    status        INTEGER,                      -- response: status code
+    target        TEXT,                         -- NT (notify) or ST (search, response)
+    usn           TEXT,
+    uuid          TEXT,                         -- device id from the USN, lower case
+    server        TEXT,                         -- SERVER
+    user_agent    TEXT,                         -- USER-AGENT
+    software      TEXT,                         -- SERVER, else USER-AGENT (rankings)
+    location      TEXT,                         -- LOCATION (extracted URL, never fetched)
+    max_age       INTEGER,                      -- CACHE-CONTROL max-age, seconds
+    mx            INTEGER,                      -- MX, seconds
+    size          INTEGER NOT NULL,             -- datagram bytes
+    raw           TEXT NOT NULL,                -- first 2048 bytes as sanitized text
+    raw_truncated INTEGER NOT NULL DEFAULT 0
+);
+
+-- index ssdp_messages_device
+CREATE INDEX ssdp_messages_device ON ssdp_messages (uuid, src_ip, ts);
+
+-- index ssdp_messages_device_target
+CREATE INDEX ssdp_messages_device_target ON ssdp_messages (uuid, src_ip, target);
+
+-- index ssdp_messages_kind
+CREATE INDEX ssdp_messages_kind ON ssdp_messages (kind, ts);
+
+-- index ssdp_messages_kind_nts
+CREATE INDEX ssdp_messages_kind_nts ON ssdp_messages (kind, nts, ts);
+
+-- index ssdp_messages_software
+CREATE INDEX ssdp_messages_software ON ssdp_messages (software, ts);
+
+-- index ssdp_messages_src
+CREATE INDEX ssdp_messages_src ON ssdp_messages (src_ip, ts);
+
+-- index ssdp_messages_target
+CREATE INDEX ssdp_messages_target ON ssdp_messages (target, ts);
+
+-- index ssdp_messages_ts
+CREATE INDEX ssdp_messages_ts ON ssdp_messages (ts);
+
 -- table timeseries
 CREATE TABLE timeseries (
     bucket_s INTEGER NOT NULL,                      -- seconds since the Unix epoch

@@ -51,7 +51,7 @@ const SAME_IN_FRENCH = new Set(
   [
     'actions', 'anomalies', 'bits', 'captures', 'chunk', 'chunks', 'client', 'clients', 'communications',
     'conversation', 'conversations', 'destination', 'destinations', 'dimensions', 'documents', 'extensions',
-    'format', 'images', 'import', 'message', 'mode', 'modules', 'navigation', 'observations', 'occurrences', 'ports', 'position', 'public',
+    'format', 'images', 'import', 'message', 'messages', 'mode', 'modules', 'navigation', 'observations', 'occurrences', 'ports', 'position', 'public',
     'secret', 'session', 'sessions', 'source', 'sources', 'total', 'transactions', 'type', 'version', 'versions', 'volume',
   ],
 );

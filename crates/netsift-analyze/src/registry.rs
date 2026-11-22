@@ -14,6 +14,7 @@ use crate::http::{HttpAnalyzer, HttpConfig};
 use crate::ports::{PortsAnalyzer, PortsConfig};
 use crate::servers::{ServersAnalyzer, ServersConfig};
 use crate::smb::{SmbAnalyzer, SmbConfig};
+use crate::ssdp::SsdpAnalyzer;
 use crate::tls::TlsAnalyzer;
 
 /// Settings of the `core` analyzer.
@@ -80,6 +81,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
         (ServersAnalyzer::ID, factory(ServersAnalyzer::boxed)),
         (SmbAnalyzer::ID, factory(SmbAnalyzer::boxed)),
+        (SsdpAnalyzer::ID, factory(SsdpAnalyzer::boxed)),
         (TlsAnalyzer::ID, factory(TlsAnalyzer::boxed)),
     ]
 }

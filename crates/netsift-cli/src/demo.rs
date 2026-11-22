@@ -81,6 +81,29 @@ fn add_tls_showcase(packets: &mut Vec<netsift_fixtures::Packet>, start: i64) {
     packets.sort_by_key(|p| p.ts_ns);
 }
 
+/// Gap between two periodic SSDP rounds; every third round carries a search.
+const SSDP_EVERY_SECONDS: i64 = 10;
+const SSDP_SEARCH_EVERY: usize = 3;
+
+/// SSDP traffic of the SSDP view (`netsift_fixtures::ssdp`): the showcase once (every message
+/// kind, IPv6, malformed datagrams), then periodic announcements over the `seconds` following
+/// `start`, merged into `packets` (sorted by time).
+fn add_ssdp(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
+    let mut sc = Scenario::starting_at(start + 2 * NS_PER_SEC).with_seed(0x5353_4450);
+    netsift_fixtures::ssdp::ssdp_showcase(&mut sc);
+    let mut round = 0;
+    loop {
+        sc.advance(SSDP_EVERY_SECONDS * NS_PER_SEC);
+        if sc.now() >= start + seconds * NS_PER_SEC {
+            break;
+        }
+        netsift_fixtures::ssdp::ssdp_round(&mut sc, round, SSDP_SEARCH_EVERY);
+        round += 1;
+    }
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+}
+
 /// Varied HTTP traffic (`netsift_fixtures::http_mix`), one round every few seconds over the
 /// `seconds` following `start`, merged into `packets` (sorted by time).
 fn add_http_mix(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
@@ -102,6 +125,7 @@ fn write_chunked(dir: &Path) -> Result<usize> {
     // Stops a few seconds before the end: the chunk count stays the same.
     add_http_mix(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_tls_showcase(&mut packets, start);
+    add_ssdp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     let pause_at = start + PAUSE_AFTER_SECONDS * NS_PER_SEC;
     for p in &mut packets {
         if p.ts_ns >= pause_at {
@@ -129,6 +153,7 @@ fn write_single(dir: &Path) -> Result<PathBuf> {
     let mut packets = demo_packets(30, 11);
     let start = packets.first().map_or(0, |p| p.ts_ns);
     add_http_mix(&mut packets, start, 20);
+    add_ssdp(&mut packets, start, 20);
     let bytes = encode(&packets, &Encoding::pcap())?;
     let path = dir.join("demo-single.pcap");
     std::fs::write(&path, bytes).with_context(|| format!("cannot write {}", path.display()))?;
@@ -255,6 +280,18 @@ mod tests {
         for role in ["dhcp", "dns", "kerberos", "ldap", "ntp", "smb"] {
             assert!(roles.iter().any(|r| r == role), "{role} missing: {roles:?}");
         }
+        // SSDP view: every message kind, and devices announced over the whole capture.
+        let (kinds, devices): (i64, i64) = session
+            .conn()
+            .query_row(
+                "SELECT count(DISTINCT kind), (SELECT count(*) FROM ssdp_devices) \
+                 FROM ssdp_messages",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(kinds, 4);
+        assert_eq!(devices, 5);
 
         // Populated: refused without --force, replaced with it.
         assert!(run(&args, &mut Vec::new()).is_err());

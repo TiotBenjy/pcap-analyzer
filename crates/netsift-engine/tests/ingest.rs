@@ -125,6 +125,32 @@ fn smb_tables(catalog: &Catalog, report: &IngestReport) -> String {
     s
 }
 
+/// SSDP messages (without their row ids, which depend on the arrival order) and folded devices.
+fn ssdp_tables(catalog: &Catalog, report: &IngestReport) -> String {
+    let session = catalog
+        .open_session(&report.session, OpenMode::ReadOnly)
+        .unwrap();
+    let mut s = String::new();
+    for r in rows(
+        &session,
+        "SELECT ts || ' ' || src_ip || ':' || src_port || ' -> ' || dst_ip || ':' || dst_port || \
+         ' ' || kind || ' ' || coalesce(nts, '-') || ' ' || coalesce(target, '-') || ' ' || \
+         coalesce(uuid, '-') || ' ' || size || ' ' || length(raw) FROM ssdp_messages \
+         ORDER BY ts, src_ip, src_port, dst_ip, dst_port, raw",
+    ) {
+        writeln!(s, "message {r}").unwrap();
+    }
+    for r in rows(
+        &session,
+        "SELECT uuid || ' ' || ip || ' ' || device_type || ' ' || server || ' ' || location || \
+         ' n=' || message_count || ' a=' || alive_count || ' b=' || byebye_count || ' r=' || \
+         response_count || ' ' || first_ts || '..' || last_ts FROM ssdp_devices ORDER BY uuid, ip",
+    ) {
+        writeln!(s, "device {r}").unwrap();
+    }
+    s
+}
+
 fn scalar(catalog: &Catalog, report: &IngestReport, sql: &str) -> i64 {
     let session = catalog
         .open_session(&report.session, OpenMode::ReadOnly)
@@ -924,4 +950,31 @@ fn smb_session_across_chunks_is_the_same_on_any_shard_count() {
     assert!(reference.contains("authenticate"), "{reference}");
     assert_eq!(smb_tables(&catalog, &one), reference);
     assert_eq!(smb_tables(&catalog, &four), reference);
+}
+
+#[test]
+fn ssdp_devices_are_the_same_on_any_shard_count() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let mut sc = Scenario::new();
+    netsift_fixtures::ssdp::ssdp_showcase(&mut sc);
+    // A second announcement round, so that devices fold messages of several flows and shards.
+    netsift_fixtures::ssdp::ssdp_round(&mut sc, 0, 1);
+    let packets = sc.into_packets();
+
+    let file = tmp.path().join("ssdp.pcap");
+    write_file(&file, &packets, &Encoding::pcap()).unwrap();
+    let single = run(&catalog, &file, &options(1));
+
+    let dir = tmp.path().join("chunks");
+    let opts = SplitOptions::new(SplitBy::Packets(3), Naming::Dumpcap);
+    split_to_dir(&dir, &packets, &opts).unwrap();
+    let one = run(&catalog, &dir, &options(1));
+    let four = run(&catalog, &dir, &options(4));
+
+    let reference = ssdp_tables(&catalog, &single);
+    assert!(reference.contains("device "), "{reference}");
+    assert!(reference.contains(" invalid "), "{reference}");
+    assert_eq!(ssdp_tables(&catalog, &one), reference);
+    assert_eq!(ssdp_tables(&catalog, &four), reference);
 }

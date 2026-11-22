@@ -268,6 +268,8 @@ pub enum ModuleRows {
     Pictures,
     /// Announcements and SMB sessions (`smb_items`).
     Smb,
+    /// SSDP messages.
+    Ssdp,
     TlsSessions,
 }
 
@@ -293,6 +295,7 @@ impl ModuleRows {
                       + (SELECT count(*) FROM smb_sessions WHERE first_ts < ?2 \
                          AND last_ts >= ?1)"
             }
+            Self::Ssdp => "SELECT count(*) FROM ssdp_messages WHERE ts >= ?1 AND ts < ?2",
             Self::TlsSessions => "SELECT count(*) FROM tls_sessions WHERE ts >= ?1 AND ts < ?2",
         }
     }

@@ -83,16 +83,60 @@ fn messages_fold_into_bindings() {
     let rows: Vec<_> = page
         .items
         .iter()
-        .map(|b| (b.ip.to_string(), b.mac.clone(), b.first_ts, b.last_ts, b.messages, b.conflict))
+        .map(|b| {
+            (
+                b.ip.to_string(),
+                b.mac.clone(),
+                b.first_ts,
+                b.last_ts,
+                b.messages,
+                b.conflict,
+            )
+        })
         .collect();
     assert_eq!(
         rows,
         vec![
-            ("192.168.1.10".into(), "02:00:00:00:00:0a".into(), 10, 10, 1, false),
-            ("192.168.1.1".into(), "02:00:00:00:00:01".into(), 11, 80, 2, true),
-            ("192.168.1.30".into(), "02:00:00:00:00:1e".into(), 30, 30, 1, false),
-            ("192.168.1.1".into(), "02:00:00:00:00:42".into(), 50, 60, 2, true),
-            ("192.168.1.66".into(), "02:00:00:00:00:42".into(), 70, 70, 1, false),
+            (
+                "192.168.1.10".into(),
+                "02:00:00:00:00:0a".into(),
+                10,
+                10,
+                1,
+                false
+            ),
+            (
+                "192.168.1.1".into(),
+                "02:00:00:00:00:01".into(),
+                11,
+                80,
+                2,
+                true
+            ),
+            (
+                "192.168.1.30".into(),
+                "02:00:00:00:00:1e".into(),
+                30,
+                30,
+                1,
+                false
+            ),
+            (
+                "192.168.1.1".into(),
+                "02:00:00:00:00:42".into(),
+                50,
+                60,
+                2,
+                true
+            ),
+            (
+                "192.168.1.66".into(),
+                "02:00:00:00:00:42".into(),
+                70,
+                70,
+                1,
+                false
+            ),
         ]
     );
     let f = binding_figures(&conn, None).unwrap();
@@ -147,7 +191,10 @@ fn conflicts_and_their_signs() {
     assert_eq!(c.ip, v4(1));
     assert_eq!(c.mac_count, 2);
     assert_eq!(
-        c.sides.iter().map(|s| (s.mac.as_str(), s.other_ips, s.unsolicited)).collect::<Vec<_>>(),
+        c.sides
+            .iter()
+            .map(|s| (s.mac.as_str(), s.other_ips, s.unsolicited))
+            .collect::<Vec<_>>(),
         vec![("02:00:00:00:00:01", 0, 0), ("02:00:00:00:00:42", 1, 2)]
     );
     assert_eq!(c.signs, vec!["simultaneous", "unsolicited", "multiple_ips"]);
@@ -205,7 +252,10 @@ fn a_range_keeps_the_messages_and_overlapping_bindings() {
     assert_eq!(items[0].sides[1].other_ips, 0);
     let top = top_senders(&conn, 10, Some(r)).unwrap();
     assert_eq!(top.len(), 1);
-    assert_eq!((top[0].mac.as_str(), top[0].messages), ("02:00:00:00:00:42", 2));
+    assert_eq!(
+        (top[0].mac.as_str(), top[0].messages),
+        ("02:00:00:00:00:42", 2)
+    );
     let page = bindings_page(
         &conn,
         &BindingFilters::default(),

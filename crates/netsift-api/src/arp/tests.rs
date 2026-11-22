@@ -238,7 +238,10 @@ async fn the_middle_burst_only_under_its_range() {
         .map(|b| b["ip"]["ip"].as_str().unwrap())
         .collect();
     assert!(ips.contains(&"192.168.1.20"));
-    assert!(ips.contains(&"192.168.1.10"), "the workstation spans the range");
+    assert!(
+        ips.contains(&"192.168.1.10"),
+        "the workstation spans the range"
+    );
     assert!(!ips.contains(&"192.168.1.66"));
     let conflicts = env.ok(&format!("arp/conflicts?{range}")).await;
     assert_eq!(conflicts["total"], 0);

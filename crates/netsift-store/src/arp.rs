@@ -577,7 +577,11 @@ pub fn signs(sides: &[ConflictSide]) -> Vec<&'static str> {
         }
         end = end.max(last);
     }
-    let mut out = vec![if overlap { "simultaneous" } else { "successive" }];
+    let mut out = vec![if overlap {
+        "simultaneous"
+    } else {
+        "successive"
+    }];
     if sides.iter().any(|s| s.gratuitous > 0) {
         out.push("gratuitous");
     }

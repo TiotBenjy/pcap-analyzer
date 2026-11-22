@@ -284,7 +284,9 @@ impl MessageParams {
             .filter(|k| !k.is_empty())
         {
             if !arp::KINDS.contains(&k) {
-                return Err(ApiError::BadRequest("kind: unknown message type".to_owned()));
+                return Err(ApiError::BadRequest(
+                    "kind: unknown message type".to_owned(),
+                ));
             }
             if !kinds.iter().any(|x: &String| x == k) {
                 kinds.push(k.to_owned());

@@ -443,7 +443,7 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
         id: 'client',
         accessorFn: (s) => s.client_ip,
         header: t('views.tls.table.col.client'),
-        size: 152,
+        size: 168,
         cell: ({ row }) => <Endpoint endpoint={row.original.client_ip} port={row.original.client_port} className="text-meta" />,
       },
       {
@@ -451,7 +451,7 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
         meta: { card: 'title' },
         accessorFn: (s) => s.server_ip,
         header: t('views.tls.table.col.server'),
-        size: 152,
+        size: 168,
         cell: ({ row }) => <Endpoint endpoint={row.original.server_ip} port={row.original.server_port} className="text-meta" />,
       },
       {
@@ -483,7 +483,7 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
         id: 'suite',
         accessorFn: (s) => s.cipher_name ?? '',
         header: t('views.tls.table.col.suite'),
-        size: 250,
+        size: 234,
         cell: ({ row }) =>
           row.original.cipher_suite === null ? null : (
             <SuiteName name={row.original.cipher_name} id={row.original.cipher_suite} weak={row.original.cipher_weak} />
@@ -541,10 +541,10 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
 
 /** Column widths below `WIDE_TABLE_QUERY` (about 1000 px in all). */
 const NARROW_SIZES: Readonly<Record<string, number>> = {
-  server: 140,
+  server: 160,
   sni: 130,
   version: 80,
-  suite: 170,
+  suite: 150,
   ja3: 100,
   ja4: 140,
   certificate: 150,

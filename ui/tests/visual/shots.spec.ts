@@ -26,6 +26,8 @@ import { mockUpdate } from './updateMocks';
  * their path at run time, on the demo session created by `netsift demo-session`.
  */
 const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
+  arp: async (page) => `/sessions/${await demoSessionId(page)}/arp`,
+  'arp-range': async (page) => rangedPath(page, 'arp'),
   captures: '/captures',
   'captures-geoip-missing': '/captures',
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
@@ -473,6 +475,13 @@ for (const lang of LANGS) {
             // The header chip shows the active range (dimmed on a view that does not apply it).
             await expect(page.getByTestId('time-range-chip')).toBeVisible();
             await page.waitForLoadState('networkidle');
+          }
+          if (view.startsWith('arp') && !path.includes(NO_SESSION)) {
+            // The demo session has cache refreshes and poisoning over its whole period.
+            await expect(page.getByTestId('arp-summary')).toBeVisible();
+            const messages = D.views.arp.messages.label;
+            await expect(page.getByRole('table', { name: messages }).or(page.getByRole('list', { name: messages }))).toBeVisible();
+            await expect(page.getByTestId('arp-conflict').first()).toBeVisible();
           }
           if (view === 'smb-auth-range' && !path.includes(NO_SESSION)) {
             // No NTLM session in the busiest fifth of the demo: the empty state of a range.

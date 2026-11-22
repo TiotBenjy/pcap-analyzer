@@ -1,5 +1,6 @@
 // English dictionary: the reference shape. Every key here must exist in fr.ts (checked by tests).
 // Rules: short, factual labels; no emoji, no decorative characters, no exclamation marks.
+import { arpEn } from './arp';
 import { credentialsEn } from './credentials';
 import { exportsEn } from './exports';
 import { geoipPromptEn } from './geoipPrompt';
@@ -70,6 +71,7 @@ export const en = {
     fr: 'Français',
   },
   views: {
+    arp: arpEn,
     captures: {
       subtitle: 'Imported capture sessions',
       emptyTitle: 'No capture imported',

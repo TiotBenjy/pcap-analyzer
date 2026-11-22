@@ -115,6 +115,8 @@ export function DataTable<T>({
             onRowClick(row);
           },
           onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
+            // Enter or Space on a nested control (copy, download) belongs to that control.
+            if (e.target !== e.currentTarget) return;
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               onRowClick(row);

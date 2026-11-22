@@ -1,5 +1,5 @@
 import type { ColumnDef } from '@tanstack/react-table';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../i18n';
 import { setViewportWide } from '../test/renderApp';
@@ -52,6 +52,25 @@ describe('DataTable', () => {
     expect(first.queryByText('x')).toBeNull();
     await setupUser().click(first.getByText('a.test'));
     expect(onRowClick).toHaveBeenCalledWith(rows[0]);
+  });
+
+  it('leaves Enter and Space on a nested button to that button, in rows and cards', () => {
+    for (const wide of [true, false]) {
+      setViewportWide(wide);
+      const onRowClick = vi.fn();
+      const { unmount } = render(
+        <DataTable columns={columns} data={rows} getRowId={(r) => r.id} ariaLabel="Flows" cards onRowClick={onRowClick} />,
+      );
+      const button = screen.getAllByRole('button', { name: 'Open' })[0] as HTMLElement;
+      fireEvent.keyDown(button, { key: 'Enter' });
+      fireEvent.keyDown(button, { key: ' ' });
+      expect(onRowClick).not.toHaveBeenCalled();
+      // On the row (or card) itself, Enter still opens it.
+      const row = button.closest('[tabindex="0"]') as HTMLElement;
+      fireEvent.keyDown(row, { key: 'Enter' });
+      expect(onRowClick).toHaveBeenCalledWith(rows[0]);
+      unmount();
+    }
   });
 
   it('keeps the table below 768 px without cards (scrolling inside its container)', () => {

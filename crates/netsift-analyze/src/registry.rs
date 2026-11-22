@@ -16,6 +16,7 @@ use crate::geo::GeoDb;
 use crate::http::{HttpAnalyzer, HttpConfig};
 use crate::ports::{PortsAnalyzer, PortsConfig};
 use crate::servers::{ServersAnalyzer, ServersConfig};
+use crate::sip::SipAnalyzer;
 use crate::smb::{SmbAnalyzer, SmbConfig};
 use crate::ssdp::SsdpAnalyzer;
 use crate::telnet::TelnetAnalyzer;
@@ -89,6 +90,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (HttpAnalyzer::ID, factory(HttpAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
         (ServersAnalyzer::ID, factory(ServersAnalyzer::boxed)),
+        (SipAnalyzer::ID, factory(SipAnalyzer::boxed)),
         (SmbAnalyzer::ID, factory(SmbAnalyzer::boxed)),
         (SsdpAnalyzer::ID, factory(SsdpAnalyzer::boxed)),
         (TelnetAnalyzer::ID, factory(TelnetAnalyzer::boxed)),

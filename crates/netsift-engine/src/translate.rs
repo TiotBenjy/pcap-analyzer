@@ -22,6 +22,7 @@ mod credentials;
 mod ethernet;
 mod ftp;
 mod servers;
+mod sip;
 mod ssdp;
 mod telnet;
 mod tls;
@@ -46,6 +47,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
         Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
         Record::Server(s) => StoreRecord::Server(servers::server_row(s)),
+        Record::Sip(s) => StoreRecord::Sip(Box::new(sip::sip_row(*s))),
         Record::Smb(SmbRecord::Announce(a)) => {
             StoreRecord::SmbAnnounce(Box::new(smb_announce_row(a)))
         }
@@ -178,6 +180,7 @@ pub fn approx_size(record: &StoreRecord) -> usize {
         StoreRecord::Ftp(f) => f.approx_size(),
         StoreRecord::Http(h) => h.heap_size(),
         StoreRecord::Server(s) => s.heap_size(),
+        StoreRecord::Sip(s) => s.approx_size(),
         StoreRecord::Ssdp(s) => s.approx_size(),
         StoreRecord::Telnet(t) => t.approx_size(),
         StoreRecord::Tls(t) => t.approx_size(),

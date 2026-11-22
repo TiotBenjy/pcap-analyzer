@@ -171,7 +171,8 @@ mod tests {
                     || name.starts_with("network_")
                     || name.starts_with("dns_pairs")
                     || name.starts_with("server_")
-                    || name.starts_with("open_port_hosts")),
+                    || name.starts_with("open_port_hosts")
+                    || name.starts_with("sip_dialogs")),
             "{during:?}"
         );
         finalize(conn).unwrap();

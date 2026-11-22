@@ -36,6 +36,7 @@ pub mod records;
 pub mod schema;
 pub mod servers;
 pub mod session;
+pub mod sip;
 pub mod smb;
 pub mod ssdp;
 pub mod telnet;

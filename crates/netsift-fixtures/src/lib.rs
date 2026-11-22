@@ -9,6 +9,8 @@
 //! - [`ethernet`]: link-layer showcase (vendors, VLAN and Q-in-Q tags, EtherTypes, LLC).
 //! - [`ftp`]: FTP control sessions with passive, active and EPSV data connections (FTP view).
 //! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
+//! - [`sip`]: SIP calls (complete, rejected, cancelled, over TCP) with RTP, a Digest
+//!   registration and a `friendly-scanner` sweep (SIP view).
 //! - [`ssdp`]: SSDP announcements, searches, answers and malformed datagrams (SSDP view).
 //! - [`telnet`]: Telnet logins, option negotiation, long and split sessions (Telnet view).
 //! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip,
@@ -49,6 +51,7 @@ pub mod rng;
 pub mod scenario;
 pub mod scenarios;
 pub mod servers;
+pub mod sip;
 pub mod split;
 pub mod spread;
 pub mod ssdp;

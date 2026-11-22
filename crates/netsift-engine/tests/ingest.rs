@@ -151,6 +151,51 @@ fn ssdp_tables(catalog: &Catalog, report: &IngestReport) -> String {
     s
 }
 
+/// SIP messages (without their row ids), dialogs and media with their joined flows.
+fn sip_tables(catalog: &Catalog, report: &IngestReport) -> String {
+    let session = catalog
+        .open_session(&report.session, OpenMode::ReadOnly)
+        .unwrap();
+    let mut s = String::new();
+    for r in rows(
+        &session,
+        "SELECT ts || ' ' || transport || ' ' || src_ip || ':' || src_port || ' -> ' || dst_ip || \
+         ':' || dst_port || ' ' || kind || ' ' || coalesce(method, '-') || ' ' || \
+         coalesce(status, '-') || ' ' || coalesce(call_id, '-') || ' ' || coalesce(flow_id, '-') \
+         || ' ' || coalesce(scanner, '-') || ' ' || coalesce(media, '-') || ' ' || size \
+         FROM sip_messages ORDER BY ts, src_ip, src_port, raw",
+    ) {
+        writeln!(s, "message {r}").unwrap();
+    }
+    for r in rows(
+        &session,
+        "SELECT id || ' ' || call_id || ' ' || method || ' ' || state || ' ' || \
+         coalesce(final_status, '-') || ' ' || coalesce(duration_ns, '-') || ' ' || client_ip || \
+         ':' || client_port || ' > ' || server_ip || ':' || server_port || ' ' || first_ts || \
+         '..' || last_ts || ' r=' || requests || '/' || responses || ' ' || \
+         coalesce(user_agent, '-') || ' ' || coalesce(auth_user, '-') || ' m=' || media_count \
+         FROM sip_dialogs ORDER BY id",
+    ) {
+        writeln!(s, "dialog {r}").unwrap();
+    }
+    for r in rows(
+        &session,
+        "SELECT dialog_id || ' ' || media || ' ' || ip || ':' || port || ' ' || codecs || ' ' || \
+         offered_by || ' flows=' || flow_count || ' p=' || packets || ' b=' || bytes || ' ' || \
+         coalesce(first_flow_id, '-') FROM sip_media ORDER BY dialog_id, media, ip, port",
+    ) {
+        writeln!(s, "media {r}").unwrap();
+    }
+    for r in rows(
+        &session,
+        "SELECT kind || ' ' || coalesce(username, '-') || ' ' || coalesce(domain, '-') || ' ' || \
+         secret_state FROM credentials WHERE protocol = 'sip' ORDER BY username",
+    ) {
+        writeln!(s, "credential {r}").unwrap();
+    }
+    s
+}
+
 fn scalar(catalog: &Catalog, report: &IngestReport, sql: &str) -> i64 {
     let session = catalog
         .open_session(&report.session, OpenMode::ReadOnly)
@@ -1118,4 +1163,50 @@ fn telnet_sessions_are_the_same_on_any_shard_count_and_keep_secrets_apart() {
         ),
         1
     );
+}
+
+/// The messages of one Call-ID cross flows and shards (requests and answers on different flows,
+/// a BYE from the other side, RTP on its own flows): dialogs, media and their flows are the same
+/// with one file or chunks, and with 1, 4 or 7 shards.
+#[test]
+fn sip_dialogs_are_the_same_on_any_shard_count_and_chunking() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let mut sc = Scenario::new();
+    netsift_fixtures::sip::sip_showcase(&mut sc);
+    for round in 0..3 {
+        sc.advance(2 * netsift_fixtures::time::NS_PER_SEC);
+        netsift_fixtures::sip::sip_round(&mut sc, round);
+    }
+    let mut packets = traffic();
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+
+    let single = tmp.path().join("sip.pcapng");
+    write_file(&single, &packets, &Encoding::pcapng()).unwrap();
+    let reference = run(&catalog, &single, &options(1));
+    let want = sip_tables(&catalog, &reference);
+    assert!(want.contains(" completed "), "{want}");
+    assert!(want.contains(" cancelled "), "{want}");
+    assert!(want.contains("flows=1"), "{want}");
+    assert!(want.contains("credential sip-digest 201"), "{want}");
+    for shards in [1, 4, 7] {
+        let again = run(&catalog, &single, &options(shards));
+        assert_eq!(
+            sip_tables(&catalog, &again),
+            want,
+            "single file, {shards} shards"
+        );
+        let dir = tmp.path().join(format!("sip-chunks-{shards}"));
+        let opts = SplitOptions::new(SplitBy::Size(16 * 1024), Naming::Dumpcap)
+            .with_encoding(Encoding::pcapng());
+        let files = split_to_dir(&dir, &packets, &opts).unwrap().1;
+        assert!(files.len() > 3, "{} chunks", files.len());
+        let chunked = run(&catalog, &dir, &options(shards));
+        assert_eq!(
+            sip_tables(&catalog, &chunked),
+            want,
+            "chunks, {shards} shards"
+        );
+    }
 }

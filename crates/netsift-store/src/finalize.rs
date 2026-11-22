@@ -142,6 +142,15 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         reads: &["open_ports", "hosts"],
         run: crate::ports::finalize,
     },
+    Finalizer {
+        id: "sip",
+        version: 1,
+        // Reads the messages by `sip_messages_call` and the flows by their address indexes.
+        after: &["indexes"],
+        fills: &["sip_dialogs", "sip_media"],
+        reads: &["sip_messages", "flows"],
+        run: crate::sip::finalize,
+    },
 ];
 
 /// Progress of [`run_finalizers_with_progress`], reported before each step and once at the end.

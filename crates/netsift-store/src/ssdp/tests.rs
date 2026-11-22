@@ -372,3 +372,97 @@ fn fifty_thousand_messages_answer_quickly() {
     println!("stats + message page + device page under a range: {elapsed:?}");
     assert!(elapsed.as_secs() < 5, "{elapsed:?}");
 }
+
+/// Order of magnitude of the queries on 500 000 messages from 2 000 devices (a very busy LAN
+/// over days). Run on demand in release mode:
+/// `./x.sh cargo test --release -p netsift-store ssdp::tests::timings -- --ignored --nocapture`.
+#[test]
+#[ignore = "measurement, run on demand in release mode"]
+fn timings() {
+    let conn = db();
+    conn.execute_batch("BEGIN").unwrap();
+    for i in 0..500_000_i64 {
+        let dev = i % 2000;
+        let last = u8::try_from(dev % 250).unwrap();
+        let ts = i * 1_000_000_000;
+        let row = if i % 7 == 0 {
+            search(ts, last, "ssdp:all")
+        } else {
+            let target =
+                ["upnp:rootdevice", IGD, "urn:x:service:Y:1"][usize::try_from(i % 3).unwrap()];
+            // One SERVER and one LOCATION per device, as real devices send.
+            SsdpRow {
+                server: Some(format!("Linux/5.10 UPnP/1.0 Product{}/1.0", dev % 40)),
+                location: Some(format!("http://192.168.1.{last}:5000/{dev}.xml")),
+                ..notify(ts, last, &format!("dev{dev}"), target, "alive")
+            }
+        };
+        row.insert(&conn).unwrap();
+    }
+    conn.execute_batch("COMMIT; ANALYZE").unwrap();
+    let total = 500_000 * 1_000_000_000_i64;
+    for sql in [
+        "SELECT kind, nts, count(*) FROM ssdp_messages GROUP BY kind, nts",
+        "SELECT count(DISTINCT src_ip) FROM ssdp_messages",
+        "SELECT target, count(*) AS n FROM ssdp_messages WHERE target IS NOT NULL \
+         GROUP BY target ORDER BY n DESC, target LIMIT 10",
+        "SELECT software, count(*) AS n FROM ssdp_messages WHERE software IS NOT NULL \
+         GROUP BY software ORDER BY n DESC, software LIMIT 10",
+        "SELECT src_ip AS ip, count(*) AS n FROM ssdp_messages GROUP BY src_ip \
+         ORDER BY n DESC, src_ip LIMIT 10",
+        "SELECT count(*) FROM ssdp_devices",
+    ] {
+        let t = std::time::Instant::now();
+        let mut stmt = conn.prepare(sql).unwrap();
+        let n = stmt.query_map([], |_| Ok(())).unwrap().count();
+        let plan: Vec<String> = conn
+            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .unwrap()
+            .query_map([], |r| r.get(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        println!("{:?} {n} rows {sql}\n  {}", t.elapsed(), plan.join(" | "));
+    }
+    for (name, range) in [
+        ("whole", None),
+        (
+            "1 h",
+            TimeRange::new(total / 2, total / 2 + 3_600 * 1_000_000_000),
+        ),
+        ("half", TimeRange::new(total / 4, total * 3 / 4)),
+    ] {
+        let t = std::time::Instant::now();
+        stats(&conn, 10, range).unwrap();
+        let stats_time = t.elapsed();
+        let t = std::time::Instant::now();
+        let filter = SsdpMessageFilter {
+            range,
+            ..SsdpMessageFilter::default()
+        };
+        messages_page(&conn, &filter, &PageRequest::first(200)).unwrap();
+        count_messages(&conn, &filter).unwrap();
+        let messages_time = t.elapsed();
+        let t = std::time::Instant::now();
+        let kind = SsdpMessageFilter {
+            kind: Some("search".to_owned()),
+            q: Some("all".to_owned()),
+            range,
+            ..SsdpMessageFilter::default()
+        };
+        messages_page(&conn, &kind, &PageRequest::first(200)).unwrap();
+        count_messages(&conn, &kind).unwrap();
+        let search_time = t.elapsed();
+        let t = std::time::Instant::now();
+        let page = devices_page(&conn, None, range, &PageRequest::first(200)).unwrap();
+        for d in &page.items {
+            device_targets(&conn, &d.uuid, d.ip, 16).unwrap();
+        }
+        count_devices(&conn, None, range).unwrap();
+        let devices_time = t.elapsed();
+        println!(
+            "{name}: stats {stats_time:?}, messages {messages_time:?}, search+q {search_time:?}, \
+             devices {devices_time:?}"
+        );
+    }
+}

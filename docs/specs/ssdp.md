@@ -122,7 +122,7 @@ Ordre des blocs (une colonne sous 768 px) :
    bouton de copie et la mention « tronqué à 2 048 octets » le cas échéant.
 
 États : chargement (squelettes), erreur (réessayer), session en import ou en échec (`SessionGate`),
-aucune donnée SSDP (« Aucun message SSDP dans cette capture »), plage vide (état vide commun « Rien
+aucune donnée SSDP (« Aucun message SSDP »), plage vide (état vide commun « Rien
 dans la plage » avec « Effacer la plage »).
 
 ## Améliorations par rapport à la référence
@@ -152,3 +152,17 @@ dans la plage » avec « Effacer la plage »).
 - `./x.sh shots ssdp all`, `ssdp-range` (plage active) et `ssdp-raw` (premier message déplié) verts à
   375, 768, 1280 et 1920 px, en `en` et `fr`, sans débordement ni chevauchement.
 - Moins de 300 ms par requête (index couvrants ; mesure sur une session synthétique volumineuse).
+
+## Notes d'implémentation
+
+- Analyseur : `crates/netsift-analyze/src/ssdp/` (`parser.rs` pur et fuzzé par la cible `udp_services`,
+  `analyzer.rs` sans état) ; store : `crates/netsift-store/src/ssdp.rs` (upsert commutatif des appareils
+  avec un horodatage par valeur texte) ; API : `crates/netsift-api/src/ssdp.rs` ; UI :
+  `ui/src/views/ssdp/` (listes dépliables de `views/http/ExpandableList`).
+- Fixture : `netsift_fixtures::ssdp` (`ssdp_showcase`, `ssdp_round`), aussi ajoutée à la session de
+  démonstration (vitrine puis annonces toutes les 10 s) pour les captures.
+- Mesure (`ssdp::tests::timings`, ignoré, mode release, 500 000 messages de 2 000 appareils, machine de
+  développement) : `/stats` 182 ms sur la session, 8 ms sur 1 h, 194 ms sur la moitié de la session ;
+  page de messages 2 à 13 ms ; filtre de type avec recherche 72 ms au pire ; page d'appareils avec leurs
+  cibles 11 ms. Chaque agrégat lit un index couvrant (`stats_queries_read_indexes_only`).
+- Limite : une réponse émise depuis un port autre que 1900 vers un port éphémère n'est pas vue.

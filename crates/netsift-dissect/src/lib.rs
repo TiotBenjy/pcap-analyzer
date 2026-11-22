@@ -42,6 +42,7 @@ mod link;
 pub mod linktype;
 mod net;
 pub mod ntp;
+pub mod telnet;
 mod transport;
 mod wifi;
 

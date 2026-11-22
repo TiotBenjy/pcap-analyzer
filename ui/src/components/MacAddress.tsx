@@ -85,10 +85,17 @@ interface MacTextProps {
   copy?: boolean;
   /** Faint text (placeholder address such as `00:00:00:00:00:00`). */
   muted?: boolean;
+  /**
+   * Extra classes: on the text itself without `copy`, on the wrapper of the text and its button
+   * with `copy` (font size, `text-table`...).
+   */
   className?: string;
 }
 
-/** A MAC address given as text: monospace, truncated with a tooltip, optionally copyable. */
+/**
+ * A MAC address given as text: monospace, truncated with a tooltip. Without `copy` it renders as a
+ * block (fills its cell); with `copy`, an inline flex of the text and its copy button.
+ */
 export function MacText({ mac, copy = false, muted = false, className }: MacTextProps) {
   const { t } = useTranslation();
   const text = (

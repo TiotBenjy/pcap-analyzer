@@ -724,7 +724,6 @@ export const en = {
       noMatch: 'No transaction matches the filters',
       listLabel: 'HTTP transactions',
       rowLabel: '{{method}} {{target}}, status {{status}}: show details',
-      loadMore: 'Load more',
       noResponse: 'No response',
       noRequestShort: 'none',
       showAll_one: 'Show all ({{count}} character)',

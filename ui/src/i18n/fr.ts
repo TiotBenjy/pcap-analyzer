@@ -724,7 +724,6 @@ export const fr: Dictionary = {
       noMatch: 'Aucune transaction ne correspond aux filtres',
       listLabel: 'Transactions HTTP',
       rowLabel: '{{method}} {{target}}, statut {{status}}\u00a0: afficher le détail',
-      loadMore: 'Charger la suite',
       noResponse: 'Pas de réponse',
       noRequestShort: 'aucune',
       showAll_one: 'Tout afficher ({{count}} caractère)',

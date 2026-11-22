@@ -83,7 +83,8 @@ export function ExpandableList<T>({
   const row = (item: T, index: number) => {
     const key = getKey(item);
     const expanded = open.has(key);
-    const detailId = `${baseId}-${key}`;
+    // From the index, not the key: a text key (Call-ID...) may hold spaces or any character.
+    const detailId = `${baseId}-detail-${index}`;
     return (
       <div
         key={key}

@@ -290,15 +290,30 @@ pub fn hosts_page(
         cond = Conditions::new();
     }
 
+    // Clients: counted from the flows, or, in a time range database, from the flows of the
+    // range counted at its build (`ranges`).
+    let ranged = crate::ranges::is_range_db(conn)?;
+    let (host_clients, port_clients) = if ranged {
+        (
+            "coalesce((SELECT c.clients FROM open_port_host_clients c WHERE c.ip = p.value), 0)",
+            "coalesce((SELECT c.clients FROM open_port_clients c \
+              WHERE c.ip = o.ip AND c.transport = o.transport AND c.port = o.port), 0)",
+        )
+    } else {
+        (
+            "(SELECT count(DISTINCT f.src_ip) FROM open_ports o JOIN flows f \
+              ON f.dst_ip = o.ip AND f.dst_port = o.port AND f.transport = o.transport \
+              WHERE o.ip = p.value)",
+            "(SELECT count(DISTINCT f.src_ip) FROM flows f \
+              WHERE f.dst_ip = o.ip AND f.dst_port = o.port AND f.transport = o.transport)",
+        )
+    };
     let mut hosts: Vec<HostPorts> = Vec::with_capacity(page.items.len());
     {
-        let mut stmt = conn.prepare(
-            "SELECT p.value, h.names, h.category, h.country, \
-             (SELECT count(DISTINCT f.src_ip) FROM open_ports o JOIN flows f \
-              ON f.dst_ip = o.ip AND f.dst_port = o.port AND f.transport = o.transport \
-              WHERE o.ip = p.value) \
-             FROM json_each(?1) p LEFT JOIN hosts h ON h.ip = p.value ORDER BY p.key",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT p.value, h.names, h.category, h.country, {host_clients} \
+             FROM json_each(?1) p LEFT JOIN hosts h ON h.ip = p.value ORDER BY p.key"
+        ))?;
         let rows = stmt.query_map([&ips], |r| {
             let raw: String = r.get(0)?;
             Ok(HostPorts {
@@ -324,9 +339,7 @@ pub fn hosts_page(
     );
     let sql = format!(
         "SELECT o.ip, o.transport, o.port, o.evidence, o.service, o.detected, o.banner, \
-         o.first_ts, o.last_ts, \
-         (SELECT count(DISTINCT f.src_ip) FROM flows f \
-          WHERE f.dst_ip = o.ip AND f.dst_port = o.port AND f.transport = o.transport) \
+         o.first_ts, o.last_ts, {port_clients} \
          FROM open_ports o WHERE {}{} ORDER BY o.ip, o.transport, o.port",
         ports_of.sql().unwrap_or_default(),
         cond.sql().map_or_else(String::new, |w| format!(" AND {w}")),

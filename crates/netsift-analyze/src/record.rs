@@ -57,6 +57,8 @@ pub enum Record {
     Smb(SmbRecord),
     /// One SSDP datagram on UDP 1900 (`ssdp` analyzer).
     Ssdp(Box<crate::ssdp::SsdpRecord>),
+    /// One Telnet connection with its transcript (`telnet` analyzer), boxed: wide.
+    Telnet(Box<crate::telnet::TelnetSession>),
     /// One TLS session (`tls` analyzer).
     Tls(Box<crate::tls::TlsSession>),
 }

@@ -23,6 +23,7 @@ mod ethernet;
 mod ftp;
 mod servers;
 mod ssdp;
+mod telnet;
 mod tls;
 
 /// Store row of an analyzer record, or `None` for records that are not persisted (yet).
@@ -50,6 +51,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
         }
         Record::Smb(SmbRecord::Session(s)) => StoreRecord::SmbSession(Box::new(smb_session_row(s))),
         Record::Ssdp(s) => StoreRecord::Ssdp(Box::new(ssdp::ssdp_row(*s))),
+        Record::Telnet(s) => StoreRecord::Telnet(Box::new(telnet::telnet_row(*s))),
         Record::Tls(s) => StoreRecord::Tls(Box::new(tls::session_row(*s))),
     })
 }
@@ -177,6 +179,7 @@ pub fn approx_size(record: &StoreRecord) -> usize {
         StoreRecord::Http(h) => h.heap_size(),
         StoreRecord::Server(s) => s.heap_size(),
         StoreRecord::Ssdp(s) => s.approx_size(),
+        StoreRecord::Telnet(t) => t.approx_size(),
         StoreRecord::Tls(t) => t.approx_size(),
         // Rows of analyzers: a conservative estimate until they provide their own.
         _ => 1024,

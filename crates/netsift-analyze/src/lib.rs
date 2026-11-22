@@ -19,7 +19,8 @@
 //! - [`servers`]: DHCP, NTP and Kerberos servers (the Servers view derives the other roles);
 //! - [`services`]: IANA service names of ports (embedded registry);
 //! - [`smb`]: NetBIOS browser announcements, SMB negotiation and NTLMSSP;
-//! - [`ssdp`]: SSDP announcements, searches and answers (`UPnP` devices).
+//! - [`ssdp`]: SSDP announcements, searches and answers (`UPnP` devices);
+//! - [`telnet`]: Telnet sessions (transcripts, negotiated options) and their logins.
 //!
 //! [`geo`] (address categories, countries) is re-exported for the engine, which loads the
 //! country database shared by every shard ([`AnalyzerConfig::geo`]).
@@ -56,6 +57,7 @@ pub mod servers;
 pub mod services;
 pub mod smb;
 pub mod ssdp;
+pub mod telnet;
 #[cfg(test)]
 mod testutil;
 pub mod tls;

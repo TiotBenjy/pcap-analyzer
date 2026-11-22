@@ -18,6 +18,7 @@ use crate::ports::{PortsAnalyzer, PortsConfig};
 use crate::servers::{ServersAnalyzer, ServersConfig};
 use crate::smb::{SmbAnalyzer, SmbConfig};
 use crate::ssdp::SsdpAnalyzer;
+use crate::telnet::TelnetAnalyzer;
 use crate::tls::TlsAnalyzer;
 
 /// Settings of the `core` analyzer.
@@ -90,6 +91,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (ServersAnalyzer::ID, factory(ServersAnalyzer::boxed)),
         (SmbAnalyzer::ID, factory(SmbAnalyzer::boxed)),
         (SsdpAnalyzer::ID, factory(SsdpAnalyzer::boxed)),
+        (TelnetAnalyzer::ID, factory(TelnetAnalyzer::boxed)),
         (TlsAnalyzer::ID, factory(TlsAnalyzer::boxed)),
     ]
 }

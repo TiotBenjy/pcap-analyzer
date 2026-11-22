@@ -39,3 +39,4 @@ Règles transverses (sauf mention contraire) :
 | `time-filter.md` | Filtre temporel global (toutes les vues) | 5 |
 | `ssdp.md` | SSDP | 5 |
 | `arp.md` | ARP | 5 |
+| `ethernet.md` | Ethernet | 5 |

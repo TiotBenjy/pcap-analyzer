@@ -1178,3 +1178,38 @@ acceptée : la remplacer par une nouvelle qui la référence.
   restent ceux de la session, avec la mention « session entière » dans l'en-tête de leur colonne sous
   plage ; la règle des 300 ms d'`ARCHITECTURE.md` reçoit une exception pour la première requête d'une vue
   agrégée sous plage.
+
+## ADR-031 — Constructeurs des adresses MAC : listes publiques de l'IEEE, table générée et commitée
+
+- Contexte : P5.4 (onglet Ethernet). Le constructeur d'une carte réseau se lit dans le préfixe de son
+  adresse MAC, attribué par l'IEEE Registration Authority. La base la plus diffusée (`manuf` de Wireshark)
+  est sous GPL, et l'application ne fait aucun appel réseau hors des exceptions de `CLAUDE.md`.
+- Décision :
+  - **source** : les listes publiques de l'IEEE, seules : MA-L (24 bits), MA-M (28 bits), MA-S (36 bits) et
+    l'ancien registre IAB (36 bits), en CSV sur `standards-oui.ieee.org`. Le paquet Debian `ieee-data`
+    (`debian/copyright`) consigne que l'IEEE ne revendique aucun droit d'auteur sur ces listes, n'en
+    restreint pas la diffusion et recommande seulement de les obtenir chez lui et de les mettre à jour
+    régulièrement ; la page de conditions du site de l'IEEE, inaccessible à un client automatisé lors de
+    l'analyse, est **à vérifier par un humain avant la prochaine release**. Ce sont des faits (préfixe,
+    organisation), sans création protégeable ; la source est citée dans `THIRD_PARTY_LICENSES`, avec la
+    référence à Debian plutôt qu'une déclaration prêtée à l'IEEE ;
+  - **contenu** : préfixe et nom de l'organisation seulement, jamais l'adresse postale (environ 59 000
+    entrées, 1,8 Mo), dans `crates/netsift-analyze/data/ieee-oui.tsv`, généré par `scripts/gen-ieee-oui.py`
+    (Python, bibliothèque standard, comme la table IANA des services) et **commité** : build hors ligne et
+    reproductible, diff lisible à chaque mise à jour, aucun téléchargement en CI (le serveur de l'IEEE
+    refuse certains clients automatisés). Mise à jour manuelle, par exemple avant une release
+    (`crates/netsift-analyze/data/README.md`) ;
+  - **embarquement** : `include_str!` dans le module `netsift_analyze::oui`, analysé au premier usage en
+    trois vecteurs triés, recherche du préfixe le plus long (MA-S, puis MA-M, puis MA-L : un bloc MA-L
+    « IEEE Registration Authority » subdivisé nomme le titulaire MA-M ou MA-S) ;
+  - **classes** d'après les bits de l'adresse seuls (IEEE 802) : groupe (bit I/G) et diffusion, adresse
+    administrée localement (bit U/L, jamais attribuée : machines virtuelles, adresses aléatoires des
+    téléphones et portables), sans constructeur ; une adresse de groupe universelle est attribuée au
+    titulaire du préfixe sans le bit I/G (`01:80:c2` -> IEEE 802.1) ; groupes connus nommés à part
+    (multicast IPv4 `01:00:5e`, IPv6 `33:33`, adresses réservées 802.1 `01:80:c2:00:00:0x`) ;
+  - **moment** : le constructeur est résolu par l'analyseur à l'import et stocké avec l'adresse
+    (`eth_macs.vendor`), comme les pays (ADR-009) : tri, filtre et regroupement en SQL. Une session garde
+    les constructeurs de la table de son import.
+- Conséquences : +1,8 Mo dans le binaire et environ 0,1 s d'analyse de la table au premier import (build
+  release) ; une table périmée laisse des préfixes récents sans constructeur (affichés « inconnu ») jusqu'à
+  sa régénération ; les autres vues (ARP, Hosts) peuvent réutiliser `netsift_analyze::oui`.

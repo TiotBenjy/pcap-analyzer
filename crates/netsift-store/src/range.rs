@@ -264,6 +264,8 @@ pub enum ModuleRows {
     ArpMessages,
     Credentials,
     DnsMessages,
+    /// MAC addresses of the Ethernet view (`eth_macs`).
+    EthernetMacs,
     HttpHeaders,
     HttpTransactions,
     Pictures,
@@ -282,6 +284,9 @@ impl ModuleRows {
                 "SELECT count(*) FROM credentials WHERE first_ts < ?2 AND last_ts >= ?1"
             }
             Self::DnsMessages => "SELECT count(*) FROM dns_messages WHERE ts >= ?1 AND ts < ?2",
+            Self::EthernetMacs => {
+                "SELECT count(*) FROM eth_macs WHERE first_ts < ?2 AND last_ts >= ?1"
+            }
             Self::HttpHeaders => "SELECT count(*) FROM http_headers WHERE +ts >= ?1 AND +ts < ?2",
             Self::HttpTransactions => {
                 "SELECT count(*) FROM http_transactions WHERE ts >= ?1 AND ts < ?2"

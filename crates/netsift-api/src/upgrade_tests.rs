@@ -113,6 +113,7 @@ impl Env {
             let start = packets.last().map_or(0, |p| p.ts_ns) + 1_000_000_000;
             let mut sc = netsift_fixtures::Scenario::starting_at(start);
             netsift_fixtures::servers::servers_showcase(&mut sc);
+            netsift_fixtures::ethernet::ethernet_showcase(&mut sc);
             packets.extend(sc.into_packets());
             std::fs::write(&path, encode(&packets, &Encoding::pcap()).unwrap()).unwrap();
         }
@@ -507,6 +508,9 @@ async fn an_import_without_its_steps_reads_the_same_data_read_only() {
             "http/transactions?limit=100&q=example",
             "http/headers?limit=100&q=nginx",
             "dns/messages?limit=100&q=example",
+            "ethernet/stats",
+            "ethernet/macs?limit=100",
+            "ethernet/pairs?limit=100&sort=bytes",
             "connections?limit=100&category=private",
             "connections?limit=3&category=public",
             "connections?limit=3&category=multicast,broadcast&sort=first_ts",

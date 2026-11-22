@@ -12,6 +12,8 @@
 //! - [`connections`]: conversations between hosts and traffic per host;
 //! - [`credentials`]: FTP, mail (SMTP AUTH, POP3, IMAP), LDAP simple bind and SNMP community
 //!   credentials (HTTP and SMB emit theirs from their own analyzers);
+//! - [`oui`]: MAC address vendors (embedded IEEE listings) and address classes;
+//! - [`ethernet`]: MAC addresses, pairs, EtherTypes and VLANs of the link layer;
 //! - [`ports`]: open ports (SYN-ACK, UDP replies) with services detected by content;
 //! - [`servers`]: DHCP, NTP and Kerberos servers (the Servers view derives the other roles);
 //! - [`services`]: IANA service names of ports (embedded registry);
@@ -39,10 +41,12 @@ pub mod connections;
 pub mod core;
 pub mod credentials;
 pub mod dns;
+pub mod ethernet;
 #[cfg(any(test, feature = "fuzzing"))]
 #[doc(hidden)]
 pub mod fuzz;
 pub mod http;
+pub mod oui;
 pub mod ports;
 pub mod record;
 pub mod registry;

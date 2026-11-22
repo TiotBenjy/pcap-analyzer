@@ -41,6 +41,8 @@ pub enum Record {
     Credential(Credential),
     /// A DNS, mDNS, LLMNR or NBNS transaction (`dns` analyzer).
     Dns(Box<crate::dns::DnsTransaction>),
+    /// `ethernet`: link-layer addresses, pairs, EtherTypes and VLANs (additive deltas).
+    Ethernet(crate::ethernet::EthernetRecord),
     /// `connections`: traffic sent and received by one host (additive).
     HostTraffic(HostTrafficDelta),
     /// An HTTP request and its response (`http` analyzer), boxed: much larger than the others.

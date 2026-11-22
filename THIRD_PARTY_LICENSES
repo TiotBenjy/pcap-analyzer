@@ -10,6 +10,10 @@ IP geolocation by DB-IP (https://db-ip.com): the bundled country database
 (dbip-country-lite.mmdb) is licensed under the Creative Commons Attribution 4.0
 International license (https://creativecommons.org/licenses/by/4.0/).
 
+MAC address vendors: organization names from the IEEE Registration Authority public
+listings (MA-L, MA-M, MA-S and IAB, https://standards.ieee.org/products-programs/regauth/).
+Debian's ieee-data package records that the IEEE asserts no copyright in them.
+
 ==============================================================================
 Packages (482)
 ==============================================================================

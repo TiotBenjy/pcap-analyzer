@@ -16,6 +16,7 @@ mod dns;
 mod dto;
 mod endpoint;
 mod error;
+mod ethernet;
 mod exports;
 mod extract;
 mod fs;
@@ -252,6 +253,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(connections::routes())
         .merge(credentials::routes())
         .merge(dns::routes())
+        .merge(ethernet::routes())
         .merge(exports::routes())
         .merge(fs::routes())
         .merge(geoip::routes())

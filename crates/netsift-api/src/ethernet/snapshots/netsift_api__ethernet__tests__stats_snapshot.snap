@@ -1,0 +1,147 @@
+---
+source: crates/netsift-api/src/ethernet/tests.rs
+expression: json
+---
+{
+  "bytes": 1426,
+  "ethertypes": [
+    {
+      "bytes": 1036,
+      "ethertype": {
+        "code": "0x0800",
+        "kind": "ethertype",
+        "name": "IPv4",
+        "value": 2048
+      },
+      "first_ts_us": 1001000,
+      "frames": 20,
+      "last_ts_us": 61013000
+    },
+    {
+      "bytes": 104,
+      "ethertype": {
+        "code": "0x42",
+        "kind": "llc",
+        "name": "Spanning tree",
+        "value": 66
+      },
+      "first_ts_us": 1000000,
+      "frames": 2,
+      "last_ts_us": 61007000
+    },
+    {
+      "bytes": 138,
+      "ethertype": {
+        "code": "0x86dd",
+        "kind": "ethertype",
+        "name": "IPv6",
+        "value": 34525
+      },
+      "first_ts_us": 1003000,
+      "frames": 2,
+      "last_ts_us": 61010000
+    },
+    {
+      "bytes": 76,
+      "ethertype": {
+        "code": "0x88b5",
+        "kind": "ethertype",
+        "name": "Local experimental 1",
+        "value": 34997
+      },
+      "first_ts_us": 1006500,
+      "frames": 2,
+      "last_ts_us": 61013500
+    },
+    {
+      "bytes": 72,
+      "ethertype": {
+        "code": "0x88cc",
+        "kind": "ethertype",
+        "name": "LLDP",
+        "value": 35020
+      },
+      "first_ts_us": 1000500,
+      "frames": 2,
+      "last_ts_us": 61007500
+    }
+  ],
+  "frames": 28,
+  "group_count": 5,
+  "local_count": 2,
+  "mac_count": 14,
+  "pair_count": 14,
+  "tagged_frames": 12,
+  "unicast_count": 9,
+  "vendor_count": 6,
+  "vendors": [
+    {
+      "count": 2,
+      "key": "PCS Systemtechnik GmbH",
+      "kind": "named",
+      "name": "PCS Systemtechnik GmbH"
+    },
+    {
+      "count": 2,
+      "key": "~local",
+      "kind": "local",
+      "name": null
+    },
+    {
+      "count": 1,
+      "key": "Cisco Systems, Inc",
+      "kind": "named",
+      "name": "Cisco Systems, Inc"
+    },
+    {
+      "count": 1,
+      "key": "Intel Corporate",
+      "kind": "named",
+      "name": "Intel Corporate"
+    },
+    {
+      "count": 1,
+      "key": "Philips Personal Health Solutions",
+      "kind": "named",
+      "name": "Philips Personal Health Solutions"
+    },
+    {
+      "count": 1,
+      "key": "Raspberry Pi Foundation",
+      "kind": "named",
+      "name": "Raspberry Pi Foundation"
+    },
+    {
+      "count": 1,
+      "key": "SOREDI touch systems GmbH",
+      "kind": "named",
+      "name": "SOREDI touch systems GmbH"
+    }
+  ],
+  "vendors_other": 0,
+  "vlan_count": 2,
+  "vlans": [
+    {
+      "bytes": 394,
+      "depth": 1,
+      "first_ts_us": 1003500,
+      "frames": 8,
+      "inner_id": 10,
+      "last_ts_us": 61013500,
+      "outer_id": 10,
+      "outer_tpid": 33024,
+      "stack": "10"
+    },
+    {
+      "bytes": 228,
+      "depth": 2,
+      "first_ts_us": 1005000,
+      "frames": 4,
+      "inner_id": 20,
+      "last_ts_us": 61012500,
+      "outer_id": 100,
+      "outer_tpid": 34984,
+      "stack": "100.20"
+    }
+  ]
+}

@@ -200,6 +200,7 @@ describe('outputs', () => {
     expect(txt).toContain('Alpha 10.0.0 (npm package) - MIT - [2]');
     expect(txt).toContain('[2] MIT License\nUsed by: Alpha 10.0.0, zeta 1.0.0');
     expect(txt).toContain('DB-IP');
+    expect(txt).toContain('IEEE Registration Authority');
     expect(txt).toContain('Apache License 2.0 (LICENSE, NOTICE)');
     expect(txt).not.toContain('MPL-2.0 packages');
     expect(txt.endsWith('MIT shared\n')).toBe(true);

@@ -57,6 +57,8 @@ const PAUSE_SECONDS: i64 = 600;
 const HTTP_MIX_EVERY_SECONDS: i64 = 6;
 /// Gap between two rounds of ARP cache refreshes.
 const ARP_EVERY_SECONDS: i64 = 7;
+/// Gap between two rounds of the link-layer showcase (Ethernet view).
+const ETHERNET_EVERY_SECONDS: i64 = 10;
 
 #[derive(Debug, Args)]
 pub struct DemoArgs {
@@ -135,6 +137,18 @@ fn add_arp(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
     packets.sort_by_key(|p| p.ts_ns);
 }
 
+/// Link-layer showcase (`netsift_fixtures::ethernet`: vendors, VLAN and Q-in-Q tags, EtherTypes),
+/// one round every few seconds over the `seconds` following `start`, merged into `packets`.
+fn add_ethernet_showcase(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
+    let mut sc = Scenario::starting_at(start + 2 * NS_PER_SEC);
+    while sc.now() < start + seconds * NS_PER_SEC {
+        netsift_fixtures::ethernet::ethernet_showcase(&mut sc);
+        sc.advance(ETHERNET_EVERY_SECONDS * NS_PER_SEC);
+    }
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+}
+
 fn write_chunked(dir: &Path) -> Result<usize> {
     let mut packets = demo_packets(ROUNDS, 7);
     let start = packets.first().map_or(0, |p| p.ts_ns);
@@ -144,6 +158,7 @@ fn write_chunked(dir: &Path) -> Result<usize> {
     add_tls_showcase(&mut packets, start);
     add_ssdp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_arp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
+    add_ethernet_showcase(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     let pause_at = start + PAUSE_AFTER_SECONDS * NS_PER_SEC;
     for p in &mut packets {
         if p.ts_ns >= pause_at {
@@ -173,6 +188,7 @@ fn write_single(dir: &Path) -> Result<PathBuf> {
     add_http_mix(&mut packets, start, 20);
     add_ssdp(&mut packets, start, 20);
     add_arp(&mut packets, start, 20);
+    add_ethernet_showcase(&mut packets, start, 20);
     let bytes = encode(&packets, &Encoding::pcap())?;
     let path = dir.join("demo-single.pcap");
     std::fs::write(&path, bytes).with_context(|| format!("cannot write {}", path.display()))?;

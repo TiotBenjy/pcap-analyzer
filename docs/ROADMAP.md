@@ -557,10 +557,16 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       pour `/stats` sur 10 M messages, environ 2 Kio stockés par message) ; réponses depuis un port autre que 1900
       non vues ; ordre des appareils à égalité selon `rowid` ; détail d'appareil coupé par la hauteur de
       `ExpandableList` à 375 px ; graphe facultatif.
-- [~] **P5.20** `refactor/view-shared-parts` — Suivis transverses de la vague 5.A, avant les onglets SIP, FTP et
+- [x] **P5.20** `refactor/view-shared-parts` — Suivis transverses de la vague 5.A, avant les onglets SIP, FTP et
       Telnet : composant commun d'en-tête de colonne repliée sous plage (en-tête court + ligne « Session entière »)
       appliqué à SMB, ARP, Ethernet, SSDP et aux autres usages ; `ExpandableList`, `FilterChip` et `useDebounced`
       (deux copies) remontés dans `ui/src/components/` ; `MacAddress` partagé entre ARP et Ethernet.
+      Fusionné le 2026-11-23 (74f3d92) : `WholeSessionHeader` / `WholeSessionLine` (variante `inline`) /
+      `wholeSessionHeader()` pour `DataTable`, `ExpandableList` (identifiants de détail par index, clés texte
+      permises), `FilterChip`, `lib/useDebounced`, `MacAddress` / `MacText` (i18n `macAddress.*`) ; compteurs
+      Ethernet à 112 px sous plage. Suivis : trois formes de la mention à 375 px (note, ligne, parenthèses) ;
+      « Session entière » sur deux lignes dans le détail SMB de Servers à 1280 px ; formes « (session entière) »
+      de Credentials et Open Ports non converties.
 - [~] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
       statut), REGISTER, user-agents (scanners comme `friendly-scanner`), messages bruts dépliables, flux RTP
       associés sans lecture audio, identifiants SIP Digest vers Credentials.

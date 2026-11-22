@@ -16,7 +16,8 @@ pub enum CaptureFormat {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureInfo {
     pub format: CaptureFormat,
-    /// True when the file was transparently decompressed (`.gz`, detected by magic).
+    /// True when the file was transparently decompressed (gzip, zstd or LZ4 frame, detected by
+    /// magic number).
     pub compressed: bool,
     /// Distinct link types seen so far, in order of first appearance.
     pub linktypes: Vec<u32>,

@@ -1,4 +1,5 @@
-//! Reading pcap/pcapng/gz files, detecting and ordering chunk sets.
+//! Reading pcap/pcapng files (plain or compressed: gzip, zstd, LZ4), detecting and ordering
+//! chunk sets.
 //!
 //! Module ownership (parallel tasks, see docs/ROADMAP.md):
 //! - [`source`]: shared, frozen interface (`PacketSource`, `RawPacket`, ...);

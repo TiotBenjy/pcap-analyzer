@@ -249,9 +249,6 @@ fn open_target(target: &Path, session_db: &Path) -> Result<Connection> {
     // stay in memory while written); larger sorts spill to temporary files.
     conn.pragma_update(None, "cache_size", -131_072)?;
     attach(&conn, session_db)?;
-    // The session is read once, mostly in storage order: through a memory map rather than read
-    // calls into a small page cache (file-backed pages, released under memory pressure).
-    conn.pragma_update(Some(ATTACHED), "mmap_size", 1_i64 << 30)?;
     Ok(conn)
 }
 

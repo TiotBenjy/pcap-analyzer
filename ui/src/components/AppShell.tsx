@@ -3,6 +3,7 @@ import { Menu, Moon, Sun } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImportHost } from '../app/ImportHost';
+import { InRouterContext } from '../app/timeRangeContext';
 import { findNavItem } from '../app/nav';
 import { NoticeArea } from '../notices/NoticeArea';
 import { readPref, writePref } from '../lib/storage';
@@ -170,7 +171,9 @@ export function AppShell() {
 
         <main id="main" className="relative min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1600px] p-3 sm:p-4 lg:p-6">
-            <Outlet />
+            <InRouterContext value={true}>
+              <Outlet />
+            </InRouterContext>
           </div>
         </main>
       </div>

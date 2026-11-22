@@ -304,6 +304,32 @@ describe('DNS view', () => {
     });
   });
 
+  it('asks for the time range of the URL and offers to clear an empty range', async () => {
+    const range = { fromUs: T0, toUs: T0 + 59_999_999 };
+    vi.mocked(dnsApi.getDnsStats).mockResolvedValue(
+      stats({ total: 0, errors: 0, answered: 0, protocols: [], rcodes: [], qtypes: [], latency_p50_us: null, latency_p95_us: null, country_unknown: { country: null, servers: 0, messages: 0 } }),
+    );
+    vi.mocked(dnsApi.getDnsPairs).mockResolvedValue(page([]));
+    vi.mocked(dnsApi.getDnsServers).mockResolvedValue(page([]));
+    const { router } = renderApp(`/sessions/${ID}/dns?from_us=${range.fromUs}&to_us=${range.toUs}`);
+    await waitFor(() => {
+      expect(dnsApi.getDnsStats).toHaveBeenCalledWith(ID, expect.anything(), range);
+    });
+    expect(dnsApi.getDnsPairs).toHaveBeenCalledWith(ID, expect.anything(), expect.anything(), range);
+    expect(dnsApi.getDnsServers).toHaveBeenCalledWith(ID, expect.anything(), expect.anything(), range);
+    const clear = await screen.findAllByRole('button', { name: 'Clear the time range' });
+    expect(screen.getAllByText('Nothing was recorded between these times.').length).toBeGreaterThan(0);
+    const user = setupUser();
+    // The first one is the header chip, the others the empty states.
+    await user.click(clear[clear.length - 1] as HTMLElement);
+    await waitFor(() => {
+      expect(router.state.location.search).not.toHaveProperty('from_us');
+    });
+    await waitFor(() => {
+      expect(dnsApi.getDnsStats).toHaveBeenLastCalledWith(ID, expect.anything(), null);
+    });
+  });
+
   it('waits for a running import', async () => {
     vi.mocked(api.getSession).mockResolvedValue(session({ state: 'importing' }));
     renderApp(`/sessions/${ID}/dns`);

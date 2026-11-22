@@ -283,10 +283,10 @@ function AnnounceTable({ query }: { query: ListQuery<SmbAnnounceInfo> }) {
                   <th scope="col" className="w-[16%] px-3 py-2 font-medium">{t('views.smb.announce.os')}</th>
                   <th scope="col" className="px-3 py-2 font-medium">{t('views.smb.announce.roles')}</th>
                   <th scope="col" className="w-[14%] px-3 py-2 font-medium">{t('views.smb.announce.comment')}</th>
-                  <th scope="col" className={cn('px-3 py-2 text-right font-medium sm:pr-4', ranged ? 'w-32' : 'w-20')}>
+                  <th scope="col" className={cn('px-3 py-2 text-right font-medium sm:pr-4', ranged ? 'w-24 xl:w-32' : 'w-20')}>
                     {t('views.smb.announce.count')}
                     {ranged && (
-                      <span className="block font-normal whitespace-nowrap text-faint">
+                      <span className="block leading-tight font-normal text-faint xl:whitespace-nowrap">
                         {t('timeRange.wholeSession')}
                       </span>
                     )}

@@ -35,6 +35,7 @@ pub mod dhcp;
 pub mod dns;
 mod error;
 pub mod ethertype;
+pub mod ftp;
 mod ipext;
 pub mod kerberos;
 mod link;

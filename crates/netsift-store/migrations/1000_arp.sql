@@ -20,6 +20,8 @@ CREATE TABLE arp_messages (
 CREATE INDEX arp_messages_ts ON arp_messages (ts);
 -- Counters per type under a time range (index alone) and type filter of the list.
 CREATE INDEX arp_messages_kind ON arp_messages (kind, unsolicited, ts);
+-- Unsolicited replies only (filter of the list and its count, rare rows).
+CREATE INDEX arp_messages_unsolicited ON arp_messages (ts) WHERE unsolicited = 1;
 -- Address filters of the list.
 CREATE INDEX arp_messages_sender_ip ON arp_messages (sender_ip, ts);
 CREATE INDEX arp_messages_target_ip ON arp_messages (target_ip, ts);

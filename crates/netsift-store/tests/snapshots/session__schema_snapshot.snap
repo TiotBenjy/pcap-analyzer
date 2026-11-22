@@ -73,6 +73,9 @@ CREATE INDEX arp_messages_target_ip ON arp_messages (target_ip, ts);
 -- index arp_messages_ts
 CREATE INDEX arp_messages_ts ON arp_messages (ts);
 
+-- index arp_messages_unsolicited
+CREATE INDEX arp_messages_unsolicited ON arp_messages (ts) WHERE unsolicited = 1;
+
 -- table chunks
 CREATE TABLE chunks (
     id         INTEGER PRIMARY KEY,                 -- index in the ordered set (RawPacket.chunk_id)

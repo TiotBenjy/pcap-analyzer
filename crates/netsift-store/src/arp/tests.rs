@@ -265,6 +265,36 @@ fn a_range_keeps_the_messages_and_overlapping_bindings() {
     .unwrap();
     assert_eq!(page.items.len(), 2);
     assert!(page.items.iter().all(|b| b.conflict));
+    // Conflicts only under a range: judged between the bindings active in it.
+    let only = BindingFilters {
+        conflicts: true,
+        q: None,
+    };
+    let early = TimeRange::new(0, 40).unwrap();
+    let none = bindings_page(&conn, &only, &PageRequest::first(10), Some(early)).unwrap();
+    assert!(
+        none.items.is_empty(),
+        "the intruder is not active before 50"
+    );
+    assert_eq!(count_bindings(&conn, &only, Some(early)).unwrap(), 0);
+    let both = bindings_page(&conn, &only, &PageRequest::first(10), Some(r)).unwrap();
+    assert_eq!(
+        both.items
+            .iter()
+            .map(|b| b.mac.as_str())
+            .collect::<Vec<_>>(),
+        vec!["02:00:00:00:00:01", "02:00:00:00:00:42"]
+    );
+    assert_eq!(count_bindings(&conn, &only, Some(r)).unwrap(), 2);
+    // Without range the same filter keeps every binding of a conflicting address.
+    let all = bindings_page(&conn, &only, &PageRequest::first(10), None).unwrap();
+    assert_eq!(all.items.len(), 2);
+    // Unsolicited filter through its partial index.
+    let unsolicited = MessageFilters {
+        unsolicited: true,
+        ..MessageFilters::default()
+    };
+    assert_eq!(count_messages(&conn, &unsolicited, Some(r)).unwrap(), 2);
     // Outside of every message.
     let empty = TimeRange::new(1000, 2000).unwrap();
     assert_eq!(kind_counts(&conn, Some(empty)).unwrap().total(), 0);

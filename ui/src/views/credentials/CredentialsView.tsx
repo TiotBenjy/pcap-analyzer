@@ -24,10 +24,11 @@ import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
 import type { en } from '../../i18n/en';
 import { cn } from '../../lib/cn';
-import { formatCount, formatTimestamp } from '../../lib/format';
+import { formatCount } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -606,7 +607,7 @@ function CredentialCard({
           </span>
           <span className="flex shrink-0 items-center gap-3 text-muted">
             <span className="num">{t('views.credentials.card.seen', { count: c.seen_count })}</span>
-            <span className="num">{formatTimestamp(c.first_ts_us)}</span>
+            <Timestamp us={c.first_ts_us} />
           </span>
         </span>
       </button>
@@ -671,11 +672,11 @@ function CredentialDetailPanel({
           </Row>
         ))}
         <Row label={t('views.credentials.detail.firstSeen')}>
-          <span className="num">{formatTimestamp(c.first_ts_us)}</span>
+          <Timestamp us={c.first_ts_us} />
         </Row>
         {c.seen_count > 1 && (
           <Row label={t('views.credentials.detail.lastSeen')}>
-            <span className="num">{formatTimestamp(c.last_ts_us)}</span>
+            <Timestamp us={c.last_ts_us} />
           </Row>
         )}
         <Row label={t('views.credentials.detail.seen')}>

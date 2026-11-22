@@ -14,10 +14,11 @@ import { ErrorState } from '../../components/ErrorState';
 import { MiddleTruncate } from '../../components/MiddleTruncate';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
-import { baseName, compressionSuffix, formatBytes, formatCount, formatSpan, formatTimestamp, sameLocalDay, timeZoneLabel } from '../../lib/format';
+import { baseName, compressionSuffix, formatBytes, formatCount, formatSpan, sameLocalDay, timeZoneLabel } from '../../lib/format';
 import { anomalyDetail, anomalyLabel, anomalySummary, anomalyWhere } from './anomalies';
 import { buildCoverage } from './coverage';
 import { CoverageTimeline } from './CoverageTimeline';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -185,14 +186,14 @@ function ChunkTable({ query, oneDay }: TableProps<ChunkInfo>) {
         accessorFn: (c) => c.first_ts_us ?? Number.MAX_SAFE_INTEGER,
         header: t('views.sources.col.start'),
         size: tsWidth,
-        cell: ({ row }) => <Ts us={row.original.first_ts_us} withDate={!oneDay} />,
+        cell: ({ row }) => <Timestamp us={row.original.first_ts_us} withDate={!oneDay} />,
       },
       {
         id: 'end',
         accessorFn: (c) => c.last_ts_us ?? Number.MAX_SAFE_INTEGER,
         header: t('views.sources.col.end'),
         size: tsWidth,
-        cell: ({ row }) => <Ts us={row.original.last_ts_us} withDate={!oneDay} />,
+        cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
       {
         id: 'duration',
@@ -249,10 +250,6 @@ function ChunkTable({ query, oneDay }: TableProps<ChunkInfo>) {
   );
 }
 
-function Ts({ us, withDate = true }: { us: number | null; withDate?: boolean }) {
-  return <span className="num">{us === null ? '' : formatTimestamp(us, withDate)}</span>;
-}
-
 function AnomalyTable({ query, oneDay, chunks }: TableProps<AnomalyInfo> & { chunks: readonly ChunkInfo[] }) {
   const { t } = useTranslation();
   const names = useMemo(() => new Map(chunks.map((c) => [c.id, c.path])), [chunks]);
@@ -293,7 +290,7 @@ function AnomalyTable({ query, oneDay, chunks }: TableProps<AnomalyInfo> & { chu
         accessorFn: (a) => a.ts_us ?? Number.MAX_SAFE_INTEGER,
         header: t('views.sources.anomalyCol.time'),
         size: oneDay ? 96 : 168,
-        cell: ({ row }) => <Ts us={row.original.ts_us} withDate={!oneDay} />,
+        cell: ({ row }) => <Timestamp us={row.original.ts_us} withDate={!oneDay} />,
       },
       {
         id: 'detail',

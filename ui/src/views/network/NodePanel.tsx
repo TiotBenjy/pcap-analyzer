@@ -11,8 +11,9 @@ import { ErrorState } from '../../components/ErrorState';
 import { Flag } from '../../components/Flag';
 import { Skeleton } from '../../components/Skeleton';
 import { countryName } from '../../lib/countries';
-import { formatBytes, formatCount, formatTimestamp } from '../../lib/format';
+import { formatBytes, formatCount } from '../../lib/format';
 import { cleanLabel, type NodeLabels, neighborsOf, nodeText } from './graphModel';
+import { Timestamp } from '../../components/Timestamp';
 
 /** Neighbors listed for a group node (host nodes get theirs from the API). */
 const GROUP_NEIGHBORS = 10;
@@ -173,12 +174,12 @@ function HostDetail({ sessionId, node, resolveNames }: { sessionId: string; node
             </Row>
             {d.first_ts_us !== null && (
               <Row label={t('views.network.panel.first')}>
-                <span className="num">{formatTimestamp(d.first_ts_us)}</span>
+                <Timestamp us={d.first_ts_us} />
               </Row>
             )}
             {d.last_ts_us !== null && (
               <Row label={t('views.network.panel.last')}>
-                <span className="num">{formatTimestamp(d.last_ts_us)}</span>
+                <Timestamp us={d.last_ts_us} />
               </Row>
             )}
           </dl>

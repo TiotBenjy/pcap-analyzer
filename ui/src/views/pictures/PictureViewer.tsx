@@ -8,8 +8,9 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { CopyButton } from '../../components/CopyButton';
 import { Endpoint } from '../../components/Endpoint';
-import { formatBytes, formatCount, formatTimestamp } from '../../lib/format';
+import { formatBytes, formatCount } from '../../lib/format';
 import { cleanText, dimensions, displayName, typeLabel } from './format';
+import { Timestamp } from '../../components/Timestamp';
 
 interface PictureViewerProps {
   sessionId: string;
@@ -168,8 +169,8 @@ function Metadata({ item }: { item: ObjectItem }) {
     [t('views.pictures.viewer.dimensions'), dimensions(item) ?? unknown],
     [t('views.pictures.viewer.size'), `${formatBytes(item.size)} (${formatCount(item.size)})`],
     [t('views.pictures.viewer.occurrences'), formatCount(item.occurrences)],
-    [t('views.pictures.viewer.firstSeen'), formatTimestamp(item.first_ts_us)],
-    [t('views.pictures.viewer.lastSeen'), formatTimestamp(item.last_ts_us)],
+    [t('views.pictures.viewer.firstSeen'), <Timestamp us={item.first_ts_us} />],
+    [t('views.pictures.viewer.lastSeen'), <Timestamp us={item.last_ts_us} />],
     [shaLabel, <Copyable value={item.sha256} name={shaLabel} />],
   ];
   return (

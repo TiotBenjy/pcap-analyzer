@@ -23,7 +23,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
-import { formatCount, formatPercent, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { formatCount, formatPercent, sameLocalDay } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { useTheme } from '../../theme/theme';
 import { CertificatesPanel } from './CertificatesPanel';
@@ -40,6 +40,7 @@ import {
   versionOfPie,
 } from './tlsCharts';
 import { isWeakness, suiteLabel, versionLabel, versionTone } from './tlsFormat';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -420,7 +421,7 @@ function useSessionColumns(oneDay: boolean, wide: boolean): ColumnDef<TlsSession
         accessorFn: (s) => s.ts_us,
         header: t('views.tls.table.col.time'),
         size: oneDay ? 88 : 168,
-        cell: ({ row }) => <span className="num">{formatTimestamp(row.original.ts_us, !oneDay)}</span>,
+        cell: ({ row }) => <Timestamp us={row.original.ts_us} withDate={!oneDay} />,
       },
       {
         id: 'client',

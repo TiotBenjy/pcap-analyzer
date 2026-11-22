@@ -14,6 +14,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { Skeleton } from '../../components/Skeleton';
 import { formatBytes, formatDuration, formatTimestamp } from '../../lib/format';
 import { ExportStatus } from '../exports/ExportStatus';
+import { Timestamp } from '../../components/Timestamp';
 
 interface FlowsDialogProps {
   sessionId: string;
@@ -156,7 +157,7 @@ function FlowRow({
             {flow.app_proto !== null && <Badge>{flow.app_proto}</Badge>}
           </p>
           <p className="num flex min-w-0 flex-wrap gap-x-3 text-meta text-muted">
-            <span>{formatTimestamp(flow.first_ts_us)}</span>
+            <Timestamp us={flow.first_ts_us} />
             <span>{formatDuration(flow.duration_us / 1e6, lang)}</span>
             <span>{formatBytes(flow.bytes_fwd + flow.bytes_rev, lang)}</span>
             <span>{t('views.exportPcap.flows.packets', { count: flow.packets_total })}</span>

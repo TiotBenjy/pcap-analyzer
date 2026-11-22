@@ -13,11 +13,12 @@ import { Card } from '../../components/Card';
 import { ErrorState } from '../../components/ErrorState';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
-import { formatBytes, formatDate, formatTimestamp, labelled } from '../../lib/format';
+import { formatBytes, formatDate, labelled } from '../../lib/format';
 import { CodeList, Field, Fields, IssueBadges, MonoValue, SuiteName } from './parts';
 import { alertName, hex4, versionLabel, versionTone } from './tlsFormat';
 import { Endpoint } from '../../components/Endpoint';
 import { endpointAddress, toEndpoint } from '../../components/endpointText';
+import { Timestamp } from '../../components/Timestamp';
 
 type Tab = 'overview' | 'client' | 'server' | 'certificates';
 
@@ -89,7 +90,7 @@ function Overview({ item }: { item: TlsSessionItem }) {
   return (
     <Fields>
       <Field label={t('views.tls.detail.field.time')}>
-        <span className="num">{formatTimestamp(item.ts_us)}</span>
+        <Timestamp us={item.ts_us} />
       </Field>
       <Field label={t('views.tls.detail.field.client')}>
         <Endpoint endpoint={item.client_ip} port={item.client_port} copy className="text-meta" />

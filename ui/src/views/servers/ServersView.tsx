@@ -20,10 +20,11 @@ import { MultiSelect } from '../../components/MultiSelect';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
 import { cn } from '../../lib/cn';
-import { formatCount, formatTimestamp } from '../../lib/format';
+import { formatCount } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -314,7 +315,7 @@ function ServerTable({ role, labels, byAddress }: ServerListProps) {
                     <EvidenceKinds server={s} />
                   </td>
                   <td className="num px-3 py-2 text-right">{formatCount(s.count)}</td>
-                  <td className="num px-3 py-2 text-meta sm:pr-4">{formatTimestamp(s.last_ts_us)}</td>
+                  <td className="px-3 py-2 text-meta sm:pr-4"><Timestamp us={s.last_ts_us} /></td>
                 </tr>
                 {expanded && (
                   <tr id={detailId} className="border-b border-line last:border-b-0">
@@ -363,8 +364,8 @@ function EvidenceTable({ server }: { server: RoleServer }) {
             </td>
             <td className="num py-1 pr-3 text-right">{formatCount(e.count)}</td>
             <td className="num py-1 pr-3 text-right">{e.clients === null ? '-' : formatCount(e.clients)}</td>
-            <td className="num hidden py-1 pr-3 text-meta lg:table-cell">{formatTimestamp(e.first_ts_us)}</td>
-            <td className="num py-1 pr-3 text-meta">{formatTimestamp(e.last_ts_us)}</td>
+            <td className="hidden py-1 pr-3 text-meta lg:table-cell"><Timestamp us={e.first_ts_us} /></td>
+            <td className="py-1 pr-3 text-meta"><Timestamp us={e.last_ts_us} /></td>
             <td className="min-w-0 py-1">
               <Example evidence={e} />
             </td>
@@ -411,10 +412,10 @@ function ServerCards({ role, labels, byAddress }: ServerListProps) {
                       </span>
                     )}
                     <span className="text-muted">
-                      {t('views.servers.firstSeen')} <span className="num">{formatTimestamp(e.first_ts_us)}</span>
+                      {t('views.servers.firstSeen')} <Timestamp us={e.first_ts_us} />
                     </span>
                     <span className="text-muted">
-                      {t('views.servers.lastSeen')} <span className="num">{formatTimestamp(e.last_ts_us)}</span>
+                      {t('views.servers.lastSeen')} <Timestamp us={e.last_ts_us} />
                     </span>
                     {e.example !== null && <Example evidence={e} />}
                   </li>

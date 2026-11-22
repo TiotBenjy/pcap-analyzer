@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { baseName, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { baseName, formatClock, formatCount, formatDuration, formatMonthDay, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
 import { CATEGORICAL, OTHER_COLOR } from '../../charts/palette';
 import { type Coverage, ticks } from './coverage';
 
@@ -89,9 +89,9 @@ export function CoverageTimeline({ coverage, detailsId }: CoverageTimelineProps)
   const axis = ticks(coverage.start, coverage.end, width - 2 * PAD, TICK_SPACING);
   const sameDay = sameLocalDay(coverage.start, coverage.end);
   const tickLabel = (us: number) => {
-    if (axis.step < 60_000_000) return formatTimestamp(us, false);
-    const hm = formatTimestamp(us, false).slice(0, 5);
-    return sameDay ? hm : `${formatTimestamp(us).slice(5, 10)} ${hm}`;
+    if (axis.step < 60_000_000) return formatClock(us);
+    const hm = formatClock(us, false);
+    return sameDay ? hm : `${formatMonthDay(us)} ${hm}`;
   };
 
   return (

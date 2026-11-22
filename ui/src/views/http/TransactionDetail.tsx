@@ -9,8 +9,9 @@ import { Endpoint } from '../../components/Endpoint';
 import { ErrorState } from '../../components/ErrorState';
 import { Skeleton } from '../../components/Skeleton';
 import { cn } from '../../lib/cn';
-import { formatBytes, formatCount, formatDuration, formatTimestamp } from '../../lib/format';
+import { formatBytes, formatCount, formatDuration } from '../../lib/format';
 import { HeaderTable } from './HeaderTable';
+import { Timestamp } from '../../components/Timestamp';
 
 const TABS = ['request', 'response', 'body', 'flow'] as const;
 type Tab = (typeof TABS)[number];
@@ -202,7 +203,7 @@ function DetailBody({ d, tab }: { d: HttpTransactionDetail; tab: Tab }) {
         <Endpoint endpoint={s.server} port={s.server_port} show="address" />
       </Fact>
       <Fact label={t('views.http.detail.started')}>
-        <span className="num">{formatTimestamp(s.ts_us)}</span>
+        <Timestamp us={s.ts_us} />
       </Fact>
       <Fact label={t('views.http.detail.responseTime')}>
         <span className="num">{s.response_time_us === null ? '-' : formatDuration(s.response_time_us / 1e6, lang)}</span>

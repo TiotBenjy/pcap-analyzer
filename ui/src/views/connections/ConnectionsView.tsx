@@ -22,7 +22,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { Toggle } from '../../components/Toggle';
-import { formatBytes, formatCount, formatDuration, formatPercent, formatTimestamp } from '../../lib/format';
+import { formatBytes, formatCount, formatDuration, formatPercent } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { ChordDiagram, type ChordNodeView } from './ChordDiagram';
 import { FlowsDialog } from './FlowsDialog';
@@ -32,6 +32,7 @@ import { LoadMore } from './LoadMore';
 import { isViewable } from './session';
 import { SessionGate } from './SessionGate';
 import { useDebounced } from './useDebounced';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -431,13 +432,13 @@ function ConversationsCard({ sessionId, enabled }: { sessionId: string; enabled:
         id: 'first',
         header: t('views.connections.table.first'),
         size: 160,
-        cell: ({ row }) => <span className="num">{formatTimestamp(row.original.first_ts_us)}</span>,
+        cell: ({ row }) => <Timestamp us={row.original.first_ts_us} />,
       },
       {
         id: 'last',
         header: t('views.connections.table.last'),
         size: 160,
-        cell: ({ row }) => <span className="num">{formatTimestamp(row.original.last_ts_us)}</span>,
+        cell: ({ row }) => <Timestamp us={row.original.last_ts_us} />,
       },
     ],
     [t, lang],

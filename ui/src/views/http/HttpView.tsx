@@ -16,7 +16,7 @@ import { FilterBar } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
-import { formatBytes, formatCount, formatTimestamp } from '../../lib/format';
+import { formatBytes, formatCount } from '../../lib/format';
 import { barColor, barsHeight, barsOption, type ChartFormat, PART_HEIGHT, statusOption } from './charts';
 import { ExpandableList } from './ExpandableList';
 import { displayTarget } from './format';
@@ -25,6 +25,7 @@ import { useSessionGate } from './gate';
 import { FilterChip, MethodBadge, MethodsChart, ServerCell, StatusBadge, TargetText } from './shared';
 import { methodFilters, methodParam, useDebounced, useViewableSession } from './state';
 import { TransactionDetail } from './TransactionDetail';
+import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -276,7 +277,7 @@ function Row({ tx, oneDay }: { tx: HttpTransactionSummary; oneDay: boolean }) {
   const size = formatBytes(tx.response_size, i18n.language);
   return (
     <span className={`flex min-w-0 flex-col gap-1 ${ROW_GRID}`}>
-      <span className="num hidden text-meta text-muted md:block">{formatTimestamp(tx.ts_us, !oneDay)}</span>
+      <Timestamp us={tx.ts_us} withDate={!oneDay} className="hidden text-meta text-muted md:block" />
       <span className="hidden min-w-0 md:block">
         <Endpoint endpoint={tx.client} port={tx.client_port} show="address" className="text-meta" />
       </span>

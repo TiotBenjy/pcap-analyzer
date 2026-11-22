@@ -108,6 +108,28 @@ fn add_ssdp(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
     packets.sort_by_key(|p| p.ts_ns);
 }
 
+/// Gap between two periodic SIP rounds (a short call, and a registration refresh every other round).
+const SIP_EVERY_SECONDS: i64 = 9;
+
+/// SIP traffic of the SIP view (`netsift_fixtures::sip`): the showcase once (complete, rejected,
+/// cancelled and TCP calls with RTP, a Digest registration, a scanner sweep), then periodic calls
+/// over the `seconds` following `start`, merged into `packets` (sorted by time).
+fn add_sip(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
+    let mut sc = Scenario::starting_at(start + 3 * NS_PER_SEC).with_seed(0x5349_5000);
+    netsift_fixtures::sip::sip_showcase(&mut sc);
+    let mut round = 0;
+    loop {
+        sc.advance(SIP_EVERY_SECONDS * NS_PER_SEC);
+        if sc.now() >= start + seconds * NS_PER_SEC {
+            break;
+        }
+        netsift_fixtures::sip::sip_round(&mut sc, round);
+        round += 1;
+    }
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+}
+
 /// Gap between two periodic Telnet logins on the switch.
 const TELNET_EVERY_SECONDS: i64 = 30;
 
@@ -201,6 +223,7 @@ fn write_chunked(dir: &Path) -> Result<usize> {
     add_http_mix(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_tls_showcase(&mut packets, start);
     add_ssdp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
+    add_sip(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_arp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_ethernet_showcase(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_ftp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
@@ -233,6 +256,7 @@ fn write_single(dir: &Path) -> Result<PathBuf> {
     let start = packets.first().map_or(0, |p| p.ts_ns);
     add_http_mix(&mut packets, start, 20);
     add_ssdp(&mut packets, start, 20);
+    add_sip(&mut packets, start, 20);
     add_arp(&mut packets, start, 20);
     add_ethernet_showcase(&mut packets, start, 20);
     add_ftp(&mut packets, start, 20);
@@ -330,6 +354,24 @@ mod tests {
         assert!(logins >= 9, "{logins}");
     }
 
+    /// SIP view: calls in every final state over the whole capture, registrations, a scanner.
+    fn assert_sip_view(session: &netsift_store::Session) {
+        let (states, registrations, scanners): (i64, i64, i64) = session
+            .conn()
+            .query_row(
+                "SELECT count(DISTINCT state) FILTER (WHERE method = 'INVITE' \
+                 AND state IN ('completed', 'rejected', 'cancelled')), \
+                 count(*) FILTER (WHERE method = 'REGISTER'), \
+                 (SELECT count(*) FROM sip_messages WHERE scanner IS NOT NULL) FROM sip_dialogs",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(states, 3, "completed, rejected, cancelled");
+        assert!(registrations > 3, "{registrations}");
+        assert_eq!(scanners, 4);
+    }
+
     #[test]
     fn creates_two_ready_sessions_with_continuity_anomalies() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -406,6 +448,7 @@ mod tests {
         assert_eq!(kinds, 4);
         assert_eq!(devices, 5);
         assert_ftp(&session);
+        assert_sip_view(&session);
         // ARP view: refreshes over the whole capture and two conflicting addresses.
         let (messages, conflicts): (i64, i64) = session
             .conn()

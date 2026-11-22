@@ -5,6 +5,7 @@
 export const ethernetEn = {
   subtitle: 'MAC addresses, vendors, VLANs and EtherTypes',
   loadError: 'Could not load the Ethernet data',
+  countersNote: 'In a time range, frames and bytes are those of the whole session.',
   empty: 'No Ethernet frame in this session',
   emptyText: 'Raw IP, loopback and Wi-Fi captures have no Ethernet addresses.',
   stat: {
@@ -139,6 +140,7 @@ export const ethernetEn = {
 export const ethernetFr: typeof ethernetEn = {
   subtitle: 'Adresses MAC, constructeurs, VLAN et EtherTypes',
   loadError: 'Impossible de charger les données Ethernet',
+  countersNote: 'Dans une plage horaire, les trames et octets sont ceux de la session entière.',
   empty: 'Aucune trame Ethernet dans cette session',
   emptyText: "Les captures IP brutes, de bouclage ou Wi-Fi n'ont pas d'adresses Ethernet.",
   stat: {

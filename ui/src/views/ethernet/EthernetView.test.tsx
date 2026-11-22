@@ -200,7 +200,8 @@ describe('EthernetView', () => {
     expect(ethApi.getEthernetStats).toHaveBeenCalledWith(ID, expect.anything(), range);
     expect(ethApi.listMacs).toHaveBeenCalledWith(ID, { sort: 'frames' }, null, expect.anything(), range);
     expect(ethApi.listMacPairs).toHaveBeenCalledWith(ID, { sort: 'frames' }, null, expect.anything(), range);
-    expect(screen.getByText('Frames sent (whole session)')).toBeInTheDocument();
+    expect(screen.getByText('Frames sent (whole session)')).toHaveAttribute('title', 'Frames sent (whole session)');
+    expect(screen.getAllByText('In a time range, frames and bytes are those of the whole session.')).toHaveLength(2);
     expect(screen.getByText('EtherTypes (whole session)')).toBeInTheDocument();
   });
 

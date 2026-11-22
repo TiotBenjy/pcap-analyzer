@@ -315,10 +315,23 @@ function EtherTypesCard({
   );
 }
 
-/** Header of a counter column: under a range, it says that the value is that of the session. */
-function useCounterHeader(ranged: boolean): (label: string) => string {
+/**
+ * Header of a counter column: under a range, it says that the value is that of the session (full
+ * text on hover when the column is too narrow; the card also says it in a note).
+ */
+function useCounterHeader(ranged: boolean): (label: string) => string | (() => ReactNode) {
   const { t } = useTranslation();
-  return (label) => (ranged ? t('timeRange.wholeSessionColumn', { label }) : label);
+  return (label) => {
+    if (!ranged) return label;
+    const full = t('timeRange.wholeSessionColumn', { label });
+    return () => <span title={full}>{full}</span>;
+  };
+}
+
+/** Under a range: the frames and bytes of the rows are those of the whole session. */
+function CountersNote() {
+  const { t } = useTranslation();
+  return <p className="text-meta text-muted">{t('views.ethernet.countersNote')}</p>;
 }
 
 function tpidKey(tpid: number): 'dot1q' | 'dot1ad' | 'qinqOld' {
@@ -616,6 +629,7 @@ function MacsCard({ sessionId, enabled, ranged, oneDay, vendor, onClearVendor, v
               />
             </div>
           </div>
+          {ranged && <CountersNote />}
           {(vendor !== null || vlan !== null) && (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {vendor !== null && (
@@ -801,6 +815,7 @@ function PairsCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <SearchInput value={search} onChange={setSearch} placeholder={t('views.ethernet.pairs.search')} />
           </div>
+          {ranged && <CountersNote />}
           {(mac !== null || vlan !== null || ethertype !== null) && (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {mac !== null && (

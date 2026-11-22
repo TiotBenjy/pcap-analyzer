@@ -461,18 +461,29 @@ fn vendor_key(raw: Option<String>) -> Option<VendorKey> {
     })
 }
 
-/// A VLAN stack: one to four identifiers (0-4095) separated by dots.
+/// A VLAN stack: one to four identifiers (0-4095) separated by dots, normalized as stored
+/// (`007.020` -> `7.20`).
 fn vlan_stack(raw: Option<String>) -> Result<Option<String>, ApiError> {
     let Some(raw) = raw else { return Ok(None) };
-    let ids: Vec<&str> = raw.split('.').collect();
-    let valid = ids.len() <= 4
-        && ids
-            .iter()
-            .all(|id| id.parse::<u16>().is_ok_and(|v| v <= 4095) && !id.starts_with('+'));
-    if !valid {
-        return Err(bad("vlan", "expected identifiers separated by dots"));
+    let ids: Option<Vec<u16>> = raw
+        .split('.')
+        .map(|id| {
+            id.bytes()
+                .all(|b| b.is_ascii_digit())
+                .then(|| id.parse::<u16>().ok())
+                .flatten()
+                .filter(|v| *v <= 4095)
+        })
+        .collect();
+    match ids {
+        Some(ids) if (1..=4).contains(&ids.len()) => Ok(Some(
+            ids.iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("."),
+        )),
+        _ => Err(bad("vlan", "expected identifiers separated by dots")),
     }
-    Ok(Some(raw))
 }
 
 fn ethertype_key(raw: Option<&str>) -> Result<Option<i32>, ApiError> {

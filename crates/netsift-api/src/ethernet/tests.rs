@@ -212,12 +212,19 @@ async fn address_filters() {
     );
     assert_eq!(count(env.all(&format!("{base}?vlan=10"), 10).await), 4);
     assert_eq!(count(env.all(&format!("{base}?vlan=100.20"), 10).await), 2);
+    // Stored without leading zeros: the filter is normalized the same way.
+    assert_eq!(
+        count(env.all(&format!("{base}?vlan=0100.020"), 10).await),
+        2
+    );
     for bad in [
         "sort=size",
         "class=device",
         "vlan=4096",
         "vlan=1.2.3.4.5",
         "vlan=x",
+        "vlan=%2B7",
+        "vlan=1..2",
     ] {
         let (status, _) = env.get(&format!("{base}?{bad}")).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");

@@ -5,6 +5,7 @@ import type { TrafficSeries } from '../../api/types/TrafficSeries';
 import { colorFor } from '../../charts/palette';
 import { formatShare } from '../../lib/format';
 import { escapeHtml } from '../../charts/text';
+import type { TimeRange } from '../../lib/timeRange';
 
 // ECharts option of the Overview "Traffic by protocol" chart (pure: unit-tested without ECharts).
 
@@ -199,6 +200,9 @@ export function buildTrafficOption(input: TrafficChartInput): EChartsCoreOption 
       // ECharts rounds the time step down (13 min / 3 gives 2 min ticks): 2 keeps narrow axes airy.
       ...(compact ? { splitNumber: 2 } : {}),
       axisLabel: {
+        // A range aligned on the clock (time filter) puts a tick at the very start of the axis,
+        // whose label would sit on the "0" of the value axis: the start is never labelled.
+        showMinLabel: false,
         // Level-based format: the axis picks the unit from its ticks, so it adapts to the
         // captured duration and to the zoom. Local time, ISO-like, no localized month names.
         formatter: {
@@ -249,4 +253,15 @@ export function zoomOfEvent(params: unknown): Zoom | null {
   const end = Number(src?.end);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
   return { start: Math.max(0, Math.min(100, start)), end: Math.max(0, Math.min(100, end)) };
+}
+
+/**
+ * Time range of a zoom window, aligned on the buckets shown (whole buckets, at least one), so
+ * that the volumes of the range equal those of the chart; `null` when not zoomed.
+ */
+export function zoomRange(data: TrafficSeries, z: Zoom): TimeRange | null {
+  if (!isZoomed(z) || data.points === 0) return null;
+  const from = Math.min(data.points - 1, Math.max(0, Math.floor((z.start / 100) * data.points)));
+  const to = Math.min(data.points, Math.max(from + 1, Math.ceil((z.end / 100) * data.points)));
+  return { fromUs: data.start_us + from * data.step_us, toUs: data.start_us + to * data.step_us - 1 };
 }

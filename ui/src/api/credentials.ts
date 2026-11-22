@@ -1,6 +1,7 @@
 // Typed client of the Credentials routes (crates/netsift-api/src/credentials.rs, ADR-019).
 // The list, stats and paths never carry a secret: the detail and the export do, on demand.
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiFetch, apiGet } from './client';
 import { attachmentName } from './tls';
 import type { CredentialDetail } from './types/CredentialDetail';
@@ -27,6 +28,8 @@ export interface CredentialExport extends CredentialFilters {
   mode?: number | null;
   /** Selected entries; every entry matching the filters when absent. */
   ids?: readonly string[];
+  /** Time range of the list (ignored with `ids`). */
+  range?: TimeRange | null;
 }
 
 /** Most ids sent by one export (`MAX_IDS` of the API). */
@@ -45,17 +48,17 @@ function query(entries: Record<string, string | number | null | undefined>): str
   return text === '' ? '' : `?${text}`;
 }
 
-export function listCredentials(id: string, params: CredentialListParams = {}, signal?: AbortSignal): Promise<Page<CredentialInfo>> {
+export function listCredentials(id: string, params: CredentialListParams = {}, signal?: AbortSignal, range: TimeRange | null = null): Promise<Page<CredentialInfo>> {
   const q = query({ limit: params.limit, cursor: params.cursor, protocol: params.protocol, state: params.state });
-  return apiGet(`${sessionPath(id)}${q}`, signal);
+  return apiGet(withRange(`${sessionPath(id)}${q}`, range), signal);
 }
 
-export function getCredentialStats(id: string, signal?: AbortSignal): Promise<CredentialStats> {
-  return apiGet(`${sessionPath(id)}/stats`, signal);
+export function getCredentialStats(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<CredentialStats> {
+  return apiGet(withRange(`${sessionPath(id)}/stats`, range), signal);
 }
 
-export function getCredentialPaths(id: string, limit?: number, signal?: AbortSignal): Promise<CredentialPaths> {
-  return apiGet(`${sessionPath(id)}/paths${query({ limit })}`, signal);
+export function getCredentialPaths(id: string, limit?: number, signal?: AbortSignal, range: TimeRange | null = null): Promise<CredentialPaths> {
+  return apiGet(withRange(`${sessionPath(id)}/paths${query({ limit })}`, range), signal);
 }
 
 /** One entry with its secret and hashcat line (sensitive: render through `SecretValue`). */
@@ -69,7 +72,9 @@ export function exportPath(id: string, e: CredentialExport): `/${string}` {
     throw new RangeError(`at most ${MAX_EXPORT_IDS} entries per selection`);
   }
   const ids = e.ids?.join(',');
-  return `${sessionPath(id)}/export${query({ format: e.format, mode: e.mode, protocol: e.protocol, state: e.state, ids })}`;
+  const path: `/${string}` = `${sessionPath(id)}/export${query({ format: e.format, mode: e.mode, protocol: e.protocol, state: e.state, ids })}`;
+  // A selection is exported as is; otherwise the filters of the list apply, range included.
+  return ids === undefined ? withRange(path, e.range) : path;
 }
 
 /**

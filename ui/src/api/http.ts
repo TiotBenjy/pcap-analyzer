@@ -1,5 +1,6 @@
 // Typed client of the HTTP routes (crates/netsift-api/src/http.rs).
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiGet } from './client';
 import type { HttpHeaderStats } from './types/HttpHeaderStats';
 import type { HttpStats } from './types/HttpStats';
@@ -68,30 +69,32 @@ export function httpHeaderListQuery(p: HttpHeaderListParams = {}): string {
   return query({ limit: p.limit, cursor: p.cursor, method: p.methods, name: p.name, q: p.q });
 }
 
-export function getHttpStats(id: string, signal?: AbortSignal): Promise<HttpStats> {
-  return apiGet(`${sessionPath(id)}/http/stats`, signal);
+export function getHttpStats(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<HttpStats> {
+  return apiGet(withRange(`${sessionPath(id)}/http/stats`, range), signal);
 }
 
 export function listHttpTransactions(
   id: string,
   params?: HttpListParams,
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<HttpTransactionSummary>> {
-  return apiGet(`${sessionPath(id)}/http/transactions${httpListQuery(params)}`, signal);
+  return apiGet(withRange(`${sessionPath(id)}/http/transactions${httpListQuery(params)}`, range), signal);
 }
 
 export function getHttpTransaction(id: string, tid: number, signal?: AbortSignal): Promise<HttpTransactionDetail> {
   return apiGet(`${sessionPath(id)}/http/transactions/${tid}`, signal);
 }
 
-export function getHttpHeaderStats(id: string, signal?: AbortSignal): Promise<HttpHeaderStats> {
-  return apiGet(`${sessionPath(id)}/http/headers/stats`, signal);
+export function getHttpHeaderStats(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<HttpHeaderStats> {
+  return apiGet(withRange(`${sessionPath(id)}/http/headers/stats`, range), signal);
 }
 
 export function listHttpHeaders(
   id: string,
   params?: HttpHeaderListParams,
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<HttpTransactionSummary>> {
-  return apiGet(`${sessionPath(id)}/http/headers${httpHeaderListQuery(params)}`, signal);
+  return apiGet(withRange(`${sessionPath(id)}/http/headers${httpHeaderListQuery(params)}`, range), signal);
 }

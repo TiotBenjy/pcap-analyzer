@@ -37,6 +37,7 @@ use crate::contract::Page;
 use crate::endpoint::Endpoint;
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
+use crate::range::ApiRange;
 use crate::sessions::parse_id;
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -246,6 +247,7 @@ fn filter(
         protocol,
         secret_state: state,
         hashcat_mode: mode,
+        range: None,
     })
 }
 
@@ -260,15 +262,17 @@ async fn list(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<ListQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<CredentialInfo>>, ApiError> {
     let id = parse_id(&id)?;
-    let f = filter(query.protocol, query.state, query.mode)?;
+    let mut f = filter(query.protocol, query.state, query.mode)?;
     let request = PageRequest {
         limit: query.limit.unwrap_or(0),
         cursor: query.cursor,
     };
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
+        f.range = range.resolve(&session)?;
         let conn = session.conn();
         let page = store::page(conn, &f, &request)?;
         Ok(Page {
@@ -284,13 +288,14 @@ async fn list(
 async fn stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<CredentialStats>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
         let conn = session.conn();
         let analyzed = netsift_store::traffic::count_rows(conn, "credentials")?.is_some();
-        let st = store::stats(conn)?;
+        let st = store::stats(conn, range.resolve(&session)?)?;
         Ok(CredentialStats {
             analyzed,
             total: st.total,
@@ -318,12 +323,13 @@ async fn paths(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<PathsQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<CredentialPaths>, ApiError> {
     let id = parse_id(&id)?;
     let limit = query.limit.unwrap_or(DEFAULT_PATHS).clamp(1, MAX_PATHS);
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
-        let (found, others) = store::paths(session.conn(), limit)?;
+        let (found, others) = store::paths(session.conn(), limit, range.resolve(&session)?)?;
         Ok(CredentialPaths {
             paths: found
                 .into_iter()
@@ -378,6 +384,7 @@ async fn export(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<ExportQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Response, ApiError> {
     let id = parse_id(&id)?;
     let format = match query.format.as_deref() {
@@ -406,9 +413,14 @@ async fn export(
     if !ids.iter().all(|i| is_entry_id(i)) {
         return Err(ApiError::BadRequest("invalid id".to_owned()));
     }
-    let f = filter(query.protocol, query.state, query.mode)?;
+    let mut f = filter(query.protocol, query.state, query.mode)?;
     let (body, name) = blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
+        // An explicit selection is exported as is; otherwise the filters of the list apply,
+        // time range included (ADR-030).
+        if ids.is_empty() {
+            f.range = range.resolve(&session)?;
+        }
         if ids.is_empty() && store::count(session.conn(), &f)? > u64::from(store::MAX_EXPORT) {
             return Err(ApiError::BadRequest(format!(
                 "more than {} entries match: narrow the filters",

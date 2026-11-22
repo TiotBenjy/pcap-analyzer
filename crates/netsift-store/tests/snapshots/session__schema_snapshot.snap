@@ -220,7 +220,10 @@ CREATE TABLE dns_messages (
 );
 
 -- index dns_messages_latency
-CREATE INDEX dns_messages_latency ON dns_messages (latency_ns) WHERE latency_ns IS NOT NULL;
+CREATE INDEX dns_messages_latency ON dns_messages (latency_ns, ts) WHERE latency_ns IS NOT NULL;
+
+-- index dns_messages_pair_cover
+CREATE INDEX dns_messages_pair_cover ON dns_messages (pair_id, ts, is_error, qname);
 
 -- index dns_messages_pair_ts
 CREATE INDEX dns_messages_pair_ts ON dns_messages (pair_id, ts);
@@ -232,13 +235,13 @@ CREATE INDEX dns_messages_pairing ON dns_messages (client_ip, client_port, txid,
 CREATE INDEX dns_messages_pending ON dns_messages (ts) WHERE pending = 1;
 
 -- index dns_messages_proto_error
-CREATE INDEX dns_messages_proto_error ON dns_messages (proto, is_error);
+CREATE INDEX dns_messages_proto_error ON dns_messages (proto, is_error, has_query, has_response, ts);
 
 -- index dns_messages_qtype
-CREATE INDEX dns_messages_qtype ON dns_messages (qtype, has_query);
+CREATE INDEX dns_messages_qtype ON dns_messages (qtype, has_query, ts);
 
 -- index dns_messages_rcode
-CREATE INDEX dns_messages_rcode ON dns_messages (rcode);
+CREATE INDEX dns_messages_rcode ON dns_messages (rcode, ts);
 
 -- index dns_messages_responder
 CREATE INDEX dns_messages_responder ON dns_messages
@@ -307,10 +310,13 @@ CREATE INDEX flows_dst_ip ON flows (dst_ip);
 CREATE INDEX flows_dst_port ON flows (dst_port);
 
 -- index flows_first_ts
-CREATE INDEX flows_first_ts ON flows (first_ts);
+CREATE INDEX flows_first_ts ON flows (first_ts, last_ts);
 
 -- index flows_last_ts
 CREATE INDEX flows_last_ts ON flows (last_ts);
+
+-- index flows_long
+CREATE INDEX flows_long ON flows (last_ts, first_ts) WHERE last_ts - first_ts > 3600000000000;
 
 -- index flows_packets_total
 CREATE INDEX flows_packets_total ON flows (packets_total);
@@ -348,7 +354,7 @@ CREATE INDEX hosts_category ON hosts (category);
 CREATE INDEX hosts_country ON hosts (country);
 
 -- index hosts_first_ts
-CREATE INDEX hosts_first_ts ON hosts (first_ts);
+CREATE INDEX hosts_first_ts ON hosts (first_ts, last_ts);
 
 -- index hosts_last_ts
 CREATE INDEX hosts_last_ts ON hosts (last_ts);
@@ -362,10 +368,10 @@ CREATE TABLE http_headers (
     name           TEXT NOT NULL,                       -- as sent
     name_lc        TEXT NOT NULL,                       -- lower case, for filters and counts
     value          TEXT NOT NULL
-);
+, ts INTEGER);
 
 -- index http_headers_name
-CREATE INDEX http_headers_name ON http_headers (name_lc, transaction_id);
+CREATE INDEX http_headers_name ON http_headers (name_lc, transaction_id, ts);
 
 -- index http_headers_transaction
 CREATE INDEX http_headers_transaction ON http_headers (transaction_id, direction, idx);
@@ -440,16 +446,16 @@ CREATE TABLE http_transactions (
 );
 
 -- index http_transactions_content_type
-CREATE INDEX http_transactions_content_type ON http_transactions (content_type);
+CREATE INDEX http_transactions_content_type ON http_transactions (content_type, ts);
 
 -- index http_transactions_host
-CREATE INDEX http_transactions_host ON http_transactions (host);
+CREATE INDEX http_transactions_host ON http_transactions (host, ts);
 
 -- index http_transactions_method_group
-CREATE INDEX http_transactions_method_group ON http_transactions (method_group);
+CREATE INDEX http_transactions_method_group ON http_transactions (method_group, ts);
 
 -- index http_transactions_resp_sha256
-CREATE INDEX http_transactions_resp_sha256 ON http_transactions (resp_sha256);
+CREATE INDEX http_transactions_resp_sha256 ON http_transactions (resp_sha256, ts);
 
 -- index http_transactions_server
 CREATE INDEX http_transactions_server ON http_transactions (server_ip, client_ip, resp_ts)
@@ -462,13 +468,16 @@ CREATE INDEX http_transactions_size ON http_transactions (resp_body_len);
 CREATE INDEX http_transactions_status ON http_transactions (status_key);
 
 -- index http_transactions_status_class
-CREATE INDEX http_transactions_status_class ON http_transactions (status_class);
+CREATE INDEX http_transactions_status_class ON http_transactions (status_class, ts);
+
+-- index http_transactions_status_ts
+CREATE INDEX http_transactions_status_ts ON http_transactions (status_key, ts);
 
 -- index http_transactions_ts
 CREATE INDEX http_transactions_ts ON http_transactions (ts);
 
 -- index http_transactions_user_agent
-CREATE INDEX http_transactions_user_agent ON http_transactions (user_agent);
+CREATE INDEX http_transactions_user_agent ON http_transactions (user_agent, ts);
 
 -- table http_transactions_fts
 CREATE VIRTUAL TABLE http_transactions_fts USING fts5 (
@@ -1087,7 +1096,7 @@ CREATE TABLE tls_sessions (
 CREATE INDEX tls_sessions_cert_issues ON tls_sessions (ts, id) WHERE cert_issues != 0;
 
 -- index tls_sessions_cert_status
-CREATE INDEX tls_sessions_cert_status ON tls_sessions (cert_status, cert_issues);
+CREATE INDEX tls_sessions_cert_status ON tls_sessions (cert_status, cert_issues, ts);
 
 -- index tls_sessions_cipher_suite
 CREATE INDEX tls_sessions_cipher_suite ON tls_sessions (cipher_suite, ts);
@@ -1099,10 +1108,10 @@ CREATE INDEX tls_sessions_leaf ON tls_sessions (leaf_sha256);
 CREATE INDEX tls_sessions_server_ip ON tls_sessions (server_ip);
 
 -- index tls_sessions_sni
-CREATE INDEX tls_sessions_sni ON tls_sessions (sni);
+CREATE INDEX tls_sessions_sni ON tls_sessions (sni, ts);
 
 -- index tls_sessions_suite_version
-CREATE INDEX tls_sessions_suite_version ON tls_sessions (cipher_suite, version, cipher_name, cipher_weak);
+CREATE INDEX tls_sessions_suite_version ON tls_sessions (cipher_suite, version, cipher_name, cipher_weak, ts);
 
 -- index tls_sessions_ts
 CREATE INDEX tls_sessions_ts ON tls_sessions (ts, id);

@@ -362,7 +362,7 @@ fn resolved_names_feed_known_hosts_only() {
 fn stats_count_every_category() {
     let dir = tempfile::tempdir().unwrap();
     let session = import(dir.path(), all_records());
-    let s = stats(session.conn()).unwrap();
+    let s = stats(session.conn(), None).unwrap();
     assert_eq!(s.total, 8);
     // NXDOMAIN, two timeouts.
     assert_eq!(s.errors, 3);
@@ -425,6 +425,7 @@ fn pairs_filters_search_and_pagination() {
             protocols: protocols.iter().map(|p| (*p).to_owned()).collect(),
             errors_only,
             search: search.map(str::to_owned),
+            range: None,
         };
         pairs_page(conn, &filter, &PageRequest::first(100))
             .unwrap()
@@ -526,7 +527,7 @@ fn messages_of_a_pair_in_time_order() {
 fn servers_with_geolocation() {
     let dir = tempfile::tempdir().unwrap();
     let session = import(dir.path(), all_records());
-    let (page, total) = servers_page(session.conn(), &PageRequest::first(100)).unwrap();
+    let (page, total) = servers_page(session.conn(), &PageRequest::first(100), None).unwrap();
     assert_eq!(total, 5);
     let first = &page.items[0];
     assert_eq!(first.ip.to_string(), "192.168.1.1");
@@ -545,7 +546,7 @@ fn servers_with_geolocation() {
 fn finalize_is_idempotent_and_handles_empty_sessions() {
     let dir = tempfile::tempdir().unwrap();
     let session = import(dir.path(), Vec::new());
-    assert_eq!(stats(session.conn()).unwrap(), DnsStats::default());
+    assert_eq!(stats(session.conn(), None).unwrap(), DnsStats::default());
     drop(session);
     let dir = tempfile::tempdir().unwrap();
     let session = import(dir.path(), all_records());

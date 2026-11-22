@@ -9,9 +9,12 @@ import {
   Hourglass,
   Layers,
   Monitor,
-  RotateCcw,
+  CalendarRange,
+  Maximize2,
+  ZoomOut,
 } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTimeRange } from '../../app/timeRange';
 import { useTranslation } from 'react-i18next';
 import { useOverviewSummary, useTraffic } from '../../api/overviewQueries';
 import { useSession } from '../../api/sessionQueries';
@@ -29,8 +32,10 @@ import { MultiSelect } from '../../components/MultiSelect';
 import { PageHeader } from '../../components/PageHeader';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { StatCard } from '../../components/StatCard';
+import { TimeRangeDialog } from '../../components/TimeRangeDialog';
 import { sessionVersionMessage } from '../../lib/errors';
 import { formatByteCount, formatBytes, formatCompact, formatCount, formatDuration, formatPeriod, formatTimestamp, sameLocalDay } from '../../lib/format';
+import { type TimeRange, widen } from '../../lib/timeRange';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { SavePcapDialog } from '../exports/SavePcapDialog';
 import { SessionStateBadge } from '../sessions/SessionStateBadge';
@@ -39,12 +44,12 @@ import { ModuleGrid } from './ModuleGrid';
 import {
   buildTrafficOption,
   FULL_ZOOM,
-  isZoomed,
   type LegendLayout,
   type Metric,
   type Scale,
   type TrafficFormat,
   zoomOfEvent,
+  zoomRange,
 } from './trafficChart';
 
 const route = getRouteApi('/sessions/$sessionId');
@@ -57,6 +62,8 @@ const POINTS = 500;
 const SMALL_POINTS = 200;
 /** Container width from which the legend moves to the right of the chart. */
 const LEGEND_SIDE_MIN_WIDTH = 1024;
+/** A zoom becomes the time range of the views once it has not moved for this long. */
+export const ZOOM_SETTLE_MS = 400;
 
 /** Width of an element, followed with a ResizeObserver (0 before layout). */
 function useElementWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
@@ -85,6 +92,9 @@ export default function OverviewView() {
   const viewable = state === 'ready' || state === 'incomplete';
   const summary = useOverviewSummary(sessionId, viewable);
   const [saving, setSaving] = useState(false);
+  const { range, setRange } = useTimeRange();
+  const firstUs = summary.data?.first_ts_us ?? null;
+  const lastUs = summary.data?.last_ts_us ?? null;
 
   let content: ReactNode;
   if (session.isError) {
@@ -130,7 +140,14 @@ export default function OverviewView() {
             void summary.refetch();
           }}
         />
-        <TrafficCard sessionId={sessionId} enabled={viewable} />
+        <TrafficCard
+          sessionId={sessionId}
+          enabled={viewable}
+          range={range}
+          setRange={setRange}
+          firstUs={firstUs}
+          lastUs={lastUs}
+        />
         <section aria-labelledby="overview-modules" className="flex flex-col gap-2">
           <h2 id="overview-modules" className="text-card font-medium">
             {t('views.overview.modulesTitle')}
@@ -180,8 +197,9 @@ export default function OverviewView() {
           setSaving(false);
         }}
         sessionId={sessionId}
-        firstUs={summary.data?.first_ts_us ?? null}
-        lastUs={summary.data?.last_ts_us ?? null}
+        firstUs={firstUs}
+        lastUs={lastUs}
+        activeRange={range}
       />
     </div>
   );
@@ -215,9 +233,24 @@ function SummaryBand({
     );
   }
   const s = summary;
-  const hasPeriod = s !== null && s.first_ts_us !== null && s.last_ts_us !== null;
-  const period = s === null ? '' : formatPeriod(s.first_ts_us, s.last_ts_us);
-  const avg = s !== null && s.packets > 0 ? formatBytes(s.bytes / s.packets) : null;
+  // Under a time range, the figures of the range (chunks stay those of the capture files).
+  const r = s?.range ?? null;
+  const inRange = t('timeRange.inRange');
+  // The range bounded to the captured period: the packets actually observed in it. A range
+  // outside the session has no such period (`to_us < from_us`).
+  const disjoint = r !== null && r.to_us < r.from_us;
+  const hasPeriod = r !== null ? !disjoint : s !== null && s.first_ts_us !== null && s.last_ts_us !== null;
+  const period =
+    r !== null
+      ? disjoint
+        ? ''
+        : t('timeRange.captured', { period: formatPeriod(r.from_us, r.to_us) })
+      : s === null
+        ? ''
+        : formatPeriod(s.first_ts_us, s.last_ts_us);
+  const packets = r?.packets ?? s?.packets ?? 0;
+  const bytes = r?.bytes ?? s?.bytes ?? 0;
+  const avg = s !== null && packets > 0 ? formatBytes(bytes / packets) : null;
   const links = s === null ? '' : s.linktypes.map(linktypeName).join(', ');
   return (
     <section
@@ -228,24 +261,36 @@ function SummaryBand({
       <StatCard
         icon={Clock}
         label={t('views.overview.stat.duration')}
-        value={s === null ? null : hasPeriod ? formatDuration((s.duration_us ?? 0) / 1e6) : t('views.overview.noPeriod')}
+        value={
+          s === null ? null : hasPeriod ? formatDuration((r?.duration_us ?? s.duration_us ?? 0) / 1e6) : t('views.overview.noPeriod')
+        }
         hint={period === '' ? ' ' : period}
       />
       <StatCard
         icon={Layers}
         label={t('views.overview.stat.packets')}
-        value={s === null ? null : formatCount(s.packets)}
-        hint={links === '' ? ' ' : t('views.overview.linktypes', { list: links })}
+        value={s === null ? null : formatCount(packets)}
+        hint={r !== null ? inRange : links === '' ? ' ' : t('views.overview.linktypes', { list: links })}
       />
       <StatCard
         icon={HardDrive}
         label={t('views.overview.stat.volume')}
-        value={s === null ? null : formatBytes(s.bytes)}
-        {...(s === null ? {} : { title: formatByteCount(s.bytes) })}
+        value={s === null ? null : formatBytes(bytes)}
+        {...(s === null ? {} : { title: formatByteCount(bytes) })}
         hint={avg === null ? ' ' : t('views.overview.avgPacket', { size: avg })}
       />
-      <StatCard icon={Monitor} label={t('views.overview.stat.hosts')} value={s === null ? null : formatCount(s.host_count)} />
-      <StatCard icon={Cable} label={t('views.overview.stat.flows')} value={s === null ? null : formatCount(s.flow_count)} />
+      <StatCard
+        icon={Monitor}
+        label={t('views.overview.stat.hosts')}
+        value={s === null ? null : formatCount(r?.host_count ?? s.host_count)}
+        {...(r === null ? {} : { hint: inRange })}
+      />
+      <StatCard
+        icon={Cable}
+        label={t('views.overview.stat.flows')}
+        value={s === null ? null : formatCount(r?.flow_count ?? s.flow_count)}
+        {...(r === null ? {} : { hint: inRange })}
+      />
       <StatCard
         icon={FileStack}
         label={t('views.overview.stat.chunks')}
@@ -257,17 +302,39 @@ function SummaryBand({
   );
 }
 
-function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boolean }) {
+interface TrafficCardProps {
+  sessionId: string;
+  enabled: boolean;
+  /** Time range of the views (URL), `null` for the whole session. */
+  range: TimeRange | null;
+  setRange: (range: TimeRange | null) => void;
+  /** Captured period, bounds of Zoom out and of the range dialog. */
+  firstUs: number | null;
+  lastUs: number | null;
+}
+
+function TrafficCard({ sessionId, enabled, range, setRange, firstUs, lastUs }: TrafficCardProps) {
   const { t, i18n } = useTranslation();
   const small = !useMediaQuery(SM_QUERY);
-  // A few hundred buckets are enough for the chart width (and keep short bursts readable).
-  const traffic = useTraffic(sessionId, { points: small ? SMALL_POINTS : POINTS }, enabled);
+  // A few hundred buckets are enough for the chart width (and keep short bursts readable). Under
+  // a time range the series of the range is asked for: zooming gains resolution down to the
+  // second instead of stretching the loaded series (docs/specs/time-filter.md).
+  const params = useMemo(
+    () => ({
+      points: small ? SMALL_POINTS : POINTS,
+      ...(range === null ? {} : { from_us: range.fromUs, to_us: range.toUs }),
+    }),
+    [small, range],
+  );
+  const traffic = useTraffic(sessionId, params, enabled);
   const [metric, setMetric] = useState<Metric>('bytes');
   const [scale, setScale] = useState<Scale>('linear');
-  // The zoom window lives in the chart (never in the option, so dragging does not rebuild it);
-  // the view only follows whether it is zoomed, to enable the reset.
-  const [zoomed, setZoomed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // The zoom window lives in the chart (never in the option, so dragging does not rebuild it).
+  // Once it settles it becomes the time range of every view, and the chart is reset to show the
+  // series of that range, fetched again.
   const chartHandle = useRef<ChartHandle>(null);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Protocols hidden by the user; new protocols are shown by default.
   const [hidden, setHidden] = useState<ReadonlySet<TrafficProtocol>>(new Set());
   const [boxRef, boxWidth] = useElementWidth<HTMLDivElement>();
@@ -303,21 +370,39 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
     [data, selected, metric, scale, legend, small, format],
   );
 
+  const dataRef = useRef(data);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
   const onEvents = useMemo<ChartEvents>(
     () => ({
-      datazoom: (params) => {
-        const z = zoomOfEvent(params);
-        if (z !== null) setZoomed(isZoomed(z));
+      datazoom: (event) => {
+        const z = zoomOfEvent(event);
+        if (settle.current !== null) clearTimeout(settle.current);
+        settle.current = setTimeout(() => {
+          settle.current = null;
+          const shown = dataRef.current;
+          const next = z === null || shown === undefined ? null : zoomRange(shown, z);
+          if (next !== null) setRange(next);
+        }, ZOOM_SETTLE_MS);
       },
     }),
+    [setRange],
+  );
+  useEffect(
+    () => () => {
+      if (settle.current !== null) clearTimeout(settle.current);
+    },
     [],
   );
+  // A new series (another range, or the whole session again): the chart shows all of it.
+  useEffect(() => {
+    if (data !== undefined) chartHandle.current?.dispatchAction({ type: 'dataZoom', ...FULL_ZOOM });
+  }, [data]);
 
   const setSelected = useCallback(
     (next: Set<TrafficProtocol>) => {
       setHidden(new Set(present.filter((p) => !next.has(p))));
-      // With nothing selected the chart is removed: it comes back unzoomed.
-      if (next.size === 0) setZoomed(false);
     },
     [present],
   );
@@ -369,15 +454,44 @@ function TrafficCard({ sessionId, enabled }: { sessionId: string; enabled: boole
           />
           <Button
             variant="ghost"
-            disabled={!zoomed}
+            disabled={range === null}
+            title={t('timeRange.controls.zoomOutTitle')}
             onClick={() => {
-              chartHandle.current?.dispatchAction({ type: 'dataZoom', ...FULL_ZOOM });
-              setZoomed(false);
+              if (range !== null) setRange(widen(range, firstUs, lastUs));
             }}
           >
-            <RotateCcw aria-hidden size={16} strokeWidth={1.75} />
-            {t('views.overview.traffic.resetZoom')}
+            <ZoomOut aria-hidden size={16} strokeWidth={1.75} />
+            {t('timeRange.controls.zoomOut')}
           </Button>
+          <Button
+            variant="ghost"
+            title={t('timeRange.controls.editTitle')}
+            onClick={() => {
+              setEditing(true);
+            }}
+          >
+            <CalendarRange aria-hidden size={16} strokeWidth={1.75} />
+            {t('timeRange.controls.edit')}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={range === null}
+            title={t('timeRange.controls.allTitle')}
+            onClick={() => {
+              setRange(null);
+            }}
+          >
+            <Maximize2 aria-hidden size={16} strokeWidth={1.75} />
+            {t('timeRange.controls.all')}
+          </Button>
+          <TimeRangeDialog
+            open={editing}
+            onClose={() => {
+              setEditing(false);
+            }}
+            initial={range ?? (firstUs !== null && lastUs !== null ? { fromUs: firstUs, toUs: lastUs } : null)}
+            onApply={setRange}
+          />
         </div>
         <div ref={boxRef} className="min-w-0">
           <Chart

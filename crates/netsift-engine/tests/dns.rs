@@ -255,7 +255,7 @@ fn counters_and_pairing_across_chunks() {
             .open_session(&report.session, OpenMode::ReadOnly)
             .unwrap();
         let conn = session.conn();
-        let s = stats(conn).unwrap();
+        let s = stats(conn, None).unwrap();
         let count = |v: &[netsift_store::dns::Bucket], k: &str| {
             v.iter()
                 .find(|b| b.key.as_deref() == Some(k))

@@ -238,6 +238,7 @@ describe('TLS view', () => {
       { version: undefined, suite: undefined, q: '', weak: false, certIssues: false },
       expect.anything(),
       expect.anything(),
+      null,
     );
     const user = setupUser();
     await user.click(screen.getAllByRole('switch', { name: /Weak suites only/ })[0] as HTMLElement);
@@ -247,6 +248,7 @@ describe('TLS view', () => {
         expect.objectContaining({ weak: true }),
         expect.anything(),
         expect.anything(),
+        null,
       );
     });
     await user.click(screen.getByRole('radio', { name: 'TLS 1.3' }));
@@ -256,6 +258,7 @@ describe('TLS view', () => {
         expect.objectContaining({ version: 772 }),
         expect.anything(),
         expect.anything(),
+        null,
       );
     });
     // A click on a bar selects its suite, a second click clears it.
@@ -312,6 +315,7 @@ describe('TLS view', () => {
         { q: '', problems: true },
         expect.anything(),
         expect.anything(),
+        null,
       );
     });
   });

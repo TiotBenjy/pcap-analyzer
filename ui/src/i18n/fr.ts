@@ -5,6 +5,7 @@ import { geoipPromptFr } from './geoipPrompt';
 import { onlineFr } from './online';
 import { picturesFr } from './pictures';
 import { tlsFr } from './tls';
+import { timeRangeFr } from './timeRange';
 import { updatesFr } from './updates';
 
 // French dictionary. Typed against the English shape: a missing or extra key fails typecheck.
@@ -608,7 +609,6 @@ export const fr: Dictionary = {
         scale: 'Échelle',
         linear: 'Linéaire',
         log: 'Log',
-        resetZoom: 'Réinitialiser le zoom',
         total: 'Total',
         bucket: '{{time}}, intervalle de {{step}}',
         empty: 'Aucun trafic enregistré dans cette session',
@@ -993,6 +993,7 @@ export const fr: Dictionary = {
     tls: tlsFr,
     updates: updatesFr,
   },
+  timeRange: timeRangeFr,
   common: {
     all: 'Tout',
     none: 'Aucun',

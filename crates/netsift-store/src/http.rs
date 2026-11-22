@@ -14,6 +14,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use crate::connections::EndpointInfo;
 use crate::error::{Result, StoreError};
 use crate::query::{Conditions, Keyset, Page, PageRequest, keyset_page};
+use crate::range::{PointSql, TimeRange, query_ranged, query_row_ranged};
 use crate::records::conversion;
 
 /// Method groups of the filters and charts, in display order (`other`: any other method, or no
@@ -221,8 +222,8 @@ impl HttpRow {
                 |r| r.get(0),
             )?;
         let mut stmt = conn.prepare_cached(
-            "INSERT INTO http_headers (transaction_id, direction, idx, name, name_lc, value) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO http_headers (transaction_id, direction, idx, name, name_lc, value, ts) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )?;
         for (direction, message) in [("request", req), ("response", resp)] {
             for (idx, (name, value)) in message.iter().flat_map(|m| m.headers.iter()).enumerate() {
@@ -233,6 +234,7 @@ impl HttpRow {
                     name,
                     name.to_ascii_lowercase(),
                     value,
+                    self.ts,
                 ])?;
             }
         }
@@ -255,6 +257,8 @@ pub struct HttpFilter {
     pub header_name: Option<String>,
     /// Transactions with a header whose name or value contains this text.
     pub header_q: Option<String>,
+    /// Transactions whose time (`ts`) is within this range.
+    pub range: Option<TimeRange>,
 }
 
 /// Sort key of the transaction lists.
@@ -409,10 +413,27 @@ fn json_list(list: Option<&Vec<String>>) -> Result<Option<String>> {
 
 /// The active filters of [`HttpFilter`] only, so that the planner can use their indexes (a
 /// condition with a parameter that may be NULL is evaluated row by row).
+/// How the range condition reads `ts`: through its index (lists sorted by time, narrow ranges),
+/// or not (`+ts`, wide ranges of a list sorted on another key, whose sort index is walked).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RangePlan {
+    Index,
+    Scan,
+}
+
 fn conditions(filter: &HttpFilter, fts_ready: bool) -> Result<Conditions> {
+    conditions_with(filter, fts_ready, RangePlan::Index)
+}
+
+fn conditions_with(filter: &HttpFilter, fts_ready: bool, plan: RangePlan) -> Result<Conditions> {
     let (fts, like) = search(filter.q.as_deref(), fts_ready)?;
     let (hfts, hlike) = search(filter.header_q.as_deref(), fts_ready)?;
     let mut c = Conditions::new();
+    match (filter.range, plan) {
+        (Some(r), RangePlan::Index) => r.push_point(&mut c, "t.ts"),
+        (Some(r), RangePlan::Scan) => r.push_point_scan(&mut c, "t.ts"),
+        (None, _) => {}
+    }
     if let Some(methods) = json_list(filter.methods.as_ref())? {
         c.push(
             "t.method_group IN (SELECT value FROM json_each(?))",
@@ -494,7 +515,11 @@ pub fn transactions_page(
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<HttpEntry>> {
-    let conditions = conditions(filter, crate::finalize::step_done(conn, "http")?)?;
+    let plan = match (sort, filter.range) {
+        (HttpSort::Time, _) | (_, None) => RangePlan::Index,
+        (_, Some(r)) => range_plan(conn, r)?,
+    };
+    let conditions = conditions_with(filter, crate::finalize::step_done(conn, "http")?, plan)?;
     let where_sql = conditions.sql();
     // The page is chosen on `http_transactions` alone, then its rows are read with the hosts of
     // both ends (P4.8): joining `hosts` before the sort cost two searches per matching
@@ -517,6 +542,24 @@ pub fn transactions_page(
     Ok(Page {
         items: entries(conn, &page.items)?,
         next_cursor: page.next_cursor,
+    })
+}
+
+/// Plan of a page sorted on another key than the time, under `range` (ADR-030): walking the sort
+/// index reads about `limit * total / in_range` rows before filling a page, reading the range
+/// reads `in_range` rows then sorts them. Both counts read one index (a few milliseconds).
+fn range_plan(conn: &Connection, range: TimeRange) -> Result<RangePlan> {
+    let (in_range, total): (i64, i64) = conn.query_row(
+        "SELECT (SELECT count(*) FROM http_transactions WHERE ts >= ?1 AND ts < ?2), \
+                (SELECT count(*) FROM http_transactions)",
+        params![range.from_ns(), range.to_ns()],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    // Wider than a twentieth of the table: the sort index fills a page quickly.
+    Ok(if in_range.saturating_mul(20) >= total {
+        RangePlan::Scan
+    } else {
+        RangePlan::Index
     })
 }
 
@@ -683,9 +726,14 @@ pub struct HttpStats {
     pub header_count: u64,
 }
 
-fn counts(conn: &Connection, sql: &str, limit: usize) -> Result<Vec<Count>> {
-    let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map([i64::try_from(limit).unwrap_or(i64::MAX)], |r| {
+fn counts(
+    conn: &Connection,
+    sql: &str,
+    limit: usize,
+    range: Option<TimeRange>,
+) -> Result<Vec<Count>> {
+    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+    query_ranged(conn, sql, &[&limit], range, |r| {
         let key: Value = r.get(0)?;
         let key = match key {
             Value::Text(s) => s,
@@ -697,12 +745,11 @@ fn counts(conn: &Connection, sql: &str, limit: usize) -> Result<Vec<Count>> {
             key,
             count: u64::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
         })
-    })?;
-    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    })
 }
 
-fn scalar(conn: &Connection, sql: &str) -> Result<u64> {
-    let n: i64 = conn.query_row(sql, [], |r| r.get(0))?;
+fn scalar(conn: &Connection, sql: &str, range: Option<TimeRange>) -> Result<u64> {
+    let n: i64 = query_row_ranged(conn, sql, &[], range, |r| r.get(0))?;
     Ok(u64::try_from(n).unwrap_or(0))
 }
 
@@ -720,91 +767,146 @@ fn ordered(found: Vec<Count>, order: &[&str]) -> Vec<Count> {
 }
 
 /// Method groups with their transaction counts, in display order.
-pub fn method_counts(conn: &Connection) -> Result<Vec<Count>> {
+pub fn method_counts(conn: &Connection, range: Option<TimeRange>) -> Result<Vec<Count>> {
+    let w = PointSql::new(conn, "http_transactions", "ts", range)?.where_();
     let found = counts(
         conn,
-        "SELECT method_group, count(*) FROM http_transactions GROUP BY method_group LIMIT ?1",
+        &format!(
+            "SELECT method_group, count(*) FROM http_transactions{w} GROUP BY method_group \
+             LIMIT ?1"
+        ),
         METHOD_GROUPS.len(),
+        range,
     )?;
     Ok(ordered(found, &METHOD_GROUPS))
 }
 
-/// Aggregates of the HTTP view.
-pub fn stats(conn: &Connection) -> Result<HttpStats> {
-    let transactions = scalar(conn, "SELECT count(*) FROM http_transactions")?;
+/// Aggregates of the HTTP view (of the transactions within `range` when set).
+pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<HttpStats> {
+    let plan = PointSql::new(conn, "http_transactions", "ts", range)?;
+    let w = plan.where_();
+    let a = plan.and();
+    // Header lines have no index on their time: the covering name index is read whole.
+    let hw = PointSql::scan("ts", range).where_();
+    let transactions = scalar(
+        conn,
+        &format!("SELECT count(*) FROM http_transactions{w}"),
+        range,
+    )?;
     let status_classes = ordered(
         counts(
             conn,
-            "SELECT status_class, count(*) FROM http_transactions GROUP BY status_class LIMIT ?1",
+            &format!(
+                "SELECT status_class, count(*) FROM http_transactions{w} GROUP BY status_class \
+                 LIMIT ?1"
+            ),
             STATUS_CLASSES.len(),
+            range,
         )?,
         &STATUS_CLASSES,
     );
     // `status_key` is the status, or -1 without one: its index serves the grouping (P4.2).
     let statuses = counts(
         conn,
-        "SELECT status_key, count(*) c FROM http_transactions WHERE status_key >= 0 \
-         GROUP BY status_key ORDER BY c DESC, status_key LIMIT ?1",
+        &format!(
+            "SELECT status_key, count(*) c FROM http_transactions WHERE status_key >= 0{a} \
+             GROUP BY status_key ORDER BY c DESC, status_key LIMIT ?1"
+        ),
         TOP_STATUSES,
+        range,
     )?;
     let content_types = counts(
         conn,
-        "SELECT content_type, count(*) c FROM http_transactions WHERE content_type IS NOT NULL \
-         GROUP BY content_type ORDER BY c DESC, content_type LIMIT ?1",
+        &format!(
+            "SELECT content_type, count(*) c FROM http_transactions \
+             WHERE content_type IS NOT NULL{a} \
+             GROUP BY content_type ORDER BY c DESC, content_type LIMIT ?1"
+        ),
         TOP,
+        range,
     )?;
     let typed = scalar(
         conn,
-        "SELECT count(*) FROM http_transactions WHERE content_type IS NOT NULL",
+        &format!("SELECT count(*) FROM http_transactions WHERE content_type IS NOT NULL{a}"),
+        range,
     )?;
     let shown: u64 = content_types.iter().map(|c| c.count).sum();
     Ok(HttpStats {
         transactions,
-        methods: method_counts(conn)?,
+        methods: method_counts(conn, range)?,
         status_classes,
         statuses,
         content_types,
         content_types_other: typed.saturating_sub(shown),
         hosts: counts(
             conn,
-            "SELECT host, count(*) c FROM http_transactions WHERE host IS NOT NULL \
-             GROUP BY host ORDER BY c DESC, host LIMIT ?1",
+            &format!(
+                "SELECT host, count(*) c FROM http_transactions WHERE host IS NOT NULL{a} \
+                 GROUP BY host ORDER BY c DESC, host LIMIT ?1"
+            ),
             TOP,
+            range,
         )?,
-        host_count: scalar(conn, "SELECT count(DISTINCT host) FROM http_transactions")?,
+        host_count: scalar(
+            conn,
+            &format!("SELECT count(DISTINCT host) FROM http_transactions{w}"),
+            range,
+        )?,
         user_agents: counts(
             conn,
-            "SELECT user_agent, count(*) c FROM http_transactions WHERE user_agent IS NOT NULL \
-             GROUP BY user_agent ORDER BY c DESC, user_agent LIMIT ?1",
+            &format!(
+                "SELECT user_agent, count(*) c FROM http_transactions \
+                 WHERE user_agent IS NOT NULL{a} \
+                 GROUP BY user_agent ORDER BY c DESC, user_agent LIMIT ?1"
+            ),
             TOP,
+            range,
         )?,
         user_agent_count: scalar(
             conn,
-            "SELECT count(DISTINCT user_agent) FROM http_transactions",
+            &format!("SELECT count(DISTINCT user_agent) FROM http_transactions{w}"),
+            range,
         )?,
         rare_headers: counts(
             conn,
-            "SELECT name_lc, count(DISTINCT transaction_id) c FROM http_headers \
-             GROUP BY name_lc ORDER BY c, name_lc LIMIT ?1",
+            &format!(
+                "SELECT name_lc, count(DISTINCT transaction_id) c FROM http_headers{hw} \
+                 GROUP BY name_lc ORDER BY c, name_lc LIMIT ?1"
+            ),
             TOP,
+            range,
         )?,
-        header_count: scalar(conn, "SELECT count(*) FROM http_headers")?,
+        header_count: header_count(conn, range)?,
     })
 }
 
-/// Header names (lower case) by number of occurrences, most frequent first.
-pub fn header_names(conn: &Connection, limit: usize) -> Result<Vec<Count>> {
+/// Header names (lower case) by number of occurrences, most frequent first. Header lines carry
+/// the time of their transaction (`ts`, migration 0202).
+pub fn header_names(
+    conn: &Connection,
+    limit: usize,
+    range: Option<TimeRange>,
+) -> Result<Vec<Count>> {
+    let w = PointSql::scan("ts", range).where_();
     counts(
         conn,
-        "SELECT name_lc, count(*) c FROM http_headers GROUP BY name_lc ORDER BY c DESC, name_lc \
-         LIMIT ?1",
+        &format!(
+            "SELECT name_lc, count(*) c FROM http_headers{w} GROUP BY name_lc \
+             ORDER BY c DESC, name_lc LIMIT ?1"
+        ),
         limit,
+        range,
     )
 }
 
 /// Number of header lines.
-pub fn header_count(conn: &Connection) -> Result<u64> {
-    scalar(conn, "SELECT count(*) FROM http_headers")
+pub fn header_count(conn: &Connection, range: Option<TimeRange>) -> Result<u64> {
+    let w = PointSql::scan("ts", range).where_();
+    scalar(
+        conn,
+        &format!("SELECT count(*) FROM http_headers{w}"),
+        range,
+    )
 }
 
 #[cfg(test)]

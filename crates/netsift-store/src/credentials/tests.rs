@@ -154,7 +154,7 @@ fn filters_stats_and_paging() {
         .insert(&conn)
         .unwrap();
 
-    let s = stats(&conn).unwrap();
+    let s = stats(&conn, None).unwrap();
     assert_eq!(
         (s.total, s.plaintext, s.recoverable, s.metadata_only),
         (8, 6, 1, 1)
@@ -186,7 +186,7 @@ fn filters_stats_and_paging() {
     }
     assert_eq!(seen, vec!["s0", "s1", "s2", "s3", "s4", "f", "n", "m"]);
 
-    let (top, others) = paths(&conn, 2).unwrap();
+    let (top, others) = paths(&conn, 2, None).unwrap();
     assert_eq!(top.len(), 2);
     assert_eq!(top[0].protocol, "snmp");
     assert_eq!((top[0].entries, top[0].seen, top[0].plaintext), (5, 5, 5));

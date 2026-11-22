@@ -1,0 +1,54 @@
+---
+source: crates/netsift-api/src/range/tests.rs
+expression: "json!({\n    \"dns\": names, \"dns_stats\":\n    {\n        \"total\": dns[\"total\"], \"errors\": dns[\"errors\"], \"answered\":\n        dns[\"answered\"]\n    }, \"http_hosts\": http_stats[\"hosts\"], \"tls_sni\": tls_stats[\"sni\"],\n    \"smb_os\": smb[\"os\"], \"credential_protocols\": stats[\"protocols\"],\n    \"picture_types\": objects_stats[\"types\"],\n})"
+---
+{
+  "credential_protocols": [
+    {
+      "count": 1,
+      "protocol": "ftp"
+    },
+    {
+      "count": 1,
+      "protocol": "smb"
+    },
+    {
+      "count": 1,
+      "protocol": "snmp"
+    }
+  ],
+  "dns": [
+    "burst1.example.test",
+    "missing1.example.test",
+    "burst1.example.test"
+  ],
+  "dns_stats": {
+    "answered": 3,
+    "errors": 1,
+    "total": 3
+  },
+  "http_hosts": [
+    {
+      "count": 2,
+      "key": "www.example.test"
+    }
+  ],
+  "picture_types": [
+    {
+      "count": 2,
+      "mime": "image/png"
+    }
+  ],
+  "smb_os": [
+    {
+      "count": 1,
+      "label": "Windows 10 / Server 2016+"
+    }
+  ],
+  "tls_sni": [
+    {
+      "count": 1,
+      "sni": "burst1.example.test"
+    }
+  ]
+}

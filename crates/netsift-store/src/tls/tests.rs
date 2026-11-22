@@ -155,6 +155,7 @@ fn sessions_pages_filters_and_details() {
         q: q.map(str::to_owned),
         weak_only: weak,
         cert_issues_only: issues,
+        range: None,
     };
     assert_eq!(only(f(Some(0x0303), None, None, false, false)), vec![2]);
     assert_eq!(only(f(None, Some(0x1301), None, false, false)), vec![1]);
@@ -220,6 +221,7 @@ fn stats_and_certificates() {
             suites: 15,
             sni: 15,
         },
+        None,
     )
     .unwrap();
     assert_eq!((st.other_versions, st.other_suites), (0, 0));
@@ -298,7 +300,7 @@ fn stats_stay_bounded_with_many_distinct_versions_and_suites() {
         suites: 15,
         sni: 15,
     };
-    let st = stats(&conn, limits).unwrap();
+    let st = stats(&conn, limits, None).unwrap();
     assert_eq!(st.versions.len(), 8);
     assert_eq!(st.versions[0], (Some(0x0304), 5));
     assert_eq!(st.other_versions, 305 - 5 - 7);
@@ -413,5 +415,5 @@ fn stats_queries_read_indexes_only() {
         suites: 5,
         sni: 5,
     };
-    assert_eq!(stats(&conn, limits).unwrap().sessions, 0);
+    assert_eq!(stats(&conn, limits, None).unwrap().sessions, 0);
 }

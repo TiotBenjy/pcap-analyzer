@@ -1,5 +1,6 @@
 // Typed client of the SMB routes (crates/netsift-api/src/smb.rs).
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiGet } from './client';
 import type { Page } from './types/Page';
 import type { SmbAnnounceInfo } from './types/SmbAnnounceInfo';
@@ -21,14 +22,14 @@ function pageQuery(params?: PageParams): string {
   return text === '' ? '' : `?${text}`;
 }
 
-export function listSmbAnnounces(id: string, params?: PageParams, signal?: AbortSignal): Promise<Page<SmbAnnounceInfo>> {
-  return apiGet(`${sessionPath(id)}/announces${pageQuery(params)}`, signal);
+export function listSmbAnnounces(id: string, params?: PageParams, signal?: AbortSignal, range: TimeRange | null = null): Promise<Page<SmbAnnounceInfo>> {
+  return apiGet(withRange(`${sessionPath(id)}/announces${pageQuery(params)}`, range), signal);
 }
 
-export function listSmbAuth(id: string, params?: PageParams, signal?: AbortSignal): Promise<Page<SmbAuthInfo>> {
-  return apiGet(`${sessionPath(id)}/auth${pageQuery(params)}`, signal);
+export function listSmbAuth(id: string, params?: PageParams, signal?: AbortSignal, range: TimeRange | null = null): Promise<Page<SmbAuthInfo>> {
+  return apiGet(withRange(`${sessionPath(id)}/auth${pageQuery(params)}`, range), signal);
 }
 
-export function getSmbStats(id: string, signal?: AbortSignal): Promise<SmbStats> {
-  return apiGet(`${sessionPath(id)}/stats`, signal);
+export function getSmbStats(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<SmbStats> {
+  return apiGet(withRange(`${sessionPath(id)}/stats`, range), signal);
 }

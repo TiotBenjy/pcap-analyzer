@@ -31,10 +31,13 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
   'connections-flows': async (page) => `/sessions/${await demoSessionId(page)}/connections`,
   credentials: async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
+  'credentials-range': async (page) => rangedPath(page, 'credentials'),
   'credentials-export': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
   'credentials-open': async (page) => `/sessions/${await demoSessionId(page)}/credentials`,
   dns: async (page) => `/sessions/${await demoSessionId(page)}/dns`,
+  'dns-range': async (page) => rangedPath(page, 'dns'),
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
+  'http-range': async (page) => rangedPath(page, 'http'),
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
   'import-progress': '/captures',
   network: async (page) => `/sessions/${await demoSessionId(page)}/network`,
@@ -42,6 +45,8 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   'overview-export': async (page) => `/sessions/${await demoSessionId(page)}/overview`,
+  'overview-range': async (page) => rangedPath(page, 'overview'),
+  'overview-range-dialog': async (page) => rangedPath(page, 'overview'),
   pictures: async (page) => `/sessions/${await demoSessionId(page)}/pictures`,
   servers: async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   'servers-empty': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
@@ -55,9 +60,13 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'settings-update-notes': '/settings',
   smb: async (page) => `/sessions/${await demoSessionId(page)}/smb`,
   'smb-auth': async (page) => `/sessions/${await demoSessionId(page)}/smb?tab=auth`,
+  'smb-auth-range': async (page) => rangedPath(page, 'smb', 'tab=auth'),
+  'smb-range': async (page) => rangedPath(page, 'smb'),
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   'sources-backwards': async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
+  'tls-range': async (page) => rangedPath(page, 'tls'),
+  'connections-range': async (page) => rangedPath(page, 'connections'),
 };
 
 /** Secrets of the demo session (fake fixture values), which the Credentials captures must never show. */
@@ -92,6 +101,35 @@ async function demoSessionId(page: Page): Promise<string> {
       b.chunk_count - a.chunk_count,
   );
   return ranked[0]?.id ?? NO_SESSION;
+}
+
+/**
+ * `view` of the demo session under a time range (P5.2): the second quarter of its captured period,
+ * so that the header shows the range chip and the view the figures of the range.
+ */
+async function rangedPath(page: Page, view: string, extra = ''): Promise<string> {
+  const id = await demoSessionId(page);
+  const res = await page.request.get(`/api/v1/sessions/${id}/summary`);
+  if (!res.ok()) return `/sessions/${id}/${view}`;
+  const s = (await res.json()) as { first_ts_us: number | null; last_ts_us: number | null };
+  if (s.first_ts_us === null || s.last_ts_us === null) return `/sessions/${id}/${view}`;
+  // The busiest fifth of the period (by bytes, over 20 buckets), so that the views have rows.
+  const series = await page.request.get(`/api/v1/sessions/${id}/timeseries?points=20&metric=bytes`);
+  const t = (await series.json()) as { start_us: number; step_us: number; points: number; series: { bytes: number[] | null }[] };
+  const totals = Array.from({ length: t.points }, (_, i) => t.series.reduce((sum, p) => sum + (p.bytes?.[i] ?? 0), 0));
+  const width = Math.max(1, Math.floor(t.points / 5));
+  let best = 0;
+  let bestSum = -1;
+  for (let i = 0; i + width <= t.points; i++) {
+    const sum = totals.slice(i, i + width).reduce((a, b) => a + b, 0);
+    if (sum > bestSum) {
+      best = i;
+      bestSum = sum;
+    }
+  }
+  const from = t.start_us + best * t.step_us;
+  const more = extra === '' ? '' : `&${extra}`;
+  return `/sessions/${id}/${view}?from_us=${from}&to_us=${from + width * t.step_us - 1}${more}`;
 }
 
 /**
@@ -426,6 +464,20 @@ for (const lang of LANGS) {
             await expect(dialog.getByRole('radio', { name: D.views.exportPcap.dialog.range })).toBeChecked();
             await expect(dialog.getByRole('textbox', { name: D.views.exportPcap.dialog.from })).toBeVisible();
             await expect(dialog.getByRole('button', { name: D.views.exportPcap.dialog.start, exact: true })).toBeDisabled();
+          }
+          if (view.endsWith('-range') && !path.includes(NO_SESSION)) {
+            // The header chip shows the active range (dimmed on a view that does not apply it).
+            await expect(page.getByTestId('time-range-chip')).toBeVisible();
+            await page.waitForLoadState('networkidle');
+          }
+          if (view === 'smb-auth-range' && !path.includes(NO_SESSION)) {
+            // No NTLM session in the busiest fifth of the demo: the empty state of a range.
+            await expect(page.getByText(D.timeRange.emptyText).first()).toBeVisible();
+            await expect(page.getByRole('button', { name: D.timeRange.clear }).last()).toBeVisible();
+          }
+          if (view === 'overview-range-dialog' && !path.includes(NO_SESSION)) {
+            await page.getByRole('button', { name: D.timeRange.controls.edit, exact: true }).click();
+            await expect(page.getByRole('dialog', { name: D.timeRange.dialog.title })).toBeVisible();
           }
           if (view === 'connections-flows' && !path.includes(NO_SESSION)) {
             // Flows of the largest conversation, each with its Save PCAP action.

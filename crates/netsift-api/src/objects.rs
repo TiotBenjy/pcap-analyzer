@@ -40,6 +40,7 @@ use crate::convert::us;
 use crate::endpoint::Endpoint;
 use crate::extract::ApiQuery;
 use crate::overview::open_ready;
+use crate::range::ApiRange;
 use crate::sessions::{DEFAULT_LIMIT, MAX_LIMIT, parse_id};
 use crate::{ApiError, AppState, blocking};
 
@@ -237,11 +238,17 @@ async fn stats(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<StatsQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<ObjectStats>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
-        let st = store::stats(session.conn(), query.kind == Kind::Image, TOP_HOSTS)?;
+        let st = store::stats(
+            session.conn(),
+            query.kind == Kind::Image,
+            TOP_HOSTS,
+            range.resolve(&session)?,
+        )?;
         Ok(ObjectStats {
             count: st.count,
             bytes: st.bytes,
@@ -313,6 +320,7 @@ async fn list(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<ListQuery>,
+    ApiRange(range): ApiRange,
 ) -> Result<Json<Page<ObjectItem>>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| {
@@ -324,6 +332,7 @@ async fn list(
             q: text("q", query.q)?,
             min_size: query.min_size,
             max_size: query.max_size,
+            range: range.resolve(&session)?,
         };
         let request = PageRequest {
             limit: match query.limit {

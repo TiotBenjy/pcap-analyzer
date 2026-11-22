@@ -4,6 +4,7 @@
 // fetched with the token and turned into `data:` URLs (allowed by the desktop CSP `img-src`;
 // the token never appears in a URL). The original object is only ever downloaded as a file.
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiFetch, apiGet } from './client';
 import type { PageParams } from './sessions';
 import { attachmentName } from './tls';
@@ -36,8 +37,8 @@ function query(entries: Record<string, string | number | null | undefined>): str
   return text === '' ? '' : `?${text}`;
 }
 
-export function getPictureStats(id: string, signal?: AbortSignal): Promise<ObjectStats> {
-  return apiGet(`${objectsPath(id)}/stats?kind=image`, signal);
+export function getPictureStats(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<ObjectStats> {
+  return apiGet(withRange(`${objectsPath(id)}/stats?kind=image`, range), signal);
 }
 
 export function listPictures(
@@ -45,6 +46,7 @@ export function listPictures(
   filters: PictureFilters,
   params: PageParams = {},
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<ObjectItem>> {
   const sort = filters.sort ?? 'time';
   const q = query({
@@ -57,7 +59,7 @@ export function listPictures(
     host: filters.host,
     q: filters.q?.trim(),
   });
-  return apiGet(`${objectsPath(id)}${q}`, signal);
+  return apiGet(withRange(`${objectsPath(id)}${q}`, range), signal);
 }
 
 /** True when the backend can render the object as a PNG (thumbnail, preview). */

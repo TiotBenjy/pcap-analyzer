@@ -6,6 +6,7 @@ import {
   createRouter,
   lazyRouteComponent,
   redirect,
+  retainSearchParams,
 } from '@tanstack/react-router';
 import type { ComponentType } from 'react';
 import { AppShell } from '../components/AppShell';
@@ -13,6 +14,7 @@ import { RootRouteError, RouteError } from '../components/RouteError';
 import { NotFoundView } from '../views/NotFoundView';
 import { NAV_ITEMS } from './nav';
 import { getLastSessionId } from './session';
+import { validateRangeSearch } from './timeRange';
 
 // Every view is code-split: its module (and any chart library it uses) loads on navigation.
 //
@@ -53,9 +55,13 @@ const settingsRoute = createRoute({
 
 // --- Session-scoped views ---------------------------------------------------------------------
 
+// The global time range (`from_us`, `to_us`, ADR-030) belongs to the session: validated here and
+// kept when moving from one view of the session to another.
 const sessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$sessionId',
+  validateSearch: validateRangeSearch,
+  search: { middlewares: [retainSearchParams(['from_us', 'to_us'])] },
   component: lazyRouteComponent(() => import('../views/sessions/SessionLayout')),
 });
 

@@ -6,6 +6,7 @@ import { geoipPromptEn } from './geoipPrompt';
 import { onlineEn } from './online';
 import { picturesEn } from './pictures';
 import { tlsEn } from './tls';
+import { timeRangeEn } from './timeRange';
 import { updatesEn } from './updates';
 
 export const en = {
@@ -608,7 +609,6 @@ export const en = {
         scale: 'Scale',
         linear: 'Linear',
         log: 'Log',
-        resetZoom: 'Reset zoom',
         total: 'Total',
         bucket: '{{time}}, {{step}} bucket',
         empty: 'No traffic recorded in this session',
@@ -993,6 +993,7 @@ export const en = {
     tls: tlsEn,
     updates: updatesEn,
   },
+  timeRange: timeRangeEn,
   common: {
     all: 'All',
     none: 'None',

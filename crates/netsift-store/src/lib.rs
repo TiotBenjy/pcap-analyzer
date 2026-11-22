@@ -24,6 +24,7 @@ pub mod network;
 pub mod objects;
 pub mod ports;
 pub mod query;
+pub mod range;
 pub mod records;
 pub mod schema;
 pub mod servers;
@@ -41,6 +42,7 @@ pub use finalize::{FinalizeReport, StepProgress, run_finalizers};
 pub use id::SessionId;
 pub use ports::OpenPortRow;
 pub use query::{Keyset, Page, PageRequest, keyset_page};
+pub use range::TimeRange;
 pub use records::{
     AnomalyRow, ChunkFormat, ChunkRow, ChunkStatus, FlowRow, HostRow, MetaRow, StoreRecord,
     TimeseriesRow,

@@ -163,11 +163,11 @@ fn insert_writes_headers_and_derived_columns() {
         )
         .unwrap();
     assert_eq!((group.as_str(), class.as_str()), ("other", "none"));
-    assert_eq!(header_count(&conn).unwrap(), 11);
+    assert_eq!(header_count(&conn, None).unwrap(), 11);
     // Duplicate (flow, seq): rejected as a whole, headers included.
     let err = row(0, 10, Some("GET"), "a", "/", None, None, 0, &[("A", "b")]).insert(&conn);
     assert!(err.is_err());
-    assert_eq!(header_count(&conn).unwrap(), 11);
+    assert_eq!(header_count(&conn, None).unwrap(), 11);
 }
 
 #[test]
@@ -376,7 +376,7 @@ fn detail_has_both_messages_and_headers_in_order() {
 fn stats_are_ordered_and_bounded() {
     let conn = db();
     fill(&conn);
-    let s = stats(&conn).unwrap();
+    let s = stats(&conn, None).unwrap();
     assert_eq!(s.transactions, 5);
     let keys = |v: &[Count]| {
         v.iter()
@@ -405,7 +405,7 @@ fn stats_are_ordered_and_bounded() {
     assert_eq!(keys(&s.rare_headers)[0], ("authorization".into(), 1));
     assert_eq!(s.header_count, 11);
     assert_eq!(
-        keys(&header_names(&conn, 1).unwrap()),
+        keys(&header_names(&conn, 1, None).unwrap()),
         vec![("host".into(), 4)]
     );
 }
@@ -516,6 +516,7 @@ fn active_filters_match_the_former_filter() {
                                     q: q.map(str::to_owned),
                                     header_name: name.map(str::to_owned),
                                     header_q: hq.map(str::to_owned),
+                                    range: None,
                                 };
                                 let (fts, like) = search(filter.q.as_deref(), fts_ready).unwrap();
                                 let (hfts, hlike) =

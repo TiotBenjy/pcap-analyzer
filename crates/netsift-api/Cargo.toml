@@ -30,6 +30,7 @@ ts-rs.workspace = true
 [dev-dependencies]
 flate2 = "1.1.11"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
+insta = { version = "1.49.0", features = ["json"] }
 netsift-capture.workspace = true
 netsift-fixtures.workspace = true
 netsift-geo = { workspace = true, features = ["test-util"] }

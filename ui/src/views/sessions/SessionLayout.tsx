@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../api/client';
 import { useSession } from '../../api/sessionQueries';
 import { forgetSession, rememberSession } from '../../app/session';
+import { useRangeGuard } from '../../app/timeRange';
 import { preloadChartRenderer } from '../../charts/loadRenderer';
 import { Card } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
@@ -22,6 +23,8 @@ export default function SessionLayout() {
   const { sessionId } = route.useParams();
   const session = useSession(sessionId);
   const notFound = session.error instanceof ApiError && session.error.status === 404;
+  // The time range of the URL belongs to one session: never carried over to another one.
+  useRangeGuard(sessionId);
 
   useEffect(() => {
     if (notFound) forgetSession(sessionId);

@@ -1,0 +1,67 @@
+// Strings of the global time filter (`timeRange`): range chip of the header, range dialog,
+// range controls of the overview, counters under a range. Same keys in both languages
+// (i18n.test.ts). docs/specs/time-filter.md.
+
+export const timeRangeEn = {
+  rangeText: '{{from}} to {{to}}',
+  chipLabel: 'Time range {{range}}, edit',
+  clear: 'Clear the time range',
+  notAppliedTitle: 'This view is not filtered by the time range {{range}}',
+  dialog: {
+    title: 'Time range',
+    description: 'The analysis views show what happened in this range.',
+    from: 'From',
+    to: 'To',
+    timeHint: 'Local time ({{zone}}), as YYYY-MM-DD hh:mm:ss. Both ends are included.',
+    invalidTime: 'Enter a date and time as YYYY-MM-DD hh:mm:ss',
+    reversed: 'The end is before the start',
+    apply: 'Apply',
+    clear: 'Clear',
+  },
+  controls: {
+    zoomOut: 'Zoom out',
+    zoomOutTitle: 'Twice as wide around its center',
+    edit: 'Range…',
+    editTitle: 'Type the time range',
+    all: 'Whole session',
+    allTitle: 'Clear the time range',
+  },
+  inRange: 'In the range',
+  captured: 'Captured {{period}}',
+  wholeSession: 'Whole session',
+  wholeSessionColumn: '{{label}} (whole session)',
+  emptyTitle: 'Nothing in the range',
+  emptyText: 'Nothing was recorded between these times.',
+};
+
+export const timeRangeFr: typeof timeRangeEn = {
+  rangeText: '{{from}} à {{to}}',
+  chipLabel: 'Plage horaire {{range}}, modifier',
+  clear: 'Effacer la plage horaire',
+  notAppliedTitle: "Cette vue n'est pas filtrée par la plage horaire {{range}}",
+  dialog: {
+    title: 'Plage horaire',
+    description: "Les vues d'analyse montrent ce qui s'est passé dans cette plage.",
+    from: 'Début',
+    to: 'Fin',
+    timeHint: 'Heure locale ({{zone}}), au format AAAA-MM-JJ hh:mm:ss. Les deux bornes sont incluses.',
+    invalidTime: 'Saisissez une date et une heure au format AAAA-MM-JJ hh:mm:ss',
+    reversed: 'La fin précède le début',
+    apply: 'Appliquer',
+    clear: 'Effacer',
+  },
+  controls: {
+    zoomOut: 'Dézoomer',
+    zoomOutTitle: 'Deux fois plus large autour de son centre',
+    edit: 'Plage…',
+    editTitle: 'Saisir la plage horaire',
+    all: 'Toute la session',
+    allTitle: 'Effacer la plage horaire',
+  },
+  inRange: 'Dans la plage',
+  captured: 'Capturé {{period}}',
+  wholeSession: 'Session entière',
+  wholeSessionColumn: '{{label}} (session entière)',
+  emptyTitle: 'Rien dans la plage',
+  emptyText: "Rien n'a été enregistré entre ces heures.",
+};

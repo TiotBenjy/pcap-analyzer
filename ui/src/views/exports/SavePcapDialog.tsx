@@ -7,7 +7,9 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { ErrorNote } from '../../components/ErrorNote';
 import { SegmentedControl } from '../../components/SegmentedControl';
+import { TimeField } from '../../components/TimeField';
 import { formatTimestamp, timeZoneLabel } from '../../lib/format';
+import type { TimeRange } from '../../lib/timeRange';
 import { ExportStatus } from './ExportStatus';
 import { rangeRequest } from './range';
 
@@ -20,6 +22,8 @@ interface SavePcapDialogProps {
   /** Captured period, to prefill the range (microseconds). */
   firstUs: number | null;
   lastUs: number | null;
+  /** Active time range of the views: the dialog opens on it (docs/specs/time-filter.md). */
+  activeRange?: TimeRange | null;
 }
 
 /** Save PCAP of the whole session or of a time range, then the progress of that export. */
@@ -28,11 +32,13 @@ export function SavePcapDialog({ open, ...rest }: SavePcapDialogProps) {
   return open ? <OpenDialog {...rest} /> : null;
 }
 
-function OpenDialog({ sessionId, firstUs, lastUs, onClose }: Omit<SavePcapDialogProps, 'open'>) {
+function OpenDialog({ sessionId, firstUs, lastUs, activeRange = null, onClose }: Omit<SavePcapDialogProps, 'open'>) {
   const { t } = useTranslation();
-  const [scope, setScope] = useState<Scope>('session');
-  const [from, setFrom] = useState(firstUs === null ? '' : formatTimestamp(firstUs));
-  const [to, setTo] = useState(lastUs === null ? '' : formatTimestamp(lastUs));
+  const [scope, setScope] = useState<Scope>(activeRange === null ? 'session' : 'range');
+  const startUs = activeRange?.fromUs ?? firstUs;
+  const endUs = activeRange?.toUs ?? lastUs;
+  const [from, setFrom] = useState(startUs === null ? '' : formatTimestamp(startUs));
+  const [to, setTo] = useState(endUs === null ? '' : formatTimestamp(endUs));
   const [jobId, setJobId] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const start = useStartExport(sessionId);
@@ -120,35 +126,5 @@ function OpenDialog({ sessionId, firstUs, lastUs, onClose }: Omit<SavePcapDialog
         {job !== undefined && <ExportStatus job={job} sessionId={sessionId} />}
       </form>
     </Dialog>
-  );
-}
-
-function TimeField({
-  label,
-  value,
-  onChange,
-  describedBy,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  describedBy: string;
-}) {
-  return (
-    <label className="flex min-w-0 flex-col gap-1">
-      <span className="text-meta text-muted">{label}</span>
-      <input
-        type="text"
-        inputMode="numeric"
-        spellCheck={false}
-        autoComplete="off"
-        value={value}
-        aria-describedby={describedBy}
-        onChange={(e) => {
-          onChange(e.target.value);
-        }}
-        className="h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 font-mono text-body"
-      />
-    </label>
   );
 }

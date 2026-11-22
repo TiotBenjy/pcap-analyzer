@@ -222,7 +222,7 @@ fn pages_filters_and_stats() {
     };
     assert_eq!(count(sizes), 1);
 
-    let st = stats(conn, true, 10).unwrap();
+    let st = stats(conn, true, 10, None).unwrap();
     assert_eq!((st.count, st.bytes, st.occurrences), (3, 6400, 5));
     assert_eq!(st.types.len(), 3);
     assert_eq!(st.hosts, vec![("www.test".to_owned(), 3)]);

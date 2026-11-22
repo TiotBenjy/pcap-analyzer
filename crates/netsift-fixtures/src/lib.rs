@@ -5,6 +5,7 @@
 //!   NBNS, SMB browser, SNMP and FTP exchanges; [`scenarios`]: ready-made hosts and scenarios.
 //! - [`credentials`]: SMTP AUTH, POP3, IMAP, LDAP simple bind, HTTP Basic and HTTP NTLM
 //!   exchanges (Credentials view).
+//! - [`arp`]: ARP requests, replies, probes, gratuitous ARP and cache poisoning (ARP view).
 //! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
 //! - [`ssdp`]: SSDP announcements, searches, answers and malformed datagrams (SSDP view).
 //! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip,
@@ -31,6 +32,7 @@
 //! ```
 
 pub mod anomaly;
+pub mod arp;
 pub mod craft;
 pub mod credentials;
 pub mod http_mix;

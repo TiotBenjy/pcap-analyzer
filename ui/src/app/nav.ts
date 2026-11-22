@@ -68,7 +68,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'telnet', scope: 'session', path: '/telnet', icon: SquareTerminal, group: 'more', enabled: false },
   { id: 'ssdp', scope: 'session', path: '/ssdp', icon: Radar, group: 'more', enabled: true },
   { id: 'sip', scope: 'session', path: '/sip', icon: Phone, group: 'more', enabled: false },
-  { id: 'arp', scope: 'session', path: '/arp', icon: Network, group: 'more', enabled: false },
+  { id: 'arp', scope: 'session', path: '/arp', icon: Network, group: 'more', enabled: true },
   { id: 'ethernet', scope: 'session', path: '/ethernet', icon: Router, group: 'more', enabled: false },
   { id: 'wifi', scope: 'session', path: '/wifi', icon: Wifi, group: 'more', enabled: false },
 ];

@@ -1,0 +1,92 @@
+---
+source: crates/netsift-api/src/arp/tests.rs
+expression: stats
+---
+{
+  "addresses": 5,
+  "bindings": 7,
+  "conflicts": 2,
+  "first_ts_us": 1700000000000000,
+  "kinds": {
+    "gratuitous": 2,
+    "other": 0,
+    "probe": 1,
+    "reply": 14,
+    "request": 9
+  },
+  "last_ts_us": 1700001216012500,
+  "messages": 26,
+  "top_senders": [
+    {
+      "ip": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.10",
+        "names": []
+      },
+      "mac": "02:00:5e:10:00:10",
+      "messages": 6
+    },
+    {
+      "ip": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.1",
+        "names": []
+      },
+      "mac": "02:00:5e:10:00:01",
+      "messages": 5
+    },
+    {
+      "ip": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.20",
+        "names": []
+      },
+      "mac": "02:00:5e:10:00:20",
+      "messages": 5
+    },
+    {
+      "ip": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.1",
+        "names": []
+      },
+      "mac": "02:00:5e:10:00:66",
+      "messages": 3
+    },
+    {
+      "ip": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.10",
+        "names": []
+      },
+      "mac": "02:00:5e:10:00:66",
+      "messages": 3
+    },
+    {
+      "ip": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.30",
+        "names": []
+      },
+      "mac": "02:00:5e:10:00:30",
+      "messages": 2
+    },
+    {
+      "ip": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.66",
+        "names": []
+      },
+      "mac": "02:00:5e:10:00:66",
+      "messages": 1
+    }
+  ],
+  "unsolicited": 6
+}

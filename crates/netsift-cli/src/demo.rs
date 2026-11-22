@@ -55,6 +55,8 @@ const PAUSE_AFTER_SECONDS: i64 = 121;
 const PAUSE_SECONDS: i64 = 600;
 /// Gap between two rounds of varied HTTP traffic.
 const HTTP_MIX_EVERY_SECONDS: i64 = 6;
+/// Gap between two rounds of ARP cache refreshes.
+const ARP_EVERY_SECONDS: i64 = 7;
 
 #[derive(Debug, Args)]
 pub struct DemoArgs {
@@ -118,6 +120,21 @@ fn add_http_mix(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
     packets.sort_by_key(|p| p.ts_ns);
 }
 
+/// ARP showcase (probe, gratuitous ARP, cache poisoning) at the start, then cache refreshes
+/// and repeated poisoning every few seconds for `seconds`, so that the ARP view has rows under
+/// any time range.
+fn add_arp(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
+    let mut sc = Scenario::starting_at(start + 2 * NS_PER_SEC).with_seed(0x4152);
+    netsift_fixtures::arp::arp_showcase(&mut sc);
+    netsift_fixtures::arp::arp_background(
+        &mut sc,
+        start + seconds * NS_PER_SEC,
+        ARP_EVERY_SECONDS * NS_PER_SEC,
+    );
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+}
+
 fn write_chunked(dir: &Path) -> Result<usize> {
     let mut packets = demo_packets(ROUNDS, 7);
     let start = packets.first().map_or(0, |p| p.ts_ns);
@@ -126,6 +143,7 @@ fn write_chunked(dir: &Path) -> Result<usize> {
     add_http_mix(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_tls_showcase(&mut packets, start);
     add_ssdp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
+    add_arp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     let pause_at = start + PAUSE_AFTER_SECONDS * NS_PER_SEC;
     for p in &mut packets {
         if p.ts_ns >= pause_at {
@@ -154,6 +172,7 @@ fn write_single(dir: &Path) -> Result<PathBuf> {
     let start = packets.first().map_or(0, |p| p.ts_ns);
     add_http_mix(&mut packets, start, 20);
     add_ssdp(&mut packets, start, 20);
+    add_arp(&mut packets, start, 20);
     let bytes = encode(&packets, &Encoding::pcap())?;
     let path = dir.join("demo-single.pcap");
     std::fs::write(&path, bytes).with_context(|| format!("cannot write {}", path.display()))?;
@@ -292,6 +311,18 @@ mod tests {
             .unwrap();
         assert_eq!(kinds, 4);
         assert_eq!(devices, 5);
+        // ARP view: refreshes over the whole capture and two conflicting addresses.
+        let (messages, conflicts): (i64, i64) = session
+            .conn()
+            .query_row(
+                "SELECT count(*), (SELECT count(*) FROM (SELECT ip FROM arp_bindings \
+                 GROUP BY ip HAVING count(*) > 1)) FROM arp_messages",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(messages > 100, "{messages}");
+        assert_eq!(conflicts, 2);
 
         // Populated: refused without --force, replaced with it.
         assert!(run(&args, &mut Vec::new()).is_err());

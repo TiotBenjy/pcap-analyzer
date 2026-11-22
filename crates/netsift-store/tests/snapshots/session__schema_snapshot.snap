@@ -20,6 +20,62 @@ CREATE INDEX anomalies_kind ON anomalies (kind);
 -- index anomalies_ts
 CREATE INDEX anomalies_ts ON anomalies (coalesce(ts, 9223372036854775807), id);
 
+-- table arp_bindings
+CREATE TABLE arp_bindings (
+    ip          TEXT NOT NULL,
+    mac         TEXT NOT NULL,
+    first_ts    INTEGER NOT NULL,
+    last_ts     INTEGER NOT NULL,
+    messages    INTEGER NOT NULL DEFAULT 0,
+    requests    INTEGER NOT NULL DEFAULT 0,
+    replies     INTEGER NOT NULL DEFAULT 0,
+    gratuitous  INTEGER NOT NULL DEFAULT 0,
+    unsolicited INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (ip, mac)
+);
+
+-- index arp_bindings_first_ts
+CREATE INDEX arp_bindings_first_ts ON arp_bindings (first_ts);
+
+-- index arp_bindings_mac
+CREATE INDEX arp_bindings_mac ON arp_bindings (mac, ip);
+
+-- table arp_messages
+CREATE TABLE arp_messages (
+    id          INTEGER PRIMARY KEY,
+    ts          INTEGER NOT NULL,
+    frame       INTEGER NOT NULL,                  -- global frame index of the packet
+    operation   INTEGER NOT NULL,                  -- 1 request, 2 reply, 3/4 RARP...
+    kind        TEXT NOT NULL,                     -- request / reply / gratuitous / probe / other
+    sender_mac  TEXT,
+    sender_ip   TEXT,                              -- NULL unless IPv4
+    target_mac  TEXT,
+    target_ip   TEXT,
+    unsolicited INTEGER NOT NULL DEFAULT 0,        -- reply that no recent request preceded
+    binds       INTEGER NOT NULL DEFAULT 0         -- counted in arp_bindings
+);
+
+-- index arp_messages_kind
+CREATE INDEX arp_messages_kind ON arp_messages (kind, unsolicited, ts);
+
+-- index arp_messages_sender_ip
+CREATE INDEX arp_messages_sender_ip ON arp_messages (sender_ip, ts);
+
+-- index arp_messages_sender_mac
+CREATE INDEX arp_messages_sender_mac ON arp_messages (sender_mac, ts);
+
+-- index arp_messages_senders
+CREATE INDEX arp_messages_senders ON arp_messages (binds, sender_ip, sender_mac, ts);
+
+-- index arp_messages_target_ip
+CREATE INDEX arp_messages_target_ip ON arp_messages (target_ip, ts);
+
+-- index arp_messages_ts
+CREATE INDEX arp_messages_ts ON arp_messages (ts);
+
+-- index arp_messages_unsolicited
+CREATE INDEX arp_messages_unsolicited ON arp_messages (ts) WHERE unsolicited = 1;
+
 -- table chunks
 CREATE TABLE chunks (
     id         INTEGER PRIMARY KEY,                 -- index in the ordered set (RawPacket.chunk_id)

@@ -1,4 +1,5 @@
 import type { Dictionary } from './en';
+import { arpFr } from './arp';
 import { credentialsFr } from './credentials';
 import { exportsFr } from './exports';
 import { geoipPromptFr } from './geoipPrompt';
@@ -70,6 +71,7 @@ export const fr: Dictionary = {
     fr: 'Français',
   },
   views: {
+    arp: arpFr,
     captures: {
       subtitle: 'Sessions de capture importées',
       emptyTitle: 'Aucune capture importée',

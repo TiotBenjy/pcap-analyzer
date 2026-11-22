@@ -233,6 +233,7 @@ struct TrafficQuery {
 /// Registration point: one line per analysis module, sorted by id. A module is listed in the
 /// summary with the row count of its table when the table exists in the session.
 const MODULES: &[(&str, &str)] = &[
+    ("arp", "arp_messages"),
     ("connections", "conversations"),
     ("credentials", "credentials"),
     ("dns", "dns_messages"),
@@ -252,6 +253,7 @@ const MODULES: &[(&str, &str)] = &[
 /// apply the range yet (lot b of the spec: counted over the session). Sorted by id.
 fn ranged_rows(module: &str) -> Option<ModuleRows> {
     match module {
+        "arp" => Some(ModuleRows::ArpMessages),
         "credentials" => Some(ModuleRows::Credentials),
         "dns" => Some(ModuleRows::DnsMessages),
         "http" => Some(ModuleRows::HttpTransactions),

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::analyzer::{Analyzer, AnalyzerId};
+use crate::arp::ArpAnalyzer;
 use crate::connections::{ConnectionsAnalyzer, ConnectionsConfig};
 use crate::core::CoreAnalyzer;
 use crate::credentials::CredentialsAnalyzer;
@@ -74,6 +75,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
     vec![
         (CoreAnalyzer::ID, factory(CoreAnalyzer::boxed)),
         // --- analyzers: one line each, sorted alphabetically by id ---
+        (ArpAnalyzer::ID, factory(ArpAnalyzer::boxed)),
         (ConnectionsAnalyzer::ID, factory(ConnectionsAnalyzer::boxed)),
         (CredentialsAnalyzer::ID, factory(CredentialsAnalyzer::boxed)),
         (DnsAnalyzer::ID, factory(DnsAnalyzer::boxed)),

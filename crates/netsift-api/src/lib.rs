@@ -6,6 +6,7 @@
 //! Mutating routes are additionally refused in read-only mode and for cross-site requests
 //! (`guard`). The sessions and import routes follow the frozen [`contract`].
 
+mod arp;
 mod auth;
 mod connections;
 pub mod contract;
@@ -247,6 +248,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
 
     let protected = Router::new()
         // Registration point: one `.merge(<module>::routes())` line per feature, sorted.
+        .merge(arp::routes())
         .merge(connections::routes())
         .merge(credentials::routes())
         .merge(dns::routes())

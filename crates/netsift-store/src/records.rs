@@ -56,6 +56,8 @@ pub enum StoreRecord {
     /// Commutative merging upsert of a flow by `id`.
     Flow(FlowRow),
     // --- analyzers: one variant per table family, sorted alphabetically ---
+    /// New ARP message, folded into its binding (`arp_*`, see [`crate::arp`]).
+    Arp(Box<crate::arp::ArpRow>),
     /// Additive upsert of a conversation by (client, server) (`connections`).
     Conversation(ConversationRow),
     /// Commutative merging upsert of a credential by fingerprint (`credentials`), boxed: wide.
@@ -92,6 +94,7 @@ impl StoreRecord {
             Self::Timeseries(_) => "timeseries",
             Self::Host(_) => "hosts",
             Self::Flow(_) => "flows",
+            Self::Arp(_) => "arp_messages",
             Self::Conversation(_) => "conversations",
             Self::Credential(_) => "credentials",
             Self::Dns(_) => "dns_messages",
@@ -115,6 +118,7 @@ impl StoreRecord {
             Self::Timeseries(r) => r.insert(conn),
             Self::Host(r) => r.insert(conn),
             Self::Flow(r) => r.insert(conn),
+            Self::Arp(r) => r.insert(conn),
             Self::Conversation(r) => r.insert(conn),
             Self::Credential(r) => r.insert(conn),
             Self::Dns(r) => r.insert(conn),

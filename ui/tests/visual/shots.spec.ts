@@ -26,6 +26,10 @@ import { mockUpdate } from './updateMocks';
  * their path at run time, on the demo session created by `netsift demo-session`.
  */
 const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
+  arp: async (page) => `/sessions/${await demoSessionId(page)}/arp`,
+  'arp-confirm': async (page) => `/sessions/${await demoSessionId(page)}/arp`,
+  'arp-range': async (page) => rangedPath(page, 'arp'),
+  'arp-range-empty': async (page) => emptyRangePath(page, 'arp'),
   captures: '/captures',
   'captures-geoip-missing': '/captures',
   connections: async (page) => `/sessions/${await demoSessionId(page)}/connections`,
@@ -134,6 +138,16 @@ async function rangedPath(page: Page, view: string, extra = ''): Promise<string>
   const from = t.start_us + best * t.step_us;
   const more = extra === '' ? '' : `&${extra}`;
   return `/sessions/${id}/${view}?from_us=${from}&to_us=${from + width * t.step_us - 1}${more}`;
+}
+
+/** `view` of the demo session under a range that ends a minute before its first packet: empty. */
+async function emptyRangePath(page: Page, view: string): Promise<string> {
+  const id = await demoSessionId(page);
+  const res = await page.request.get(`/api/v1/sessions/${id}/summary`);
+  if (!res.ok()) return `/sessions/${id}/${view}`;
+  const s = (await res.json()) as { first_ts_us: number | null };
+  if (s.first_ts_us === null) return `/sessions/${id}/${view}`;
+  return `/sessions/${id}/${view}?from_us=${s.first_ts_us - 3_600_000_000}&to_us=${s.first_ts_us - 60_000_000}`;
 }
 
 /**
@@ -473,6 +487,26 @@ for (const lang of LANGS) {
             // The header chip shows the active range (dimmed on a view that does not apply it).
             await expect(page.getByTestId('time-range-chip')).toBeVisible();
             await page.waitForLoadState('networkidle');
+          }
+          if (view === 'arp-range-empty' && !path.includes(NO_SESSION)) {
+            await expect(page.getByTestId('time-range-chip')).toBeVisible();
+            await expect(page.getByText(D.timeRange.emptyText).first()).toBeVisible();
+          }
+          if (view.startsWith('arp') && view !== 'arp-range-empty' && !path.includes(NO_SESSION)) {
+            // The demo session has cache refreshes and poisoning over its whole period.
+            await expect(page.getByTestId('arp-summary')).toBeVisible();
+            const messages = D.views.arp.messages.label;
+            await expect(page.getByRole('table', { name: messages }).or(page.getByRole('list', { name: messages }))).toBeVisible();
+            await expect(page.getByTestId('arp-conflict').first()).toBeVisible();
+          }
+          if (view === 'arp-confirm' && !path.includes(NO_SESSION)) {
+            // The help unfolded, then the messages of the first conflicting address.
+            await page.getByText(D.views.arp.confirm.title, { exact: true }).click();
+            await expect(page.getByText(D.views.arp.confirm.steps.owner)).toBeVisible();
+            await page.getByRole('button', { name: D.views.arp.conflicts.showMessages }).first().click();
+            await expect(page.getByTestId('arp-message-filters').getByRole('button', { name: D.views.arp.filters.clearAddress })).toBeVisible();
+            await page.waitForLoadState('networkidle');
+            await settled(page);
           }
           if (view === 'smb-auth-range' && !path.includes(NO_SESSION)) {
             // No NTLM session in the busiest fifth of the demo: the empty state of a range.

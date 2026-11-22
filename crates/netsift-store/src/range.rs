@@ -261,6 +261,7 @@ pub fn count_active_hosts(conn: &Connection, range: TimeRange) -> Result<u64> {
 /// same rule as the list of the view (ADR-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModuleRows {
+    ArpMessages,
     Credentials,
     DnsMessages,
     HttpHeaders,
@@ -276,6 +277,7 @@ pub enum ModuleRows {
 impl ModuleRows {
     fn sql(self) -> &'static str {
         match self {
+            Self::ArpMessages => "SELECT count(*) FROM arp_messages WHERE ts >= ?1 AND ts < ?2",
             Self::Credentials => {
                 "SELECT count(*) FROM credentials WHERE first_ts < ?2 AND last_ts >= ?1"
             }

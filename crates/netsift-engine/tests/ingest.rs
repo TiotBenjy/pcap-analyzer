@@ -249,6 +249,86 @@ fn single_file_and_chunks_give_identical_tables() {
     }
 }
 
+/// Rendered `arp_messages` and `arp_bindings`, for cross-run comparisons.
+fn arp_tables(catalog: &Catalog, report: &IngestReport) -> String {
+    let session = catalog
+        .open_session(&report.session, OpenMode::ReadOnly)
+        .unwrap();
+    let mut s = String::new();
+    for r in rows(
+        &session,
+        "SELECT ts || ' #' || frame || ' ' || kind || ' ' || coalesce(sender_ip, '-') || ' ' || \
+         coalesce(sender_mac, '-') || ' -> ' || coalesce(target_ip, '-') || ' unsolicited=' || \
+         unsolicited || ' binds=' || binds FROM arp_messages ORDER BY ts, frame",
+    ) {
+        writeln!(s, "message {r}").unwrap();
+    }
+    for r in rows(
+        &session,
+        "SELECT ip || ' ' || mac || ' ' || first_ts || '..' || last_ts || ' n=' || messages || \
+         ' req=' || requests || ' rep=' || replies || ' grat=' || gratuitous || ' unsol=' || \
+         unsolicited FROM arp_bindings ORDER BY ip, mac",
+    ) {
+        writeln!(s, "binding {r}").unwrap();
+    }
+    s
+}
+
+/// Every ARP packet reaches one shard in capture order, whatever the shard count and the chunk
+/// borders: the unsolicited replies (10 s window, warm-up from the first ARP packet) are the
+/// same as with one file.
+#[test]
+fn arp_state_survives_shards_and_chunk_borders() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    // The ARP showcase interleaved with mixed IP traffic (spread over the shards).
+    let mut sc = Scenario::new();
+    let expected = netsift_fixtures::arp::arp_showcase(&mut sc);
+    let mut packets = traffic();
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+    let arp: Vec<usize> = packets
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.data.get(12..14) == Some(&[0x08, 0x06][..]))
+        .map(|(i, _)| i)
+        .collect();
+    // Cuts between the intruder's request and its answer (#9, #10), and between the last
+    // request and its reply (#17, #18): a reply whose request is in the previous chunk.
+    let cuts = vec![arp[10], arp[18]];
+
+    let single = tmp.path().join("arp.pcapng");
+    write_file(&single, &packets, &Encoding::pcapng()).unwrap();
+    let reference = run(&catalog, &single, &options(1));
+    let want = arp_tables(&catalog, &reference);
+    let unsolicited = scalar(
+        &catalog,
+        &reference,
+        "SELECT count(*) FROM arp_messages WHERE unsolicited = 1",
+    );
+    assert_eq!(unsolicited, n(expected.unsolicited));
+    for shards in [1, 4, 7] {
+        let again = run(&catalog, &single, &options(shards));
+        assert_eq!(
+            arp_tables(&catalog, &again),
+            want,
+            "single file, {shards} shards"
+        );
+        let dir = tmp.path().join(format!("chunks-{shards}"));
+        let opts = SplitOptions::new(SplitBy::At(cuts.clone()), Naming::Dumpcap)
+            .with_encoding(Encoding::pcapng());
+        let files = split_to_dir(&dir, &packets, &opts).unwrap().1;
+        assert_eq!(files.len(), 3);
+        let chunked = run(&catalog, &dir, &options(shards));
+        assert_eq!(chunked.chunks_read, 3);
+        assert_eq!(
+            arp_tables(&catalog, &chunked),
+            want,
+            "chunks, {shards} shards"
+        );
+    }
+}
+
 #[test]
 fn tables_do_not_depend_on_shard_count_nor_on_the_run() {
     let tmp = TempDir::new().unwrap();

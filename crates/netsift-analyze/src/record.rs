@@ -30,6 +30,8 @@ pub enum Record {
     /// Summary of a finished flow (merged by flow id).
     Flow(FlowSummary),
     // --- analyzers: registration point, one variant per analyzer, sorted alphabetically ---
+    /// One ARP packet (`arp` analyzer).
+    Arp(crate::arp::ArpMessage),
     /// `connections`: flows from a client to a server, folded per IP pair (additive).
     Conversation(ConversationDelta),
     /// Authentication material observed by any protocol analyzer (`smb`, `http`,

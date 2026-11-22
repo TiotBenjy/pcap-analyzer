@@ -1,7 +1,8 @@
-import { Check, Copy, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/cn';
+import { CopyButton } from './CopyButton';
 
 interface SecretValueProps {
   value: string;
@@ -19,18 +20,6 @@ interface SecretValueProps {
 export function SecretValue({ value, label, children, className }: SecretValueProps) {
   const { t } = useTranslation();
   const [shown, setShown] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    void navigator.clipboard
-      .writeText(value)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => {
-          setCopied(false);
-        }, 1500);
-      })
-      .catch(() => undefined);
-  };
   return (
     <span className={cn('inline-flex max-w-full min-w-0 items-start gap-1', className)}>
       <span className={cn('min-w-0 [overflow-wrap:anywhere]', !shown && 'text-muted italic')}>
@@ -44,19 +33,11 @@ export function SecretValue({ value, label, children, className }: SecretValuePr
         onClick={() => {
           setShown((s) => !s);
         }}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted hover:bg-subtle hover:text-fg"
+        className="-my-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-subtle hover:text-fg"
       >
-        {shown ? <EyeOff aria-hidden size={14} strokeWidth={1.75} /> : <Eye aria-hidden size={14} strokeWidth={1.75} />}
+        {shown ? <EyeOff aria-hidden size={16} strokeWidth={1.75} /> : <Eye aria-hidden size={16} strokeWidth={1.75} />}
       </button>
-      <button
-        type="button"
-        aria-label={t('secret.copy', { label })}
-        title={copied ? t('secret.copied') : t('secret.copy', { label })}
-        onClick={copy}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted hover:bg-subtle hover:text-fg"
-      >
-        {copied ? <Check aria-hidden size={14} strokeWidth={1.75} /> : <Copy aria-hidden size={14} strokeWidth={1.75} />}
-      </button>
+      <CopyButton value={value} name={label} />
     </span>
   );
 }

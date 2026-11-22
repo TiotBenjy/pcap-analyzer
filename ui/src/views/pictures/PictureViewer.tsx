@@ -6,9 +6,9 @@ import { downloadObject, hasRendition } from '../../api/objects';
 import type { ObjectItem } from '../../api/types/ObjectItem';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { CopyButton } from '../../components/CopyButton';
 import { Endpoint } from '../../components/Endpoint';
 import { formatBytes, formatCount, formatTimestamp } from '../../lib/format';
-import { CopyButton } from '../tls/parts';
 import { cleanText, dimensions, displayName, typeLabel } from './format';
 
 interface PictureViewerProps {

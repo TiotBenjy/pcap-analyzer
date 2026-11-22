@@ -1,49 +1,12 @@
-import { Check, Copy } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TlsNamedValue } from '../../api/types/TlsNamedValue';
 import { Badge } from '../../components/Badge';
+import { CopyButton } from '../../components/CopyButton';
 import { cn } from '../../lib/cn';
 import { CERT_ISSUE_KEYS, hex4, isCertIssue, isWeakness, suiteLabel } from './tlsFormat';
 
 // Small building blocks of the TLS view.
-
-/** Copies `value` to the clipboard; `name` describes it for assistive technologies. */
-export function CopyButton({ value, name }: { value: string; name: string }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => {
-      setCopied(false);
-    }, 1500);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [copied]);
-  const label = copied ? t('views.tls.copy.copied') : t('views.tls.copy.label', { name });
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={(e) => {
-        // Inside a clickable row: copying must not select the row.
-        e.stopPropagation();
-        void navigator.clipboard?.writeText(value).then(() => {
-          setCopied(true);
-        });
-      }}
-      className="-my-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-subtle hover:text-fg"
-    >
-      {copied ? (
-        <Check aria-hidden size={16} strokeWidth={1.75} />
-      ) : (
-        <Copy aria-hidden size={16} strokeWidth={1.75} />
-      )}
-    </button>
-  );
-}
 
 /** Monospace value, truncated with its full text on hover, and a copy button. */
 export function MonoValue({ value, name, className }: { value: string; name: string; className?: string }) {

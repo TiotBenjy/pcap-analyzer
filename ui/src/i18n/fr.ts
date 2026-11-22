@@ -1014,6 +1014,8 @@ export const fr: Dictionary = {
     delete: 'Supprimer',
     back: 'Retour',
     loadMore: 'Charger la suite',
+    copy: 'Copier {{name}}',
+    copied: 'Copié',
     shownOf: '{{shown}} sur {{total}}',
   },
   notices: {
@@ -1025,8 +1027,6 @@ export const fr: Dictionary = {
     hidden_other: 'Masqué ({{count}} caractères)',
     show: 'Afficher {{label}}',
     hide: 'Masquer {{label}}',
-    copy: 'Copier {{label}}',
-    copied: 'Copié',
   },
   errors: {
     generic: 'Une erreur est survenue',

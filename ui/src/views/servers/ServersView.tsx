@@ -14,6 +14,7 @@ import { ADDRESS_CATEGORY_ORDER } from '../../charts/palette';
 import { Badge } from '../../components/Badge';
 import { Card } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
+import { CopyButton } from '../../components/CopyButton';
 import { Endpoint } from '../../components/Endpoint';
 import { ErrorState } from '../../components/ErrorState';
 import { MultiSelect } from '../../components/MultiSelect';
@@ -24,7 +25,6 @@ import { formatCount, formatTimestamp } from '../../lib/format';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
-import { CopyButton } from '../tls/parts';
 
 const route = getRouteApi('/sessions/$sessionId');
 

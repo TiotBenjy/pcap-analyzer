@@ -1014,6 +1014,8 @@ export const en = {
     delete: 'Delete',
     back: 'Back',
     loadMore: 'Load more',
+    copy: 'Copy {{name}}',
+    copied: 'Copied',
     shownOf: '{{shown}} of {{total}}',
   },
   notices: {
@@ -1025,8 +1027,6 @@ export const en = {
     hidden_other: 'Hidden ({{count}} characters)',
     show: 'Show {{label}}',
     hide: 'Hide {{label}}',
-    copy: 'Copy {{label}}',
-    copied: 'Copied',
   },
   errors: {
     generic: 'Something went wrong',

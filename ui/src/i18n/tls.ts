@@ -192,10 +192,6 @@ export const tlsEn = {
     error: 'Download failed',
     unavailable: 'The certificate file was not stored',
   },
-  copy: {
-    label: 'Copy {{name}}',
-    copied: 'Copied',
-  },
 } as const;
 
 type Widen<T> = { readonly [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
@@ -390,9 +386,5 @@ export const tlsFr: Widen<typeof tlsEn> = {
     pemLabel: 'Télécharger {{name}} au format PEM',
     error: 'Échec du téléchargement',
     unavailable: "Le fichier du certificat n'a pas été conservé",
-  },
-  copy: {
-    label: 'Copier {{name}}',
-    copied: 'Copié',
   },
 };

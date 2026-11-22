@@ -2,10 +2,15 @@
 //!
 //! | Method | Path | Response |
 //! |---|---|---|
-//! | GET | `/sessions/{id}/summary` | [`OverviewSummary`] |
+//! | GET | `/sessions/{id}/summary?from_us&to_us` | [`OverviewSummary`] |
+//! | GET | `/sessions/{id}/modules?from_us&to_us` | [`ModuleCounts`] |
 //! | GET | `/sessions/{id}/timeseries?from_us&to_us&points&metric&protocols` | [`TrafficSeries`] |
 //!
-//! Both answer 409 (problem+json) while the session is importing or when its import failed, and
+//! Under a time range, the counters of the aggregated views (Connections, Hosts, Network, Open
+//! Ports, Servers) come from the range database (ADR-030), whose first build can take seconds:
+//! `/summary` never waits for it and marks them `pending`, `/modules` waits for it and gives them.
+//!
+//! All answer 409 (problem+json) while the session is importing or when its import failed, and
 //! 404 for an unknown session. Incomplete sessions (cancelled or interrupted imports) are served.
 
 use std::collections::BTreeMap;
@@ -15,6 +20,7 @@ use axum::extract::{Path as UrlPath, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use netsift_store::range::ModuleRows;
+use netsift_store::ranges::CancelFlag;
 use netsift_store::traffic::{self, BucketPlan};
 use netsift_store::{Session, SessionId, SessionInfo, SessionState as StoreState, TimeRange};
 use serde::{Deserialize, Serialize};
@@ -22,7 +28,7 @@ use ts_rs::TS;
 
 use crate::contract::SessionState;
 use crate::extract::ApiQuery;
-use crate::range::{ApiRange, RangeParams};
+use crate::range::{AggregateRange, ApiRange, RangeParams, range_view};
 use crate::sessions::{Stats, info, parse_id, session_dir};
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -34,6 +40,7 @@ const US_PER_S: i64 = 1_000_000;
 pub(crate) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sessions/{id}/summary", get(summary))
+        .route("/sessions/{id}/modules", get(modules))
         .route("/sessions/{id}/timeseries", get(timeseries))
 }
 
@@ -45,8 +52,17 @@ pub struct ModuleCount {
     pub id: String,
     pub count: u64,
     /// Under a time range: whether `count` is that of the range (same rule as the list of the
-    /// view) or of the whole session (module not filtered yet). `null` without range.
+    /// view), of the whole session (module not filtered), or still to be read from `/modules`
+    /// (`pending`: `count` is then that of the session). `null` without range.
     pub scope: Option<CountScope>,
+}
+
+/// `GET /sessions/{id}/modules`: the counters of the aggregated views, under the time range from
+/// its range database (built first if needed), else those of the session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct ModuleCounts {
+    pub modules: Vec<ModuleCount>,
 }
 
 /// What a module counter covers under a time range (ADR-030).
@@ -56,6 +72,8 @@ pub struct ModuleCount {
 pub enum CountScope {
     Range,
     Session,
+    /// Counted in the range database: read it from `/modules` (aggregated views).
+    Pending,
 }
 
 /// Figures of the time range of a summary (`docs/specs/time-filter.md`).
@@ -250,8 +268,8 @@ const MODULES: &[(&str, &str)] = &[
     ("tls", "tls_sessions"),
 ];
 
-/// Count over a time range of a module of [`MODULES`]; `None` for a module whose view does not
-/// apply the range yet (lot b of the spec: counted over the session). Sorted by id.
+/// Count over a time range of a module of [`MODULES`] read from the session; `None` for the
+/// aggregated views, counted in the range database ([`aggregated`], `/modules`). Sorted by id.
 fn ranged_rows(module: &str) -> Option<ModuleRows> {
     match module {
         "arp" => Some(ModuleRows::ArpMessages),
@@ -292,6 +310,14 @@ pub(crate) fn open_ready(
     Ok((info, session))
 }
 
+/// Modules of the aggregated views: counted under a range in its range database (ADR-030).
+fn aggregated(module: &str) -> bool {
+    matches!(
+        module,
+        "connections" | "hosts" | "network" | "openPorts" | "servers"
+    )
+}
+
 fn build_summary(
     state: &AppState,
     id: &SessionId,
@@ -320,6 +346,8 @@ fn build_summary(
             let (count, scope) = match (range, ranged_rows(module)) {
                 (None, _) => (session_count, None),
                 (Some(r), Some(rows)) => (rows.count(conn, r)?, Some(CountScope::Range)),
+                // Never wait for the range database here (`/modules`).
+                (Some(_), None) if aggregated(module) => (session_count, Some(CountScope::Pending)),
                 (Some(_), None) => (session_count, Some(CountScope::Session)),
             };
             modules.push(ModuleCount {
@@ -390,6 +418,55 @@ async fn summary(
 ) -> Result<Json<OverviewSummary>, ApiError> {
     let id = parse_id(&id)?;
     blocking(&state, move |s| build_summary(s, &id, range))
+        .await
+        .map(Json)
+}
+
+/// Counters of the aggregated views ([`aggregated`]) present in the session: under a range, from
+/// its range database (the call waits for its build), else those of the session.
+fn build_modules(
+    state: &AppState,
+    id: &SessionId,
+    range: RangeParams,
+    cancel: &CancelFlag,
+) -> Result<ModuleCounts, ApiError> {
+    let (_, session) = open_ready(state, id)?;
+    let range = range.resolve(&session)?;
+    let mut range_db: Option<netsift_store::ranges::RangeView> = None;
+    let mut modules = Vec::new();
+    for (module, table) in MODULES.iter().filter(|(m, _)| aggregated(m)) {
+        let Some(session_count) = traffic::count_rows(session.conn(), table)? else {
+            continue;
+        };
+        let (count, scope) = match range {
+            None => (session_count, None),
+            Some(r) => {
+                let view = match range_db.take() {
+                    Some(view) => view,
+                    None => range_view(state, id, &session, r, cancel)?,
+                };
+                let n = traffic::count_rows(view.conn(), table)?.unwrap_or(0);
+                range_db = Some(view);
+                (n, Some(CountScope::Range))
+            }
+        };
+        modules.push(ModuleCount {
+            id: (*module).to_owned(),
+            count,
+            scope,
+        });
+    }
+    Ok(ModuleCounts { modules })
+}
+
+async fn modules(
+    State(state): State<Arc<AppState>>,
+    UrlPath(id): UrlPath<String>,
+    range: AggregateRange,
+) -> Result<Json<ModuleCounts>, ApiError> {
+    let id = parse_id(&id)?;
+    let (params, cancel) = (range.params, range.flag());
+    blocking(&state, move |s| build_modules(s, &id, params, &cancel))
         .await
         .map(Json)
 }

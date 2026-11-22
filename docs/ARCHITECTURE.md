@@ -107,6 +107,8 @@ sessions/<session_id>/
   session.db          SQLite, WAL, page_size 8192, synchronous=NORMAL pendant l'import
   blobs/ab/abcdef...  objets extraits (images, documents, certificats DER), SHA-256, dédupliqués
   thumbs/ab/...       miniatures PNG générées côté Rust (crate `image`, décodeurs purs Rust)
+  ranges/*.db         tables des vues agrégées par plage temporelle, 4 dernières plages (ADR-030 ;
+                      dossier temporaire du processus pour un serveur `--read-only`)
 catalog.db            liste des sessions (nom, chemins sources, état, tailles)
 exports/              fichiers exportés (seul dossier que l'UI desktop peut ouvrir)
 geoip/                base GeoIP facultative (téléchargée ou importée depuis l'app), prioritaire sur celle du bundle,

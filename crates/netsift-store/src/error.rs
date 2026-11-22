@@ -60,6 +60,12 @@ pub enum StoreError {
     WriterClosed,
     #[error("the writer thread panicked")]
     WriterPanicked,
+    /// Every request waiting for a result is gone (time range build, `ranges`).
+    #[error("cancelled")]
+    Cancelled,
+    /// The database of a time range could not be built (`ranges`).
+    #[error("time range build failed: {0}")]
+    RangeBuild(String),
 }
 
 impl StoreError {

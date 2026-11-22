@@ -477,6 +477,13 @@ mod tests {
 
     use super::*;
 
+    /// The time range databases fold the protocol labels of the flows into a bit mask
+    /// (`netsift_store::ranges`): every label the analyzers can store fits.
+    #[test]
+    fn every_protocol_label_fits_the_range_label_mask() {
+        assert!(AppProto::ALL.len() <= netsift_store::ranges::MAX_LABELS);
+    }
+
     #[test]
     fn flow_summary_maps_client_to_src() {
         let key = FlowKey {

@@ -16,7 +16,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTimeRange } from '../../app/timeRange';
 import { useTranslation } from 'react-i18next';
-import { useOverviewSummary, useTraffic } from '../../api/overviewQueries';
+import { useModuleCounts, useOverviewSummary, useTraffic } from '../../api/overviewQueries';
 import { useSession } from '../../api/sessionQueries';
 import type { OverviewSummary } from '../../api/types/OverviewSummary';
 import type { TrafficProtocol } from '../../api/types/TrafficProtocol';
@@ -91,6 +91,7 @@ export default function OverviewView() {
   const state = session.data?.state;
   const viewable = state === 'ready' || state === 'incomplete';
   const summary = useOverviewSummary(sessionId, viewable);
+  const modules = useModuleCounts(sessionId, summary.data?.modules ?? null);
   const [saving, setSaving] = useState(false);
   const { range, setRange } = useTimeRange();
   const firstUs = summary.data?.first_ts_us ?? null;
@@ -152,7 +153,7 @@ export default function OverviewView() {
           <h2 id="overview-modules" className="text-card font-medium">
             {t('views.overview.modulesTitle')}
           </h2>
-          <ModuleGrid sessionId={sessionId} modules={summary.data?.modules ?? null} />
+          <ModuleGrid sessionId={sessionId} modules={modules} />
         </section>
       </>
     );

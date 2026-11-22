@@ -48,7 +48,9 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'import-progress': '/captures',
   network: async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'network-detail': async (page) => `/sessions/${await demoSessionId(page)}/network`,
+  'network-range': async (page) => rangedPath(page, 'network'),
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
+  'open-ports-range': async (page) => rangedPath(page, 'open-ports'),
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   'overview-export': async (page) => `/sessions/${await demoSessionId(page)}/overview`,
   'overview-range': async (page) => rangedPath(page, 'overview'),
@@ -57,6 +59,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   servers: async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   'servers-empty': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   'servers-filter': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
+  'servers-range': async (page) => rangedPath(page, 'servers'),
   settings: '/settings',
   'settings-geoip-outdated': '/settings',
   'settings-licenses': '/settings',
@@ -461,7 +464,7 @@ for (const lang of LANGS) {
             for (const p of ['dns', 'http', 'tls']) expect(protocols).toContain(p);
           }
 
-          if (view === 'connections' && !path.includes(NO_SESSION)) {
+          if ((view === 'connections' || view === 'connections-range') && !path.includes(NO_SESSION)) {
             await expect(page.getByRole('table', { name: D.views.connections.table.label }).or(page.getByRole('list', { name: D.views.connections.table.label }))).toBeVisible();
             await expect(page
                 .getByRole('list', { name: filled(D.views.connections.countries.listLabel, { title: D.views.connections.countries.sources }) })
@@ -516,6 +519,10 @@ for (const lang of LANGS) {
             await page.waitForLoadState('networkidle');
             await settled(page);
           }
+          if ((view === 'connections-range' || view === 'network-range') && !path.includes(NO_SESSION)) {
+            // Volumes of the flows active in the range, each counted in full: said under the title.
+            await expect(page.getByText(D.timeRange.wholeFlows)).toBeVisible();
+          }
           if (view === 'smb-auth-range' && !path.includes(NO_SESSION)) {
             // No NTLM session in the busiest fifth of the demo: the empty state of a range.
             await expect(page.getByText(D.timeRange.emptyText).first()).toBeVisible();
@@ -532,7 +539,7 @@ for (const lang of LANGS) {
             await expect(dialog.getByRole('list', { name: D.views.exportPcap.flows.listLabel })).toBeVisible();
             await page.waitForLoadState('networkidle');
           }
-          if ((view === 'network' || view === 'network-detail') && !path.includes(NO_SESSION)) {
+          if ((view === 'network' || view === 'network-detail' || view === 'network-range') && !path.includes(NO_SESSION)) {
             await expect(page.getByTestId('network-summary')).toBeVisible();
             if (width >= 768) {
               // sigma (WebGL) draws the graph once the layout worker answered; without WebGL the
@@ -592,7 +599,7 @@ for (const lang of LANGS) {
             const text = await page.evaluate(() => document.body.innerText);
             for (const secret of DEMO_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
           }
-          if (view === 'open-ports' && !path.includes(NO_SESSION)) {
+          if ((view === 'open-ports' || view === 'open-ports-range') && !path.includes(NO_SESSION)) {
             await expect(page.getByRole('list', { name: D.views.openPorts.chart.label })).toBeVisible();
             await expect(
               page
@@ -679,7 +686,7 @@ for (const lang of LANGS) {
             }
           }
 
-          if (view === 'servers' && !path.includes(NO_SESSION)) {
+          if ((view === 'servers' || view === 'servers-range') && !path.includes(NO_SESSION)) {
             await expect(page.getByRole('list', { name: D.views.servers.rolesLabel })).toBeVisible();
             const dnsServers = filled(D.views.servers.listLabel, { role: 'DNS' });
             const dns = page.getByRole('table', { name: dnsServers }).or(page.getByRole('list', { name: dnsServers }));
@@ -691,6 +698,11 @@ for (const lang of LANGS) {
                 .getByRole('table', { name: pattern(D.views.servers.evidenceLabel) })
                 .or(page.getByRole('list', { name: pattern(D.views.servers.evidenceLabel) })),
             ).toBeVisible();
+            if (view === 'servers-range') {
+              // The file server too: its folded browser announcements, marked "whole session".
+              await page.getByRole('button', { name: filled(D.views.servers.showEvidence, { server: 'FILESRV01' }) }).click();
+              await expect(page.getByText(D.timeRange.wholeSession).first()).toBeVisible();
+            }
             await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
           }
 

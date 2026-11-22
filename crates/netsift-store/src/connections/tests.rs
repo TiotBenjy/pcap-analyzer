@@ -548,7 +548,7 @@ fn conversation_ends_and_flows_are_paged_by_first_seen() {
     let mut seen = Vec::new();
     let mut request = PageRequest::first(3);
     loop {
-        let page = conversation_flows_page(&conn, src, dst, &request).unwrap();
+        let page = conversation_flows_page(&conn, src, dst, None, &request).unwrap();
         assert!(page.items.len() <= 3);
         seen.extend(page.items.iter().map(|f| (f.first_ts, f.id)));
         match page.next_cursor {

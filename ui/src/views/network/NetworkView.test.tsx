@@ -146,7 +146,7 @@ describe('Network view', () => {
     expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(
       ID,
       { mode: 'hosts', protocols: undefined, ipv6: true, includeOrphans: false, expand: null },
-      expect.anything(),
+      expect.anything(), null,
     );
     // The legend names the address categories.
     expect(within(screen.getByRole('list', { name: 'Node colors' })).getByText('LAN')).toBeInTheDocument();
@@ -165,28 +165,28 @@ describe('Network view', () => {
       expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(
         ID,
         expect.objectContaining({ protocols: ['dns', 'http', 'ssh', 'ftp', 'telnet', 'rdp', 'smb', 'tcp', 'udp', 'other'] }),
-        expect.anything(),
+        expect.anything(), null,
       );
     });
     // With a protocol filter, volumes are those of whole conversations: said so.
     expect(screen.getByText(/^Volumes of whole conversations/)).toBeInTheDocument();
     await user.click(screen.getAllByRole('button', { name: 'Disable all' })[0] ?? https);
     await waitFor(() => {
-      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ protocols: [] }), expect.anything());
+      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ protocols: [] }), expect.anything(), null);
     });
     const orphans = screen.getByRole('switch', { name: /^Hide orphans/ });
     expect(orphans).toHaveTextContent('3');
     await user.click(orphans);
     await waitFor(() => {
-      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ includeOrphans: true }), expect.anything());
+      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ includeOrphans: true }), expect.anything(), null);
     });
     await user.click(screen.getByRole('switch', { name: 'Show IPv6' }));
     await waitFor(() => {
-      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ ipv6: false }), expect.anything());
+      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ ipv6: false }), expect.anything(), null);
     });
     await user.click(screen.getByRole('radio', { name: 'Countries' }));
     await waitFor(() => {
-      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ mode: 'countries' }), expect.anything());
+      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ mode: 'countries' }), expect.anything(), null);
     });
   });
 
@@ -198,7 +198,7 @@ describe('Network view', () => {
     expect(panel).toHaveTextContent('Search an address or a name to see its details.');
     await user.type(screen.getByRole('searchbox'), '81.2.3');
     await waitFor(() => {
-      expect(networkApi.getNetworkNode).toHaveBeenCalledWith(ID, '81.2.3.4', expect.anything());
+      expect(networkApi.getNetworkNode).toHaveBeenCalledWith(ID, '81.2.3.4', expect.anything(), null);
     });
     expect(await within(panel).findByText('443/tcp')).toBeInTheDocument();
     // The links of the found host are highlighted in the list.
@@ -227,11 +227,11 @@ describe('Network view', () => {
     const panel = screen.getByRole('complementary', { name: 'Node details' });
     await user.click(await within(panel).findByRole('button', { name: 'Show its hosts' }));
     await waitFor(() => {
-      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ expand: 'US' }), expect.anything());
+      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ expand: 'US' }), expect.anything(), null);
     });
     await user.click(await screen.findByRole('button', { name: 'Group United States again' }));
     await waitFor(() => {
-      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ expand: null }), expect.anything());
+      expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.objectContaining({ expand: null }), expect.anything(), null);
     });
   });
 
@@ -274,5 +274,18 @@ describe('Network view', () => {
     vi.mocked(networkApi.getNetworkGraph).mockResolvedValue({ ...graph(), nodes: [], edges: [], hosts: 0, hosts_shown: 0, edges_total: 0, total_bytes: 0 });
     renderApp(`/sessions/${ID}/network`);
     expect(await screen.findByText('No communication matches the filters')).toBeInTheDocument();
+  });
+
+  it('asks the graph and the node detail for the time range of the URL', async () => {
+    const user = setupUser();
+    const range = { fromUs: 1_000_000, toUs: 60_999_999 };
+    renderApp(`/sessions/${ID}/network?from_us=${range.fromUs}&to_us=${range.toUs}`);
+    await screen.findByRole('list', { name: 'Links ranked by bytes' });
+    expect(screen.getByText('Flows active in the range are counted in full.')).toBeInTheDocument();
+    expect(networkApi.getNetworkGraph).toHaveBeenLastCalledWith(ID, expect.anything(), expect.anything(), range);
+    await user.type(screen.getByRole('searchbox'), '81.2.3');
+    await waitFor(() => {
+      expect(networkApi.getNetworkNode).toHaveBeenCalledWith(ID, '81.2.3.4', expect.anything(), range);
+    });
   });
 });

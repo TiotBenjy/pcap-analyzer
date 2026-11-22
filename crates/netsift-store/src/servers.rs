@@ -280,7 +280,16 @@ fn materialize_roles(conn: &Connection) -> Result<()> {
              FROM server_evidence_source;
          DELETE FROM server_roles;
          INSERT INTO server_roles (role, ip) SELECT role, ip FROM server_roles_source;
-         DELETE FROM server_ranks;
+",
+    )?;
+    rank_servers(conn)
+}
+
+/// Ranks of the servers of each role from `server_evidence` into `server_ranks` (also used by the
+/// time range databases, `ranges`).
+pub(crate) fn rank_servers(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "DELETE FROM server_ranks;
          INSERT INTO server_ranks (role, rank, ip, servers)
              SELECT role,
                     row_number() OVER (PARTITION BY role ORDER BY sum(count) DESC, ip),

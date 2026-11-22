@@ -2,14 +2,15 @@
 //!
 //! | Method | Path | Response |
 //! |---|---|---|
-//! | GET | `/sessions/{id}/servers?role&category&limit` | [`ServersOverview`] |
+//! | GET | `/sessions/{id}/servers?role&category&limit&from_us&to_us` | [`ServersOverview`] |
 //!
 //! Roles are derived at read time (`netsift_store::servers`, ADR-017). Every role is listed, in
 //! a fixed order, even without server; `limit` bounds the servers listed per role (strongest
 //! evidence first, bounded per role in SQL after the category filter), `total` gives how many
 //! there are. A session upgraded after its import is not
 //! analyzed (`analyzed: false`, no server), ADR-013. Like the other views: 404 for an unknown
-//! session, 409 while importing or failed.
+//! session, 409 while importing or failed. Under a time range (ADR-030) the evidence is derived from
+//! the records of the range (range database, `crate::range::open_view`).
 
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
@@ -25,7 +26,7 @@ use ts_rs::TS;
 
 use crate::endpoint::{Endpoint, parse_categories};
 use crate::extract::ApiQuery;
-use crate::overview::open_ready;
+use crate::range::{AggregateRange, open_view};
 use crate::sessions::parse_id;
 use crate::{ApiError, AppState, blocking, convert};
 
@@ -288,6 +289,7 @@ async fn list(
     State(state): State<Arc<AppState>>,
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<ServersQuery>,
+    range: AggregateRange,
 ) -> Result<Json<ServersOverview>, ApiError> {
     let id = parse_id(&id)?;
     let roles: Vec<ServerRole> = match query.role.as_deref() {
@@ -299,9 +301,10 @@ async fn list(
     };
     let categories = parse_categories(query.category.as_deref())?;
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as usize;
+    let (params, cancel) = (range.params, range.flag());
     blocking(&state, move |s| {
-        let (_, session) = open_ready(s, &id)?;
-        let conn = session.conn();
+        let (_, view) = open_view(s, &id, params, &cancel)?;
+        let conn = view.conn();
         if !store::analyzed(conn)? {
             return Ok(ServersOverview {
                 analyzed: false,

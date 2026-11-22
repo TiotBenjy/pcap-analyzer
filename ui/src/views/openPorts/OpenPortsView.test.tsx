@@ -98,7 +98,7 @@ describe('Open Ports view', () => {
     const user = setupUser();
     renderApp(`/sessions/${ID}/open-ports`);
     await screen.findByRole('table', { name: 'Hosts with open ports' });
-    expect(connectionsApi.listOpenPorts).toHaveBeenLastCalledWith(ID, { q: '' }, null, expect.anything());
+    expect(connectionsApi.listOpenPorts).toHaveBeenLastCalledWith(ID, { q: '' }, null, expect.anything(), null);
 
     await user.click(screen.getAllByRole('switch', { name: 'Public' })[0] as HTMLElement);
     await waitFor(() => {
@@ -106,10 +106,10 @@ describe('Open Ports view', () => {
         ID,
         { categories: PRIVATE_CATEGORIES, q: '' },
         null,
-        expect.anything(),
+        expect.anything(), null,
       );
     });
-    expect(connectionsApi.getOpenPortStats).toHaveBeenLastCalledWith(ID, PRIVATE_CATEGORIES, expect.anything());
+    expect(connectionsApi.getOpenPortStats).toHaveBeenLastCalledWith(ID, PRIVATE_CATEGORIES, expect.anything(), null);
 
     await user.type(screen.getByRole('searchbox'), '443');
     await waitFor(() => {
@@ -117,7 +117,7 @@ describe('Open Ports view', () => {
         ID,
         { categories: PRIVATE_CATEGORIES, q: '443' },
         null,
-        expect.anything(),
+        expect.anything(), null,
       );
     });
 
@@ -147,5 +147,14 @@ describe('Open Ports view', () => {
     expect(categoriesOf(false, true)).toEqual(['public']);
     expect(categoriesOf(false, false)).toEqual([]);
     expect(categoriesOf(true, false)).not.toContain('public');
+  });
+
+  it('asks for the time range of the URL and marks the span of a port as the session one', async () => {
+    const range = { fromUs: T0, toUs: T0 + 59_999_999 };
+    renderApp(`/sessions/${ID}/open-ports?from_us=${range.fromUs}&to_us=${range.toUs}`);
+    const table = await screen.findByRole('table', { name: 'Hosts with open ports' });
+    expect(connectionsApi.listOpenPorts).toHaveBeenCalledWith(ID, expect.anything(), null, expect.anything(), range);
+    expect(connectionsApi.getOpenPortStats).toHaveBeenCalledWith(ID, undefined, expect.anything(), range);
+    expect(within(table).getByText('22 ssh').getAttribute('title')).toContain('(whole session)');
   });
 });

@@ -356,6 +356,48 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
   environ 2 Kio par message sur disque, plus les index (300 à 400 octets de brut pour un message courant) ;
   10 M messages de taille maximale pèseraient environ 20 Go.
 
+## Filtre temporel (P5.2b, 2026-11-22, `feat/time-filter-aggregates`)
+
+Même machine, jeu régénéré à l'identique (8 894 735 paquets sur 7 jours, 843 955 flux, 676 978 conversations),
+`./x.sh bench queries` (9 appels chronométrés, plus le premier appel compté à part, colonne « 1re ») sous les
+plages `{r1h}`, `{r24h}`, `{r6d}`. Le banc supprime d'abord `sessions/<id>/ranges/` : la première requête d'une
+plage (`/connections?limit=50`, première route agrégée mesurée) construit sa base. Mesure finale après revue,
+machine presque au repos (charge moyenne de 3 à 6 sur 22 threads).
+
+| Plage | Flux actifs | Construction (1re requête) | Requêtes suivantes des vues agrégées (médianes, ms) |
+|---|---|---|---|
+| 1 h | 4 692 | 0,6 s | `/connections` 6, `stats` 9, `top` 5, `/open-ports` 8, `stats` 23, `/servers` 8, `/network/graph` 10, `node` 5 |
+| 24 h | 122 857 | 2,4 s | `/connections` 6, `stats` 33, `top` 5, `/open-ports` 8, `stats` 39, `/servers` 9, `/network/graph` 15, `node` 6 |
+| 6 j | 726 364 | 11,0 à 11,6 s | `/connections` 7-8, `stats` 130, `top` 5, `/open-ports` 8, `stats` 106, `/servers` 11, `/network/graph` 23, `node` 7 |
+
+- **Overview** : `/summary` n'attend plus la base d'une plage (compteurs des vues agrégées `pending`, servis
+  par `/modules`) : 103 / 136 / 267 ms sous plage, premier appel compris (108 / 128 / 259 ms), soit les temps
+  de P5.2a (101 / 131 / 260 ms). Chaque zoom de l'Overview répond donc comme avant P5.2b ; seules les cartes
+  des cinq vues agrégées attendent la construction.
+- **Mémoire** : pic de mémoire résidente du processus (`VmHWM`, mesuré par le banc) de 223 Mio après la
+  construction de 6 jours (13 Mio avant les plages). Un premier essai avec `mmap_size` de 1 Gio sur la session
+  attachée montait à 819 Mio (pages du fichier comptées dans la mémoire résidente), sans gain de temps : retiré.
+  Deux constructions simultanées (`MAX_BUILDS`) restent sous 500 Mio ; avec un import en cours (environ 400 Mio
+  au pic sur ce banc), le total reste sous la cible de 1,5 Go : `MAX_BUILDS` n'est pas réduit pendant un import.
+- La lecture des flux actifs joint chaque flux aux catégories de ses extrémités et au port ouvert atteint par
+  clé primaire (mémoire bornée, revue) : environ 1,5 s de plus à 6 jours que le chargement initial de tous
+  les hôtes et ports en mémoire (9,4 s mesurés sous charge avant revue).
+- Répartition de la construction à 6 jours (essai instrumenté avant revue, sous charge) : copie des hôtes et
+  des ports ouverts actifs 0,8 s, lecture des flux actifs et agrégation 2,0 s, insertion de 600 000
+  conversations 2,4 s, leurs 7 index 1,1 s, preuves de serveurs 0,5 s, étape `network` 2,4 s. Taille des bases :
+  15 Mo (1 h), 36 Mo (24 h), 122 Mo (6 jours) ; hôtes et ports ouverts actifs, copiés, font l'essentiel des
+  petites.
+- Ce qui a compté : agréger en Rust en une lecture des flux au lieu d'un `GROUP BY` SQL (8 s pour les seules
+  conversations) ; lire toute la table des flux dans l'ordre de stockage pour une plage large plutôt que
+  l'index du début (3 s de lectures ligne à ligne à 6 jours) ; catégories et clients des ports dans la même
+  lecture (l'étape `connections` relancée coûtait 2 s) ; 128 Mio de cache pour la base en construction.
+- Écart à l'estimation de la spec (0,3 s à 24 h, 2 à 5 s à 6 jours) : 2,4 s et 11 s. Suivis : tables du graphe
+  construites à la première requête Network seulement (environ 2,4 s épargnées aux autres vues ; non simple,
+  le fichier publié est immuable), index des conversations construits à la demande d'un tri.
+- `/dns/servers` sous plage : 173 ms (24 h) et 1,39 s (6 jours) sur la branche, **identique sur main**
+  (189 ms et 1,39 s, même jeu, même machine au repos) : régression de P5.2a indépendante de cette tâche (74 ms
+  notés à sa fusion), à reprendre à part.
+
 ## Suivis restants (chiffres de la dernière mesure)
 
 1. **Fin d'import : 44,5 s**, publiée mais pas réduite : index secondaires 18,5 s (environ 90 index, un

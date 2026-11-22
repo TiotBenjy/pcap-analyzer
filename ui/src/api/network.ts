@@ -1,6 +1,7 @@
 // Typed client of the Network routes (query hooks: networkQueries.ts)
 // (crates/netsift-api/src/network.rs).
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiGet } from './client';
 import type { NetworkGraph } from './types/NetworkGraph';
 import type { NetworkMode } from './types/NetworkMode';
@@ -47,10 +48,10 @@ export function graphQuery(p: GraphParams): string {
   return text === '' ? '' : `?${text}`;
 }
 
-export function getNetworkGraph(id: string, p: GraphParams, signal?: AbortSignal): Promise<NetworkGraph> {
-  return apiGet(`${sessionPath(id)}/network/graph${graphQuery(p)}`, signal);
+export function getNetworkGraph(id: string, p: GraphParams, signal?: AbortSignal, range: TimeRange | null = null): Promise<NetworkGraph> {
+  return apiGet(withRange(`${sessionPath(id)}/network/graph${graphQuery(p)}`, range), signal);
 }
 
-export function getNetworkNode(id: string, ip: string, signal?: AbortSignal): Promise<NetworkNodeDetail> {
-  return apiGet(`${sessionPath(id)}/network/node/${encodeURIComponent(ip)}`, signal);
+export function getNetworkNode(id: string, ip: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<NetworkNodeDetail> {
+  return apiGet(withRange(`${sessionPath(id)}/network/node/${encodeURIComponent(ip)}`, range), signal);
 }

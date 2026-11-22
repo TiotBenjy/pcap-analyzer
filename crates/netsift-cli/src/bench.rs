@@ -560,6 +560,12 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
             .to_owned()
     };
     api.base = format!("/api/v1/sessions/{session}");
+    // Time range databases of a previous run (P5.2b): the first request of a range builds its own.
+    let ranges = args.data_dir.join("sessions").join(&session).join("ranges");
+    if ranges.exists() {
+        std::fs::remove_dir_all(&ranges)
+            .with_context(|| format!("removing {}", ranges.display()))?;
+    }
     let (status, _) = api.get("").await?;
     writeln!(
         out,
@@ -607,11 +613,16 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
 
     writeln!(
         out,
-        "| Vue | Requête | Médiane (ms) | p95 (ms) | Max (ms) | Statut | Taille |"
+        "| Vue | Requête | 1re (ms) | Médiane (ms) | p95 (ms) | Max (ms) | Statut | Taille |"
     )?;
-    writeln!(out, "|---|---|---|---|---|---|---|")?;
+    writeln!(out, "|---|---|---|---|---|---|---|---|")?;
     let mut slow = Vec::new();
+    // Peak resident memory before the first time range (P5.2b: range databases are built after).
+    let mut before_ranges: Option<u64> = None;
     for (view, case_path) in &cases {
+        if before_ranges.is_none() && case_path.contains("{r") {
+            before_ranges = peak_rss_kib();
+        }
         if args
             .only
             .as_ref()
@@ -622,11 +633,14 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
         let Some(path) = fill(case_path, &values) else {
             writeln!(
                 out,
-                "| {view} | `{case_path}` | - | - | - | sans donnée | - |"
+                "| {view} | `{case_path}` | - | - | - | - | sans donnée | - |"
             )?;
             continue;
         };
+        // The first call is not counted in the median: it may build a time range database.
+        let t = Instant::now();
         let (status, body) = api.get(&path).await?;
+        let first = t.elapsed();
         let mut times = Vec::with_capacity(args.repeat);
         for _ in 0..args.repeat.max(1) {
             let t = Instant::now();
@@ -645,9 +659,10 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
         };
         writeln!(
             out,
-            "| {} | `{}` | {}{flag} | {} | {} | {} | {} o |",
+            "| {} | `{}` | {} | {}{flag} | {} | {} | {} | {} o |",
             view,
             case_path,
+            ms(first),
             ms(median),
             ms(p95),
             ms(max),
@@ -656,6 +671,13 @@ async fn bench_queries(args: &QueriesArgs, out: &mut dyn Write) -> Result<()> {
         )?;
     }
     writeln!(out, "\n{} requêtes au-dessus de 300 ms", slow.len())?;
+    let mib = |k: Option<u64>| k.map_or_else(|| "-".to_owned(), |k| format!("{} Mio", k / 1024));
+    writeln!(
+        out,
+        "pic de mémoire résidente (VmHWM) : {} avant les plages, {} à la fin",
+        mib(before_ranges),
+        mib(peak_rss_kib())
+    )?;
     Ok(())
 }
 
@@ -674,8 +696,20 @@ fn encode(v: &str) -> String {
 
 /// Replaces the `{name}` placeholders; `None` if one has no value.
 /// Routes measured under the time ranges `{r1h}`, `{r24h}` and `{r6d}` (P5.2, ADR-030):
-/// windows of one hour, one day and six days centered on the session.
+/// windows of one hour, one day and six days centered on the session. The first one builds the
+/// range database of the aggregated views (its first call is the cost of a new range).
 const RANGE_ROUTES: &[(&str, &str)] = &[
+    ("connections", "/connections?limit=50"),
+    ("connections", "/connections?limit=50&sort=packets"),
+    ("connections", "/connections?limit=50&category=public"),
+    ("connections", "/connections/stats"),
+    ("connections", "/connections/top?n=20"),
+    ("open-ports", "/open-ports?limit=50"),
+    ("open-ports", "/open-ports/stats"),
+    ("servers", "/servers"),
+    ("network", "/network/graph"),
+    ("network", "/network/graph?mode=countries"),
+    ("network", "/network/node/{host}"),
     ("overview", "/summary"),
     ("overview", "/timeseries?points=500"),
     ("dns", "/dns/stats"),

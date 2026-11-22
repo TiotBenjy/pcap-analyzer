@@ -9,7 +9,8 @@ import { MODULE_ITEMS, type ModuleId, moduleState, REASON_KEYS } from './modules
 
 interface ModuleGridProps {
   sessionId: string;
-  /** `null` while the summary loads. */
+  /** `null` while the summary loads; a `pending` counter (aggregated view under a time range, its
+   * range database being built) shows a placeholder. */
   modules: readonly ModuleCount[] | null;
 }
 
@@ -32,14 +33,14 @@ export function ModuleGrid({ sessionId, modules }: ModuleGridProps) {
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-subtle text-muted">
                 <Icon aria-hidden size={16} strokeWidth={1.75} />
               </span>
-              {modules === null ? (
+              {modules === null || scope === 'pending' ? (
                 <Skeleton className="h-5 w-10" />
               ) : (
                 state.count !== null && <Badge>{formatCount(state.count)}</Badge>
               )}
             </div>
             <h3 className="mt-3 truncate text-card font-medium">{title}</h3>
-            {scope !== null && state.count !== null && (
+            {scope !== null && scope !== 'pending' && state.count !== null && (
               <p className="truncate text-meta text-faint">
                 {scope === 'range' ? t('timeRange.inRange') : t('timeRange.wholeSession')}
               </p>

@@ -2,6 +2,7 @@
 
 import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiGet } from './client';
+import type { ModuleCounts } from './types/ModuleCounts';
 import type { OverviewSummary } from './types/OverviewSummary';
 import type { TrafficProtocol } from './types/TrafficProtocol';
 import type { TrafficSeries } from './types/TrafficSeries';
@@ -25,6 +26,14 @@ const sessionPath = (id: string): `/${string}` => `/sessions/${encodeURIComponen
 
 export function getOverviewSummary(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<OverviewSummary> {
   return apiGet(withRange(`${sessionPath(id)}/summary`, range), signal);
+}
+
+/**
+ * Counters of the aggregated views (Connections, Hosts, Network, Open Ports, Servers): under a
+ * range, from its range database, which the first request of a range waits for (ADR-030).
+ */
+export function getModuleCounts(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<ModuleCounts> {
+  return apiGet(withRange(`${sessionPath(id)}/modules`, range), signal);
 }
 
 export function trafficQuery(params: TrafficParams = {}): string {

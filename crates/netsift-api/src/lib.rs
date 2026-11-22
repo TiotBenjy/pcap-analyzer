@@ -134,6 +134,10 @@ pub(crate) struct AppState {
     pub(crate) settings: settings::SettingsStore,
     /// States of the online features (ADR-025), one per type: `online.get::<T>()`.
     pub(crate) online: online::OnlineStates,
+    /// Range databases of the aggregated views (P5.2b, ADR-030).
+    pub(crate) ranges: netsift_store::ranges::RangeCache,
+    /// Their directory on a read-only server (created on first use, removed at exit).
+    pub(crate) range_scratch: std::sync::OnceLock<Option<tempfile::TempDir>>,
     shutdown: watch::Sender<bool>,
 }
 
@@ -164,6 +168,8 @@ impl AppState {
             geoip,
             settings,
             online: online::OnlineStates::default(),
+            ranges: netsift_store::ranges::RangeCache::new(),
+            range_scratch: std::sync::OnceLock::new(),
             shutdown: watch::Sender::new(false),
         }
     }

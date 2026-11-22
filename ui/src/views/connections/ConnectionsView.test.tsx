@@ -133,15 +133,15 @@ describe('Connections view', () => {
     expect(items[0]).toHaveTextContent('5.9 KiB');
     expect(within(pairs).getByText(/Other hosts/)).toBeInTheDocument();
     expect(screen.getByText('4 conversations, 8.9 KiB')).toBeInTheDocument();
-    expect(connectionsApi.getConnectionTop).toHaveBeenLastCalledWith(ID, 10, false, expect.anything());
+    expect(connectionsApi.getConnectionTop).toHaveBeenLastCalledWith(ID, 10, false, expect.anything(), null);
 
     await user.click(screen.getByRole('radio', { name: 'Top 50' }));
     await waitFor(() => {
-      expect(connectionsApi.getConnectionTop).toHaveBeenLastCalledWith(ID, 50, false, expect.anything());
+      expect(connectionsApi.getConnectionTop).toHaveBeenLastCalledWith(ID, 50, false, expect.anything(), null);
     });
     await user.click(screen.getByRole('switch', { name: 'Include DNS' }));
     await waitFor(() => {
-      expect(connectionsApi.getConnectionTop).toHaveBeenLastCalledWith(ID, 50, true, expect.anything());
+      expect(connectionsApi.getConnectionTop).toHaveBeenLastCalledWith(ID, 50, true, expect.anything(), null);
     });
     // The legend lists the address categories of the network legends.
     const legend = screen.getByRole('list', { name: 'Address categories' });
@@ -165,7 +165,7 @@ describe('Connections view', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Filter sources' }), '1.2');
     await waitFor(() => {
-      expect(connectionsApi.listConversations).toHaveBeenLastCalledWith(ID, { from: '1.2', to: '' }, null, expect.anything());
+      expect(connectionsApi.listConversations).toHaveBeenLastCalledWith(ID, { from: '1.2', to: '' }, null, expect.anything(), null);
     });
     await waitFor(() => {
       expect(within(screen.getByRole('table', { name: 'Conversations between hosts' })).getAllByRole('row')).toHaveLength(2);
@@ -259,7 +259,7 @@ describe('Connections view', () => {
     expect(items[0]).toHaveTextContent('12 packets');
     expect(items[1]).toHaveTextContent('ICMP');
     expect(items[1]).toHaveTextContent('No ports');
-    expect(exportsApi.listConversationFlows).toHaveBeenCalledWith(ID, '3', null, expect.anything());
+    expect(exportsApi.listConversationFlows).toHaveBeenCalledWith(ID, '3', null, expect.anything(), null);
 
     vi.mocked(exportsApi.listExports).mockResolvedValue([
       { ...running, state: 'done', packets: 12, bytes_written: 999 },
@@ -267,5 +267,30 @@ describe('Connections view', () => {
     await user.click(within(items[0] as HTMLElement).getByRole('button', { name: /^Save this flow as PCAP: TCP Port 40000 to 443/ }));
     expect(exportsApi.startPcapExport).toHaveBeenCalledWith(ID, { scope: 'flow', flow_id: '42' });
     expect(await within(dialog).findByText('Saved: 12 packets, 999 B')).toBeInTheDocument();
+  });
+
+  it('asks every route for the time range of the URL and says how flows are counted', async () => {
+    const user = setupUser();
+    const range = { fromUs: T0, toUs: T0 + 59_999_999 };
+    vi.mocked(exportsApi.listConversationFlows).mockResolvedValue({ items: [], next_cursor: null, total_estimate: null });
+    vi.mocked(exportsApi.listExports).mockResolvedValue([]);
+    renderApp(`/sessions/${ID}/connections?from_us=${range.fromUs}&to_us=${range.toUs}`);
+    expect(await screen.findByText('Flows active in the range are counted in full.')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(connectionsApi.getConnectionStats).toHaveBeenCalledWith(ID, expect.anything(), range);
+    });
+    expect(connectionsApi.getConnectionTop).toHaveBeenCalledWith(ID, 10, false, expect.anything(), range);
+    expect(connectionsApi.listConversations).toHaveBeenCalledWith(ID, expect.anything(), null, expect.anything(), range);
+    await user.click(await screen.findByRole('button', { name: 'Flows from 192.168.1.3 to cdn.example.test' }));
+    await waitFor(() => {
+      expect(exportsApi.listConversationFlows).toHaveBeenCalledWith(ID, '3', null, expect.anything(), range);
+    });
+  });
+
+  it('shows no note without a time range', async () => {
+    renderApp(`/sessions/${ID}/connections`);
+    await screen.findByRole('list', { name: 'Country list: Download sources' });
+    expect(screen.queryByText('Flows active in the range are counted in full.')).not.toBeInTheDocument();
+    expect(connectionsApi.getConnectionStats).toHaveBeenCalledWith(ID, expect.anything(), null);
   });
 });

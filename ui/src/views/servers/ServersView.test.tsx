@@ -104,6 +104,7 @@ it('sends the category filter to the API', async () => {
       ID,
       { categories: ['private', 'broadcast', 'multicast', 'link_local', 'loopback', 'cgnat', 'unspecified', 'reserved'] },
       expect.anything(),
+      null,
     ),
   );
 });
@@ -119,4 +120,30 @@ it('offers a retry when the servers cannot be loaded', async () => {
   vi.mocked(serversApi.getServers).mockRejectedValue(new Error('boom'));
   renderApp(`/sessions/${ID}/servers`);
   expect(await screen.findByText('Could not load the servers')).toBeInTheDocument();
+});
+
+it('asks for the time range of the URL and marks folded counts as those of the session', async () => {
+  const user = setupUser();
+  const ntp: RoleServer = {
+    endpoint: endpoint('192.168.1.2'),
+    count: 40,
+    first_ts_us: T0,
+    last_ts_us: T0,
+    evidence: [
+      { kind: 'ntp_response', count: 40, clients: 2, first_ts_us: T0, last_ts_us: T0, example: 'stratum 2' },
+      { kind: 'open_port', count: 3, clients: 1, first_ts_us: T0, last_ts_us: T0, example: '123/udp' },
+    ],
+  };
+  vi.mocked(serversApi.getServers).mockResolvedValue(overview({}, { ntp: [ntp] }));
+  const range = { fromUs: T0, toUs: T0 + 59_999_999 };
+  renderApp(`/sessions/${ID}/servers?from_us=${range.fromUs}&to_us=${range.toUs}`);
+  const table = await screen.findByRole('table', { name: 'NTP servers' });
+  expect(serversApi.getServers).toHaveBeenCalledWith(ID, expect.anything(), expect.anything(), range);
+  // The count holding folded evidence says it is that of the session.
+  expect(within(table).getByText('Whole session')).toBeInTheDocument();
+  expect(within(table).getByText('NTP responses')).toBeInTheDocument();
+  await user.click(within(table).getByRole('button', { name: 'Show the evidence of 192.168.1.2' }));
+  const detail = await screen.findByRole('table', { name: 'Evidence of 192.168.1.2' });
+  // In the detail, only the folded row (NTP), not the open port.
+  expect(within(detail).getAllByText('Whole session')).toHaveLength(1);
 });

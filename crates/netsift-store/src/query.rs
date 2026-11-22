@@ -411,19 +411,28 @@ pub fn conversation_flows_page(
     conn: &Connection,
     src: std::net::IpAddr,
     dst: std::net::IpAddr,
+    range: Option<crate::TimeRange>,
     request: &PageRequest,
 ) -> Result<Page<FlowRow>> {
+    let mut c = Conditions::new();
+    c.push(
+        "src_ip = ? AND dst_ip = ?",
+        [Value::Text(src.to_string()), Value::Text(dst.to_string())],
+    );
+    // Under a time range: the flows active in it (span overlapping it), ADR-030.
+    if let Some(r) = range {
+        r.push_overlap(&mut c, "first_ts", "last_ts");
+    }
+    let filter = c.sql();
     let query = Keyset {
         from: "flows",
         select: FLOW_COLUMNS,
         sort: "first_ts",
         tiebreak: "id",
         descending: false,
-        filter: Some("src_ip = ? AND dst_ip = ?"),
+        filter: filter.as_deref(),
     };
-    let (src, dst) = (src.to_string(), dst.to_string());
-    let params: [&dyn ToSql; 2] = [&src, &dst];
-    keyset_page(conn, &query, &params, request, FlowRow::from_row)
+    keyset_page(conn, &query, &c.params(), request, FlowRow::from_row)
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ import type { AddressCategory } from '../../api/types/AddressCategory';
 import type { RoleServer } from '../../api/types/RoleServer';
 import type { RoleServers } from '../../api/types/RoleServers';
 import type { ServerEvidence } from '../../api/types/ServerEvidence';
+import { useViewRange } from '../../app/timeRange';
 import type { ServerRole } from '../../api/types/ServerRole';
 import { ADDRESS_CATEGORY_ORDER } from '../../charts/palette';
 import { Badge } from '../../components/Badge';
@@ -259,6 +260,34 @@ function OtherRoles({
   );
 }
 
+/**
+ * Evidence folded per server and client at import (NTP responses, KDC replies, browser
+ * announcements): under a time range their counts stay those of the whole session (ADR-030).
+ */
+const FOLDED_KINDS: ReadonlySet<ServerEvidence['kind']> = new Set([
+  'ntp_response',
+  'kdc_as_rep',
+  'kdc_tgs_rep',
+  'kdc_error',
+  'browser_server',
+  'browser_dc',
+]);
+
+/**
+ * Under a time range, the short "Whole session" line under a count that holds folded evidence
+ * (the convention of the SMB and Ethernet columns), else nothing.
+ */
+function WholeSessionNote({ kinds }: { kinds: readonly ServerEvidence['kind'][] }) {
+  const { t } = useTranslation();
+  const ranged = useViewRange() !== null;
+  if (!ranged || !kinds.some((k) => FOLDED_KINDS.has(k))) return null;
+  return <span className="block text-meta leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>;
+}
+
+function kindsOf(server: RoleServer): ServerEvidence['kind'][] {
+  return server.evidence.map((e) => e.kind);
+}
+
 function EvidenceKinds({ server }: { server: RoleServer }) {
   const { t } = useTranslation();
   return (
@@ -311,7 +340,10 @@ function ServerTable({ role, labels, byAddress }: ServerListProps) {
                   <td className="px-3 py-2">
                     <EvidenceKinds server={s} />
                   </td>
-                  <td className="num px-3 py-2 text-right">{formatCount(s.count)}</td>
+                  <td className="num px-3 py-2 text-right">
+                    {formatCount(s.count)}
+                    <WholeSessionNote kinds={kindsOf(s)} />
+                  </td>
                   <td className="px-3 py-2 text-meta sm:pr-4"><Timestamp us={s.last_ts_us} /></td>
                 </tr>
                 {expanded && (
@@ -359,7 +391,10 @@ function EvidenceTable({ server }: { server: RoleServer }) {
             <td className="truncate py-1 pr-3" title={t(`views.servers.kinds.${e.kind}`)}>
               {t(`views.servers.kinds.${e.kind}`)}
             </td>
-            <td className="num py-1 pr-3 text-right">{formatCount(e.count)}</td>
+            <td className="num py-1 pr-3 text-right">
+              {formatCount(e.count)}
+              <WholeSessionNote kinds={[e.kind]} />
+            </td>
             <td className="num py-1 pr-3 text-right">{e.clients === null ? '-' : formatCount(e.clients)}</td>
             <td className="hidden py-1 pr-3 text-meta lg:table-cell"><Timestamp us={e.first_ts_us} /></td>
             <td className="py-1 pr-3 text-meta"><Timestamp us={e.last_ts_us} /></td>
@@ -389,7 +424,10 @@ function ServerCards({ role, labels, byAddress }: ServerListProps) {
               <span className="min-w-0 flex-1">
                 <ServerCell server={s} />
               </span>
-              <span className="num shrink-0 pt-1 text-meta text-muted">{formatCount(s.count)}</span>
+              <span className="num shrink-0 pt-1 text-right text-meta text-muted">
+                {formatCount(s.count)}
+                <WholeSessionNote kinds={kindsOf(s)} />
+              </span>
             </div>
             <EvidenceKinds server={s} />
             <OtherRoles server={s} role={role} labels={labels} byAddress={byAddress} hideEmpty />
@@ -401,7 +439,10 @@ function ServerCards({ role, labels, byAddress }: ServerListProps) {
                       <span className="truncate font-medium" title={t(`views.servers.kinds.${e.kind}`)}>
                         {t(`views.servers.kinds.${e.kind}`)}
                       </span>
-                      <span className="num shrink-0">{formatCount(e.count)}</span>
+                      <span className="num shrink-0 text-right">
+                        {formatCount(e.count)}
+                        <WholeSessionNote kinds={[e.kind]} />
+                      </span>
                     </span>
                     {e.clients !== null && (
                       <span className="text-muted">

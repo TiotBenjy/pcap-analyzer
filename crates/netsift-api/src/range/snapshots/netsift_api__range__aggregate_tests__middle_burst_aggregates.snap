@@ -1,0 +1,228 @@
+---
+source: crates/netsift-api/src/range/aggregate_tests.rs
+expression: "json!({\n    \"conversations\": conversations, \"open_ports\": ports, \"servers\": servers,\n    \"graph\":\n    {\n        \"hosts\": graph[\"hosts\"], \"edges\":\n        graph[\"edges\"].as_array().unwrap().len(), \"total_bytes\":\n        graph[\"total_bytes\"]\n    },\n})"
+---
+{
+  "conversations": [
+    {
+      "bytes": 6226,
+      "dst": "192.168.1.20",
+      "flows": 2,
+      "protocols": [
+        "smb",
+        "tcp"
+      ],
+      "src": "192.168.1.10"
+    },
+    {
+      "bytes": 563,
+      "dst": "192.168.1.1",
+      "flows": 3,
+      "protocols": [
+        "dns",
+        "snmp"
+      ],
+      "src": "192.168.1.10"
+    },
+    {
+      "bytes": 226,
+      "dst": "2001:db8:1::1",
+      "flows": 1,
+      "protocols": [
+        "dns"
+      ],
+      "src": "2001:db8:1::10"
+    },
+    {
+      "bytes": 39426,
+      "dst": "203.0.113.80",
+      "flows": 2,
+      "protocols": [
+        "http"
+      ],
+      "src": "192.168.1.10"
+    },
+    {
+      "bytes": 1310,
+      "dst": "198.51.100.43",
+      "flows": 1,
+      "protocols": [
+        "tls"
+      ],
+      "src": "192.168.1.10"
+    },
+    {
+      "bytes": 264,
+      "dst": "192.168.1.255",
+      "flows": 1,
+      "protocols": [
+        "netbios"
+      ],
+      "src": "192.168.1.20"
+    },
+    {
+      "bytes": 1234,
+      "dst": "192.168.1.21",
+      "flows": 1,
+      "protocols": [
+        "ftp"
+      ],
+      "src": "192.168.1.10"
+    }
+  ],
+  "graph": {
+    "edges": 7,
+    "hosts": 9,
+    "total_bytes": 49249
+  },
+  "open_ports": [
+    {
+      "clients": 1,
+      "host": "192.168.1.1",
+      "ports": [
+        [
+          53,
+          "udp",
+          1
+        ],
+        [
+          161,
+          "udp",
+          1
+        ]
+      ]
+    },
+    {
+      "clients": 1,
+      "host": "203.0.113.80",
+      "ports": [
+        [
+          80,
+          "tcp",
+          1
+        ]
+      ]
+    },
+    {
+      "clients": 1,
+      "host": "2001:db8:1::1",
+      "ports": [
+        [
+          53,
+          "udp",
+          1
+        ]
+      ]
+    },
+    {
+      "clients": 1,
+      "host": "198.51.100.43",
+      "ports": [
+        [
+          443,
+          "tcp",
+          1
+        ]
+      ]
+    },
+    {
+      "clients": 1,
+      "host": "192.168.1.21",
+      "ports": [
+        [
+          21,
+          "tcp",
+          1
+        ]
+      ]
+    },
+    {
+      "clients": 1,
+      "host": "192.168.1.20",
+      "ports": [
+        [
+          445,
+          "tcp",
+          1
+        ]
+      ]
+    }
+  ],
+  "servers": [
+    {
+      "role": "dns",
+      "servers": [
+        {
+          "evidence": [
+            [
+              "dns_response",
+              2,
+              1
+            ],
+            [
+              "open_port",
+              2,
+              1
+            ]
+          ],
+          "ip": "192.168.1.1"
+        },
+        {
+          "evidence": [
+            [
+              "dns_response",
+              1,
+              1
+            ],
+            [
+              "open_port",
+              1,
+              1
+            ]
+          ],
+          "ip": "2001:db8:1::1"
+        }
+      ]
+    },
+    {
+      "role": "smb",
+      "servers": [
+        {
+          "evidence": [
+            [
+              "browser_server",
+              3,
+              null
+            ],
+            [
+              "open_port",
+              1,
+              1
+            ],
+            [
+              "smb_session",
+              1,
+              1
+            ]
+          ],
+          "ip": "192.168.1.20"
+        }
+      ]
+    },
+    {
+      "role": "http",
+      "servers": [
+        {
+          "evidence": [
+            [
+              "http_response",
+              2,
+              1
+            ]
+          ],
+          "ip": "203.0.113.80"
+        }
+      ]
+    }
+  ]
+}

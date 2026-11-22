@@ -9,7 +9,8 @@
 //! - [`connections`], [`ports`]: tables and queries of the Connections and Open Ports views;
 //! - [`credentials`]: table and queries of the Credentials view (secrets read on demand only);
 //! - [`ethernet`]: link-layer tables and queries of the Ethernet view;
-//! - [`network`]: bounded communication graph of the Network view (read queries only).
+//! - [`network`]: bounded communication graph of the Network view (read queries only);
+//! - [`ranges`]: tables of the aggregated views materialized per time range (P5.2b).
 
 pub mod arp;
 pub mod catalog;
@@ -28,6 +29,7 @@ pub mod objects;
 pub mod ports;
 pub mod query;
 pub mod range;
+pub mod ranges;
 pub mod records;
 pub mod schema;
 pub mod servers;
@@ -51,6 +53,8 @@ pub use records::{
     AnomalyRow, ChunkFormat, ChunkRow, ChunkStatus, FlowRow, HostRow, MetaRow, StoreRecord,
     TimeseriesRow,
 };
+/// Connection type of the read queries (for callers that hold one without naming `rusqlite`).
+pub use rusqlite::Connection;
 pub use session::{OpenMode, Session, Upgrade};
 pub use smb::{SmbAnnounceEntry, SmbAnnounceRow, SmbSessionEntry, SmbSessionRow};
 pub use writer::{FinalizeWatch, StoreSender, StoreWriter, WriterConfig, WriterStats};

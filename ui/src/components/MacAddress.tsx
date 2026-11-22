@@ -1,12 +1,12 @@
 import { useTranslation } from 'react-i18next';
-import type { MacAddress as MacAddressDto } from '../../api/types/MacAddress';
-import { Badge } from '../../components/Badge';
-import { CopyButton } from '../../components/CopyButton';
-import { cn } from '../../lib/cn';
-import type { ethernetEn } from '../../i18n/ethernet';
+import type { MacAddress as MacAddressDto } from '../api/types/MacAddress';
+import type { macAddressEn } from '../i18n/macAddress';
+import { cn } from '../lib/cn';
+import { Badge } from './Badge';
+import { CopyButton } from './CopyButton';
 
-type GroupKey = keyof (typeof ethernetEn)['address']['group'];
-type RegistryKey = keyof (typeof ethernetEn)['address']['registry'];
+type GroupKey = keyof (typeof macAddressEn)['group'];
+type RegistryKey = keyof (typeof macAddressEn)['registry'];
 
 const isGroup = (g: string): g is GroupKey => g === 'ipv4_multicast' || g === 'ipv6_multicast' || g === 'ieee8021_reserved';
 const isRegistry = (r: string): r is RegistryKey => r === 'ma-l' || r === 'ma-m' || r === 'ma-s';
@@ -14,12 +14,12 @@ const isRegistry = (r: string): r is RegistryKey => r === 'ma-l' || r === 'ma-m'
 /** Class badge of an address: broadcast, well-known group, multicast or locally administered. */
 export function MacClassBadge({ address }: { address: MacAddressDto }) {
   const { t } = useTranslation();
-  if (address.kind === 'broadcast') return <Badge>{t('views.ethernet.address.broadcast')}</Badge>;
+  if (address.kind === 'broadcast') return <Badge>{t('macAddress.broadcast')}</Badge>;
   if (address.kind === 'multicast') {
     const label =
       address.group !== null && isGroup(address.group)
-        ? t(`views.ethernet.address.group.${address.group}`)
-        : t('views.ethernet.address.multicast');
+        ? t(`macAddress.group.${address.group}`)
+        : t('macAddress.multicast');
     return (
       <Badge title={label} className="max-w-full min-w-0 overflow-hidden">
         <span className="truncate">{label}</span>
@@ -28,8 +28,8 @@ export function MacClassBadge({ address }: { address: MacAddressDto }) {
   }
   if (address.local)
     return (
-      <Badge tone="warning" title={t('views.ethernet.address.localTitle')}>
-        {t('views.ethernet.address.local')}
+      <Badge tone="warning" title={t('macAddress.localTitle')}>
+        {t('macAddress.local')}
       </Badge>
     );
   return null;
@@ -39,7 +39,7 @@ export function MacClassBadge({ address }: { address: MacAddressDto }) {
 export function VendorName({ address, registry = null, small = false }: { address: MacAddressDto; registry?: string | null; small?: boolean }) {
   const { t } = useTranslation();
   if (address.vendor === null) {
-    const why = address.local && address.kind === 'unicast' ? t('views.ethernet.vendors.local') : t('views.ethernet.address.noVendor');
+    const why = address.local && address.kind === 'unicast' ? t('macAddress.localVendor') : t('macAddress.noVendor');
     return (
       <span data-testid="truncatable" title={why} className={cn('block truncate text-faint', small && 'text-meta')}>
         {why}
@@ -47,7 +47,7 @@ export function VendorName({ address, registry = null, small = false }: { addres
     );
   }
   const title =
-    registry !== null && isRegistry(registry) ? `${address.vendor}\n${t(`views.ethernet.address.registry.${registry}`)}` : address.vendor;
+    registry !== null && isRegistry(registry) ? `${address.vendor}\n${t(`macAddress.registry.${registry}`)}` : address.vendor;
   return (
     <span data-testid="truncatable" title={title} className={cn('block truncate', small && 'text-meta text-muted')}>
       {address.vendor}
@@ -71,9 +71,36 @@ export function MacAddress({ address, withVendor = false, copy = false }: MacAdd
       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
         <span className="shrink-0 font-mono text-meta">{address.mac}</span>
         <MacClassBadge address={address} />
-        {copy && <CopyButton value={address.mac} name={t('views.ethernet.address.copy')} className="-my-1.5 ml-auto" />}
+        {copy && <CopyButton value={address.mac} name={t('macAddress.copy')} className="-my-1.5 ml-auto" />}
       </span>
       {withVendor && <VendorName address={address} small />}
+    </span>
+  );
+}
+
+interface MacTextProps {
+  /** Address as text (`aa:bb:cc:dd:ee:ff`), when the view has no class nor vendor for it. */
+  mac: string;
+  /** Copy button after the address. */
+  copy?: boolean;
+  /** Faint text (placeholder address such as `00:00:00:00:00:00`). */
+  muted?: boolean;
+  className?: string;
+}
+
+/** A MAC address given as text: monospace, truncated with a tooltip, optionally copyable. */
+export function MacText({ mac, copy = false, muted = false, className }: MacTextProps) {
+  const { t } = useTranslation();
+  const text = (
+    <span data-testid="truncatable" title={mac} className={cn('truncate font-mono', !copy && 'block', muted && 'text-faint', !copy && className)}>
+      {mac}
+    </span>
+  );
+  if (!copy) return text;
+  return (
+    <span className={cn('inline-flex max-w-full min-w-0 items-center', className)}>
+      {text}
+      <CopyButton value={mac} name={t('macAddress.copy')} />
     </span>
   );
 }

@@ -41,9 +41,10 @@ import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { LoadMore } from '../connections/LoadMore';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
-import { useDebounced } from '../connections/useDebounced';
-import { FilterChip } from '../http/shared';
-import { MacAddress, VendorName } from './MacAddress';
+import { useDebounced } from '../../lib/useDebounced';
+import { FilterChip } from '../../components/FilterChip';
+import { MacAddress, VendorName } from '../../components/MacAddress';
+import { wholeSessionHeader } from '../../components/wholeSessionHeader';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -322,17 +323,8 @@ function EtherTypesCard({
  * session (docs/specs/time-filter.md). Below 768 px the rows are cards: the card note says it.
  */
 function useCounterHeader(ranged: boolean): (label: string) => string | (() => ReactNode) {
-  const { t } = useTranslation();
   const wide = useMediaQuery(MD_QUERY);
-  return (label) => {
-    if (!ranged || !wide) return label;
-    return () => (
-      <>
-        {label}
-        <span className="block leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>
-      </>
-    );
-  };
+  return (label) => wholeSessionHeader(label, ranged && wide);
 }
 
 /** Under a range, below 768 px: the frames and bytes of the rows are those of the whole session. */

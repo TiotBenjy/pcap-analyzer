@@ -18,7 +18,7 @@ import { StatCard } from '../../components/StatCard';
 import { formatBytes, formatCount } from '../../lib/format';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
-import { useDebounced } from '../connections/useDebounced';
+import { useDebounced } from '../../lib/useDebounced';
 import { typeLabel } from './format';
 import { PictureGrid } from './PictureGrid';
 import { PictureViewer } from './PictureViewer';

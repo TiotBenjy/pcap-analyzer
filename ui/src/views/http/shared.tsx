@@ -1,4 +1,3 @@
-import { X } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { HttpCount } from '../../api/types/HttpCount';
@@ -65,26 +64,6 @@ export function MethodsChart({
         )}
       </div>
     </Card>
-  );
-}
-
-/** Removable filter chip (host, status...). */
-export function FilterChip({ label, onRemove, removeLabel }: { label: string; onRemove: () => void; removeLabel: string }) {
-  return (
-    <span className="inline-flex h-8 max-w-full min-w-0 items-center gap-1 rounded-md border border-accent bg-accent-soft pr-1 pl-2.5">
-      <span data-testid="truncatable" title={label} className="min-w-0 truncate">
-        {label}
-      </span>
-      <button
-        type="button"
-        aria-label={removeLabel}
-        title={removeLabel}
-        onClick={onRemove}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted hover:bg-subtle hover:text-fg"
-      >
-        <X aria-hidden size={14} strokeWidth={1.75} />
-      </button>
-    </span>
   );
 }
 

@@ -4,6 +4,7 @@ import { credentialsFr } from './credentials';
 import { ethernetFr } from './ethernet';
 import { exportsFr } from './exports';
 import { geoipPromptFr } from './geoipPrompt';
+import { macAddressFr } from './macAddress';
 import { onlineFr } from './online';
 import { picturesFr } from './pictures';
 import { ssdpFr } from './ssdp';
@@ -999,6 +1000,7 @@ export const fr: Dictionary = {
     tls: tlsFr,
     updates: updatesFr,
   },
+  macAddress: macAddressFr,
   timeRange: timeRangeFr,
   common: {
     all: 'Tout',

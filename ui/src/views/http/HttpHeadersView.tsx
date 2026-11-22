@@ -13,13 +13,14 @@ import { FilterBar } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
 import { formatCount } from '../../lib/format';
-import { ExpandableList } from './ExpandableList';
+import { ExpandableList } from '../../components/ExpandableList';
 import { displayTarget } from './format';
 import { useSessionGate } from './gate';
 import { HeaderTable } from './HeaderTable';
 import { RankedList } from './RankedList';
 import { MethodBadge, MethodsChart, ServerCell, StatusBadge, TargetText } from './shared';
-import { methodFilters, methodParam, useDebounced, useViewableSession } from './state';
+import { methodFilters, methodParam, useViewableSession } from './state';
+import { useDebounced } from '../../lib/useDebounced';
 
 const route = getRouteApi('/sessions/$sessionId');
 /** Entries of the most used header names. */

@@ -26,7 +26,7 @@ import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { useTheme } from '../../theme/theme';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
-import { useDebounced } from '../connections/useDebounced';
+import { useDebounced } from '../../lib/useDebounced';
 import type { Positions } from './forceLayout';
 import { buildGraph, type EdgeAttributes, findNode, type NodeAttributes, type NodeLabels } from './graphModel';
 import { computeLayout } from './layout';

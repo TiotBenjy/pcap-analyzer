@@ -35,7 +35,7 @@ import { truncateLabel } from '../../charts/text';
 import { LoadMore } from './LoadMore';
 import { isViewable } from './session';
 import { SessionGate } from './SessionGate';
-import { useDebounced } from './useDebounced';
+import { useDebounced } from '../../lib/useDebounced';
 import { Timestamp } from '../../components/Timestamp';
 
 const route = getRouteApi('/sessions/$sessionId');

@@ -7,7 +7,8 @@ import { useViewRange } from '../../app/timeRange';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
-import { CopyButton } from '../../components/CopyButton';
+import { MacText } from '../../components/MacAddress';
+import { WholeSessionLine } from '../../components/WholeSession';
 import { EmptyState } from '../../components/EmptyState';
 import { Endpoint } from '../../components/Endpoint';
 import { ErrorState } from '../../components/ErrorState';
@@ -95,13 +96,8 @@ function ConflictItem({ conflict: c, onShowMessages }: { conflict: ArpConflict; 
       <ul className="flex min-w-0 flex-col gap-1">
         {c.macs.map((m) => (
           <li key={m.mac} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-meta">
-            <span className="inline-flex min-w-0 items-center">
-              <span data-testid="truncatable" title={m.mac} className="truncate font-mono text-table">
-                {m.mac}
-              </span>
-              <CopyButton value={m.mac} name={t('views.arp.mac')} />
-            </span>
-            {ranged && <span className="text-faint">{t('timeRange.wholeSession')}</span>}
+            <MacText mac={m.mac} copy className="text-table" />
+            {ranged && <WholeSessionLine />}
             <span className="num text-muted">{t('views.arp.conflicts.seen', { period: formatPeriod(m.first_ts_us, m.last_ts_us) })}</span>
             <span className="num text-muted">{t('views.arp.conflicts.messages', { count: m.messages })}</span>
             {m.gratuitous > 0 && <span className="num text-muted">{t('views.arp.conflicts.gratuitous', { count: m.gratuitous })}</span>}

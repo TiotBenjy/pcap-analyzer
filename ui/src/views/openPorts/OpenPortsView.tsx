@@ -22,7 +22,7 @@ import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { LoadMore } from '../connections/LoadMore';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
-import { useDebounced } from '../connections/useDebounced';
+import { useDebounced } from '../../lib/useDebounced';
 import { categoriesOf } from './categories';
 import { portBars } from './portsChart';
 import { portLabel, serviceMismatch, serviceName } from './services';

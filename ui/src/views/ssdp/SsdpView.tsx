@@ -27,11 +27,13 @@ import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
 import { Timestamp } from '../../components/Timestamp';
+import { WholeSessionHeader } from '../../components/WholeSession';
 import { formatCount, formatTimestamp } from '../../lib/format';
 import { SessionGate } from '../connections/SessionGate';
-import { ExpandableList } from '../http/ExpandableList';
-import { FilterChip } from '../http/shared';
-import { useDebounced, useViewableSession } from '../http/state';
+import { ExpandableList } from '../../components/ExpandableList';
+import { FilterChip } from '../../components/FilterChip';
+import { useDebounced } from '../../lib/useDebounced';
+import { useViewableSession } from '../http/state';
 import { deviceKey, shortType } from './format';
 
 const route = getRouteApi('/sessions/$sessionId');
@@ -401,12 +403,10 @@ function DeviceHeader({ ranged }: { ranged: boolean }) {
         <span>{t('views.ssdp.devices.col.address')}</span>
         <span>{t('views.ssdp.devices.col.software')}</span>
         <span className="text-right">
-          {t('views.ssdp.devices.col.messages')}
-          {ranged && <span className="block leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>}
+          <WholeSessionHeader label={t('views.ssdp.devices.col.messages')} ranged={ranged} />
         </span>
         <span className="hidden xl:block">
-          {t('views.ssdp.devices.col.lastSeen')}
-          {ranged && <span className="block leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>}
+          <WholeSessionHeader label={t('views.ssdp.devices.col.lastSeen')} ranged={ranged} />
         </span>
       </div>
     </div>

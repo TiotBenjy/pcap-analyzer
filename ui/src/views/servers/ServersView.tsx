@@ -26,6 +26,7 @@ import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { isViewable } from '../connections/session';
 import { SessionGate } from '../connections/SessionGate';
 import { Timestamp } from '../../components/Timestamp';
+import { WholeSessionLine } from '../../components/WholeSession';
 
 const route = getRouteApi('/sessions/$sessionId');
 
@@ -278,10 +279,9 @@ const FOLDED_KINDS: ReadonlySet<ServerEvidence['kind']> = new Set([
  * (the convention of the SMB and Ethernet columns), else nothing.
  */
 function WholeSessionNote({ kinds }: { kinds: readonly ServerEvidence['kind'][] }) {
-  const { t } = useTranslation();
   const ranged = useViewRange() !== null;
   if (!ranged || !kinds.some((k) => FOLDED_KINDS.has(k))) return null;
-  return <span className="block text-meta leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>;
+  return <WholeSessionLine className="text-meta" />;
 }
 
 function kindsOf(server: RoleServer): ServerEvidence['kind'][] {

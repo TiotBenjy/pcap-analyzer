@@ -14,6 +14,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { Endpoint } from '../../components/Endpoint';
 import { ErrorState } from '../../components/ErrorState';
 import { FilterBar } from '../../components/FilterBar';
+import { MacText } from '../../components/MacAddress';
 import { Skeleton } from '../../components/Skeleton';
 import { Timestamp } from '../../components/Timestamp';
 import { LG_QUERY, MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
@@ -166,12 +167,7 @@ export function MessagesCard({ sessionId, stats, oneDay, address, onAddress, uns
 
 function Mac({ value }: { value: string | null }) {
   if (value === null) return null;
-  const unknown = value === '00:00:00:00:00:00';
-  return (
-    <span data-testid="truncatable" title={value} className={unknown ? 'block truncate font-mono text-faint' : 'block truncate font-mono'}>
-      {value}
-    </span>
-  );
+  return <MacText mac={value} muted={value === '00:00:00:00:00:00'} />;
 }
 
 /** Column widths from 768 to 1024 px (about 700 px in all: a MAC address and both badges fit). */

@@ -29,7 +29,7 @@ export const ssdpEn = {
   devices: {
     title: 'Devices',
     label: 'UPnP devices',
-    search: 'Search UUID, type, server, location',
+    search: 'Search UUID, type, server',
     empty: 'No device announced',
     noMatch: 'No device matches the search',
     col: {
@@ -58,7 +58,7 @@ export const ssdpEn = {
   messages: {
     title: 'Messages',
     label: 'SSDP messages',
-    search: 'Search target, USN, server, location',
+    search: 'Search target, USN, server',
     kindLabel: 'Message type',
     kinds: {
       all: 'All',
@@ -122,7 +122,7 @@ export const ssdpFr: typeof ssdpEn = {
   devices: {
     title: 'Appareils',
     label: 'Appareils UPnP',
-    search: 'Chercher UUID, type, serveur, adresse',
+    search: 'Chercher UUID, type, serveur',
     empty: 'Aucun appareil annoncé',
     noMatch: 'Aucun appareil ne correspond à la recherche',
     col: {
@@ -151,7 +151,7 @@ export const ssdpFr: typeof ssdpEn = {
   messages: {
     title: 'Messages',
     label: 'Messages SSDP',
-    search: 'Chercher cible, USN, serveur, adresse',
+    search: 'Chercher cible, USN, serveur',
     kindLabel: 'Type de message',
     kinds: {
       all: 'Tous',

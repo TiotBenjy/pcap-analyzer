@@ -65,6 +65,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   sources: async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   'sources-backwards': async (page) => `/sessions/${await demoSessionId(page)}/sources`,
   ssdp: async (page) => `/sessions/${await demoSessionId(page)}/ssdp`,
+  'ssdp-filter': async (page) => `/sessions/${await demoSessionId(page)}/ssdp`,
   'ssdp-range': async (page) => rangedPath(page, 'ssdp'),
   'ssdp-raw': async (page) => `/sessions/${await demoSessionId(page)}/ssdp`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
@@ -616,6 +617,15 @@ for (const lang of LANGS) {
               // Folded device counters: "whole session" under the column title, or in each card below md.
               const whole = page.getByText(new RegExp(escapeRe(D.timeRange.wholeSession), 'i')).locator('visible=true');
               await expect(whole.first()).toBeVisible();
+            }
+            if (view === 'ssdp-filter') {
+              // The printer as sender: its filter chip, then NOTIFY alive / byebye and response badges.
+              await page.getByRole('button', { name: filled(D.views.ssdp.rank.filterSender, { address: '192.168.1.50' }) }).click();
+              await expect(page.getByText(filled(D.views.ssdp.messages.senderChip, { address: '192.168.1.50' }))).toBeVisible();
+              await expect(messages.getByText(`${D.views.ssdp.messages.badge.notify} byebye`).first()).toBeVisible();
+              await expect(messages.getByText(filled(D.views.ssdp.messages.badge.response, { status: '200' })).first()).toBeVisible();
+              await page.waitForLoadState('networkidle');
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
             }
             if (view === 'ssdp-raw') {
               // The first device and the first message expanded: raw text in a mono block, copy actions.

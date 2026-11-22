@@ -404,7 +404,10 @@ function DeviceHeader({ ranged }: { ranged: boolean }) {
           {t('views.ssdp.devices.col.messages')}
           {ranged && <span className="block leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>}
         </span>
-        <span className="hidden xl:block">{t('views.ssdp.devices.col.lastSeen')}</span>
+        <span className="hidden xl:block">
+          {t('views.ssdp.devices.col.lastSeen')}
+          {ranged && <span className="block leading-tight font-normal text-faint">{t('timeRange.wholeSession')}</span>}
+        </span>
       </div>
     </div>
   );

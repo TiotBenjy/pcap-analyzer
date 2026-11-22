@@ -306,6 +306,44 @@ passées dans le navigateur, environ 240 ms d'attente sans calcul, puis 130 ms d
 
 Le renderer SVG est gardé, l'aspect est inchangé (`./x.sh shots` en `en` et `fr`, relues).
 
+## Filtre temporel (P5.2a, 2026-11-22, `feat/time-filter`)
+
+Même machine, jeu régénéré à l'identique (`./x.sh bench ingest`, 8 894 735 paquets sur 7 jours), puis
+`./x.sh bench queries` : les routes filtrées (`docs/specs/time-filter.md`, ADR-030) sont mesurées sous des
+plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6d}` de `netsift bench queries`).
+
+- **Première ouverture** de la session importée avant P5.2 (migrations 0003, 0101, 0202 et 0302 : index
+  couvrants terminés par l'horodatage, index partiel des flux longs, heure des 992 434 lignes d'en-têtes HTTP) :
+  7,2 s, une fois.
+- **Aucune requête au-dessus de 300 ms**, sans plage comme sous plage. Sous plage (médianes en ms) :
+
+| Requête | 1 h | 24 h | 6 j |
+|---|---|---|---|
+| `/summary` (objet `range`, compteurs de modules) | 101 | 131 | 260 |
+| `/timeseries?points=500` | 4 | 9 | 34 |
+| `/dns/stats` | 35 | 149 | 271 |
+| `/dns/pairs` / `/dns/servers` / `/dns/messages` | 28 / 17 / 5 | 38 / 29 / 7 | 87 / 74 / 19 |
+| `/http/stats` | 117 | 192 | 293 |
+| `/http/transactions` (temps / taille) | 4 / 5 | 6 / 9 | 9 / 15 |
+| `/http/headers/stats` / `/http/headers` | 100 / 4 | 115 / 5 | 162 / 9 |
+| `/tls/stats` / `/tls/sessions` / `/tls/certificates` | 14 / 3 / 195 | 115 / 5 / 224 | 266 / 14 / 120 |
+| `/smb/stats` / `/smb/announces` | 3 / 3 | 3 / 4 | 3 / 3 |
+| `/credentials` / `stats` / `paths` | 21 / 41 / 44 | 26 / 50 / 60 | 35 / 74 / 119 |
+| `/objects/stats` / `/objects` | 3 / 4 | 3 / 10 | 3 / 41 |
+
+- Ce qui a compté : les agrégats lisent un **index couvrant terminé par l'horodatage** (jamais les lignes,
+  `+ts` dans la condition) pour une plage large, l'index de l'horodatage pour une plage étroite (plan choisi
+  par deux comptages d'index, `range::PointSql`) ; paires DNS par sondage `(pair_id, ts)` de chaque paire
+  (le regroupement des messages coûtait 1,6 s à 6 jours) ; heure dénormalisée des lignes d'en-têtes (811 ms
+  -> 120 ms pour les noms d'en-têtes à 6 jours) ; certificats d'une plage large sondés par certificat.
+- Effet de bord sans plage : `/dns/stats` 265 -> 155 ms (totaux et protocoles en un passage, percentiles de
+  latence en une lecture de l'index).
+- Corrigé pendant la mesure : un paramètre nommé de la plage écrit avant le `?1` d'une instruction en prenait
+  l'indice et remplaçait sa `LIMIT` (réponses de 1 à 3 Mo sur le banc) ; la plage utilise désormais les
+  indices réservés `?98` / `?99`.
+- Hors périmètre (P5.2b) : Connections, Open Ports, Servers et Network sous plage (regroupement des flux :
+  0,3 s à 24 h, 1,7 s à 6 jours pour les seules conversations, mesuré dans la spec).
+
 ## Suivis restants (chiffres de la dernière mesure)
 
 1. **Fin d'import : 44,5 s**, publiée mais pas réduite : index secondaires 18,5 s (environ 90 index, un

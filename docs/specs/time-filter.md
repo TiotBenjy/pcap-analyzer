@@ -311,8 +311,8 @@ Aucune référence : proposition.
 ### État et URL
 
 - La plage vit dans l'URL de la session : search params `from_us` et `to_us` de la route
-  `/sessions/$sessionId` (`validateSearch` : entiers, l'un ou l'autre facultatif ; valeur invalide ou
-  plage inversée -> ignorée, jamais d'écran d'erreur). Elle est conservée en changeant d'onglet par le
+  `/sessions/$sessionId` (`validateSearch` : deux entiers, les deux requis côté UI, alors que l'API accepte
+  une borne seule ; valeur invalide, borne seule ou plage inversée -> ignorée, jamais d'écran d'erreur). Elle est conservée en changeant d'onglet par le
   middleware `retainSearchParams(['from_us', 'to_us'])` de TanStack Router (sidebar, cartes de modules,
   liens internes), et suit le retour arrière (chaque plage validée est une entrée d'historique).
 - Un seul hook, `useTimeRange()` (`ui/src/app/timeRange.ts`), lit la plage et expose `set`, `clear` ;
@@ -444,6 +444,24 @@ d'acceptation sous plage. P5.18 (rapports) s'appuie sur le même extracteur.
 ## ADR
 
 ADR-030 (`docs/DECISIONS.md`).
+
+## Notes d'implémentation (P5.2a)
+
+- API : `crates/netsift-api/src/range.rs` (extracteur `ApiRange`, `RangeParams::resolve`), store :
+  `crates/netsift-store/src/range.rs` (`TimeRange`, fragments de `Conditions`, `PointSql` pour le plan des
+  agrégats, `ModuleRows` pour les compteurs du résumé, flux et hôtes actifs). Les agrégats fixes lient la
+  plage aux indices réservés `?98` / `?99` (un paramètre nommé écrit avant `?1` en prendrait l'indice).
+- Tests : `crates/netsift-api/src/range/tests.rs` sur la fixture `netsift_fixtures::spread` (trois rafales à
+  10 min d'intervalle, une connexion de plus de deux heures), snapshot `middle_burst` ;
+  `upgrade_tests::a_session_of_the_previous_build_answers_time_ranges_after_its_opening`.
+- UI : `ui/src/lib/timeRange.ts` (type, analyse, `withRange`, `rangeKey`, saisie commune avec Save PCAP),
+  `ui/src/app/timeRange.ts` (`useTimeRange`, `useViewRange`), registre `ui/src/app/timeFilterViews.ts`,
+  `components/TimeRangeChip.tsx`, `components/TimeRangeDialog.tsx`. Les hooks de requête des vues filtrées
+  lisent eux-mêmes la plage (`useViewRange`) : les vues ne la manipulent pas. Un état vide sans action propre
+  affiche « Rien n'a été enregistré entre ces heures » et « Effacer la plage » sous plage.
+- Compteurs repliés sous plage : en-tête « Vu (session entière) » (SMB, tableau des annonces), libellé du
+  détail et infobulle de la carte (Credentials).
+- Mesures : `docs/PERFORMANCE.md`, section « Filtre temporel (P5.2a) ».
 
 ## Décisions (2026-11-22)
 

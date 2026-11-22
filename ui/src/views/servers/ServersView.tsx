@@ -9,6 +9,7 @@ import type { AddressCategory } from '../../api/types/AddressCategory';
 import type { RoleServer } from '../../api/types/RoleServer';
 import type { RoleServers } from '../../api/types/RoleServers';
 import type { ServerEvidence } from '../../api/types/ServerEvidence';
+import { useViewRange } from '../../app/timeRange';
 import type { ServerRole } from '../../api/types/ServerRole';
 import { ADDRESS_CATEGORY_ORDER } from '../../charts/palette';
 import { Badge } from '../../components/Badge';
@@ -339,8 +340,32 @@ function Example({ evidence }: { evidence: ServerEvidence }) {
   );
 }
 
+/**
+ * Evidence folded per server and client at import (NTP responses, KDC replies, browser
+ * announcements): under a time range their counts stay those of the whole session (ADR-030).
+ */
+const FOLDED_KINDS: ReadonlySet<ServerEvidence['kind']> = new Set([
+  'ntp_response',
+  'kdc_as_rep',
+  'kdc_tgs_rep',
+  'kdc_error',
+  'browser_server',
+  'browser_dc',
+]);
+
+/** Label of an evidence kind, with the whole-session mention of a folded count under a range. */
+function useKindLabel(): (kind: ServerEvidence['kind']) => string {
+  const { t } = useTranslation();
+  const ranged = useViewRange() !== null;
+  return (kind) => {
+    const label = t(`views.servers.kinds.${kind}`);
+    return ranged && FOLDED_KINDS.has(kind) ? t('timeRange.wholeSessionColumn', { label }) : label;
+  };
+}
+
 function EvidenceTable({ server }: { server: RoleServer }) {
   const { t } = useTranslation();
+  const kindLabel = useKindLabel();
   return (
     <table aria-label={t('views.servers.evidenceLabel', { server: serverName(server) })} className="w-full table-fixed border-collapse text-table">
       <thead>
@@ -356,8 +381,8 @@ function EvidenceTable({ server }: { server: RoleServer }) {
       <tbody>
         {server.evidence.map((e, i) => (
           <tr key={`${e.kind}-${i}`} className="align-top">
-            <td className="truncate py-1 pr-3" title={t(`views.servers.kinds.${e.kind}`)}>
-              {t(`views.servers.kinds.${e.kind}`)}
+            <td className="truncate py-1 pr-3" title={kindLabel(e.kind)}>
+              {kindLabel(e.kind)}
             </td>
             <td className="num py-1 pr-3 text-right">{formatCount(e.count)}</td>
             <td className="num py-1 pr-3 text-right">{e.clients === null ? '-' : formatCount(e.clients)}</td>
@@ -375,6 +400,7 @@ function EvidenceTable({ server }: { server: RoleServer }) {
 
 function ServerCards({ role, labels, byAddress }: ServerListProps) {
   const { t } = useTranslation();
+  const kindLabel = useKindLabel();
   const [open, toggle] = useExpanded();
   const baseId = useId();
   return (
@@ -398,8 +424,8 @@ function ServerCards({ role, labels, byAddress }: ServerListProps) {
                 {s.evidence.map((e, i) => (
                   <li key={`${e.kind}-${i}`} className="flex min-w-0 flex-col gap-0.5 rounded-md border border-line bg-app px-2.5 py-2 text-meta">
                     <span className="flex min-w-0 items-center justify-between gap-2">
-                      <span className="truncate font-medium" title={t(`views.servers.kinds.${e.kind}`)}>
-                        {t(`views.servers.kinds.${e.kind}`)}
+                      <span className="truncate font-medium" title={kindLabel(e.kind)}>
+                        {kindLabel(e.kind)}
                       </span>
                       <span className="num shrink-0">{formatCount(e.count)}</span>
                     </span>

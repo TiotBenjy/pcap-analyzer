@@ -1,5 +1,6 @@
 // Typed client of the Servers route (crates/netsift-api/src/servers.rs).
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiGet } from './client';
 import type { AddressCategory } from './types/AddressCategory';
 import type { ServerRole } from './types/ServerRole';
@@ -14,11 +15,16 @@ export interface ServerFilters {
   limit?: number;
 }
 
-export function getServers(id: string, filters: ServerFilters = {}, signal?: AbortSignal): Promise<ServersOverview> {
+export function getServers(
+  id: string,
+  filters: ServerFilters = {},
+  signal?: AbortSignal,
+  range: TimeRange | null = null,
+): Promise<ServersOverview> {
   const q = new URLSearchParams();
   if (filters.role !== undefined) q.set('role', filters.role);
   if (filters.categories !== undefined) q.set('category', filters.categories.join(','));
   if (filters.limit !== undefined) q.set('limit', String(filters.limit));
   const text = q.toString();
-  return apiGet(`/sessions/${encodeURIComponent(id)}/servers${text === '' ? '' : `?${text}`}`, signal);
+  return apiGet(withRange(`/sessions/${encodeURIComponent(id)}/servers${text === '' ? '' : `?${text}`}`, range), signal);
 }

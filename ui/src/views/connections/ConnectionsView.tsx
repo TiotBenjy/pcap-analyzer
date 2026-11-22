@@ -20,6 +20,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { Flag } from '../../components/Flag';
 import { PageHeader } from '../../components/PageHeader';
+import { WholeFlowsNote } from '../../components/WholeFlowsNote';
 import { SearchInput } from '../../components/SearchInput';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
@@ -71,6 +72,7 @@ export default function ConnectionsView() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title={t('nav.items.connections')} subtitle={session.data?.name ?? t('views.connections.subtitle')} />
+      <WholeFlowsNote />
       <SessionGate session={session}>
         <CountryCards sessionId={sessionId} enabled={viewable} />
         <ChordCard sessionId={sessionId} enabled={viewable} />

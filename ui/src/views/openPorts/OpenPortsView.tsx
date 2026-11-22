@@ -7,6 +7,7 @@ import { useSession } from '../../api/sessionQueries';
 import type { AddressCategory } from '../../api/types/AddressCategory';
 import type { HostOpenPorts } from '../../api/types/HostOpenPorts';
 import type { OpenPortInfo } from '../../api/types/OpenPortInfo';
+import { useViewRange } from '../../app/timeRange';
 import { Badge } from '../../components/Badge';
 import { BarList } from '../../components/BarList';
 import { Card } from '../../components/Card';
@@ -141,6 +142,8 @@ function PortsChartCard({
 
 function PortBadge({ port }: { port: OpenPortInfo }) {
   const { t } = useTranslation();
+  const ranged = useViewRange() !== null;
+  const seen = t('views.openPorts.table.seen', { first: formatTimestamp(port.first_ts_us), last: formatTimestamp(port.last_ts_us) });
   const name = serviceName(port);
   const mismatch = serviceMismatch(port.detected, port.service);
   const title = [
@@ -150,7 +153,8 @@ function PortBadge({ port }: { port: OpenPortInfo }) {
     ...(mismatch ? [t('views.openPorts.table.mismatch')] : []),
     t('views.openPorts.table.clients', { count: port.clients }),
     t(`views.openPorts.table.evidence.${port.evidence}`),
-    t('views.openPorts.table.seen', { first: formatTimestamp(port.first_ts_us), last: formatTimestamp(port.last_ts_us) }),
+    // Folded per port at import: under a time range, the span stays that of the whole session.
+    ranged ? t('timeRange.wholeSessionColumn', { label: seen }) : seen,
   ].join('\n');
   return (
     <Badge tone={mismatch ? 'warning' : 'neutral'} title={title} className="font-mono">

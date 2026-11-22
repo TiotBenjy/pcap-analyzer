@@ -16,6 +16,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { FilterBar } from '../../components/FilterBar';
 import { PageHeader } from '../../components/PageHeader';
+import { WholeFlowsNote } from '../../components/WholeFlowsNote';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { Toggle } from '../../components/Toggle';
@@ -49,6 +50,7 @@ export default function NetworkView() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title={t('nav.items.network')} subtitle={session.data?.name ?? t('views.network.subtitle')} />
+      <WholeFlowsNote />
       <SessionGate session={session}>
         <GraphCard sessionId={sessionId} enabled={isViewable(session.data)} />
       </SessionGate>

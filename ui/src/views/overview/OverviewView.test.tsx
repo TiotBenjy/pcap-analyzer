@@ -257,7 +257,13 @@ describe('Overview view', () => {
       expect(router.state.location.pathname).toBe(`/sessions/${ID}/connections`);
     });
     expect(router.state.location.search).toMatchObject({ from_us: T0, to_us: to });
-    // Connections does not apply the range yet (P5.2b): the chip says so.
+    // Connections applies the range (P5.2b).
+    expect(screen.getByTestId('time-range-chip')).toHaveAttribute('data-applied', 'true');
+    // Sources does not: the chip says so.
+    await act(async () => {
+      await router.navigate({ to: '/sessions/$sessionId/sources', params: { sessionId: ID } });
+    });
+    expect(router.state.location.search).toMatchObject({ from_us: T0, to_us: to });
     await waitFor(() => {
       expect(screen.getByTestId('time-range-chip')).toHaveAttribute('data-applied', 'false');
     });

@@ -5,13 +5,17 @@ import type { NavId } from './nav';
 // header says so. A new view applies the range from its creation, or its spec says why not.
 export const TIME_FILTER_VIEWS: ReadonlySet<NavId> = new Set<NavId>([
   'arp',
+  'connections',
   'credentials',
   'dns',
   'ethernet',
   'http',
   'httpHeaders',
+  'network',
+  'openPorts',
   'overview',
   'pictures',
+  'servers',
   'smb',
   'ssdp',
   'tls',

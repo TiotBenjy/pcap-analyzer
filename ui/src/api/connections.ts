@@ -1,6 +1,7 @@
 // Typed client of the Connections and Open Ports routes (query hooks: connectionQueries.ts)
 // (crates/netsift-api/src/connections.rs, ports.rs).
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { apiGet } from './client';
 import type { AddressCategory } from './types/AddressCategory';
 import type { ConnectionMatrix } from './types/ConnectionMatrix';
@@ -50,17 +51,24 @@ export function listConversations(
   filters: ConversationFilters,
   cursor: string | null,
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<ConversationInfo>> {
   const q = query({ limit: PAGE_SIZE, cursor, from: trimmed(filters.from), to: trimmed(filters.to) });
-  return apiGet(`${sessionPath(id)}/connections${q}`, signal);
+  return apiGet(withRange(`${sessionPath(id)}/connections${q}`, range), signal);
 }
 
-export function getConnectionStats(id: string, signal?: AbortSignal): Promise<ConnectionStats> {
-  return apiGet(`${sessionPath(id)}/connections/stats`, signal);
+export function getConnectionStats(id: string, signal?: AbortSignal, range: TimeRange | null = null): Promise<ConnectionStats> {
+  return apiGet(withRange(`${sessionPath(id)}/connections/stats`, range), signal);
 }
 
-export function getConnectionTop(id: string, n: TopSize, excludeDns: boolean, signal?: AbortSignal): Promise<ConnectionMatrix> {
-  return apiGet(`${sessionPath(id)}/connections/top${query({ n, exclude_dns: excludeDns })}`, signal);
+export function getConnectionTop(
+  id: string,
+  n: TopSize,
+  excludeDns: boolean,
+  signal?: AbortSignal,
+  range: TimeRange | null = null,
+): Promise<ConnectionMatrix> {
+  return apiGet(withRange(`${sessionPath(id)}/connections/top${query({ n, exclude_dns: excludeDns })}`, range), signal);
 }
 
 export function listOpenPorts(
@@ -68,6 +76,7 @@ export function listOpenPorts(
   filters: PortFilters,
   cursor: string | null,
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<HostOpenPorts>> {
   const q = query({
     limit: PAGE_SIZE,
@@ -75,13 +84,14 @@ export function listOpenPorts(
     category: filters.categories?.join(','),
     q: trimmed(filters.q),
   });
-  return apiGet(`${sessionPath(id)}/open-ports${q}`, signal);
+  return apiGet(withRange(`${sessionPath(id)}/open-ports${q}`, range), signal);
 }
 
 export function getOpenPortStats(
   id: string,
   categories: readonly AddressCategory[] | undefined,
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<OpenPortStats> {
-  return apiGet(`${sessionPath(id)}/open-ports/stats${query({ category: categories?.join(','), n: 15 })}`, signal);
+  return apiGet(withRange(`${sessionPath(id)}/open-ports/stats${query({ category: categories?.join(','), n: 15 })}`, range), signal);
 }

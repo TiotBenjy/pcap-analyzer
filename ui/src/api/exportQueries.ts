@@ -1,4 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useViewRange } from '../app/timeRange';
+import { rangeKey, type TimeRange } from '../lib/timeRange';
 import { cancelExport, listConversationFlows, listExports, startPcapExport } from './exports';
 import type { ExportRequest } from './types/ExportRequest';
 
@@ -9,7 +11,8 @@ export const EXPORT_POLL_MS = 500;
 
 export const exportKeys = {
   list: (id: string) => ['sessions', 'detail', id, 'exports'] as const,
-  flows: (id: string, conversation: string) => ['sessions', 'detail', id, 'conversation-flows', conversation] as const,
+  flows: (id: string, conversation: string, range: TimeRange | null = null) =>
+    ['sessions', 'detail', id, 'conversation-flows', conversation, rangeKey(range)] as const,
 };
 
 /** Exports of the session, polled while one of them runs. */
@@ -38,10 +41,12 @@ export function useCancelExport(sessionId: string) {
   });
 }
 
+/** Flows of a conversation; under a time range, those active in it. */
 export function useConversationFlows(sessionId: string, conversationId: string, enabled: boolean) {
+  const range = useViewRange();
   return useInfiniteQuery({
-    queryKey: exportKeys.flows(sessionId, conversationId),
-    queryFn: ({ pageParam, signal }) => listConversationFlows(sessionId, conversationId, pageParam, signal),
+    queryKey: exportKeys.flows(sessionId, conversationId, range),
+    queryFn: ({ pageParam, signal }) => listConversationFlows(sessionId, conversationId, pageParam, signal, range),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
     enabled,

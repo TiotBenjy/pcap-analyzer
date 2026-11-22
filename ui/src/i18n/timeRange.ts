@@ -30,6 +30,7 @@ export const timeRangeEn = {
   captured: 'Captured {{period}}',
   wholeSession: 'Whole session',
   wholeSessionColumn: '{{label}} (whole session)',
+  wholeFlows: 'Flows active in the range are counted in full.',
   emptyTitle: 'Nothing in the range',
   emptyText: 'Nothing was recorded between these times.',
 };
@@ -62,6 +63,7 @@ export const timeRangeFr: typeof timeRangeEn = {
   captured: 'Capturé {{period}}',
   wholeSession: 'Session entière',
   wholeSessionColumn: '{{label}} (session entière)',
+  wholeFlows: 'Les flux actifs dans la plage sont comptés en entier.',
   emptyTitle: 'Rien dans la plage',
   emptyText: "Rien n'a été enregistré entre ces heures.",
 };

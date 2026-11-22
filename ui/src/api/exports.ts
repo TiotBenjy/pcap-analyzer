@@ -1,6 +1,7 @@
 // Typed client of the Save PCAP routes (crates/netsift-api/src/exports.rs, ADR-021) and of the
 // flows of a conversation (connections.rs). Query hooks: exportQueries.ts.
 
+import { withRange, type TimeRange } from '../lib/timeRange';
 import { ApiError, apiGet, apiSend, isDesktop } from './client';
 import type { ExportJob } from './types/ExportJob';
 import type { ExportRequest } from './types/ExportRequest';
@@ -36,10 +37,14 @@ export function listConversationFlows(
   conversationId: string,
   cursor: string | null,
   signal?: AbortSignal,
+  range: TimeRange | null = null,
 ): Promise<Page<FlowInfo>> {
   const q = new URLSearchParams({ limit: String(FLOWS_PAGE_SIZE) });
   if (cursor !== null) q.set('cursor', cursor);
-  return apiGet(`${sessionPath(sessionId)}/connections/${encodeURIComponent(conversationId)}/flows?${q.toString()}`, signal);
+  return apiGet(
+    withRange(`${sessionPath(sessionId)}/connections/${encodeURIComponent(conversationId)}/flows?${q.toString()}`, range),
+    signal,
+  );
 }
 
 /** The failure of a job as an `ApiError`, so that `describeError` translates it. */

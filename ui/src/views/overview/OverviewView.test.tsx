@@ -267,6 +267,45 @@ describe('Overview view', () => {
     });
   });
 
+  it('never carries the range of a session over to another one', async () => {
+    const to = T0 + 120_000_000 - 1;
+    const range = { fromUs: T0, toUs: to };
+    const OTHER = '01JC0FFEE0000000000000000B';
+    const { router } = renderApp(`/sessions/${ID}/overview?from_us=${T0}&to_us=${to}`);
+    await waitFor(() => {
+      expect(overviewApi.getOverviewSummary).toHaveBeenCalledWith(ID, expect.anything(), range);
+    });
+    // Another session opened from a session view (the import wizard does so): no range there,
+    // not even for one request.
+    await act(async () => {
+      await router.navigate({ to: '/sessions/$sessionId/overview', params: { sessionId: OTHER } });
+    });
+    await waitFor(() => {
+      expect(router.state.location.search).not.toHaveProperty('from_us');
+    });
+    expect(overviewApi.getOverviewSummary).toHaveBeenCalledWith(OTHER, expect.anything(), null);
+    expect(overviewApi.getOverviewSummary).not.toHaveBeenCalledWith(OTHER, expect.anything(), range);
+    expect(overviewApi.getTraffic).not.toHaveBeenCalledWith(OTHER, expect.objectContaining({ from_us: T0 }), expect.anything());
+    expect(screen.queryByTestId('time-range-chip')).toBeNull();
+    // Back to the first session: its range comes back with its history entry.
+    await act(async () => {
+      router.history.back();
+    });
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({ from_us: T0, to_us: to });
+    });
+    expect(await screen.findByTestId('time-range-chip')).toBeInTheDocument();
+  });
+
+  it('shows no period for a range outside the session', async () => {
+    vi.mocked(overviewApi.getOverviewSummary).mockResolvedValue(
+      summary({ range: { from_us: T0 + 10, to_us: T0, duration_us: 0, packets: 0, bytes: 0, flow_count: 0, host_count: 0 } }),
+    );
+    renderApp(`/sessions/${ID}/overview?from_us=1000&to_us=2000`);
+    const band = within(await screen.findByTestId('overview-summary'));
+    expect(await band.findByText('No packet')).toBeInTheDocument();
+  });
+
   it('shows the figures of the range and edits it in the range dialog', async () => {
     const to = T0 + 120_000_000 - 1;
     vi.mocked(overviewApi.getOverviewSummary).mockResolvedValue(
@@ -295,7 +334,7 @@ describe('Overview view', () => {
     });
     expect((router.state.location.search as { to_us: number }).to_us).toBeGreaterThan(to);
     // Typed range: errors in the dialog, then applied.
-    await user.click(screen.getByRole('button', { name: 'Range' }));
+    await user.click(screen.getByRole('button', { name: 'Range…' }));
     const dialog = within(await screen.findByRole('dialog', { name: 'Time range' }));
     const [fromField, toField] = dialog.getAllByRole('textbox') as [HTMLInputElement, HTMLInputElement];
     await user.clear(toField);

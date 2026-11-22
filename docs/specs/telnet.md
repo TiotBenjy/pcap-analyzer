@@ -92,7 +92,7 @@ Connexions TCP dont le port serveur (ou client, pour une connexion prise en cour
 **Mot de passe dans la transcription** : les caractères tapés à une invite de mot de passe forment un
 run `secret` (y compris un éventuel écho du serveur, absorbé). Choix retenu :
 
-- le texte de la transcription stockée (`telnet_sessions.transcript`) ne contient **jamais** le secret :
+- le texte de la transcription stockée (`telnet_transcripts.transcript`) ne contient **jamais** le secret :
   un run secret y est un marqueur vide, et les valeurs sont rangées à part, dans l'ordre, dans la
   colonne `secrets` (comme `credentials.secret`, même base) ;
 - la recherche `q` porte sur `transcript`, donc jamais sur un mot de passe, et la liste des sessions ne
@@ -105,15 +105,18 @@ Variante écartée : servir les secrets par une route à part, à la demande. El
 `SecretValue` asynchrone propre à cette vue, pour une protection identique à celle de Credentials,
 dont les secrets sont déjà servis par une route de détail.
 
-### Table (migration `1500_telnet.sql`, plage réservée 1500-1599)
+### Tables (migration `1500_telnet.sql`, plage réservée 1500-1599)
 
 `telnet_sessions`, une ligne par connexion (`flow_id` clé primaire, `INSERT ... ON CONFLICT DO NOTHING`
 car un flux n'est terminé qu'une fois) : `first_ts`, `last_ts` (du flux), extrémités, `client_bytes`,
 `server_bytes` (octets sur le fil par sens, comme Connections), `username` (nom de la connexion
 acceptée, sinon du dernier essai, sinon `USER` de `NEW-ENVIRON`), `env_user`, `login`
 (`accepted` / `rejected` / NULL), `login_attempts`, `terminal`, `window_cols`, `window_rows`, `options`
-(JSON), `transcript` (JSON des runs `[qui, texte]`, secrets remplacés par `["p", ""]`), `secrets`
 (JSON), `transcript_bytes`, `transcript_lines`, `truncated`.
+
+`telnet_transcripts` (même `flow_id`), à part pour que compteurs et listes ne lisent jamais le texte :
+`transcript` (JSON des runs `[qui, texte]`, `c` client, `s` serveur, secrets remplacés par `["p", ""]`)
+et `secrets` (JSON, dans l'ordre des runs `p`).
 Index (différés pendant l'import, ADR-023) : `(first_ts, flow_id)` pour l'ordre de la liste et
 `(first_ts, last_ts)` pour le chevauchement d'une plage.
 
@@ -122,7 +125,7 @@ Index (différés pendant l'import, ADR-023) : `(first_ts, flow_id)` pour l'ordr
 | Méthode | Route | Réponse |
 |---|---|---|
 | GET | `/sessions/{id}/telnet/stats` | `TelnetStats` : `sessions`, `clients`, `servers` (adresses distinctes), `logins` (sessions avec au moins un mot de passe saisi), `accepted`, `rejected`, `truncated` |
-| GET | `/sessions/{id}/telnet/sessions?q=&login=&limit=&cursor=` | `Page<TelnetSessionInfo>` : sessions par début croissant (keyset `(first_ts, flow_id)`), sans transcription ; `login` = `accepted`, `rejected`, `none` (aucun mot de passe saisi) ; `q` cherche dans les adresses, le nom, le terminal et le texte de la transcription (hors secrets) |
+| GET | `/sessions/{id}/telnet/sessions?q=&login=&limit=&cursor=` | `Page<TelnetSessionInfo>` : sessions par début croissant (keyset `(first_ts, flow_id)`), sans transcription ; `login` = `accepted`, `rejected`, `unknown` (mot de passe saisi, résultat inconnu), `none` (aucun mot de passe saisi) ; `q` cherche dans les adresses, le nom, le terminal et le texte de la transcription (hors secrets) |
 | GET | `/sessions/{id}/telnet/sessions/{flow}` | `TelnetSessionDetail` : la session et sa transcription (`runs` : `client`, `server`, `secret`), secrets compris ; 404 si inconnue |
 
 `total_estimate` est le compte exact des lignes filtrées. `login` invalide : 400 problem+json.
@@ -153,7 +156,7 @@ Ordre des blocs (une colonne sous 768 px) :
 2. Bandeau de chiffres (`StatCard`) : Sessions, Clients, Serveurs, Connexions (indice « acceptées /
    refusées »), Tronquées.
 3. Carte « Sessions » : bande `filters` avec `SearchInput` et liste du résultat de connexion (Tous,
-   Acceptée, Refusée, Sans connexion). Liste dépliable (`ExpandableList`) : rangées client -> serveur
+   Acceptée, Refusée, Résultat inconnu, Sans mot de passe). Liste dépliable (`ExpandableList`) : rangées client -> serveur
    (`Endpoint`, port grisé), utilisateur (ou « inconnu »), début (`Timestamp`), durée, octets (client +
    serveur, détail en infobulle), badges « refusée » / « acceptée » et « tronquée ». Sous 768 px,
    cartes empilées.
@@ -198,3 +201,17 @@ aucune session (« Aucune session Telnet »), plage vide (état vide commun « R
 - `./x.sh shots telnet all` et `telnet-range` verts à 375, 768, 1280 et 1920 px, en `en` et `fr`, sans
   débordement ni chevauchement, aucun mot de passe en clair sur les captures.
 - Moins de 300 ms par requête (mesure sur une session synthétique volumineuse).
+
+## Notes d'implémentation
+
+- Décodage : `crates/netsift-dissect/src/telnet.rs` (cible de fuzz `telnet`, avec l'analyseur) ; analyseur :
+  `crates/netsift-analyze/src/telnet/` (`transcript.rs`, `login.rs`) ; store : `crates/netsift-store/src/telnet.rs` ;
+  API : `crates/netsift-api/src/telnet.rs` ; UI : `ui/src/views/telnet/`.
+- Fixture : `netsift_fixtures::telnet` (`telnet_showcase`, `telnet_round`), ajoutée à la session de démonstration
+  (vitrine puis une connexion au commutateur toutes les 30 s).
+- Mesure (`telnet::tests::timings`, ignoré, mode release, 100 000 sessions de 2 Kio de transcription) : statistiques
+  142 ms au pire, pages 2 à 23 ms, recherche dans les transcriptions 252 ms au pire, détail 0,5 ms
+  (`docs/PERFORMANCE.md`).
+- Limites : une session reprise en cours (sans les invites) n'a pas d'identifiant ; l'écho n'est fusionné que s'il
+  suit la frappe dans l'ordre (une frappe anticipée pendant une sortie du serveur peut apparaître deux fois) ;
+  les écrans plein écran (éditeurs, `top`) ne sont pas rejoués, seul leur texte reste, séquences retirées.

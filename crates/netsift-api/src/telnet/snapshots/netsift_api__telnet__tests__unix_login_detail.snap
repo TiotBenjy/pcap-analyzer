@@ -1,0 +1,95 @@
+---
+source: crates/netsift-api/src/telnet/tests.rs
+expression: detail
+---
+{
+  "runs": [
+    {
+      "speaker": "server",
+      "text": "\nOpenBSD/i386 (oof) (ttyp2)\n\nlogin: "
+    },
+    {
+      "speaker": "client",
+      "text": "fake\n"
+    },
+    {
+      "speaker": "server",
+      "text": "Password:"
+    },
+    {
+      "speaker": "secret",
+      "text": "user-fixture"
+    },
+    {
+      "speaker": "client",
+      "text": "\n"
+    },
+    {
+      "speaker": "server",
+      "text": "Last login: Sat Nov 27 20:11:43 on ttyp2 from 192.168.1.10\nWarning: no Kerberos tickets issued.\nWelcome to OpenBSD: The proactively secure Unix-like operating system.\n\n$ "
+    },
+    {
+      "speaker": "client",
+      "text": "ls -a\n"
+    },
+    {
+      "speaker": "server",
+      "text": ".         ..        .cshrc    .login    .profile  .rhosts\n$ "
+    },
+    {
+      "speaker": "client",
+      "text": "uname -a\n"
+    },
+    {
+      "speaker": "server",
+      "text": "OpenBSD oof 2.6 GENERIC#4 i386\n$ "
+    },
+    {
+      "speaker": "client",
+      "text": "exit\n"
+    },
+    {
+      "speaker": "server",
+      "text": "logout\n"
+    }
+  ],
+  "session": {
+    "client": {
+      "category": "private",
+      "country": null,
+      "ip": "192.168.1.10",
+      "names": []
+    },
+    "client_bytes": 4455,
+    "client_port": 49152,
+    "env_user": null,
+    "first_ts_us": 1700000000000000,
+    "flow_id": 0,
+    "last_ts_us": 1700000004759500,
+    "login": "accepted",
+    "login_attempts": 1,
+    "options": [
+      "ECHO",
+      "SGA",
+      "TTYPE",
+      "NAWS"
+    ],
+    "server": {
+      "category": "private",
+      "country": null,
+      "ip": "192.168.1.23",
+      "names": []
+    },
+    "server_bytes": 4656,
+    "server_port": 23,
+    "terminal": "XTERM",
+    "transcript_bytes": 353,
+    "transcript_lines": 15,
+    "truncated": false,
+    "username": "fake",
+    "window": {
+      "cols": 80,
+      "rows": 24
+    }
+  }
+}

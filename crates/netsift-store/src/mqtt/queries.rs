@@ -1751,6 +1751,9 @@ pub struct StatsRow {
     pub payload_bytes: u64,
     pub subscriptions: u64,
     pub topics: u64,
+    /// MQTT connections detected but not followed, over the whole session (also under a range:
+    /// the count is not dated).
+    pub unfollowed: u64,
     /// CONNACK codes `(level, code, connections)`, most frequent first (at most 10).
     pub connack_codes: Vec<(Option<u8>, u8, u64)>,
 }
@@ -1795,6 +1798,7 @@ pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<StatsRow> {
             payload_bytes: u(17)?,
             subscriptions: u(18)?,
             topics: 0,
+            unfollowed: 0,
             connack_codes: Vec::new(),
         })
     })?;
@@ -1833,6 +1837,14 @@ pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<StatsRow> {
         }
     };
     s.topics = unsigned(topics);
+    let unfollowed: Option<i64> = conn
+        .query_row(
+            "SELECT CAST(value AS INTEGER) FROM meta WHERE key = ?1",
+            params![super::META_UNFOLLOWED],
+            |r| r.get(0),
+        )
+        .optional()?;
+    s.unfollowed = unsigned(unfollowed.unwrap_or(0));
     Ok(s)
 }
 

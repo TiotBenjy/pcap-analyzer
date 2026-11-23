@@ -164,6 +164,8 @@ async fn counters_agree_between_list_stats_and_module() {
     assert_eq!(stats["no_answer"], SHOWCASE.no_answer);
     assert_eq!(stats["brokers"], SHOWCASE.brokers);
     assert_eq!(stats["public_brokers"], 1);
+    // Every connection of the fixture is followed.
+    assert_eq!(stats["unfollowed"], 0);
     assert_eq!(total(&env.ok("/mqtt/connections?limit=1").await), TOTAL);
     let summary = env.ok("/summary").await;
     assert_eq!(module(&summary, "mqtt")["count"], TOTAL);

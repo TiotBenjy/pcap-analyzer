@@ -170,8 +170,11 @@ ADR-032) : alias, accusés et compteurs n'ont besoin d'aucun état partagé.
 - Abonnements gardés par connexion : 1 024.
 - Tables d'alias : 1 024 entrées par sens.
 - Connexions suivies en même temps : 65 536 au total, réparties entre les shards par le moteur (au moins
-  16 par shard), comme FTP ; au-delà, les nouvelles ne sont pas analysées (le résultat ne dépend alors du
-  nombre de shards que parce qu'une borne est atteinte, ADR-023).
+  16 par shard), comme FTP ; au-delà, ou si le budget d'état est épuisé, une nouvelle connexion détectée
+  n'est pas analysée et elle est comptée (`mqtt.connections_unfollowed` dans `meta`, `unfollowed` des
+  statistiques, note sous les chiffres de la vue). Le résultat ne dépend du nombre de shards que lorsqu'une
+  borne est atteinte (ADR-023) : chaque shard en a sa part, une capture déséquilibrée peut en épuiser une
+  avant les autres.
 
 **Identifiants** (`Record::Credential`, protocole `mqtt`, type `mqtt`) :
 
@@ -301,7 +304,7 @@ rien écrire.
 
 | Méthode | Route | Réponse |
 |---|---|---|
-| GET | `/sessions/{id}/mqtt/stats` | `MqttStats` : `connections` (par transport et par version), `clients`, `brokers`, `public_brokers`, `logins` acceptés / refusés / sans réponse, `anonymous_accepted`, `credentials`, `publish` par sens, `payload_bytes`, `subscriptions`, `topics`, `encrypted` (sessions TLS MQTT, P5.15b), top 10 des codes CONNACK (avec libellé), compteurs des signalements |
+| GET | `/sessions/{id}/mqtt/stats` | `MqttStats` : `connections` (par transport et par version), `clients`, `brokers`, `public_brokers`, `logins` acceptés / refusés / sans réponse, `anonymous_accepted`, `credentials`, `publish` par sens, `payload_bytes`, `subscriptions`, `topics`, `unfollowed` (connexions détectées non suivies, session entière même sous plage), `encrypted` (sessions TLS MQTT, P5.15b), top 10 des codes CONNACK (avec libellé), compteurs des signalements |
 | GET | `/sessions/{id}/mqtt/connections?q=&login=&auth=&version=&transport=&broker=&broker_port=&client=&flow=&signal=&limit=&cursor=` | `Page<MqttConnectionInfo>` par début croissant (keyset `(first_ts, flow_id)`), sans secret ; `q` cherche dans les adresses, l'identifiant client, le nom d'utilisateur et le chemin WebSocket ; `login` = `accepted`, `rejected`, `none` ; `auth` = `none`, `username`, `password`, `enhanced` ; `version` = `3.1`, `3.1.1`, `5.0`, `unknown` ; `broker` et `broker_port` ensemble ; `client` = clé du client (`id:<identifiant>` ou `ip:<adresse>`, voir `/clients`) ; `flow` = une connexion ; `signal` = un des signalements |
 | GET | `/sessions/{id}/mqtt/connections/{flow}` | `MqttConnectionDetail` : la connexion, CONNECT / CONNACK / DISCONNECT décodés, testament (extrait rendu), propriétés, abonnements, 50 topics principaux de la connexion, **mot de passe** (secret, comme le détail d'une session FTP ou Telnet) ; 404 si inconnue |
 | GET | `/sessions/{id}/mqtt/connections/{flow}/packets?type=&limit=&cursor=` | `Page<MqttPacketInfo>` : transcription par `seq` croissant (keyset `seq`), extrait rendu (voir « Rendu des charges ») |
@@ -353,7 +356,7 @@ La vue est dans `timeFilterViews.ts` dès sa création ; ses routes passent par 
 | `/mqtt/topics`, `/mqtt/topics/node` | sous plage, nœuds recalculés depuis les lignes de `mqtt_topic_flows` qui *chevauchent(`first_ts`, `last_ts`)* (enfants d'un préfixe par parcours de l'index `(topic)` sur ce préfixe) ; compteurs de ces lignes entières ; sans plage, `mqtt_topics` |
 | `/mqtt/messages` | *ponctuel(`ts`)* |
 | `/mqtt/connections/{flow}/packets` | *ponctuel(`ts`)* (la transcription d'une connexion suit la plage, avec la mention « paquets de la plage ») |
-| `/mqtt/stats` | connexions, clients, brokers, logins, signalements : connexions qui *chevauchent* ; PUBLISH et octets : agrégats de `mqtt_topic_flows` qui *chevauchent* (session entière) ; TLS : *ponctuel(`ts`)* |
+| `/mqtt/stats` | connexions, clients, brokers, logins, signalements : connexions qui *chevauchent* ; PUBLISH et octets : agrégats de `mqtt_topic_flows` qui *chevauchent* (session entière) ; TLS : *ponctuel(`ts`)* ; `unfollowed` : non daté, session entière |
 | `/mqtt/signals` | connexions qui *chevauchent* |
 | `/mqtt/tls` | *ponctuel(`ts`)*, comme `/tls/sessions` |
 | `/mqtt/connections/{flow}` | non filtrée : détail par identifiant |
@@ -372,7 +375,9 @@ Ordre des blocs (une colonne sous 768 px) :
 1. **En-tête** : titre « MQTT », sous-titre (nom de session), compteur de connexions.
 2. **Bandeau de chiffres** (`StatCard`, 2 colonnes sous `sm`, 3 jusqu'à `xl`, 6 au-delà) : Connexions
    (indice « TCP / WebSocket »), Clients, Brokers (indice « n publics », ambre s'il y en a), Messages
-   publiés (indice : octets de charge), Topics, MQTT chiffré (sessions TLS ; P5.15b, absent avant).
+   publiés (indice : octets de charge), Topics, MQTT chiffré (sessions TLS ; P5.15b, absent avant). Dessous,
+   si des connexions détectées n'ont pas été suivies (borne de connexions ou de mémoire), une note ambre
+   les compte.
 3. **Carte « Signalements »** (absente sans signalement) : une ligne par type présent : libellé, phrase
    d'explication (tableau ci-dessus), compteur, bouton « Voir » qui ouvre le sous-onglet concerné avec le
    filtre en pastille (`signal=`), lien « Voir dans Credentials » pour les identifiants en clair. Pas de
@@ -483,7 +488,7 @@ Ordre des blocs (une colonne sous 768 px) :
   détail d'une connexion en une colonne, hexa sur 8 octets, fil d'Ariane replié à « … / parent / nœud »
   avec le chemin complet en infobulle.
 - 768 px : tableaux en mode tableau avec colonnes secondaires masquées (versions, première activité,
-  topics publiés), détail en une colonne.
+  topics publiés ; dans Brokers, la colonne Clients plutôt que Logiciel), détail en une colonne.
 - 1280 px : détail de connexion en deux colonnes, Topics en deux volets.
 - 1920 px : toutes les colonnes.
 - Aucun graphique : les volumes sont des colonnes chiffrées ; pas de graphe client -> broker (illisible
@@ -569,11 +574,25 @@ Ordre des blocs (une colonne sous 768 px) :
   les charges WebSocket) ; store : `crates/netsift-store/src/mqtt.rs` (lignes, étape `mqtt`) et `mqtt/queries.rs` ;
   API : `crates/netsift-api/src/mqtt.rs` ; UI : `ui/src/views/mqtt/`. Fuzz : cible `mqtt`.
 - Bornes globales, réparties entre les shards par le moteur (au moins 16 connexions et 1 Mio par shard, ADR-023) :
-  65 536 connexions suivies ; 32 Mio de paquets en attente d'accusé ; 64 Mio de préfixes de paquets au-delà de
-  4 Kio (sinon le paquet est décodé sur ses 4 premiers Kio : topic, propriétés et extrait restent lus) ; 128 Mio
-  d'agrégats (topics, alias, abonnements : au-delà, topic dans le seau « autres topics », alias ou abonnement non
-  gardé, compté dans `state_dropped`) ; 32 Mio de données des connexions en cours de détection (au-delà, une
-  nouvelle connexion n'est pas sondée). Le tampon d'un sens rend sa capacité au-delà de 4 Kio après chaque paquet.
+  - 65 536 connexions suivies ;
+  - 32 Mio de paquets en attente d'accusé (au-delà, le paquet est stocké sans attendre son accusé) ;
+  - 64 Mio de capacité des tampons de paquets, imputée quand elle grandit : chaque sens a 64 octets d'office (en-tête
+    fixe et champs fixes de tout type de paquet) ; au-delà, le préfixe entier (64 Kio au plus), sinon ses 4 premiers
+    Kio, sinon ce que le tampon a déjà ; un préfixe trop court pour être décodé compte le paquet sans ses champs, sans
+    le dire malformé. Après chaque paquet, un sens garde au plus 256 octets de capacité (toujours imputés) et rend le
+    reste ;
+  - 128 Mio d'état des connexions suivies : une part fixe d'environ 1,4 Kio par connexion (structure de la connexion,
+    ligne, premières allocations des tampons, entrée de la table des flux ; calculée avec `size_of`), imputée avant
+    tout paquet, soit environ 90 Mio pour 65 536 connexions (au-delà, la connexion n'est pas suivie et elle est
+    comptée, voir plus haut) ; puis, à leur apparition, les valeurs d'identité du CONNECT (nom du protocole,
+    identifiant, utilisateur, mot de passe, méthode d'authentification, identifiant attribué, logiciel du broker :
+    bornées par le parseur, environ 2,6 Kio au plus, toujours gardées et imputées dans la limite de ce qui reste), le
+    credential en attente du CONNACK (émis aussitôt, sans le résultat, s'il est refusé), le will et les propriétés
+    (non gardés s'ils sont refusés), les topics, alias et abonnements (au-delà, topic dans le seau « autres topics »,
+    alias ou abonnement non gardé) ; chaque refus compte dans `state_dropped` ;
+  - 32 Mio de données des connexions en cours de détection (au-delà, une nouvelle connexion n'est pas sondée).
+  Tout est rendu à la fin de la connexion. Les connexions détectées au-delà de la borne de connexions sont encore
+  sondées (dans la limite des 32 Mio), pour être comptées.
 - Détection sur le port 1883 : données de chaque sens dans un tampon (lu sans copie), segments contigus d'un même
   sens réunis ; un CONNECT incomplet est abandonné après 128 segments ; 128 octets imputés par suite de segments.
 - Sous plage, un niveau de l'arbre des topics est calculé sur au plus 100 000 topics sous son parent (les premiers

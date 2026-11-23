@@ -39,15 +39,36 @@ const MAX_SOFTWARE: usize = 128;
 /// Topic of the broker version.
 const SYS_VERSION: &str = "$SYS/broker/version";
 
-/// Body bytes a packet may always buffer; a larger prefix (up to [`wire::MAX_PACKET_PREFIX`])
-/// takes the rest from [`Shared::buffer_budget`], else the packet is decoded from this prefix.
+/// Body bytes of a large packet decoded when the buffer budget cannot hold its whole prefix (up
+/// to [`wire::MAX_PACKET_PREFIX`]): topic, properties and excerpt are still read.
 pub const SMALL_PACKET: usize = 4096;
+/// First allocation of a direction's buffer, part of [`BASE_COST`]: the fixed header (at most 5
+/// bytes) and the start of the body, enough for the fixed fields of every packet type, so that
+/// a packet is always decoded, as truncated at worst. Capacity beyond it is charged to
+/// [`Shared::buffer_budget`] when it grows.
+const FREE_BUFFER: usize = 64;
+/// Buffer capacity a direction keeps (still charged) after a packet; a larger one is released
+/// and given back, so that idle connections hold little of the buffer budget.
+const KEEP_BUFFER: usize = 256;
 /// Bytes charged for one aggregated topic, alias or subscription besides its text.
 pub(crate) const ENTRY_COST: usize = 96;
 /// Bytes charged for one topic alias: its topic may grow up to [`wire::MAX_TOPIC`].
 pub(crate) const ALIAS_COST: usize = ENTRY_COST + wire::MAX_TOPIC;
-/// Bytes charged for a connection followed: its two small buffers and fixed state.
-pub(crate) const BASE_COST: usize = 2 * SMALL_PACKET + 1024;
+/// Bytes charged for a connection followed, before any packet: its fixed state, i.e. the
+/// connection (with the inline part of its maps, framers and counters), its boxed row, the first
+/// allocation of its two buffers and the entry of the analyzer's flow table. Variable parts are
+/// charged when they appear (see [`Conn::charge_connect`]): identity values of the CONNECT
+/// (bounded by the parser, always kept), pending credential (emitted at once when refused), will
+/// and properties (dropped when refused), topics, aliases and subscriptions as they are seen,
+/// buffer capacity beyond [`FREE_BUFFER`] as it grows (buffer budget). About 1.4 KiB, so
+/// that the default maximum of followed connections (65,536) takes about 90 MiB of the default
+/// state budget (128 MiB).
+pub(crate) const BASE_COST: usize = std::mem::size_of::<Conn>()
+    + std::mem::size_of::<MqttConnection>()
+    + 2 * FREE_BUFFER
+    + FLOW_ENTRY_COST;
+/// Entry of the analyzer's flow table (key, value and hash table overhead).
+const FLOW_ENTRY_COST: usize = 128;
 
 /// State shared by the connections of one shard (its share of the global bounds of
 /// [`super::MqttConfig`]).
@@ -56,9 +77,10 @@ pub(crate) const BASE_COST: usize = 2 * SMALL_PACKET + 1024;
 pub(crate) struct Shared {
     /// Bytes still allowed for packets waiting for their acknowledgement.
     pending_budget: usize,
-    /// Bytes still allowed for packet prefixes larger than [`SMALL_PACKET`] being buffered.
+    /// Bytes still allowed for the buffer capacity of connections beyond [`FREE_BUFFER`].
     buffer_budget: usize,
-    /// Bytes still allowed for the topic aggregates, aliases and subscriptions of connections.
+    /// Bytes still allowed for the state of the connections followed: fixed part
+    /// ([`BASE_COST`]), CONNECT values, topic aggregates, aliases and subscriptions.
     state_budget: usize,
 }
 
@@ -79,6 +101,14 @@ impl Shared {
         } else {
             false
         }
+    }
+
+    /// Takes up to `cost` bytes of the state budget, never refusing (bounded values always
+    /// kept); returns the bytes taken.
+    fn take(&mut self, cost: usize) -> usize {
+        let taken = cost.min(self.state_budget);
+        self.state_budget = self.state_budget.saturating_sub(taken);
+        taken
     }
 
     #[cfg(test)]
@@ -123,8 +153,8 @@ struct Framer {
     state: FramerState,
     /// Body bytes decoded for the current packet.
     target: usize,
-    /// Bytes of the buffer budget held for the current packet.
-    reserved: usize,
+    /// Bytes of the buffer budget held: capacity requested beyond [`FREE_BUFFER`].
+    held: usize,
 }
 
 /// True when `data` starts with packets of types allowed for `role` whose headers are valid up
@@ -200,6 +230,9 @@ impl Framer {
                 // One byte at a time: the header is 2 to 5 bytes long.
                 if self.buf.is_empty() {
                     self.start_ts = ts;
+                    if self.buf.capacity() == 0 {
+                        self.buf.reserve_exact(FREE_BUFFER);
+                    }
                 }
                 let Some((&b, rest)) = data.split_first() else {
                     break;
@@ -217,15 +250,15 @@ impl Framer {
                     HeaderStatus::Valid(h) => {
                         self.header = Some(h);
                         let full = Self::target(h);
-                        let extra = full.saturating_sub(SMALL_PACKET);
-                        self.target = if extra == 0 {
+                        let head = usize::from(h.header_len);
+                        // The whole prefix, else its first SMALL_PACKET bytes, else what the
+                        // buffer already holds: a short prefix is decoded as truncated.
+                        self.target = if self.grow(head.saturating_add(full), budget) {
                             full
-                        } else if *budget >= extra {
-                            *budget = budget.saturating_sub(extra);
-                            self.reserved = extra;
-                            full
+                        } else if self.grow(head.saturating_add(full.min(SMALL_PACKET)), budget) {
+                            full.min(SMALL_PACKET)
                         } else {
-                            SMALL_PACKET
+                            full.min(self.room().saturating_sub(head))
                         };
                         if h.remaining == 0 && !self.emit(h, budget, on) {
                             return;
@@ -256,12 +289,33 @@ impl Framer {
             .min(wire::MAX_PACKET_PREFIX)
     }
 
-    /// Empties the buffer, gives its reservation back and releases a large allocation (a
-    /// connection that sent one large packet keeps only a small buffer).
+    /// Buffer capacity covered: [`FREE_BUFFER`] plus the bytes held.
+    fn room(&self) -> usize {
+        FREE_BUFFER.saturating_add(self.held)
+    }
+
+    /// Makes room for `need` bytes, charging the growth to the buffer budget; false (nothing
+    /// changed) when the budget does not have it.
+    fn grow(&mut self, need: usize, budget: &mut usize) -> bool {
+        let delta = need.saturating_sub(self.room());
+        if delta == 0 {
+            return true;
+        }
+        if *budget < delta {
+            return false;
+        }
+        *budget = budget.saturating_sub(delta);
+        self.held = self.held.saturating_add(delta);
+        self.buf.reserve_exact(need.saturating_sub(self.buf.len()));
+        true
+    }
+
+    /// Empties the buffer; a capacity beyond [`KEEP_BUFFER`] is released and given back (a
+    /// connection that sent one large packet keeps only its first allocation).
     fn reset_buffer(&mut self, budget: &mut usize) {
-        *budget = budget.saturating_add(self.reserved);
-        self.reserved = 0;
-        if self.buf.capacity() > SMALL_PACKET.saturating_add(16) {
+        if self.held > KEEP_BUFFER || self.buf.capacity() > self.room() {
+            *budget = budget.saturating_add(self.held);
+            self.held = 0;
             self.buf = Vec::new();
         } else {
             self.buf.clear();
@@ -270,8 +324,8 @@ impl Framer {
     }
 
     /// Bytes of the buffer budget held (given back when the connection ends).
-    pub(crate) fn reserved(&self) -> usize {
-        self.reserved
+    pub(crate) fn held(&self) -> usize {
+        self.held
     }
 
     /// Reports the packet buffered; false when it was rejected: the direction is abandoned at
@@ -417,7 +471,7 @@ pub(crate) struct Conn {
     next_seq: u32,
     pending: BTreeMap<(Dir, u16), Pending>,
     /// Credential of the CONNECT, waiting for the CONNACK.
-    credential: Option<Credential>,
+    credential: Option<Box<Credential>>,
     aliases: [HashMap<u16, String>; 2],
     /// Topic Alias Maximum announced by the receiver of each direction.
     alias_max: [u16; 2],
@@ -560,6 +614,15 @@ fn pairs_cost(pairs: &[(String, String)]) -> usize {
         .iter()
         .map(|(k, v)| k.len().saturating_add(v.len()).saturating_add(48))
         .fold(0, usize::saturating_add)
+}
+
+/// Approximate memory of a pending credential.
+fn credential_cost(c: &Credential) -> usize {
+    let len = |v: &Option<String>| v.as_ref().map_or(0, String::len);
+    std::mem::size_of::<Credential>()
+        .saturating_add(len(&c.username))
+        .saturating_add(len(&c.secret))
+        .saturating_add(pairs_cost(&c.details))
 }
 
 /// True for a filter that reads every topic (`#`, `+/#`, `$SYS/#`), shared or not.
@@ -794,6 +857,16 @@ impl Conn {
             self.row.protocol_errors = self.row.protocol_errors.saturating_add(1);
         }
         let parsed = wire::parse_packet(header, body, self.version);
+        // Shorter than the prefix normally decoded: cut by the buffer budget.
+        let cut = body.len() < Framer::target(header);
+        if parsed.is_err() && cut {
+            // A prefix cut by the buffer budget, too short to decode: not malformed, the
+            // packet is only counted (and stored without its fields).
+            if self.store_slot() {
+                Self::emit_row(out, Box::new(self.base_row(seq, ts, dir, header)));
+            }
+            return true;
+        }
         let Ok(packet) = parsed else {
             self.row.malformed = self.row.malformed.saturating_add(1);
             if self.store_slot() {
@@ -923,7 +996,7 @@ impl Conn {
                 details.push(("auth_method".to_owned(), m.clone()));
             }
             let plaintext = r.password.is_some();
-            self.credential = Some(Credential {
+            self.credential = Some(Box::new(Credential {
                 source_protocol: "mqtt",
                 kind: "mqtt",
                 flow_id: Some(r.flow_id),
@@ -942,20 +1015,47 @@ impl Conn {
                 hashcat_mode: None,
                 hashcat_line: None,
                 details,
-            });
+            }));
         }
-        // Kept for the whole connection: charged to the state budget, dropped beyond it.
+        self.charge_connect(shared, out);
+        if self.store_slot() {
+            let mut row = self.base_row(seq, ts, dir, header);
+            row.props.clone_from(&self.row.connect_props);
+            Self::emit_row(out, Box::new(row));
+        }
+    }
+
+    /// Charges what the CONNECT keeps for the whole connection. Identity values (protocol name,
+    /// client identifier, user name, password, authentication method: bounded by the parser,
+    /// at most about 2.6 KiB) are always kept and take what the state budget has left; the
+    /// pending credential, when refused, is emitted at once (without the CONNACK result); the
+    /// will and the properties, when refused, are dropped. A refusal counts in `state_dropped`.
+    fn charge_connect(&mut self, shared: &mut Shared, out: &mut dyn RecordSink) {
+        let len = |v: &Option<String>| v.as_ref().map_or(0, String::len);
+        let r = &self.row;
+        let identity = [
+            len(&r.protocol_name),
+            len(&r.client_id),
+            len(&r.username),
+            len(&r.password),
+            len(&r.auth_method),
+        ]
+        .into_iter()
+        .fold(0, usize::saturating_add);
+        self.charged = self.charged.saturating_add(shared.take(identity));
+        if let Some(cost) = self.credential.as_deref().map(credential_cost)
+            && !self.charge(shared, cost)
+            && let Some(cred) = self.credential.take()
+        {
+            out.emit(Record::Credential(*cred));
+        }
         let will = self.row.will_payload.as_ref().map_or(0, Vec::len)
             + self.row.will_topic.as_ref().map_or(0, String::len);
         let cost = pairs_cost(&self.row.connect_props).saturating_add(will);
         if cost > 0 && !self.charge(shared, cost) {
             self.row.connect_props.clear();
+            self.row.will_topic = None;
             self.row.will_payload = None;
-        }
-        if self.store_slot() {
-            let mut row = self.base_row(seq, ts, dir, header);
-            row.props.clone_from(&self.row.connect_props);
-            Self::emit_row(out, Box::new(row));
         }
     }
 
@@ -994,8 +1094,10 @@ impl Conn {
                     .push(("result".to_owned(), login.as_str().to_owned()));
                 cred.details
                     .push(("connack".to_owned(), format!("{:#04x}", c.code)));
-                out.emit(Record::Credential(cred));
+                out.emit(Record::Credential(*cred));
             }
+            let assigned = self.row.assigned_client_id.as_ref().map_or(0, String::len);
+            self.charged = self.charged.saturating_add(shared.take(assigned));
             let cost = pairs_cost(&self.row.connack_props);
             if cost > 0 && !self.charge(shared, cost) {
                 self.row.connack_props.clear();
@@ -1098,6 +1200,10 @@ impl Conn {
                 software.truncate(end);
             }
             if !software.is_empty() {
+                if self.row.broker_software.is_none() {
+                    // Replaced by later versions, never longer than MAX_SOFTWARE.
+                    self.charged = self.charged.saturating_add(shared.take(MAX_SOFTWARE));
+                }
                 self.row.broker_software = Some(software);
             }
         }
@@ -1403,10 +1509,10 @@ impl Conn {
         }
         shared.state_budget = shared.state_budget.saturating_add(self.charged);
         for framer in &mut self.framers {
-            shared.buffer_budget = shared.buffer_budget.saturating_add(framer.reserved());
+            shared.buffer_budget = shared.buffer_budget.saturating_add(framer.held());
         }
         if let Some(cred) = self.credential.take() {
-            out.emit(Record::Credential(cred));
+            out.emit(Record::Credential(*cred));
         }
         let flow_id = self.row.flow_id;
         let [client_topics, broker_topics] = std::mem::take(&mut self.topics);
@@ -1533,11 +1639,11 @@ mod tests {
             ]
         );
         assert!(
-            framer.buf.capacity() <= SMALL_PACKET + 16,
+            framer.buf.capacity() <= FREE_BUFFER,
             "{}",
             framer.buf.capacity()
         );
         assert_eq!(budget, 1024 * 1024);
-        assert_eq!(framer.reserved(), 0);
+        assert_eq!(framer.held(), 0);
     }
 }

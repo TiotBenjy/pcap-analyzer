@@ -156,6 +156,11 @@ export default function MqttView() {
     content = (
       <>
         <StatBand stats={s} />
+        {s.unfollowed > 0 && (
+          <p className="text-meta text-warning" data-testid="mqtt-unfollowed">
+            {t('views.mqtt.unfollowed', { count: s.unfollowed })}
+          </p>
+        )}
         <SignalsCard
           sessionId={sessionId}
           enabled={viewable}

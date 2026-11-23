@@ -15,6 +15,11 @@ no_answer: number, anonymous_accepted: number,
  */
 with_password: number, publish_c2s: number, publish_s2c: number, payload_bytes: number, subscriptions: number, topics: number, 
 /**
+ * MQTT connections detected but not followed (connection maximum or memory bound reached
+ * during the import), over the whole session.
+ */
+unfollowed: number, 
+/**
  * Most frequent CONNACK codes (at most 10).
  */
 connack_codes: Array<MqttConnackCount>, 

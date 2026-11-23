@@ -443,6 +443,16 @@ for (const lang of LANGS) {
           if (view.startsWith('settings-update') || view === 'settings-notices-both') await mockUpdate(page);
           if (view === 'import-progress') await mockImportProgress(page);
           if (view === 'sources-backwards') await mockBackwardAnomalies(page);
+          // MQTT connections not followed during the import (bounds never reached by the demo).
+          if (view === 'mqtt') {
+            await page.route(
+              (url) => /^\/api\/v1\/sessions\/[^/]+\/mqtt\/stats$/.test(url.pathname),
+              async (route) => {
+                const res = await route.fetch();
+                return route.fulfill({ response: res, json: { ...((await res.json()) as object), unfollowed: 1240 } });
+              },
+            );
+          }
           await page.goto(`/#${path}`);
           await page.locator('#main h1').first().waitFor();
           await page.waitForLoadState('networkidle');
@@ -827,7 +837,10 @@ for (const lang of LANGS) {
             if (view === 'mqtt' || view === 'mqtt-range' || view === 'mqtt-connection') {
               const connections = page.getByRole('list', { name: D.views.mqtt.connections.label });
               await expect(connections).toBeVisible();
-              if (view === 'mqtt') await expect(page.getByTestId('mqtt-signals')).toBeVisible();
+              if (view === 'mqtt') {
+                await expect(page.getByTestId('mqtt-signals')).toBeVisible();
+                await expect(page.getByTestId('mqtt-unfollowed')).toBeVisible();
+              }
               if (view === 'mqtt-range') {
                 // Folded connection counters: "whole session" under the column title, or in each row below md.
                 const whole = page.getByText(new RegExp(escapeRe(D.timeRange.wholeSession), 'i')).locator('visible=true');

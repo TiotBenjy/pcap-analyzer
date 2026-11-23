@@ -16,6 +16,7 @@ pub(super) fn mqtt_row(r: MqttRecord) -> MqttRow {
         MqttRecord::Packet(p) => MqttRow::Packet(Box::new(packet_row(*p))),
         MqttRecord::Topic(t) => MqttRow::TopicFlow(topic_row(t)),
         MqttRecord::Subscription(s) => MqttRow::Subscription(subscription_row(s)),
+        MqttRecord::Unfollowed(n) => MqttRow::Unfollowed(n),
     }
 }
 

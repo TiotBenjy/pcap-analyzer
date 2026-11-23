@@ -24,21 +24,12 @@ struct Out {
     topics: Vec<MqttTopicStat>,
     subs: Vec<MqttSubscription>,
     creds: Vec<Credential>,
+    unfollowed: u64,
 }
 
 fn records(sc: &Scenario) -> Out {
-    let mut analyzer = MqttAnalyzer::new(&AnalyzerConfig::default());
-    let mut out = Out::default();
-    for r in run(&mut analyzer, sc.packets()) {
-        match r {
-            Record::Mqtt(MqttRecord::Connection(c)) => out.conns.push(*c),
-            Record::Mqtt(MqttRecord::Packet(p)) => out.packets.push(*p),
-            Record::Mqtt(MqttRecord::Topic(t)) => out.topics.push(t),
-            Record::Mqtt(MqttRecord::Subscription(s)) => out.subs.push(s),
-            Record::Credential(c) => out.creds.push(c),
-            other => panic!("unexpected record {other:?}"),
-        }
-    }
+    let (mut out, _) = records_with(sc, &AnalyzerConfig::default());
+    assert_eq!(out.unfollowed, 0);
     out.conns.sort_by_key(|c| c.flow_id);
     out.packets.sort_by_key(|p| (p.flow_id, p.seq));
     out.topics
@@ -531,6 +522,7 @@ fn records_with(sc: &Scenario, config: &AnalyzerConfig) -> (Out, MqttAnalyzer) {
             Record::Mqtt(MqttRecord::Packet(p)) => out.packets.push(*p),
             Record::Mqtt(MqttRecord::Topic(t)) => out.topics.push(t),
             Record::Mqtt(MqttRecord::Subscription(s)) => out.subs.push(s),
+            Record::Mqtt(MqttRecord::Unfollowed(n)) => out.unfollowed += n,
             Record::Credential(c) => out.creds.push(c),
             other => panic!("unexpected record {other:?}"),
         }
@@ -581,7 +573,8 @@ fn state_budget_sends_topics_to_the_other_bucket_and_is_given_back() {
 #[test]
 fn buffer_budget_decodes_large_packets_from_a_short_prefix() {
     let mut config = AnalyzerConfig::default();
-    config.mqtt.max_buffer_bytes = 0;
+    // Room for a 4 KiB prefix, not for the whole one (64 KiB).
+    config.mqtt.max_buffer_bytes = 2 * super::conn::SMALL_PACKET;
     let mut sc = Scenario::new();
     fx::gateway_session(&mut sc, mqtt_hosts::gateway(), mqtt_hosts::broker());
     let (out, analyzer) = records_with(&sc, &config);
@@ -598,6 +591,20 @@ fn buffer_budget_decodes_large_packets_from_a_short_prefix() {
             .iter()
             .any(|p| p.topic.as_deref() == Some("firmware/gw-7/version"))
     );
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+
+    // No buffer budget at all: every packet is decoded from its first bytes (as truncated),
+    // the stream stays aligned and nothing is lost.
+    let full = records(&sc);
+    config.mqtt.max_buffer_bytes = 0;
+    let (out, analyzer) = records_with(&sc, &config);
+    let [c] = out.conns.as_slice() else { panic!() };
+    let [f] = full.conns.as_slice() else { panic!() };
+    assert_eq!(
+        (c.packets_c2s, c.packets_s2c, c.publish_c2s, c.publish_s2c),
+        (f.packets_c2s, f.packets_s2c, f.publish_c2s, f.publish_s2c)
+    );
+    assert_eq!((c.gaps, c.malformed), (0, 0), "{c:?}");
     assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
 }
 
@@ -764,11 +771,67 @@ fn aliases_and_properties_are_charged_to_the_state_budget() {
     assert!(c.state_dropped >= 2, "{c:?}");
     assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
 
-    // No room for a connection at all: it is not followed.
+    // No room for a connection at all: it is not followed, counted, and holds nothing.
     let mut config = AnalyzerConfig::default();
     config.mqtt.max_state_bytes = 16;
-    let (out, _) = records_with(&sc, &config);
+    let (out, analyzer) = records_with(&sc, &config);
     assert_eq!(out.conns.len(), 0);
+    assert_eq!(out.creds.len(), 0);
+    assert_eq!(out.unfollowed, 1);
+    assert_eq!(analyzer.probe_bytes, 0);
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+}
+
+#[test]
+fn connections_beyond_the_maximum_are_counted_as_not_followed() {
+    let mut sc = Scenario::new();
+    let m = Mqtt::V311;
+    // Three connections open at the same time.
+    let parked: Vec<_> = (0..3u16)
+        .map(|i| {
+            let mut opts = TcpOptions::new(1883);
+            opts.client_port = Some(40_000 + i);
+            let mut s = sc.tcp_open(mqtt_hosts::sensor(), mqtt_hosts::broker(), &opts);
+            s.client_send(&ConnectSpec::v311(&format!("c{i}")).encode());
+            s.park()
+        })
+        .collect();
+    for p in &parked {
+        let mut s = sc.resume(p);
+        s.server_send(&m.connack(false, 0, None));
+        s.client_send(&m.publish("t", b"x"));
+        s.close();
+    }
+    let mut config = AnalyzerConfig::default();
+    config.mqtt.max_connections = 2;
+    let (out, analyzer) = records_with(&sc, &config);
+    let mut ids: Vec<_> = out
+        .conns
+        .iter()
+        .filter_map(|c| c.client_id.clone())
+        .collect();
+    ids.sort();
+    assert_eq!(ids, ["c0", "c1"]);
+    assert_eq!(out.unfollowed, 1);
+    assert_eq!(analyzer.probe_bytes, 0);
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+
+    // Same with a state budget for two connections only.
+    let mut config = AnalyzerConfig::default();
+    config.mqtt.max_state_bytes = 2 * super::conn::BASE_COST + 64;
+    let (out, analyzer) = records_with(&sc, &config);
+    assert_eq!(out.conns.len(), 2);
+    assert_eq!(out.unfollowed, 1);
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+}
+
+#[test]
+fn the_default_state_budget_holds_the_default_connection_maximum() {
+    let config = super::MqttConfig::default();
+    // About 1.4 KiB of fixed state per connection, leaving room for aggregates.
+    const { assert!(super::conn::BASE_COST <= 1536) };
+    let fixed = config.max_connections * super::conn::BASE_COST;
+    assert!(fixed <= config.max_state_bytes * 3 / 4, "{fixed}");
 }
 
 #[test]

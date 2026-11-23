@@ -24,6 +24,9 @@ pub const MAX_DEPTH: usize = 32;
 pub const MAX_TREE_TOPICS: u64 = 1_000_000;
 /// `meta` key of the topics left out of the tree.
 pub const META_TOPICS_FOLDED: &str = "mqtt.topics_folded";
+/// `meta` key: MQTT connections detected but not followed (connection maximum or state budget
+/// reached), summed over the shards.
+pub const META_UNFOLLOWED: &str = "mqtt.connections_unfollowed";
 
 /// One MQTT connection. `Debug` hides the password.
 #[allow(clippy::struct_excessive_bools)] // Independent facts about one connection.
@@ -183,6 +186,8 @@ pub enum MqttRow {
     Packet(Box<MqttPacketRow>),
     TopicFlow(MqttTopicFlowRow),
     Subscription(MqttSubscriptionRow),
+    /// Connections a shard did not follow, added to [`META_UNFOLLOWED`].
+    Unfollowed(u64),
 }
 
 fn json_pairs(pairs: &[(String, String)]) -> Result<String> {
@@ -197,6 +202,7 @@ impl MqttRow {
             Self::Packet(_) => "mqtt_packets",
             Self::TopicFlow(_) => "mqtt_topic_flows",
             Self::Subscription(_) => "mqtt_subscriptions",
+            Self::Unfollowed(_) => "mqtt_unfollowed",
         }
     }
 
@@ -222,6 +228,7 @@ impl MqttRow {
             }
             Self::TopicFlow(t) => 128 + t.topic.len(),
             Self::Subscription(s) => 128 + s.filter.len(),
+            Self::Unfollowed(_) => 64,
         }
     }
 
@@ -271,6 +278,15 @@ impl MqttRow {
                     s.wildcard,
                     s.unsubscribed_ts,
                 ])?;
+                Ok(())
+            }
+            Self::Unfollowed(n) => {
+                conn.prepare_cached(
+                    "INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE \
+                     SET value = CAST(CAST(value AS INTEGER) + CAST(excluded.value AS INTEGER) \
+                     AS TEXT)",
+                )?
+                .execute(params![META_UNFOLLOWED, n.to_string()])?;
                 Ok(())
             }
         }

@@ -1035,6 +1035,9 @@ pub struct MqttStats {
     pub payload_bytes: u64,
     pub subscriptions: u64,
     pub topics: u64,
+    /// MQTT connections detected but not followed (connection maximum or memory bound reached
+    /// during the import), over the whole session.
+    pub unfollowed: u64,
     /// Most frequent CONNACK codes (at most 10).
     pub connack_codes: Vec<MqttConnackCount>,
     /// Signals with at least one connection.
@@ -1220,6 +1223,7 @@ async fn stats(
             payload_bytes: r.payload_bytes,
             subscriptions: r.subscriptions,
             topics: r.topics,
+            unfollowed: r.unfollowed,
             connack_codes: r
                 .connack_codes
                 .into_iter()

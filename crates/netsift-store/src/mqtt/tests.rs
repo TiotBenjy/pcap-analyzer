@@ -334,6 +334,19 @@ fn tree_beyond_its_bound_counts_the_topics_left_out() {
 }
 
 #[test]
+fn connections_not_followed_add_up_over_the_shards() {
+    let conn = fixture();
+    assert_eq!(stats(&conn, None).unwrap().unfollowed, 0);
+    insert(&conn, vec![MqttRow::Unfollowed(3), MqttRow::Unfollowed(2)]);
+    let kept = crate::query::get_meta(&conn, META_UNFOLLOWED).unwrap();
+    assert_eq!(kept.as_deref(), Some("5"));
+    assert_eq!(stats(&conn, None).unwrap().unfollowed, 5);
+    // Not dated: the same under a range.
+    let range = TimeRange::new(0, 1).unwrap();
+    assert_eq!(stats(&conn, Some(range)).unwrap().unfollowed, 5);
+}
+
+#[test]
 fn filter_matching() {
     assert!(topic_matches("#", "a/b"));
     assert!(topic_matches("a/#", "a"));

@@ -60,6 +60,7 @@ function stats(): MqttStats {
     payload_bytes: 2048,
     subscriptions: 2,
     topics: 6,
+    unfollowed: 0,
     connack_codes: [],
     signals: [{ kind: 'anonymous', connections: 1 }],
   };
@@ -282,6 +283,15 @@ describe('MQTT view', () => {
     expect(within(list).getByText('Bad user name or password')).toBeInTheDocument();
     // The list never fetches a password.
     expect(mqttApi.getMqttConnection).not.toHaveBeenCalled();
+    // Every connection followed: no note.
+    expect(screen.queryByTestId('mqtt-unfollowed')).not.toBeInTheDocument();
+  });
+
+  it('notes the connections not analyzed during the import', async () => {
+    vi.mocked(mqttApi.getMqttStats).mockResolvedValue({ ...stats(), unfollowed: 1240 });
+    renderApp(`/sessions/${ID}/mqtt`);
+    const note = await screen.findByTestId('mqtt-unfollowed');
+    expect(note.textContent).toBe('1,240 MQTT connections not analyzed (connection or memory bound reached during the import)');
   });
 
   it('expands a connection: password masked, transcript, escaped payload', async () => {

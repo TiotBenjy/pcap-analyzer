@@ -41,16 +41,19 @@ const PROBE_MAX_SEGMENTS: usize = 128;
 /// Settings of the `mqtt` analyzer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MqttConfig {
-    /// Connections followed at a time; new ones are ignored beyond. One instance applies it as
-    /// is; the engine gives each shard its share (at least 16).
+    /// Connections followed at a time; new ones are not followed beyond (counted in
+    /// [`MqttRecord::Unfollowed`]). One instance applies it as is; the engine gives each shard
+    /// its share (at least 16).
     pub max_connections: usize,
     /// Bytes of packets held while they wait for their acknowledgement.
     pub max_pending_bytes: usize,
-    /// Bytes of packet prefixes above 4 KiB being buffered; past it, packets are decoded from
-    /// their first 4 KiB.
+    /// Bytes of packet buffers beyond their first 8 bytes; past it, a packet is decoded from a
+    /// shorter prefix (its first 4 KiB, else what its buffer already holds).
     pub max_buffer_bytes: usize,
-    /// Bytes of the topic aggregates, aliases and subscriptions of the connections followed;
-    /// past it, new ones are not kept (topics go to the "other topics" bucket), and counted.
+    /// Bytes of the state of the connections followed: fixed part (about 1.4 KiB each: past it,
+    /// a new connection is not followed, and counted), topic aggregates, aliases, subscriptions,
+    /// will and properties (past it, new ones are not kept: topics go to the "other topics"
+    /// bucket, and counted in `state_dropped`).
     pub max_state_bytes: usize,
     /// Bytes buffered by the connections being probed; past it, new data is not probed.
     pub max_probe_bytes: usize,
@@ -402,6 +405,9 @@ pub enum MqttRecord {
     Packet(Box<MqttPacket>),
     Topic(MqttTopicStat),
     Subscription(MqttSubscription),
+    /// MQTT connections detected by a shard but not followed (connection maximum or state
+    /// budget reached), emitted once at its end when not zero; the shards' counts add up.
+    Unfollowed(u64),
 }
 
 /// State of a TCP flow.
@@ -632,6 +638,8 @@ pub struct MqttAnalyzer {
     /// Bytes held by the probes of the shard (at most [`MqttConfig::max_probe_bytes`]).
     probe_bytes: usize,
     shared: Shared,
+    /// MQTT connections detected but not followed ([`MqttRecord::Unfollowed`]).
+    unfollowed: u64,
 }
 
 impl fmt::Debug for MqttAnalyzer {
@@ -653,6 +661,7 @@ impl MqttAnalyzer {
             active: 0,
             probe_bytes: 0,
             shared: Shared::new(&config.mqtt),
+            unfollowed: 0,
         }
     }
 
@@ -677,8 +686,9 @@ impl MqttAnalyzer {
         };
         let first_ts = probe.runs.first().map_or(0, |r| r.ctx.ts_ns);
         let mut conn = Box::new(Conn::new(id, client, server, Transport::Tcp, first_ts));
-        if !conn.charge_base(&mut self.shared) {
-            // No state budget left: the connection is not followed.
+        if self.active >= self.config.max_connections || !conn.charge_base(&mut self.shared) {
+            // Connection maximum or state budget reached: the connection is not followed.
+            self.unfollowed = self.unfollowed.saturating_add(1);
             self.flows.insert(id, Flow::Ignored);
             return;
         }
@@ -734,11 +744,11 @@ impl Analyzer for MqttAnalyzer {
         if ctx.key.proto != 6 || data.is_empty() {
             return;
         }
-        let full = self.active >= self.config.max_connections;
         let flow = self.flows.entry(ctx.id).or_insert_with(|| {
             let port = ctx.key.server.port == PORT || ctx.key.client.port == PORT;
             // Cheap first test off port 1883: a CONNECT starts with 0x10, sent by the client.
-            if full || (!port && (dir != Direction::ToServer || data.first() != Some(&0x10))) {
+            // Probed even at the connection maximum, so that what is not followed is counted.
+            if !port && (dir != Direction::ToServer || data.first() != Some(&0x10)) {
                 Flow::Ignored
             } else {
                 Flow::Probe(Probe::default())
@@ -811,6 +821,12 @@ impl Analyzer for MqttAnalyzer {
             if let Flow::Mqtt { conn, .. } = flow {
                 self.end(conn, None, out);
             }
+        }
+        if self.unfollowed > 0 {
+            out.emit(crate::record::Record::Mqtt(MqttRecord::Unfollowed(
+                self.unfollowed,
+            )));
+            self.unfollowed = 0;
         }
     }
 }

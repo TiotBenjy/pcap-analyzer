@@ -628,7 +628,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       format actuel d'hashcat, au lieu de `.hccapx`), points d'accès (BSSID, SSID, canal, chiffrement,
       constructeur), broadcast, client à client, probe requests ; s'appuie sur le décodage 802.11/radiotap
       existant et sur l'OUI de P5.4.
-- [ ] **P5.15** `feat/mqtt` — Sans référence (spec à créer, soumise à l'utilisateur avant la vue). MQTT 3.1, 3.1.1
+- [~] **P5.15** `feat/mqtt` — Sans référence (spec à créer, soumise à l'utilisateur avant la vue). MQTT 3.1, 3.1.1
       et 5.0 sur TCP (1883 et détection heuristique sur tout port, CONNECT valide en premier paquet) : CONNECT
       (client id, version, keepalive, clean session, will), CONNACK (codes de retour, raisons 5.0), identifiants
       `username`/`password` vers Credentials (masqués), SUBSCRIBE/UNSUBSCRIBE (filtres, QoS), PUBLISH (topic, QoS,

@@ -16,6 +16,7 @@ import { Timestamp } from '../../components/Timestamp';
 import { wholeSessionHeader } from '../../components/wholeSessionHeader';
 import { formatCount } from '../../lib/format';
 import { useDebounced } from '../../lib/useDebounced';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { LoadMore } from '../connections/LoadMore';
 import { ClientId } from './ConnectionsTab';
 
@@ -63,6 +64,36 @@ function PagedTable<T>({ query, children }: { query: ListQuery<T>; children: (it
   );
 }
 
+/** Columns by width: cards below 768 px show them all; a table shows what fits without scrolling. */
+interface ColumnSets {
+  narrow: readonly string[];
+  mid: readonly string[];
+  all: readonly string[];
+}
+
+const CLIENT_COLUMNS: ColumnSets = {
+  narrow: ['client', 'addresses', 'connections', 'published', 'received'],
+  mid: ['client', 'addresses', 'users', 'connections', 'published', 'received', 'topics'],
+  all: ['client', 'addresses', 'users', 'connections', 'versions', 'published', 'received', 'topics', 'last'],
+};
+
+const BROKER_COLUMNS: ColumnSets = {
+  narrow: ['broker', 'status', 'connections', 'clients', 'anonymous', 'rejected'],
+  mid: ['broker', 'status', 'software', 'connections', 'clients', 'anonymous', 'rejected', 'messages'],
+  all: ['broker', 'status', 'software', 'versions', 'connections', 'clients', 'anonymous', 'rejected', 'messages', 'last'],
+};
+
+const MID_QUERY = '(min-width: 1280px)';
+const WIDE_QUERY = '(min-width: 1536px)';
+
+function useShownColumns(sets: ColumnSets): ReadonlySet<string> {
+  const table = useMediaQuery(MD_QUERY);
+  const mid = useMediaQuery(MID_QUERY);
+  const wide = useMediaQuery(WIDE_QUERY);
+  const ids = !table || wide ? sets.all : mid ? sets.mid : sets.narrow;
+  return useMemo(() => new Set(ids), [ids]);
+}
+
 interface TabProps {
   sessionId: string;
   enabled: boolean;
@@ -76,9 +107,10 @@ export function ClientsTab({ sessionId, enabled, oneDay, ranged, onSelect }: Tab
   const [search, setSearch] = useState('');
   const q = useDebounced(search.trim());
   const query = useMqttClients(sessionId, q === '' ? {} : { q }, enabled);
+  const shown = useShownColumns(CLIENT_COLUMNS);
   const columns = useMemo<ColumnDef<MqttClientInfo>[]>(() => {
     const counter = (label: string) => wholeSessionHeader(label, ranged);
-    return [
+    const all: ColumnDef<MqttClientInfo>[] = [
       {
         id: 'client',
         meta: { card: 'title' },
@@ -86,9 +118,13 @@ export function ClientsTab({ sessionId, enabled, oneDay, ranged, onSelect }: Tab
         header: t('views.mqtt.clients.col.client'),
         size: 200,
         cell: ({ row }) => (
-          <span className="flex min-w-0 items-center gap-1.5">
-            <ClientId id={row.original.client_id} />
-            {row.original.wildcard && <Badge tone="warning">{t('views.mqtt.signals.kind.wildcard')}</Badge>}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <ClientId id={row.original.client_id} className="max-w-full" />
+            {row.original.wildcard && (
+              <Badge tone="warning" title={t('views.mqtt.signals.kind.wildcard')}>
+                {t('views.mqtt.clients.wildcard')}
+              </Badge>
+            )}
           </span>
         ),
       },
@@ -96,7 +132,7 @@ export function ClientsTab({ sessionId, enabled, oneDay, ranged, onSelect }: Tab
         id: 'addresses',
         accessorFn: (c) => c.addresses[0]?.ip ?? '',
         header: t('views.mqtt.clients.col.addresses'),
-        size: 190,
+        size: 170,
         cell: ({ row }) => {
           const c = row.original;
           const first = c.addresses[0];
@@ -132,7 +168,7 @@ export function ClientsTab({ sessionId, enabled, oneDay, ranged, onSelect }: Tab
           <span className="num">
             {formatCount(row.original.connections)}
             {row.original.rejected > 0 && (
-              <span className="text-danger">{` (${t('views.mqtt.clients.rejected', { count: row.original.rejected })})`}</span>
+              <span className="text-warning">{` (${t('views.mqtt.clients.rejected', { count: row.original.rejected })})`}</span>
             )}
           </span>
         ),
@@ -176,7 +212,8 @@ export function ClientsTab({ sessionId, enabled, oneDay, ranged, onSelect }: Tab
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ];
-  }, [t, oneDay, ranged]);
+    return all.filter((c) => c.id === undefined || shown.has(c.id));
+  }, [t, oneDay, ranged, shown]);
   return (
     <Card
       title={t('views.mqtt.clients.title')}
@@ -214,9 +251,10 @@ export function BrokersTab({ sessionId, enabled, oneDay, ranged, onSelect }: Tab
   const [search, setSearch] = useState('');
   const q = useDebounced(search.trim());
   const query = useMqttBrokers(sessionId, q === '' ? {} : { q }, enabled);
+  const shown = useShownColumns(BROKER_COLUMNS);
   const columns = useMemo<ColumnDef<MqttBrokerInfo>[]>(() => {
     const counter = (label: string) => wholeSessionHeader(label, ranged);
-    return [
+    const all: ColumnDef<MqttBrokerInfo>[] = [
       {
         id: 'broker',
         meta: { card: 'title' },
@@ -292,7 +330,9 @@ export function BrokersTab({ sessionId, enabled, oneDay, ranged, onSelect }: Tab
         accessorFn: (b) => b.rejected,
         header: counter(t('views.mqtt.brokers.col.rejected')),
         size: 100,
-        cell: ({ row }) => <span className="num">{formatCount(row.original.rejected)}</span>,
+        cell: ({ row }) => (
+          <span className={row.original.rejected > 0 ? 'num text-warning' : 'num'}>{formatCount(row.original.rejected)}</span>
+        ),
       },
       {
         id: 'messages',
@@ -310,7 +350,8 @@ export function BrokersTab({ sessionId, enabled, oneDay, ranged, onSelect }: Tab
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
       },
     ];
-  }, [t, oneDay, ranged]);
+    return all.filter((c) => c.id === undefined || shown.has(c.id));
+  }, [t, oneDay, ranged, shown]);
   return (
     <Card
       title={t('views.mqtt.brokers.title')}

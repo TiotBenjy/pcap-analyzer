@@ -18,7 +18,7 @@ import { Timestamp } from '../../components/Timestamp';
 import { WholeSessionLine } from '../../components/WholeSession';
 import { wholeSessionHeader } from '../../components/wholeSessionHeader';
 import { formatBytes, formatCount } from '../../lib/format';
-import { useMediaQuery } from '../../lib/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { useDebounced } from '../../lib/useDebounced';
 import { LoadMore } from '../connections/LoadMore';
 import { ClientId } from './ConnectionsTab';
@@ -199,8 +199,10 @@ const LAST_QUERY = '(min-width: 1800px)';
 
 function useTopicColumns(oneDay: boolean, ranged: boolean, search: boolean, selected: string | null) {
   const { t } = useTranslation();
-  const bytes = useMediaQuery(BYTES_QUERY);
-  const last = useMediaQuery(LAST_QUERY);
+  // Cards (below 768 px) show every figure on their own lines.
+  const cards = !useMediaQuery(MD_QUERY);
+  const bytes = useMediaQuery(BYTES_QUERY) || cards;
+  const last = useMediaQuery(LAST_QUERY) || cards;
   return useMemo<ColumnDef<MqttTopicNode>[]>(() => {
     const counter = (label: string) => wholeSessionHeader(label, ranged);
     const columns: ColumnDef<MqttTopicNode>[] = [
@@ -393,17 +395,19 @@ function TopicDetail({
           ) : (
             d.recent.map((m) => (
               <div key={m.id} className="flex min-w-0 flex-col gap-1">
-                <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-meta text-muted">
-                  <Timestamp us={m.ts_us} withDate={!oneDay} />
-                  {!exact && m.topic !== null && <span className="min-w-0 font-mono break-all text-accent">{m.topic}</span>}
-                  <ClientId id={m.client_id} />
-                </span>
+                {!exact && m.topic !== null && <span className="min-w-0 font-mono text-meta break-all text-accent">{m.topic}</span>}
                 {m.payload !== null && (
                   <PayloadView
                     payload={m.payload}
                     contentType={m.content_type}
                     format={m.payload_format}
                     mode={m.payload.text === null ? 'hex' : mode}
+                    lead={
+                      <>
+                        <Timestamp us={m.ts_us} withDate={!oneDay} className="text-meta text-muted" />
+                        <ClientId id={m.client_id} className="text-meta text-muted" />
+                      </>
+                    }
                   />
                 )}
               </div>

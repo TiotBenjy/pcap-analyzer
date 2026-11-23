@@ -142,12 +142,15 @@ export function PayloadView({
   contentType,
   format,
   mode: shared,
+  lead,
 }: {
   payload: MqttPayload;
   contentType?: string | null;
   format?: number | null;
   /** Mode chosen for several payloads at once: no toggle of its own. */
   mode?: PayloadMode;
+  /** Shown first on the line of the size (time and sender of a message). */
+  lead?: ReactNode;
 }) {
   const { t } = useTranslation();
   const [own, setMode] = useState<PayloadMode>(payload.text === null ? 'hex' : 'text');
@@ -162,6 +165,7 @@ export function PayloadView({
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        {lead}
         {payload.text !== null && shared === undefined && (
           <SegmentedControl
             hideLabel

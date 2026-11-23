@@ -604,7 +604,14 @@ pub fn sip_showcase(sc: &mut Scenario) -> ShowcaseCounts {
 /// One periodic round of the demonstration: a short call from Alice or Bob to the other, and on
 /// even rounds a registration refresh of Carol.
 pub fn sip_round(sc: &mut Scenario, round: usize) {
-    let (a, b, c, p) = (alice_phone(), bob_phone(), carol_phone(), pbx_party());
+    // New RTP ports each round, as phones do: a port reused within the UDP flow timeout would
+    // fold the streams of two calls into one flow.
+    let offset = (u16::try_from(round % 400).unwrap_or(0) + 1) * 2;
+    let mut a = alice_phone();
+    let mut b = bob_phone();
+    a.rtp_port += offset;
+    b.rtp_port += offset;
+    let (c, p) = (carol_phone(), pbx_party());
     let (caller, callee) = if round.is_multiple_of(2) {
         (&a, &b)
     } else {

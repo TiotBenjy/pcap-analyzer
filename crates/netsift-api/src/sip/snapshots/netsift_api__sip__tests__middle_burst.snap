@@ -131,7 +131,7 @@ expression: "(stats, dialogs)"
             "offer_ts_us": 1700000619287000,
             "offered_by": "10.20.0.21",
             "packets": 20,
-            "port": 40000,
+            "port": 40002,
             "proto": "RTP/AVP"
           },
           {
@@ -154,7 +154,7 @@ expression: "(stats, dialogs)"
             "offer_ts_us": 1700000622088500,
             "offered_by": "10.20.0.22",
             "packets": 20,
-            "port": 42000,
+            "port": 42002,
             "proto": "RTP/AVP"
           }
         ],

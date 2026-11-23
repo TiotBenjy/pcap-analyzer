@@ -651,7 +651,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       Suivi transverse : avis RUSTSEC-2026-0594 (`cookie` 0.18.2, tiré par tauri/wry) signalé par `cargo deny`, présent
       sur `main` avant MQTT, non bloquant dans le gate ; à traiter (mise à jour de tauri ou exception motivée dans
       `deny.toml`).
-- [ ] **P5.21** `refactor/api-split` — Demande de l'utilisateur le 2026-11-23 : `netsift-api` (environ 28 000 lignes
+- [~] **P5.21** `refactor/api-split` — Demande de l'utilisateur le 2026-11-23 : `netsift-api` (environ 28 000 lignes
       dont 12 000 de tests, 33 modules) se compile d'un bloc sur un seul cœur et chaque worktree la recompile en entier.
       Découpage en crates : `netsift-api-core` (erreurs, extracteurs, authentification, garde, plages et filtre temporel,
       pagination, DTO communs), `netsift-api-online` (outbound, mises à jour, GeoIP, réglages, vérifications en ligne),
@@ -668,7 +668,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       Schéma, migrations et contenu des sessions inchangés (une session existante s'ouvre à l'identique), test
       d'équivalence d'import inchangé. Mesure avant/après dans `docs/PERFORMANCE.md`, ADR et `docs/ARCHITECTURE.md`
       mis à jour. Avant P5.15b, P5.16 et P5.17.
-- [ ] **P5.23** `refactor/analyze-split` — Demande de l'utilisateur le 2026-11-23 : même découpage pour
+- [~] **P5.23** `refactor/analyze-split` — Demande de l'utilisateur le 2026-11-23 : même découpage pour
       `netsift-analyze` (environ 23 000 lignes dont 5 500 de tests). Socle (trait `Analyzer`, `PacketCtx`/`StreamCtx`,
       bornes partagées entre shards, classification, services et ports connus, aides de test) dans une crate, analyseurs
       par groupe de protocoles dans des crates alignées sur les groupes de P5.21, `netsift-analyze` réduite au registre
@@ -678,7 +678,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       `insta`, test d'équivalence d'import, cibles de fuzz inchangées). Mesure avant/après dans `docs/PERFORMANCE.md`.
       Périmètre disjoint de P5.21 et P5.22 (`netsift-store` ne dépend pas d'`analyze`) : peut tourner en parallèle de
       P5.21 ; avant P5.15b, P5.16 et P5.17.
-- [ ] **P5.24** `refactor/parallel-friendly` — Demande de l'utilisateur le 2026-11-23 : pouvoir paralléliser les
+- [~] **P5.24** `refactor/parallel-friendly` — Demande de l'utilisateur le 2026-11-23 : pouvoir paralléliser les
       tâches sans conflits. Chaque vague 5.A/5.B a buté sur les mêmes listes partagées, éditées par toutes les branches :
       `ui/src/app/nav.ts` et le routeur, `ui/tests/visual/shots.spec.ts` (985 lignes), `ui/src/i18n/` (`en.ts`, `fr.ts`,
       `credentials.ts`), `crates/netsift-cli/src/demo.rs`, `crates/netsift-engine/tests/ingest.rs`,

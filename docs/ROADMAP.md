@@ -645,7 +645,6 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       exports ; aides de test partagées dans une crate de support (dev-dependency). Mesure `cargo build --timings` et
       durée de `./x.sh check` avant/après dans `docs/PERFORMANCE.md`, ADR pour les règles de dépendances
       (`docs/ARCHITECTURE.md`), types ts-rs inchangés, aucune route modifiée. Après P5.15a, avant P5.22.
-      Suivi possible selon le gain mesuré : même découpage pour `netsift-analyze`.
 - [ ] **P5.22** `refactor/store-split` — Demande de l'utilisateur le 2026-11-23, après P5.21 : même découpage pour
       `netsift-store` (environ 28 000 lignes dont 9 000 de tests ; toute modification recompile aussi l'API). Socle
       (connexion, pragmas, migrations et plages de `schema.rs`, writer par lots, `meta`, étapes de fin d'import, plages
@@ -654,6 +653,16 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       Schéma, migrations et contenu des sessions inchangés (une session existante s'ouvre à l'identique), test
       d'équivalence d'import inchangé. Mesure avant/après dans `docs/PERFORMANCE.md`, ADR et `docs/ARCHITECTURE.md`
       mis à jour. Avant P5.15b, P5.16 et P5.17.
+- [ ] **P5.23** `refactor/analyze-split` — Demande de l'utilisateur le 2026-11-23 : même découpage pour
+      `netsift-analyze` (environ 23 000 lignes dont 5 500 de tests). Socle (trait `Analyzer`, `PacketCtx`/`StreamCtx`,
+      bornes partagées entre shards, classification, services et ports connus, aides de test) dans une crate, analyseurs
+      par groupe de protocoles dans des crates alignées sur les groupes de P5.21, `netsift-analyze` réduite au registre
+      et aux réexports utilisés par `netsift-engine` et `fuzz/`. Point à trancher dans l'ADR : l'enum `Record`, dont
+      chaque protocole ajoute des variantes, ne doit pas forcer la recompilation de tous les analyseurs à chaque ajout
+      (types d'enregistrement par groupe, enum assemblé dans la crate du registre). Sorties identiques (snapshots
+      `insta`, test d'équivalence d'import, cibles de fuzz inchangées). Mesure avant/après dans `docs/PERFORMANCE.md`.
+      Périmètre disjoint de P5.21 et P5.22 (`netsift-store` ne dépend pas d'`analyze`) : peut tourner en parallèle de
+      P5.21 ; avant P5.15b, P5.16 et P5.17.
 - [ ] **P5.15b** `feat/mqtt-ws-tls` — Après P5.15a, en parallèle de P5.16 et P5.17. MQTT sur WebSocket (Upgrade HTTP,
       sous-protocole `mqtt`, trames WebSocket RFC 6455 démasquées dans l'analyseur HTTP existant et confiées au moteur
       MQTT, ADR à écrire ; `permessage-deflate` en métadonnées seulement). MQTT sur TLS (8883) : pas de déchiffrement,

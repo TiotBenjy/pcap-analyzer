@@ -642,7 +642,8 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       Découpage en crates : `netsift-api-core` (erreurs, extracteurs, authentification, garde, plages et filtre temporel,
       pagination, DTO communs), `netsift-api-online` (outbound, mises à jour, GeoIP, réglages, vérifications en ligne),
       crates de vues par groupe d'onglets, `netsift-api` réduite à l'assemblage du routeur, aux sessions, imports et
-      exports ; aides de test partagées dans une crate de support (dev-dependency). Mesure `cargo build --timings` et
+      exports ; aides de test partagées dans une crate de support (dev-dependency). Objectif aussi : qu'un nouvel onglet
+      n'édite que sa crate de vues, plus une ligne dans l'assemblage du routeur (pas de liste centrale à modifier ailleurs). Mesure `cargo build --timings` et
       durée de `./x.sh check` avant/après dans `docs/PERFORMANCE.md`, ADR pour les règles de dépendances
       (`docs/ARCHITECTURE.md`), types ts-rs inchangés, aucune route modifiée. Après P5.15a, avant P5.22.
 - [ ] **P5.22** `refactor/store-split` — Demande de l'utilisateur le 2026-11-23, après P5.21 : même découpage pour
@@ -663,6 +664,20 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       `insta`, test d'équivalence d'import, cibles de fuzz inchangées). Mesure avant/après dans `docs/PERFORMANCE.md`.
       Périmètre disjoint de P5.21 et P5.22 (`netsift-store` ne dépend pas d'`analyze`) : peut tourner en parallèle de
       P5.21 ; avant P5.15b, P5.16 et P5.17.
+- [ ] **P5.24** `refactor/parallel-friendly` — Demande de l'utilisateur le 2026-11-23 : pouvoir paralléliser les
+      tâches sans conflits. Chaque vague 5.A/5.B a buté sur les mêmes listes partagées, éditées par toutes les branches :
+      `ui/src/app/nav.ts` et le routeur, `ui/tests/visual/shots.spec.ts` (985 lignes), `ui/src/i18n/` (`en.ts`, `fr.ts`,
+      `credentials.ts`), `crates/netsift-cli/src/demo.rs`, `crates/netsift-engine/tests/ingest.rs`,
+      `fuzz/examples/gen_corpus.rs`, la table des plages de `crates/netsift-store/src/schema.rs`, les `mod` de `lib.rs`,
+      `docs/PERFORMANCE.md`, `docs/FUZZING.md`, `docs/specs/README.md`. Règle visée : ajouter un onglet ou un protocole
+      = ajouter des fichiers, plus au plus une ligne triée dans une liste d'assemblage. Moyens : un fichier de captures
+      par vue (`ui/tests/visual/views/<vue>.spec.ts`, aides communes à part), un module de démo et un fichier de test
+      d'équivalence par protocole, graines de fuzz par protocole, entrées de navigation et dictionnaires i18n par vue
+      collectés au même endroit, mesures de performance et notes de fuzzing par protocole (`docs/perf/<proto>.md` ou
+      sections dans les specs). Comportement, captures, chaînes et tests inchangés (mêmes vues capturées, mêmes
+      assertions). `docs/GIT_WORKFLOW.md` et le skill `parallel` mis à jour (liste des points d'assemblage restants et
+      façon de les résoudre). Périmètre surtout UI, tests et docs : parallèle de P5.21 et P5.23 ; les fichiers Rust
+      partagés avec elles (`lib.rs`, `schema.rs`) sont touchés par la branche fusionnée en second.
 - [ ] **P5.15b** `feat/mqtt-ws-tls` — Après P5.15a, en parallèle de P5.16 et P5.17. MQTT sur WebSocket (Upgrade HTTP,
       sous-protocole `mqtt`, trames WebSocket RFC 6455 démasquées dans l'analyseur HTTP existant et confiées au moteur
       MQTT, ADR à écrire ; `permessage-deflate` en métadonnées seulement). MQTT sur TLS (8883) : pas de déchiffrement,

@@ -628,7 +628,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       format actuel d'hashcat, au lieu de `.hccapx`), points d'accès (BSSID, SSID, canal, chiffrement,
       constructeur), broadcast, client à client, probe requests ; s'appuie sur le décodage 802.11/radiotap
       existant et sur l'OUI de P5.4.
-- [~] **P5.15a** `feat/mqtt` — Sans référence ; spec `specs/mqtt.md` validée le 2026-11-23 avec les recommandations
+- [x] **P5.15a** `feat/mqtt` — Sans référence ; spec `specs/mqtt.md` validée le 2026-11-23 avec les recommandations
       de ses questions ouvertes (extrait de 512 octets, 10 000 paquets stockés par connexion, broker public d'après la
       catégorie d'adresse, seuil de 5 refus, `mqtt` pour TCP 1883). MQTT 3.1, 3.1.1 et 5.0 sur TCP (1883 et détection
       heuristique sur tout port, CONNECT valide en premier paquet) : CONNECT (client id, version, keepalive, clean
@@ -637,6 +637,20 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       borné et affiché en texte/hexa échappé), PING, DISCONNECT ; clients, brokers, arbre des topics avec volumes,
       signalements (connexions sans authentification, brokers publics...). Migrations 1600-1699. Spec : OASIS MQTT 3.1.1
       et 5.0.
+      Fusionné le 2026-11-23 (42a9576) : parseur `netsift_dissect::mqtt` (préfixe de 64 Kio, propriétés 5.0), moteur de
+      connexion indépendant du transport (point d'entrée de P5.15b), détection 1883 / CONNECT strict ailleurs / prise en
+      cours sur 1883, accusés rattachés, alias par sens, 10 000 paquets stockés par connexion ; budgets de tampons
+      (64 Mio), d'état (128 Mio, part fixe de 1,4 Kio par connexion) et de sonde (32 Mio) répartis entre shards (ADR-023),
+      refus comptés (`state_dropped`, `mqtt.connections_unfollowed`, au moins) ; mot de passe dans `mqtt_connect_secrets`
+      lu par la seule route de détail ; étape `mqtt` (arbre des topics, repli au-delà d'1 M) ; vue Connexions, Clients,
+      Brokers, Topics, Messages et signalements ; test d'équivalence chunks et 1/4/7 shards, cible de fuzz `mqtt`.
+      Suivis : `/mqtt/stats` (723 ms) et racine de l'arbre des topics (633 ms) sous une plage de la moitié de la session
+      (agrégats de topics relus à chaque requête ; passer par la base des plages de P5.2b) ; brokers absents des onglets
+      Servers et Open Ports ; jeton passé en nom d'utilisateur affiché en clair ; ajout additif de
+      `mqtt.connections_unfollowed` dans `meta` à rendre idempotent si une reprise d'import apparaît (P5.13).
+      Suivi transverse : avis RUSTSEC-2026-0594 (`cookie` 0.18.2, tiré par tauri/wry) signalé par `cargo deny`, présent
+      sur `main` avant MQTT, non bloquant dans le gate ; à traiter (mise à jour de tauri ou exception motivée dans
+      `deny.toml`).
 - [ ] **P5.21** `refactor/api-split` — Demande de l'utilisateur le 2026-11-23 : `netsift-api` (environ 28 000 lignes
       dont 12 000 de tests, 33 modules) se compile d'un bloc sur un seul cœur et chaque worktree la recompile en entier.
       Découpage en crates : `netsift-api-core` (erreurs, extracteurs, authentification, garde, plages et filtre temporel,

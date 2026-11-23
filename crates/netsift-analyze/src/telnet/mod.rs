@@ -344,7 +344,9 @@ impl Session {
                         && self.line.chars > 0
                         && self.line.echoed == 0
                         && !self.line.server_spoke
-                        && self.line.segments >= 2 =>
+                        && self.line.segments >= 2
+                        // One suspect at a time: later lines are read as typed until it is judged.
+                        && self.suspect.is_none() =>
                 {
                     self.login.defer_line();
                     self.suspect = self.line.start.map(|start| Suspect {
@@ -376,7 +378,8 @@ impl Session {
         } else {
             self.judge_suspect(token, ts, out);
             if self.echo.absorbs(token) {
-                if matches!(token, Token::Char(_)) {
+                // An echo absorbed after the line end belongs to no line being typed.
+                if matches!(token, Token::Char(_)) && self.line.start.is_some() {
                     self.line.echoed = self.line.echoed.saturating_add(1);
                 }
                 return;

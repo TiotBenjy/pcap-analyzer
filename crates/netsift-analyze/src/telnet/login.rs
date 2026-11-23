@@ -220,7 +220,7 @@ impl Login {
     /// The line being typed got no echo from a server that echoes: at its end it is held as a
     /// suspect instead of being read (user name, command), until the server answers.
     pub(crate) fn defer_line(&mut self) {
-        if self.typing && self.field != Field::Password {
+        if self.typing && self.field != Field::Password && self.suspect.is_none() {
             self.defer = true;
         }
     }

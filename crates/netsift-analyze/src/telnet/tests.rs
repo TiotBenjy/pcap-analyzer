@@ -565,3 +565,50 @@ fn a_client_gap_after_an_unanswered_password_prompt_is_secret() {
     assert!(text.contains("id\n"), "{text}");
     assert_eq!(creds.len(), 0);
 }
+
+#[test]
+fn two_lines_before_any_echo_judge_the_first_one_only() {
+    // Slow link: `ls` then `pwd` typed before the first echo; the late echo dismisses `ls`, and
+    // `pwd` is read as typed.
+    let (session, creds) = drive(&[
+        (false, 0, &[255, 251, 1]),
+        (false, 0, b"$ "),
+        (true, 0, b"l"),
+        (true, 0, b"s"),
+        (true, 0, b"\r\0"),
+        (true, 0, b"p"),
+        (true, 0, b"w"),
+        (true, 0, b"d"),
+        (true, 0, b"\r\0"),
+        (false, 0, b"ls\r\nnotes.txt\r\n$ pwd\r\n/home/ops\r\n$ "),
+    ]);
+    assert_eq!(creds.len(), 0);
+    assert!(
+        session
+            .transcript
+            .iter()
+            .all(|r| r.speaker != Speaker::Secret)
+    );
+}
+
+#[test]
+fn a_password_then_a_command_before_the_answer_masks_the_password() {
+    // Unknown prompt, then the password and a command typed ahead, before any answer.
+    let (session, creds) = drive(&[
+        (false, 0, &[255, 251, 1]),
+        (false, 0, b"Code PIN "),
+        (true, 0, b"4"),
+        (true, 0, b"3"),
+        (true, 0, b"2"),
+        (true, 0, b"1"),
+        (true, 0, b"\r\0"),
+        (true, 0, b"i"),
+        (true, 0, b"d"),
+        (true, 0, b"\r\0"),
+        (false, 0, b"\r\nsw>id\r\nuid=0\r\nsw>"),
+    ]);
+    let text = visible(&session);
+    assert!(!text.contains("4321"), "{text}");
+    assert_eq!(creds.len(), 1);
+    assert_eq!(creds[0].secret.as_deref(), Some("4321"));
+}

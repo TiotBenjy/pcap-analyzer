@@ -87,8 +87,9 @@ Connexions TCP dont le port serveur (ou client, pour une connexion prise en cour
   si elle commence par l'écho de la ligne (lien lent), c'est une saisie ordinaire ; sinon c'est un mot
   de passe quelle que soit l'invite (invite inconnue, ou absente de la capture), rendu secret dans la
   transcription, dont l'identifiant porte le détail `detected=no-echo`. Sans réponse avant la fin du
-  flux, la ligne est masquée sans identifiant. Une frappe anticipée pendant une sortie du serveur
-  n'est jamais suspecte ;
+  flux, la ligne est masquée sans identifiant. Une seule ligne est suspecte à la fois : celles tapées
+  avant la réponse sont lues normalement (un mot de passe suivi d'une commande tapée d'avance : seul le
+  mot de passe est jugé). Une frappe anticipée pendant une sortie du serveur n'est jamais suspecte ;
 - la saisie va jusqu'à la fin de ligne, effacements appliqués, bornée (256 caractères pour le nom,
   512 pour le mot de passe) ;
 - un mot de passe saisi crée un identifiant (avec le dernier nom saisi, sinon la variable `USER` de

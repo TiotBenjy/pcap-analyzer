@@ -8,6 +8,7 @@
 //! - [`arp`]: ARP requests, replies, probes, gratuitous ARP and cache poisoning (ARP view).
 //! - [`ethernet`]: link-layer showcase (vendors, VLAN and Q-in-Q tags, EtherTypes, LLC).
 //! - [`ftp`]: FTP control sessions with passive, active and EPSV data connections (FTP view).
+//! - [`mqtt`]: MQTT 3.1 / 3.1.1 / 5.0 packet encoder and connections (MQTT view).
 //! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
 //! - [`sip`]: SIP calls (complete, rejected, cancelled, over TCP) with RTP, a Digest
 //!   registration and a `friendly-scanner` sweep (SIP view).
@@ -45,6 +46,7 @@ pub mod ftp;
 pub mod http_mix;
 pub mod images;
 pub mod mix;
+pub mod mqtt;
 pub mod packet;
 pub mod proto;
 pub mod rng;

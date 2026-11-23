@@ -40,6 +40,7 @@ mod ipext;
 pub mod kerberos;
 mod link;
 pub mod linktype;
+pub mod mqtt;
 mod net;
 pub mod ntp;
 pub mod sdp;

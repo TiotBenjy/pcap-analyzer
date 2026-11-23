@@ -584,9 +584,19 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
 
 ### Vague 5.B — Protocoles à flux et fichiers (parallèle, après 5.A)
 
-- [~] **P5.8** `feat/ftp` — Référence `private/ftp.png`. Sessions de contrôle en transcription (commandes, réponses,
+- [x] **P5.8** `feat/ftp` — Référence `private/ftp.png`. Sessions de contrôle en transcription (commandes, réponses,
       arguments mis en évidence, `PASS` masqué par défaut comme dans Credentials), canal de données associé
       (PORT/PASV/EPRT/EPSV), fichiers transférés extraits dans `objects` (taille, sens, nom).
+      Fusionné le 2026-11-23 (555b1a4, ADR-032) : contrôle et canal de données appariés par l'analyseur sans routage
+      spécial (`shard_hash` ignore les ports, même paire d'adresses exigée, attentes expirées à 60 s), FXP et hôte
+      tiers jamais associés, test d'équivalence chunks et 1/4/7 shards ; transcription bornée, `PASS`/`ACCT` secrets
+      (aussi ligne non reconnue après 331/332) ; fichiers complets dans `objects` (`objects.source`, budget 128 Mio
+      partagé), visibles dans Pictures ; `/objects` sous plage plus rapide qu'avant (`IN (… UNION ALL …)`).
+      Suivis : stats `/objects` sur une large plage 497 ms (600 ms avant) ; stats des sessions linéaires (~2 s pour
+      1 M de sessions) ; bornes par shard modestes sur une paire très chargée (292 contrôles à 14 shards) ; fuzz à un
+      seul flux (appariement et budget non fuzzés) ; FTP sur port non standard non détecté ; `LPRT`/`LPSV` ; Pictures
+      affiche « Hôte / Type déclaré : Inconnu » pour un objet FTP et garde l'aide « URL or host » ; extension `.bin`
+      des documents non image (P5.11).
 - [~] **P5.9** `feat/telnet` — Référence `private/telnet.png`. Sessions en transcription (négociation d'options retirée,
       échos fusionnés, bornée), identifiants login/password vers Credentials (masqués).
 - [ ] **P5.10** `feat/wifi` — Références `private/wifi-1-handshakes.png` à `private/wifi-5-probe-requests.png`. Onglets : handshakes WPA (export hc22000,

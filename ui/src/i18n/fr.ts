@@ -8,6 +8,7 @@ import { geoipPromptFr } from './geoipPrompt';
 import { macAddressFr } from './macAddress';
 import { onlineFr } from './online';
 import { picturesFr } from './pictures';
+import { sipFr } from './sip';
 import { ssdpFr } from './ssdp';
 import { telnetFr } from './telnet';
 import { tlsFr } from './tls';
@@ -998,6 +999,7 @@ export const fr: Dictionary = {
     geoipPrompt: geoipPromptFr,
     online: onlineFr,
     pictures: picturesFr,
+    sip: sipFr,
     ssdp: ssdpFr,
     telnet: telnetFr,
     tls: tlsFr,

@@ -49,15 +49,15 @@ const placeholders = (v: string) => [...v.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].m
  */
 const SAME_IN_FRENCH = new Set(
   [
-    'actions', 'anomalies', 'bits', 'captures', 'chunk', 'chunks', 'client', 'clients', 'communications',
+    'actions', 'agent', 'anomalies', 'bits', 'captures', 'chunk', 'chunks', 'client', 'clients', 'communications', 'contact',
     'conversation', 'conversations', 'destination', 'destinations', 'dimensions', 'documents', 'ethertype', 'ethertypes', 'extensions',
     'format', 'images', 'import', 'message', 'messages', 'mode', 'modules', 'multicast', 'navigation', 'observations', 'occurrences', 'ports', 'position', 'public',
-    'secret', 'session', 'sessions', 'source', 'sources', 'total', 'transactions', 'type', 'unicast', 'version', 'versions', 'volume',
+    'scanner', 'scanners', 'secret', 'session', 'sessions', 'source', 'sources', 'total', 'transactions', 'transport', 'type', 'unicast', 'version', 'versions', 'volume',
   ],
 );
 
 /** Product, tool and language names, written the same in every language. */
-const NAMES = ['Windows for Workgroups', 'Client Hello', 'Server Hello', 'tcpdump', 'English', 'Français', 'NetSift', 'Telnet', 'Ethernet', 'Kerberos', 'Novell', 'Apple', 'Xenix', 'GeoIP'];
+const NAMES = ['Windows for Workgroups', 'Client Hello', 'Server Hello', 'tcpdump', 'English', 'Français', 'NetSift', 'Telnet', 'Ethernet', 'Kerberos', 'Novell', 'Apple', 'Xenix', 'GeoIP', 'Call-ID'];
 
 /** True for a value that reads the same in every language (see `SAME_IN_FRENCH`), or a URL. */
 function isLanguageNeutral(value: string): boolean {

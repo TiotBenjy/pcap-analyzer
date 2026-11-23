@@ -9,6 +9,7 @@ import { geoipPromptEn } from './geoipPrompt';
 import { macAddressEn } from './macAddress';
 import { onlineEn } from './online';
 import { picturesEn } from './pictures';
+import { sipEn } from './sip';
 import { ssdpEn } from './ssdp';
 import { telnetEn } from './telnet';
 import { tlsEn } from './tls';
@@ -998,6 +999,7 @@ export const en = {
     geoipPrompt: geoipPromptEn,
     online: onlineEn,
     pictures: picturesEn,
+    sip: sipEn,
     ssdp: ssdpEn,
     telnet: telnetEn,
     tls: tlsEn,

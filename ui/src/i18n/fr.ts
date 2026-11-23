@@ -9,6 +9,7 @@ import { macAddressFr } from './macAddress';
 import { onlineFr } from './online';
 import { picturesFr } from './pictures';
 import { ssdpFr } from './ssdp';
+import { telnetFr } from './telnet';
 import { tlsFr } from './tls';
 import { timeRangeFr } from './timeRange';
 import { updatesFr } from './updates';
@@ -998,6 +999,7 @@ export const fr: Dictionary = {
     online: onlineFr,
     pictures: picturesFr,
     ssdp: ssdpFr,
+    telnet: telnetFr,
     tls: tlsFr,
     updates: updatesFr,
   },

@@ -266,6 +266,7 @@ const MODULES: &[(&str, &str)] = &[
     ("servers", "server_roles"),
     ("smb", "smb_items"),
     ("ssdp", "ssdp_messages"),
+    ("telnet", "telnet_sessions"),
     ("tls", "tls_sessions"),
 ];
 
@@ -283,6 +284,7 @@ fn ranged_rows(module: &str) -> Option<ModuleRows> {
         "pictures" => Some(ModuleRows::Pictures),
         "smb" => Some(ModuleRows::Smb),
         "ssdp" => Some(ModuleRows::Ssdp),
+        "telnet" => Some(ModuleRows::Telnet),
         "tls" => Some(ModuleRows::TlsSessions),
         _ => None,
     }

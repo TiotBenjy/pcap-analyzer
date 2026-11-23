@@ -41,3 +41,4 @@ Règles transverses (sauf mention contraire) :
 | `arp.md` | ARP | 5 |
 | `ethernet.md` | Ethernet | 5 |
 | `ftp.md` | FTP | 5 |
+| `telnet.md` | Telnet | 5 |

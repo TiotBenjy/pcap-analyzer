@@ -38,6 +38,7 @@ pub mod servers;
 pub mod session;
 pub mod smb;
 pub mod ssdp;
+pub mod telnet;
 mod time;
 pub mod tls;
 pub mod traffic;

@@ -10,6 +10,7 @@
 //! - [`ftp`]: FTP control sessions with passive, active and EPSV data connections (FTP view).
 //! - [`servers`]: DHCP, NTP, Kerberos, DNS SRV and LDAP exchanges (Servers view).
 //! - [`ssdp`]: SSDP announcements, searches, answers and malformed datagrams (SSDP view).
+//! - [`telnet`]: Telnet logins, option negotiation, long and split sessions (Telnet view).
 //! - [`writer`]: pcap (us/ns, both byte orders), pcapng (multiple IDBs, `if_tsresol`), gzip,
 //!   zstd, LZ4 frame.
 //! - [`split`]: chunk splitter by size, duration, packet count or explicit boundaries, with
@@ -51,6 +52,7 @@ pub mod servers;
 pub mod split;
 pub mod spread;
 pub mod ssdp;
+pub mod telnet;
 pub mod time;
 pub mod writer;
 

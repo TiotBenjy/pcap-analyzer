@@ -275,6 +275,8 @@ pub enum ModuleRows {
     Smb,
     /// SSDP messages.
     Ssdp,
+    /// Telnet sessions (folded: overlap).
+    Telnet,
     TlsSessions,
 }
 
@@ -309,6 +311,9 @@ impl ModuleRows {
                          AND last_ts >= ?1)"
             }
             Self::Ssdp => "SELECT count(*) FROM ssdp_messages WHERE ts >= ?1 AND ts < ?2",
+            Self::Telnet => {
+                "SELECT count(*) FROM telnet_sessions WHERE first_ts < ?2 AND last_ts >= ?1"
+            }
             Self::TlsSessions => "SELECT count(*) FROM tls_sessions WHERE ts >= ?1 AND ts < ?2",
         }
     }

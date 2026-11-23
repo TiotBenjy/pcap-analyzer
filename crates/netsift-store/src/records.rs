@@ -84,6 +84,8 @@ pub enum StoreRecord {
     SmbSession(Box<crate::smb::SmbSessionRow>),
     /// New SSDP datagram, folded into its device (`ssdp_messages`, `ssdp_devices`).
     Ssdp(Box<crate::ssdp::SsdpRow>),
+    /// One Telnet connection with its transcript (`telnet_sessions`), boxed: wide.
+    Telnet(Box<crate::telnet::TelnetRow>),
     /// One TLS session with its hellos and certificates (`tls_*` tables).
     Tls(Box<crate::tls::TlsSessionRow>),
 }
@@ -111,6 +113,7 @@ impl StoreRecord {
             Self::SmbAnnounce(_) => "smb_announces",
             Self::SmbSession(_) => "smb_sessions",
             Self::Ssdp(_) => "ssdp_messages",
+            Self::Telnet(_) => "telnet_sessions",
             Self::Tls(_) => "tls_sessions",
         }
     }
@@ -137,6 +140,7 @@ impl StoreRecord {
             Self::SmbAnnounce(r) => r.insert(conn),
             Self::SmbSession(r) => r.insert(conn),
             Self::Ssdp(r) => r.insert(conn),
+            Self::Telnet(r) => r.insert(conn),
             Self::Tls(r) => r.insert(conn),
         }
     }

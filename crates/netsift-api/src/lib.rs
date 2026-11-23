@@ -37,6 +37,7 @@ mod sessions;
 mod settings;
 mod smb;
 mod ssdp;
+mod telnet;
 mod tls;
 mod updates;
 
@@ -276,6 +277,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(settings::routes())
         .merge(smb::routes())
         .merge(ssdp::routes())
+        .merge(telnet::routes())
         .merge(tls::routes())
         .merge(updates::routes())
         .route("/server-info", get(dto::server_info))

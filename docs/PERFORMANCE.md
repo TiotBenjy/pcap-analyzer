@@ -377,6 +377,18 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
   par transfert ; le contenu d'un transfert est tenu en mémoire jusqu'à sa fin (budget de 128 Mio partagé
   par les shards, ADR-032), écrit une fois dans `blobs/` s'il est complet.
 
+## Telnet (P5.9, 2026-11-23, `feat/telnet`)
+
+- Requêtes de la vue sur 100 000 sessions de 2 Kio de transcription chacune, 5 000 clients (`telnet::tests::timings`,
+  ignoré, mode release, store seul, machine de développement chargée par d'autres compilations) : `/telnet/stats`
+  142 ms sur la session, 9 ms sur 1 h, 92 ms sur la moitié ; première page et total 2 à 23 ms, page suivante 2 ms ;
+  recherche dans les transcriptions avec filtre de résultat 252 ms sur la session, 30 ms sur 1 h, 191 ms sur la
+  moitié ; détail d'une session 0,5 ms. Les transcriptions sont dans une table à part (`telnet_transcripts`) :
+  compteurs et listes ne les lisent jamais ; la recherche `q` les parcourt (sous-requête corrélée, après les
+  autres filtres et la plage), d'où un coût linéaire en volume de texte (environ 200 Mo ici).
+- Stockage : au plus 64 Kio de texte par session (bornes de l'analyseur) ; une capture réelle compte rarement plus
+  de quelques centaines de sessions Telnet.
+
 ## Filtre temporel (P5.2b, 2026-11-22, `feat/time-filter-aggregates`)
 
 Même machine, jeu régénéré à l'identique (8 894 735 paquets sur 7 jours, 843 955 flux, 676 978 conversations),

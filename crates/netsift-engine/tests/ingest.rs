@@ -1058,3 +1058,64 @@ fn ssdp_devices_are_the_same_on_any_shard_count() {
     assert_eq!(ssdp_tables(&catalog, &one), reference);
     assert_eq!(ssdp_tables(&catalog, &four), reference);
 }
+
+#[test]
+fn telnet_sessions_are_the_same_on_any_shard_count_and_keep_secrets_apart() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let mut sc = Scenario::new();
+    netsift_fixtures::telnet::telnet_showcase(&mut sc);
+    let packets = sc.into_packets();
+
+    let file = tmp.path().join("telnet.pcap");
+    write_file(&file, &packets, &Encoding::pcap()).unwrap();
+    let single = run(&catalog, &file, &options(1));
+    let dir = tmp.path().join("chunks");
+    split(&dir, &packets, Naming::Dumpcap, vec![Encoding::pcapng()]);
+    let four = run(&catalog, &dir, &options(4));
+
+    let table = |report: &IngestReport| {
+        let session = catalog
+            .open_session(&report.session, OpenMode::ReadOnly)
+            .unwrap();
+        rows(
+            &session,
+            "SELECT flow_id || ' ' || client_ip || ' -> ' || server_ip || ':' || server_port || \
+             ' ' || coalesce(username, '-') || ' ' || coalesce(login, '-') || ' ' || \
+             client_bytes || '/' || server_bytes || ' ' || transcript_bytes || ' ' || truncated || \
+             ' ' || length(x.transcript) || ' ' || x.secrets FROM telnet_sessions \
+             JOIN telnet_transcripts x USING (flow_id) ORDER BY flow_id",
+        )
+    };
+    let reference = table(&single);
+    let showcase = netsift_fixtures::telnet::SHOWCASE;
+    assert_eq!(
+        n(reference.len()),
+        i64::try_from(showcase.sessions).unwrap()
+    );
+    assert_eq!(table(&four), reference);
+    assert_eq!(
+        scalar(
+            &catalog,
+            &single,
+            "SELECT count(*) FROM credentials WHERE protocol = 'telnet'"
+        ),
+        i64::try_from(showcase.credentials).unwrap()
+    );
+    assert_eq!(
+        scalar(
+            &catalog,
+            &single,
+            "SELECT count(*) FROM telnet_transcripts WHERE transcript LIKE '%-fixture%'"
+        ),
+        0
+    );
+    assert_eq!(
+        scalar(
+            &catalog,
+            &single,
+            "SELECT count(*) FROM telnet_transcripts WHERE secrets LIKE '%user-fixture%'"
+        ),
+        1
+    );
+}

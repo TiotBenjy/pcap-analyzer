@@ -40,3 +40,4 @@ Règles transverses (sauf mention contraire) :
 | `ssdp.md` | SSDP | 5 |
 | `arp.md` | ARP | 5 |
 | `ethernet.md` | Ethernet | 5 |
+| `ftp.md` | FTP | 5 |

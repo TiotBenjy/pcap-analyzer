@@ -1229,3 +1229,60 @@ acceptée : la remplacer par une nouvelle qui la référence.
 - Conséquences : +1,8 Mo dans le binaire et environ 0,1 s d'analyse de la table au premier import (build
   release) ; une table périmée laisse des préfixes récents sans constructeur (affichés « inconnu ») jusqu'à
   sa régénération ; les autres vues (ARP, Hosts) peuvent réutiliser `netsift_analyze::oui`.
+
+## ADR-032 — FTP : canal de données associé au contrôle dans le shard de la paire d'adresses
+
+- Contexte : P5.8 (onglet FTP, `docs/specs/ftp.md`). Les fichiers d'une session FTP passent par une autre
+  connexion TCP que le contrôle (port 21), annoncée par `PORT` / `EPRT` (actif) ou par les réponses `227` /
+  `229` (passif, RFC 959, RFC 2428). Les analyseurs sont instanciés par shard sans état partagé, et le
+  résultat doit être le même quel que soit le nombre de shards et le découpage en chunks. Deux pistes
+  étaient proposées : (a) le thread décodeur repère les annonces sur le port 21 et route le flux de données
+  attendu vers le shard du contrôle, comme tout l'ARP vers le shard 0 (P5.3) ; (b) les flux candidats sont
+  stockés comme objets orphelins puis appariés en fin d'import par (adresse, port, temps).
+- Décision :
+  - **ni (a) ni (b)** : le routage existant suffit pour le cas courant. `shard_hash`
+    (`netsift-flow/src/api.rs`, interface figée) hache le protocole et la **paire d'adresses non ordonnée,
+    ports ignorés** (pour les fragments IP) : le contrôle et un flux de données qui relient les deux mêmes
+    adresses sont toujours sur le même shard, vus dans l'ordre de capture. L'analyseur `ftp` associe donc
+    le canal au contrôle dans son propre état, sans changer le moteur. Un test de l'analyseur vérifie que
+    `shard_hash` ignore les ports (garde-fou si le routage change un jour) ;
+  - **association** : un flux TCP est le canal attendu s'il relie **les deux mêmes adresses que le
+    contrôle** (seule garantie qu'ils soient sur le même shard, quel que soit le nombre de shards) et si son
+    port répondant est le port annoncé ; l'adresse annoncée n'intervient pas (elle peut être interne, NAT).
+    Il doit avoir été créé après la commande qui a demandé le canal (`PASV`, `EPSV`, `PORT`, `EPRT`), ce que
+    donne son identifiant (index de trame de son premier paquet, ADR-022), et dans les 60 s (temps paquet)
+    qui suivent l'annonce ; la première correspondance consomme l'attente, ordre de recherche déterministe
+    (ordre des annonces). Une attente non consommée tombe à la réponse définitive du transfert ou à
+    l'annonce suivante, qui abandonne aussi un canal ouvert d'avance et jamais réclamé ;
+  - (a) écarté : l'analyse des réponses par paquet dans le décodeur ne voit pas un `227` coupé entre deux
+    segments ni retransmis (pas de réassemblage dans le décodeur), alourdit le thread unique du pipeline et
+    modifie une interface figée, pour un gain limité aux cas ci-dessous. (b) écarté : sans connaître les
+    annonces, chaque flux TCP est un candidat, et garder le contenu de tous les flux jusqu'à la fin de
+    l'import n'est pas borné ;
+  - **contenu** : tenu en mémoire pendant le transfert dans un budget de 128 Mio partagé par les shards
+    (compteur atomique de la configuration de l'analyseur, recréé par le moteur à chaque import, comme le
+    budget des blobs), puis stocké par `put_object` (64 Mio au plus par fichier) si le transfert est
+    complet. Un budget partagé plutôt que divisé par shard (`max_retained_bytes` d'HTTP) : un fichier de
+    64 Mio reste extractible quel que soit le nombre de cœurs.
+- Conséquences et limites :
+  - **FXP** (transfert entre deux serveurs), **serveur multi-adresses** dont la réponse `227` désigne une
+    autre adresse que celle du contrôle, et **hôte tiers** qui se connecte au port annoncé : le flux relie
+    une autre paire et n'est jamais associé, même s'il tombe par hasard sur le shard du contrôle (sinon le
+    résultat dépendrait du nombre de shards, et un tiers pourrait faire attribuer son contenu au transfert) ;
+    le transfert garde sa commande, son chemin et son statut, sans taille ni contenu (« canal de données non
+    vu »). Le test d'équivalence 1/4/7 shards contient un hôte tiers et un transfert FXP ;
+  - **NAT** : vu d'un côté du NAT, le contrôle et les données relient les mêmes adresses ; un `227` qui
+    annonce l'adresse interne du serveur est associé, puisque seule la paire compte ;
+  - **segmentation du `227`** : sans effet, l'analyseur lit le flux réassemblé. Un `227` retenu par le
+    réassemblage (segment perdu puis retransmis) arrive après l'ouverture du canal : les octets du canal
+    reçus avant sa lecture sont perdus pour ce transfert, marqué tronqué ;
+  - **port non standard** : seul le port 21 est reconnu comme contrôle ;
+  - **ports réutilisés** : un flux plus ancien que la commande ne peut pas être associé ; deux attentes du
+    même port sur la même paire : la plus ancienne d'abord ;
+  - **déterminisme** : les flux d'une paire arrivent au même shard dans le même ordre pour 1 à N shards et
+    tout découpage en chunks (test d'équivalence fichier unique et chunks, 1, 4 et 7 shards). Le résultat
+    ne dépend du nombre de shards ou de l'ordonnancement que lorsqu'une borne est atteinte : sessions et flux
+    de données suivis (4 096 et 1 024 au total, partagés entre les shards comme les bornes HTTP, au moins 16
+    par shard), budget mémoire partagé épuisé (comme le budget des blobs) ;
+  - FTPS implicite (990) et contrôle après `AUTH TLS` : chiffrés, non analysés (la note « suite chiffrée »
+    l'indique) ; leurs flux de données ne sont pas associés.

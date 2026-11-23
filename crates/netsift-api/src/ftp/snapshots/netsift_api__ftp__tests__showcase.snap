@@ -1,0 +1,194 @@
+---
+source: crates/netsift-api/src/ftp/tests.rs
+expression: "(stats, transfers[\"items\"].clone())"
+---
+[
+  {
+    "bytes": 7369,
+    "clients": 3,
+    "downloads": 3,
+    "failed": 1,
+    "listings": 1,
+    "logins_accepted": 4,
+    "logins_rejected": 1,
+    "servers": 3,
+    "sessions": 6,
+    "stored": 3,
+    "tls_sessions": 1,
+    "transfers": 5,
+    "uploads": 1,
+    "users": 5
+  },
+  [
+    {
+      "bytes": 1203,
+      "client": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.31",
+        "names": []
+      },
+      "command": "RETR",
+      "data_flow_id": "27",
+      "direction": "download",
+      "end_ts_us": 1700000000018500,
+      "flow_id": "0",
+      "listing": null,
+      "mime": "image/png",
+      "mode": "passive",
+      "mode_command": "PASV",
+      "path": "photos/harbour.png",
+      "restart_offset": null,
+      "seq": 0,
+      "server": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.33",
+        "names": []
+      },
+      "server_port": 21,
+      "sha256": "98153508910f22fe2302b7869bc912f23465b086387eb228c01f7fa2a462d9e7",
+      "status": 226,
+      "status_text": "Transfer complete.",
+      "truncated": false,
+      "ts_us": 1700000000012500,
+      "username": "alice"
+    },
+    {
+      "bytes": 31,
+      "client": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.31",
+        "names": []
+      },
+      "command": "STOR",
+      "data_flow_id": "43",
+      "direction": "upload",
+      "end_ts_us": 1700000000227500,
+      "flow_id": "0",
+      "listing": null,
+      "mime": "application/octet-stream",
+      "mode": "passive",
+      "mode_command": "PASV",
+      "path": "report.txt",
+      "restart_offset": null,
+      "seq": 1,
+      "server": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.33",
+        "names": []
+      },
+      "server_port": 21,
+      "sha256": "7468457e427b1294405984648884fb60dc87cd00063fc03836a493945372bb38",
+      "status": 226,
+      "status_text": "Transfer complete.",
+      "truncated": false,
+      "ts_us": 1700000000223000,
+      "username": "alice"
+    },
+    {
+      "bytes": 112,
+      "client": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.32",
+        "names": []
+      },
+      "command": "LIST",
+      "data_flow_id": "87",
+      "direction": "listing",
+      "end_ts_us": 1700000000748500,
+      "flow_id": "64",
+      "listing": "-rw-r--r--   1 ftp ftp      2048 Nov 20 10:00 notes.txt\ndrwxr-xr-x   2 ftp ftp      4096 Nov 20 10:00 archive\n",
+      "mime": null,
+      "mode": "active",
+      "mode_command": "PORT",
+      "path": "-la",
+      "restart_offset": null,
+      "seq": 0,
+      "server": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.33",
+        "names": []
+      },
+      "server_port": 21,
+      "sha256": null,
+      "status": 226,
+      "status_text": "Directory send OK.",
+      "truncated": false,
+      "ts_us": 1700000000742500,
+      "username": "bob"
+    },
+    {
+      "bytes": 23,
+      "client": {
+        "category": "reserved",
+        "country": null,
+        "ip": "2001:db8:1::31",
+        "names": []
+      },
+      "command": "RETR",
+      "data_flow_id": "125",
+      "direction": "download",
+      "end_ts_us": 1700000001267500,
+      "flow_id": "106",
+      "listing": null,
+      "mime": "application/octet-stream",
+      "mode": "passive",
+      "mode_command": "EPSV",
+      "path": "pub/README",
+      "restart_offset": null,
+      "seq": 0,
+      "server": {
+        "category": "reserved",
+        "country": null,
+        "ip": "2001:db8:1::33",
+        "names": []
+      },
+      "server_port": 21,
+      "sha256": "c7f40c9ae2bd8ede2eddf7c588b1a7a7c6d3172d8722cefd15b7636961676e22",
+      "status": 226,
+      "status_text": "Transfer complete.",
+      "truncated": false,
+      "ts_us": 1700000001261500,
+      "username": "anonymous"
+    },
+    {
+      "bytes": 6000,
+      "client": {
+        "category": "private",
+        "country": null,
+        "ip": "192.168.1.31",
+        "names": []
+      },
+      "command": "RETR",
+      "data_flow_id": "195",
+      "direction": "download",
+      "end_ts_us": 1700000002305500,
+      "flow_id": "172",
+      "listing": null,
+      "mime": null,
+      "mode": "passive",
+      "mode_command": "PASV",
+      "path": "iso/image.bin",
+      "restart_offset": null,
+      "seq": 0,
+      "server": {
+        "category": "reserved",
+        "country": null,
+        "ip": "203.0.113.21",
+        "names": []
+      },
+      "server_port": 21,
+      "sha256": null,
+      "status": 426,
+      "status_text": "Failure writing network stream.",
+      "truncated": false,
+      "ts_us": 1700000002296500,
+      "username": "carol"
+    }
+  ]
+]

@@ -3,6 +3,7 @@ import { arpFr } from './arp';
 import { credentialsFr } from './credentials';
 import { ethernetFr } from './ethernet';
 import { exportsFr } from './exports';
+import { ftpFr } from './ftp';
 import { geoipPromptFr } from './geoipPrompt';
 import { macAddressFr } from './macAddress';
 import { onlineFr } from './online';
@@ -647,7 +648,7 @@ export const fr: Dictionary = {
         connections: 'Flux entre hôtes, avec volumes et durées',
         openPorts: 'Ports ouverts observés et leurs services',
         smb: 'Sessions SMB, NetBIOS et empreintes NTLM',
-        pictures: 'Images extraites du trafic HTTP',
+        pictures: 'Images extraites du trafic HTTP et FTP',
         credentials: "Identifiants en clair et empreintes d'authentification",
         servers: "Hôtes jouant le rôle de serveur DNS, DHCP, LDAP ou autre",
         network: 'Graphe des communications entre hôtes',
@@ -992,6 +993,7 @@ export const fr: Dictionary = {
     credentials: credentialsFr,
     ethernet: ethernetFr,
     exportPcap: exportsFr,
+    ftp: ftpFr,
     geoipPrompt: geoipPromptFr,
     online: onlineFr,
     pictures: picturesFr,

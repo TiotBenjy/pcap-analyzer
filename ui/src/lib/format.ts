@@ -250,6 +250,16 @@ export function formatDuration(seconds: number, lang: string = currentLanguage()
   return `${Math.floor(total / 86_400)}${NBSP}${day} ${pad2(Math.floor((total % 86_400) / 3600))}${NBSP}h`;
 }
 
+/**
+ * Duration for a column of durations: under a minute, seconds with three decimals (`0.010 s`,
+ * `12.345 s`) so that the values line up; from a minute, as `formatDuration`.
+ */
+export function formatFixedDuration(seconds: number, lang: string = currentLanguage()): string {
+  const s = Math.max(0, finite(seconds));
+  if (s >= 59.9995) return formatDuration(s, lang);
+  return `${numberFormat(lang, { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(s)}${NBSP}s`;
+}
+
 /** Duration between two microsecond timestamps, empty when either is unknown. */
 export function formatSpan(firstUs: number | null, lastUs: number | null, lang: string = currentLanguage()): string {
   if (firstUs === null || lastUs === null) return '';

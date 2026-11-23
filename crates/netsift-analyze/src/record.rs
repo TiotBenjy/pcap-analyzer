@@ -43,6 +43,8 @@ pub enum Record {
     Dns(Box<crate::dns::DnsTransaction>),
     /// `ethernet`: link-layer addresses, pairs, EtherTypes and VLANs (additive deltas).
     Ethernet(crate::ethernet::EthernetRecord),
+    /// `ftp`: transcript line, transfer or control session.
+    Ftp(crate::ftp::FtpRecord),
     /// `connections`: traffic sent and received by one host (additive).
     HostTraffic(HostTrafficDelta),
     /// An HTTP request and its response (`http` analyzer), boxed: much larger than the others.

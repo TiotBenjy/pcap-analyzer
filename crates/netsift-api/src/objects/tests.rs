@@ -343,6 +343,7 @@ fn file_names_are_sanitized() {
         server_port: 80,
         host: Some("h.test".to_owned()),
         uri: uri.map(ToOwned::to_owned),
+        source: "http".to_owned(),
         client: netsift_store::connections::EndpointInfo::default(),
         server: netsift_store::connections::EndpointInfo::default(),
     };

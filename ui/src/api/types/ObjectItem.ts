@@ -31,9 +31,13 @@ thumb: string, occurrences: number, first_ts_us: number, last_ts_us: number,
  */
 flow_id: string, client: Endpoint, server: Endpoint, server_port: number, host: string | null, 
 /**
- * Request target as sent.
+ * Request target as sent (HTTP), or path of the transfer (FTP).
  */
 uri: string | null, 
+/**
+ * Protocol of the first occurrence: `http` (response body) or `ftp` (transferred file).
+ */
+source: string, 
 /**
  * `http://host/target` when it can be rebuilt (text only, never fetched).
  */

@@ -4,6 +4,7 @@ import { arpEn } from './arp';
 import { credentialsEn } from './credentials';
 import { ethernetEn } from './ethernet';
 import { exportsEn } from './exports';
+import { ftpEn } from './ftp';
 import { geoipPromptEn } from './geoipPrompt';
 import { macAddressEn } from './macAddress';
 import { onlineEn } from './online';
@@ -647,7 +648,7 @@ export const en = {
         connections: 'Flows between hosts, with volumes and durations',
         openPorts: 'Ports seen answering, with their services',
         smb: 'SMB sessions, NetBIOS and NTLM hashes',
-        pictures: 'Images extracted from HTTP traffic',
+        pictures: 'Images extracted from HTTP and FTP traffic',
         credentials: 'Clear-text credentials and authentication hashes',
         servers: 'Hosts acting as DNS, DHCP, LDAP or other servers',
         network: 'Graph of the communications between hosts',
@@ -992,6 +993,7 @@ export const en = {
     credentials: credentialsEn,
     ethernet: ethernetEn,
     exportPcap: exportsEn,
+    ftp: ftpEn,
     geoipPrompt: geoipPromptEn,
     online: onlineEn,
     pictures: picturesEn,

@@ -468,6 +468,81 @@ CREATE INDEX flows_service ON flows (dst_ip, dst_port, transport, src_ip);
 -- index flows_src_ip
 CREATE INDEX flows_src_ip ON flows (src_ip);
 
+-- table ftp_lines
+CREATE TABLE ftp_lines (
+    flow_id   INTEGER NOT NULL,
+    seq       INTEGER NOT NULL,
+    ts        INTEGER NOT NULL,
+    dir       TEXT NOT NULL CHECK (dir IN ('c', 's', 'n')),  -- command, reply, note
+    head      TEXT,                                          -- verb, or code and separator
+    text      TEXT NOT NULL,
+    secret    INTEGER NOT NULL DEFAULT 0,                    -- PASS / ACCT argument
+    truncated INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (flow_id, seq)
+) WITHOUT ROWID;
+
+-- table ftp_sessions
+CREATE TABLE ftp_sessions (
+    flow_id              INTEGER PRIMARY KEY,
+    client_ip            TEXT NOT NULL,
+    client_port          INTEGER NOT NULL,
+    server_ip            TEXT NOT NULL,
+    server_port          INTEGER NOT NULL,
+    first_ts             INTEGER NOT NULL,
+    last_ts              INTEGER NOT NULL,
+    banner               TEXT,                         -- text of the first 220 reply
+    username             TEXT,                         -- last USER argument
+    login                TEXT CHECK (login IN ('accepted', 'rejected')),
+    tls                  INTEGER NOT NULL DEFAULT 0,   -- AUTH TLS accepted, rest encrypted
+    commands             INTEGER NOT NULL DEFAULT 0,
+    replies              INTEGER NOT NULL DEFAULT 0,
+    files                INTEGER NOT NULL DEFAULT 0,   -- RETR, STOR, STOU, APPE commands
+    listings             INTEGER NOT NULL DEFAULT 0,   -- LIST, NLST, MLSD commands
+    bytes                INTEGER NOT NULL DEFAULT 0,   -- data bytes of the transfers
+    lines                INTEGER NOT NULL DEFAULT 0,   -- transcript lines stored
+    transcript_truncated INTEGER NOT NULL DEFAULT 0,
+    gaps                 INTEGER NOT NULL DEFAULT 0
+);
+
+-- index ftp_sessions_span
+CREATE INDEX ftp_sessions_span ON ftp_sessions (first_ts, last_ts);
+
+-- table ftp_transfers
+CREATE TABLE ftp_transfers (
+    id             INTEGER PRIMARY KEY,
+    flow_id        INTEGER NOT NULL,              -- control flow
+    seq            INTEGER NOT NULL,              -- order within the session
+    ts             INTEGER NOT NULL,              -- transfer command
+    end_ts         INTEGER,
+    command        TEXT NOT NULL,                 -- RETR, STOR, STOU, APPE, LIST, NLST, MLSD
+    path           TEXT,
+    direction      TEXT NOT NULL CHECK (direction IN ('download', 'upload', 'listing')),
+    mode           TEXT CHECK (mode IN ('active', 'passive')),
+    mode_command   TEXT,                          -- PASV, EPSV, PORT or EPRT
+    data_flow_id   INTEGER,                       -- flows.id of the data connection
+    status         INTEGER,                       -- final reply code
+    status_text    TEXT,
+    bytes          INTEGER NOT NULL DEFAULT 0,
+    restart_offset INTEGER,
+    truncated      INTEGER NOT NULL DEFAULT 0,
+    sha256         TEXT,                          -- stored content (objects)
+    mime           TEXT,
+    listing        TEXT,                          -- first 4 KiB of a listing
+    UNIQUE (flow_id, seq)
+);
+
+-- index ftp_transfers_direction
+CREATE INDEX ftp_transfers_direction ON ftp_transfers (direction, ts);
+
+-- index ftp_transfers_sha256
+CREATE INDEX ftp_transfers_sha256 ON ftp_transfers (sha256, ts);
+
+-- index ftp_transfers_stats
+CREATE INDEX ftp_transfers_stats ON ftp_transfers (direction, status, bytes, sha256, ts);
+
+-- index ftp_transfers_ts
+CREATE INDEX ftp_transfers_ts ON ftp_transfers (ts);
+
 -- table host_traffic
 CREATE TABLE host_traffic (
     ip               TEXT PRIMARY KEY NOT NULL,
@@ -803,7 +878,7 @@ CREATE TABLE objects (
     server_port   INTEGER NOT NULL,
     host          TEXT,
     uri           TEXT                               -- request target as sent
-);
+, source TEXT NOT NULL DEFAULT 'http');
 
 -- index objects_host
 CREATE INDEX objects_host ON objects (host, id);

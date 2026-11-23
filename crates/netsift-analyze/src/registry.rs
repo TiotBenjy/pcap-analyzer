@@ -11,6 +11,7 @@ use crate::core::CoreAnalyzer;
 use crate::credentials::CredentialsAnalyzer;
 use crate::dns::{DnsAnalyzer, DnsConfig};
 use crate::ethernet::{EthernetAnalyzer, EthernetConfig};
+use crate::ftp::{FtpAnalyzer, FtpConfig};
 use crate::geo::GeoDb;
 use crate::http::{HttpAnalyzer, HttpConfig};
 use crate::ports::{PortsAnalyzer, PortsConfig};
@@ -50,6 +51,7 @@ pub struct AnalyzerConfig {
     pub core: CoreConfig,
     pub dns: DnsConfig,
     pub ethernet: EthernetConfig,
+    pub ftp: FtpConfig,
     pub http: HttpConfig,
     pub ports: PortsConfig,
     pub servers: ServersConfig,
@@ -82,6 +84,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (CredentialsAnalyzer::ID, factory(CredentialsAnalyzer::boxed)),
         (DnsAnalyzer::ID, factory(DnsAnalyzer::boxed)),
         (EthernetAnalyzer::ID, factory(EthernetAnalyzer::boxed)),
+        (FtpAnalyzer::ID, factory(FtpAnalyzer::boxed)),
         (HttpAnalyzer::ID, factory(HttpAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
         (ServersAnalyzer::ID, factory(ServersAnalyzer::boxed)),

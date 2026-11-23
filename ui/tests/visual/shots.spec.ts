@@ -42,6 +42,10 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'dns-range': async (page) => rangedPath(page, 'dns'),
   ethernet: async (page) => `/sessions/${await demoSessionId(page)}/ethernet`,
   'ethernet-range': async (page) => rangedPath(page, 'ethernet'),
+  ftp: async (page) => `/sessions/${await demoSessionId(page)}/ftp`,
+  'ftp-range': async (page) => rangedPath(page, 'ftp'),
+  'ftp-transcript': async (page) => `/sessions/${await demoSessionId(page)}/ftp`,
+  'ftp-file': async (page) => `/sessions/${await demoSessionId(page)}/ftp`,
   http: async (page) => `/sessions/${await demoSessionId(page)}/http`,
   'http-range': async (page) => rangedPath(page, 'http'),
   'http-headers': async (page) => `/sessions/${await demoSessionId(page)}/http-headers`,
@@ -56,6 +60,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'overview-range': async (page) => rangedPath(page, 'overview'),
   'overview-range-dialog': async (page) => rangedPath(page, 'overview'),
   pictures: async (page) => `/sessions/${await demoSessionId(page)}/pictures`,
+  'pictures-ftp': async (page) => `/sessions/${await demoSessionId(page)}/pictures`,
   servers: async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   'servers-empty': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
   'servers-filter': async (page) => `/sessions/${await demoSessionId(page)}/servers`,
@@ -94,6 +99,12 @@ const DEMO_SECRETS = [
   'imap-fixture',
   'ldap-fixture',
   '::CONTOSO:',
+  'Tr0ub4dor-fixture',
+  'hunter2-fixture',
+  'wrong-fixture',
+  'admin123-fixture',
+  'pa55-fixture',
+  'demo-fixture',
 ];
 
 /** Placeholder id when no session exists: the session views then render their error or not-found state. */
@@ -616,6 +627,15 @@ for (const lang of LANGS) {
             const sources = await grid.locator('img').evaluateAll((imgs) => imgs.map((i) => i.getAttribute('src') ?? ''));
             for (const src of sources) expect(src.startsWith('data:image/png;base64,')).toBe(true);
           }
+          if (view === 'pictures-ftp' && !path.includes(NO_SESSION)) {
+            // The image received by FTP opened in the viewer: its path is labelled as an FTP path.
+            await page.getByPlaceholder(D.views.pictures.filters.search).fill('photos/harbour');
+            const grid = page.getByRole('list', { name: D.views.pictures.gridLabel });
+            await expect(grid.getByRole('button')).toHaveCount(1);
+            await grid.getByRole('button').first().click();
+            await expect(page.getByText(D.views.pictures.viewer.ftpPath, { exact: true })).toBeVisible();
+            await page.waitForLoadState('networkidle');
+          }
           if (view === 'tls' && !path.includes(NO_SESSION)) {
             await expect(page.getByTestId('tls-summary')).toBeVisible();
             await expect(page.getByRole('img', { name: pattern(D.views.tls.charts.versionsLabel) })).toBeVisible();
@@ -684,6 +704,52 @@ for (const lang of LANGS) {
               await page.waitForLoadState('networkidle');
               await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
             }
+          }
+
+          if (view.startsWith('ftp') && !path.includes(NO_SESSION)) {
+            await expect(page.getByTestId('ftp-summary')).toBeVisible();
+            const sessions = page.getByRole('list', { name: D.views.ftp.sessions.label });
+            await expect(sessions).toBeVisible();
+            await expect(page.getByRole('list', { name: D.views.ftp.transfers.label })).toBeVisible();
+            if (view === 'ftp-range') {
+              // Folded session counters: "whole session" under the column titles, or in each card below md.
+              const whole = page.getByText(new RegExp(escapeRe(D.timeRange.wholeSession), 'i')).locator('visible=true');
+              await expect(whole.first()).toBeVisible();
+            }
+            if (view === 'ftp-transcript') {
+              // The first session of the file server (passive, a download and an upload) expanded:
+              // transcript with its masked password, then its first transfer with the thumbnail.
+              await page.getByPlaceholder(D.views.ftp.sessions.search).fill('192.168.1.33');
+              // The demo logins of the workstation (192.168.1.10, no transfer) leave the list.
+              await expect(sessions.getByText('192.168.1.10')).toHaveCount(0);
+              await page.waitForLoadState('networkidle');
+              await sessions.getByRole('button', { expanded: false }).first().click();
+              await expect(page.getByTestId('ftp-transcript')).toBeVisible();
+              await page
+                .getByRole('list', { name: D.views.ftp.detail.transfers })
+                .getByRole('button', { expanded: false })
+                .first()
+                .click();
+              await page.waitForLoadState('networkidle');
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+            }
+            if (view === 'ftp-file') {
+              // The image downloaded by FTP expanded in "Transferred files" (not nested): backend
+              // thumbnail, download and link to Pictures.
+              const transfers = page.getByRole('list', { name: D.views.ftp.transfers.label });
+              await page.getByPlaceholder(D.views.ftp.transfers.search).fill('photos/harbour');
+              await expect(transfers.getByText('files/0.txt')).toHaveCount(0);
+              await transfers.getByRole('button', { expanded: false }).first().click();
+              const thumb = page.getByRole('img', { name: filled(D.views.ftp.transfers.thumbnail, { name: 'harbour.png' }) });
+              await expect(thumb).toBeVisible();
+              expect((await thumb.getAttribute('src'))?.startsWith('data:image/png;base64,')).toBe(true);
+              await expect(page.getByRole('button', { name: D.views.ftp.transfers.download })).toBeVisible();
+              await page.waitForLoadState('networkidle');
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, document.getElementById('main')?.scrollHeight ?? 0));
+            }
+            // Fixture passwords are masked in the transcript.
+            const text = await page.evaluate(() => document.body.innerText);
+            for (const secret of DEMO_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
           }
 
           if ((view === 'servers' || view === 'servers-range') && !path.includes(NO_SESSION)) {

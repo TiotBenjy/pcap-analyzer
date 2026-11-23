@@ -18,7 +18,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { PageHeader } from '../../components/PageHeader';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
-import { formatByteCount, formatCount } from '../../lib/format';
+import { formatBytes, formatCount } from '../../lib/format';
 import { SessionGate } from '../connections/SessionGate';
 import { useViewableSession } from '../http/state';
 import { ConnectionsTab } from './ConnectionsTab';
@@ -216,7 +216,7 @@ function StatBand({ stats: s }: { stats: MqttStats }) {
         icon={RadioTower}
         label={t('views.mqtt.stat.topics')}
         value={formatCount(s.topics)}
-        hint={t('views.mqtt.stat.topicsHint', { bytes: formatByteCount(s.payload_bytes) })}
+        hint={t('views.mqtt.stat.topicsHint', { bytes: formatBytes(s.payload_bytes) })}
       />
     </section>
   );

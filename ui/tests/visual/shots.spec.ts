@@ -54,9 +54,13 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'network-detail': async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'network-range': async (page) => rangedPath(page, 'network'),
   mqtt: async (page) => `/sessions/${await demoSessionId(page)}/mqtt`,
+  'mqtt-brokers': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=brokers`,
+  'mqtt-clients': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=clients`,
   'mqtt-connection': async (page) => `/sessions/${await demoSessionId(page)}/mqtt`,
+  'mqtt-hex': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=messages`,
   'mqtt-messages': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=messages`,
   'mqtt-range': async (page) => rangedPath(page, 'mqtt'),
+  'mqtt-range-empty': async (page) => emptyRangePath(page, 'mqtt'),
   'mqtt-topics': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=topics`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   'open-ports-range': async (page) => rangedPath(page, 'open-ports'),
@@ -814,7 +818,11 @@ for (const lang of LANGS) {
             for (const secret of TELNET_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
           }
 
-          if (view.startsWith('mqtt') && !path.includes(NO_SESSION)) {
+          if (view === 'mqtt-range-empty' && !path.includes(NO_SESSION)) {
+            await expect(page.getByText(D.timeRange.emptyTitle).first()).toBeVisible();
+          }
+
+          if (view.startsWith('mqtt') && view !== 'mqtt-range-empty' && !path.includes(NO_SESSION)) {
             await expect(page.getByTestId('mqtt-summary')).toBeVisible();
             if (view === 'mqtt' || view === 'mqtt-range' || view === 'mqtt-connection') {
               const connections = page.getByRole('list', { name: D.views.mqtt.connections.label });
@@ -836,7 +844,10 @@ for (const lang of LANGS) {
                 await transcript.getByRole('button', { expanded: false }).nth(1).click();
                 await expect(transcript.getByTestId('mqtt-payload')).toBeVisible();
                 await page.waitForLoadState('networkidle');
-                await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+                // The unfolded row from its top: CONNECT, CONNACK, end and the masked password.
+                await connections.getByRole('button', { expanded: true }).first().evaluate((el) => {
+                  el.scrollIntoView({ block: 'start' });
+                });
               }
             }
             if (view === 'mqtt-topics') {
@@ -849,6 +860,23 @@ for (const lang of LANGS) {
               await expect(page.getByTestId('mqtt-topic-detail')).toBeVisible();
               await page.waitForLoadState('networkidle');
               await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+            }
+            if (view === 'mqtt-clients' || view === 'mqtt-brokers') {
+              const label = view === 'mqtt-clients' ? D.views.mqtt.clients.label : D.views.mqtt.brokers.label;
+              await expect(page.getByRole('table', { name: label }).or(page.getByRole('list', { name: label }))).toBeVisible();
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, document.getElementById('main')?.scrollHeight ?? 0));
+            }
+            if (view === 'mqtt-hex') {
+              // The binary message of the legacy gateway unfolded: hexadecimal dump only.
+              const messages = page.getByRole('list', { name: D.views.mqtt.messages.label });
+              await page.getByPlaceholder(D.views.mqtt.messages.search).fill('legacy-gw');
+              await expect(messages.getByText('plant/', { exact: false })).toHaveCount(0);
+              await messages.getByRole('button', { expanded: false }).first().click();
+              await expect(page.getByTestId('mqtt-payload')).toBeVisible();
+              await page.waitForLoadState('networkidle');
+              await messages.getByRole('button', { expanded: true }).first().evaluate((el) => {
+                el.scrollIntoView({ block: 'start' });
+              });
             }
             if (view === 'mqtt-messages') {
               // The first message unfolded: payload excerpt as escaped text, properties.

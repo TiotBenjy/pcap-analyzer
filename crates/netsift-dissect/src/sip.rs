@@ -80,7 +80,9 @@ pub struct DigestAuth {
 }
 
 /// A decoded SIP message. Text fields are bounded and free of control characters.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Debug` shows the size of the raw text, never the text itself.
+#[derive(Clone, PartialEq, Eq)]
 pub struct SipMessage {
     pub start: StartLine,
     /// `Call-ID` (`i`), cut to [`MAX_CALL_ID`] bytes.
@@ -118,10 +120,39 @@ pub struct SipMessage {
     /// Size of the message, in bytes.
     pub size: usize,
     /// The first [`MAX_RAW`] bytes as text: UTF-8 with replacement, LF line ends, control and
-    /// invisible formatting characters other than tab and LF replaced by U+FFFD.
+    /// invisible formatting characters other than tab and LF replaced by U+FFFD, and the values of
+    /// the authentication headers masked ([`redact_auth`]).
     pub raw: String,
     /// True when the message is longer than [`MAX_RAW`].
     pub raw_truncated: bool,
+}
+
+impl std::fmt::Debug for SipMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SipMessage")
+            .field("start", &self.start)
+            .field("call_id", &self.call_id)
+            .field("from", &self.from)
+            .field("to", &self.to)
+            .field("cseq", &self.cseq)
+            .field("cseq_method", &self.cseq_method)
+            .field("user_agent", &self.user_agent)
+            .field("server", &self.server)
+            .field("contact", &self.contact)
+            .field("via", &self.via)
+            .field("expires", &self.expires)
+            .field("content_type", &self.content_type)
+            .field("content_length", &self.content_length)
+            .field("reason_header", &self.reason_header)
+            .field("challenge_realm", &self.challenge_realm)
+            .field("auth", &self.auth)
+            .field("sdp", &self.sdp)
+            .field("headers_truncated", &self.headers_truncated)
+            .field("size", &self.size)
+            .field("raw", &format_args!("<{} bytes>", self.raw.len()))
+            .field("raw_truncated", &self.raw_truncated)
+            .finish()
+    }
 }
 
 impl SipMessage {
@@ -193,6 +224,10 @@ pub fn message_len(data: &[u8]) -> Result<Option<usize>, FrameError> {
     };
     let mut length = 0usize;
     for line in head.header_lines(window) {
+        // A folded continuation line belongs to the previous header (as in `collect_headers`).
+        if line.first().is_some_and(|b| *b == b' ' || *b == b'\t') {
+            continue;
+        }
         if let Some((name, value)) = split_header(line)
             && (name.eq_ignore_ascii_case(b"content-length") || name.eq_ignore_ascii_case(b"l"))
         {
@@ -225,6 +260,7 @@ pub fn parse(data: &[u8]) -> Option<SipMessage> {
         .unwrap_or(window.len());
     let start = start_line(trim_cr(window.get(..first_end)?))?;
     let (raw, raw_truncated) = raw_text(data, MAX_RAW);
+    let raw = redact_auth(&raw);
     let mut msg = SipMessage {
         start,
         call_id: None,
@@ -595,34 +631,64 @@ struct DigestParams {
     qop: Option<String>,
 }
 
-/// `Digest k=v, k="v", ...`; `None` for another scheme.
-fn digest_params(value: &[u8]) -> Option<DigestParams> {
-    let text = String::from_utf8_lossy(value);
+/// One `key=value` parameter of an authentication header: lower-case key, unescaped value, and
+/// whether the value was quoted.
+struct AuthParam {
+    key: String,
+    value: String,
+    quoted: bool,
+}
+
+/// Scheme and parameters of an authentication header value (`Digest k=v, k="v", ...`), at most
+/// [`MAX_AUTH_PARAMS`]; the flag is set when more were left unread.
+fn auth_params(text: &str) -> (&str, Vec<AuthParam>, bool) {
     let text = text.trim_start();
     let scheme_end = text
         .find(|c: char| c.is_ascii_whitespace())
         .unwrap_or(text.len());
-    if !text.get(..scheme_end)?.eq_ignore_ascii_case("digest") {
-        return None;
-    }
-    let mut rest = text.get(scheme_end..)?;
-    let mut out = DigestParams::default();
-    for _ in 0..MAX_AUTH_PARAMS {
+    let scheme = text.get(..scheme_end).unwrap_or_default();
+    let mut rest = text.get(scheme_end..).unwrap_or_default();
+    let mut out = Vec::new();
+    loop {
         rest = rest.trim_start_matches(|c: char| c == ',' || c.is_ascii_whitespace());
         let Some(eq) = rest.find('=') else { break };
-        let key = rest.get(..eq)?.trim().to_ascii_lowercase();
-        rest = rest.get(eq.saturating_add(1)..)?.trim_start();
-        let value = if let Some(quoted) = rest.strip_prefix('"') {
+        if out.len() >= MAX_AUTH_PARAMS {
+            return (scheme, out, true);
+        }
+        let key = rest
+            .get(..eq)
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        rest = rest
+            .get(eq.saturating_add(1)..)
+            .unwrap_or_default()
+            .trim_start();
+        let (value, quoted) = if let Some(quoted) = rest.strip_prefix('"') {
             let end = closing_quote(quoted);
             rest = quoted.get(end.saturating_add(1)..).unwrap_or_default();
-            unescape(quoted.get(..end).unwrap_or(quoted))
+            (unescape(quoted.get(..end).unwrap_or(quoted)), true)
         } else {
             let end = rest.find(',').unwrap_or(rest.len());
             let v = rest.get(..end).unwrap_or_default().trim().to_owned();
             rest = rest.get(end..).unwrap_or_default();
-            v
+            (v, false)
         };
-        let slot = match key.as_str() {
+        out.push(AuthParam { key, value, quoted });
+    }
+    (scheme, out, false)
+}
+
+/// `Digest k=v, k="v", ...`; `None` for another scheme.
+fn digest_params(value: &[u8]) -> Option<DigestParams> {
+    let text = String::from_utf8_lossy(value);
+    let (scheme, params, _) = auth_params(&text);
+    if !scheme.eq_ignore_ascii_case("digest") {
+        return None;
+    }
+    let mut out = DigestParams::default();
+    for p in params {
+        let slot = match p.key.as_str() {
             "username" => &mut out.username,
             "realm" => &mut out.realm,
             "uri" => &mut out.uri,
@@ -631,7 +697,7 @@ fn digest_params(value: &[u8]) -> Option<DigestParams> {
             _ => continue,
         };
         if slot.is_none() {
-            *slot = field(value.as_bytes(), MAX_FIELD);
+            *slot = field(p.value.as_bytes(), MAX_FIELD);
         }
     }
     Some(out)
@@ -708,6 +774,122 @@ pub fn raw_text(data: &[u8], max: usize) -> (String, bool) {
         }
     }
     (out, truncated)
+}
+
+/// What replaces a secret in the raw text.
+pub const MASK: &str = "<masked>";
+/// Digest parameters kept in clear in the raw text: identity and context, never the proof
+/// (`response`, `nonce`, `cnonce`, `opaque`, `nc`, `nextnonce`, `rspauth`... are masked).
+const KEPT_AUTH_PARAMS: &[&str] = &[
+    "username",
+    "realm",
+    "uri",
+    "algorithm",
+    "qop",
+    "stale",
+    "domain",
+];
+
+/// Headers whose value carries authentication material (RFC 3261 section 20; none has a compact
+/// form).
+fn is_auth_header(name: &str) -> bool {
+    [
+        "authorization",
+        "proxy-authorization",
+        "www-authenticate",
+        "proxy-authenticate",
+        "authentication-info",
+    ]
+    .iter()
+    .any(|h| name.eq_ignore_ascii_case(h))
+}
+
+/// The value of an authentication header with its secrets masked: for `Digest`, the parameters of
+/// [`KEPT_AUTH_PARAMS`] in clear and every other value replaced by [`MASK`]; for any other scheme
+/// (`Basic`, unknown) and for `Authentication-Info`, the whole value.
+fn redact_auth_value(name: &str, value: &str) -> String {
+    if name.eq_ignore_ascii_case("authentication-info") {
+        return MASK.to_owned();
+    }
+    let (scheme, params, more) = auth_params(value);
+    if !scheme.eq_ignore_ascii_case("digest") {
+        return MASK.to_owned();
+    }
+    let mut parts: Vec<String> = params
+        .iter()
+        .map(|p| {
+            if !KEPT_AUTH_PARAMS.contains(&p.key.as_str()) {
+                format!("{}={MASK}", p.key)
+            } else if p.quoted {
+                format!(
+                    "{}=\"{}\"",
+                    p.key,
+                    p.value.replace('\\', "\\\\").replace('"', "\\\"")
+                )
+            } else {
+                format!("{}={}", p.key, p.value)
+            }
+        })
+        .collect();
+    if more {
+        parts.push(MASK.to_owned());
+    }
+    format!("{scheme} {}", parts.join(", "))
+}
+
+/// Raw text (LF line ends) with the values of the authentication headers of its head masked
+/// ([`redact_auth_value`]), folded continuation lines included (joined to their header). The
+/// start line and the body are kept as they are.
+pub fn redact_auth(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    // An authentication header being read: its name and value (continuation lines appended).
+    let mut pending: Option<(String, String)> = None;
+    let flush = |out: &mut String, pending: &mut Option<(String, String)>| {
+        if let Some((name, value)) = pending.take() {
+            out.push_str(&name);
+            out.push_str(": ");
+            out.push_str(&redact_auth_value(&name, &value));
+            out.push('\n');
+        }
+    };
+    let mut in_head = true;
+    let mut lines = raw.split_inclusive('\n').enumerate();
+    for (i, line) in lines.by_ref() {
+        let content = line.strip_suffix('\n').unwrap_or(line);
+        let folded = content.starts_with([' ', '\t']);
+        if folded && let Some((_, value)) = pending.as_mut() {
+            value.push(' ');
+            value.push_str(content.trim());
+            continue;
+        }
+        flush(&mut out, &mut pending);
+        if i == 0 {
+            out.push_str(line);
+            continue;
+        }
+        if content.is_empty() {
+            in_head = false;
+            out.push_str(line);
+            break;
+        }
+        match content.split_once(':') {
+            Some((name, value)) if is_auth_header(name.trim()) => {
+                pending = Some((name.trim().to_owned(), value.trim().to_owned()));
+            }
+            _ => out.push_str(line),
+        }
+    }
+    flush(&mut out, &mut pending);
+    if !in_head {
+        for (_, line) in lines {
+            out.push_str(line);
+        }
+    }
+    // A raw text without final line end keeps none.
+    if !raw.ends_with('\n') && out.ends_with('\n') {
+        out.pop();
+    }
+    out
 }
 
 #[cfg(test)]

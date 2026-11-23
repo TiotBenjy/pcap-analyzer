@@ -257,3 +257,89 @@ mod props {
         }
     }
 }
+
+#[test]
+fn raw_text_masks_the_authentication_secrets() {
+    let text = "REGISTER sip:registrar.example.com SIP/2.0\r\n\
+Call-ID: reg-1\r\n\
+Authorization: Digest username=\"alice\", realm=\"example.com\",\r\n \
+nonce=\"ea9c8e88df84f1cec4341ae6cbe5a359\", uri=\"sip:registrar.example.com\",\r\n\
+\tresponse=\"dfe56131d1958046689d83306477ecc\", algorithm=MD5, cnonce=\"0a4f113b\", opaque=\"5ccc\", nc=00000001\r\n\
+Proxy-Authorization: Basic dXNlcjpzZWNyZXQ=\r\n\
+WWW-Authenticate: Digest realm=\"pbx\", nonce=\"ea9c8e88df84f1cec4341ae6cbe5a359\"\r\n\
+proxy-authorization:NewScheme token=abcdef\r\n\
+Authentication-Info: nextnonce=\"47364c23432d2e131a5fb210812c\", rspauth=\"7d4a\"\r\n\
+Content-Length: 0\r\n\r\n";
+    let m = parse(text.as_bytes()).unwrap();
+    for secret in [
+        "ea9c8e88df84f1cec4341ae6cbe5a359",
+        "dfe56131d1958046689d83306477ecc",
+        "0a4f113b",
+        "5ccc",
+        "dXNlcjpzZWNyZXQ=",
+        "abcdef",
+        "47364c23432d2e131a5fb210812c",
+        "7d4a",
+    ] {
+        assert!(!m.raw.contains(secret), "{secret} in {}", m.raw);
+    }
+    // Identity and context stay readable; the parsed fields are unchanged.
+    assert!(
+        m.raw.contains(
+            "Authorization: Digest username=\"alice\", realm=\"example.com\", nonce=<masked>, \
+         uri=\"sip:registrar.example.com\", response=<masked>, algorithm=MD5, cnonce=<masked>, \
+         opaque=<masked>, nc=<masked>\n"
+        ),
+        "{}",
+        m.raw
+    );
+    assert!(m.raw.contains("Proxy-Authorization: <masked>\n"));
+    assert!(
+        m.raw
+            .contains("WWW-Authenticate: Digest realm=\"pbx\", nonce=<masked>\n")
+    );
+    assert!(m.raw.contains("proxy-authorization: <masked>\n"));
+    assert!(m.raw.contains("Authentication-Info: <masked>\n"));
+    assert!(
+        m.raw
+            .starts_with("REGISTER sip:registrar.example.com SIP/2.0\nCall-ID: reg-1\n")
+    );
+    assert!(m.raw.ends_with("Content-Length: 0\n\n"));
+    assert_eq!(m.auth.as_ref().unwrap().username.as_deref(), Some("alice"));
+    assert_eq!(m.challenge_realm.as_deref(), Some("pbx"));
+    assert!(
+        !format!("{m:?}").contains("Call-ID: reg-1"),
+        "Debug never prints the raw text"
+    );
+}
+
+#[test]
+fn masking_spares_the_body_and_survives_a_cut_header() {
+    // The body is not a head: a line that looks like a header is kept.
+    let body = "MESSAGE sip:b SIP/2.0\r\nContent-Length: 30\r\n\r\nAuthorization: Basic not-head\n";
+    let m = parse(body.as_bytes()).unwrap();
+    assert!(m.raw.ends_with("\n\nAuthorization: Basic not-head\n"));
+    // A datagram cut inside the value: what is there is masked, no line end is added.
+    let cut = parse(b"INVITE sip:b SIP/2.0\r\nAuthorization: Basic dXNlcjpw").unwrap();
+    assert_eq!(cut.raw, "INVITE sip:b SIP/2.0\nAuthorization: <masked>");
+    assert_eq!(redact_auth("no header"), "no header");
+}
+
+#[test]
+fn content_length_out_of_range_is_refused() {
+    assert_eq!(
+        message_len(b"OPTIONS sip:b SIP/2.0\r\nContent-Length: -5\r\n\r\n"),
+        Err(FrameError::BadLength)
+    );
+    assert_eq!(
+        message_len(b"OPTIONS sip:b SIP/2.0\r\nContent-Length: 99999999999999\r\n\r\n"),
+        Err(FrameError::TooLarge)
+    );
+    // A folded continuation line is never read as Content-Length (as `collect_headers` does).
+    assert_eq!(
+        message_len(b"OPTIONS sip:b SIP/2.0\r\nSubject: a\r\n Content-Length: 5\r\n\r\nNEXT"),
+        Ok(Some(57))
+    );
+    let m = parse(b"OPTIONS sip:b SIP/2.0\r\nContent-Length: -5\r\n\r\n").unwrap();
+    assert_eq!(m.content_length, None);
+}

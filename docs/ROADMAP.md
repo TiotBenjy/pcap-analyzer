@@ -637,6 +637,15 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       borné et affiché en texte/hexa échappé), PING, DISCONNECT ; clients, brokers, arbre des topics avec volumes,
       signalements (connexions sans authentification, brokers publics...). Migrations 1600-1699. Spec : OASIS MQTT 3.1.1
       et 5.0.
+- [ ] **P5.21** `refactor/api-split` — Demande de l'utilisateur le 2026-11-23 : `netsift-api` (environ 28 000 lignes
+      dont 12 000 de tests, 33 modules) se compile d'un bloc sur un seul cœur et chaque worktree la recompile en entier.
+      Découpage en crates : `netsift-api-core` (erreurs, extracteurs, authentification, garde, plages et filtre temporel,
+      pagination, DTO communs), `netsift-api-online` (outbound, mises à jour, GeoIP, réglages, vérifications en ligne),
+      crates de vues par groupe d'onglets, `netsift-api` réduite à l'assemblage du routeur, aux sessions, imports et
+      exports ; aides de test partagées dans une crate de support (dev-dependency). Mesure `cargo build --timings` et
+      durée de `./x.sh check` avant/après dans `docs/PERFORMANCE.md`, ADR pour les règles de dépendances
+      (`docs/ARCHITECTURE.md`), types ts-rs inchangés, aucune route modifiée. Après P5.15a, avant P5.15b, P5.16 et P5.17.
+      Suivi possible selon le gain mesuré : même découpage pour `netsift-store` et `netsift-analyze`.
 - [ ] **P5.15b** `feat/mqtt-ws-tls` — Après P5.15a, en parallèle de P5.16 et P5.17. MQTT sur WebSocket (Upgrade HTTP,
       sous-protocole `mqtt`, trames WebSocket RFC 6455 démasquées dans l'analyseur HTTP existant et confiées au moteur
       MQTT, ADR à écrire ; `permessage-deflate` en métadonnées seulement). MQTT sur TLS (8883) : pas de déchiffrement,

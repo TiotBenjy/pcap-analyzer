@@ -90,6 +90,7 @@ pub struct MqttConnectionRow {
     pub malformed: u32,
     pub protocol_errors: u32,
     pub gaps: u32,
+    pub state_dropped: u32,
 }
 
 impl fmt::Debug for MqttConnectionRow {
@@ -289,11 +290,11 @@ fn insert_connection(conn: &Connection, c: &MqttConnectionRow) -> Result<()> {
              disconnect_by, disconnect_reason, broker_software, packets_c2s, packets_s2c, \
              publish_c2s, publish_s2c, payload_bytes_c2s, payload_bytes_s2c, subscribe_count, \
              pings, last_ping_ts, bytes_c2s, bytes_s2c, stored_packets, packets_truncated, \
-             malformed, protocol_errors, gaps) \
+             malformed, protocol_errors, gaps, state_dropped) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
              ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
              ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49, ?50, ?51, \
-             ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?59, ?60) ON CONFLICT (flow_id) DO NOTHING",
+             ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?59, ?60, ?61) ON CONFLICT (flow_id) DO NOTHING",
         )?
         .execute(params![
             c.flow_id,
@@ -356,6 +357,7 @@ fn insert_connection(conn: &Connection, c: &MqttConnectionRow) -> Result<()> {
             c.malformed,
             c.protocol_errors,
             c.gaps,
+            c.state_dropped,
         ])?;
     if inserted > 0
         && let Some(password) = &c.password
@@ -521,6 +523,11 @@ fn pop_to(conn: &Connection, stack: &mut Vec<NodeAgg>, keep: usize) -> Result<()
 /// (`/` sorted before any other character, so that a subtree is contiguous): a stack of the
 /// ancestors of the current topic, memory bounded by [`MAX_DEPTH`]. Idempotent.
 pub(crate) fn finalize(conn: &Connection) -> Result<()> {
+    build_tree(conn, MAX_TREE_TOPICS)
+}
+
+/// The tree of at most `max_topics` topics (the following ones counted in `meta`).
+fn build_tree(conn: &Connection, max_topics: u64) -> Result<()> {
     conn.execute("DELETE FROM mqtt_topics", [])?;
     let mut stmt = conn.prepare(
         "SELECT topic, sum(CASE WHEN dir = 'c' THEN messages ELSE 0 END), \
@@ -534,7 +541,7 @@ pub(crate) fn finalize(conn: &Connection) -> Result<()> {
     let mut folded: u64 = 0;
     while let Some(row) = rows.next()? {
         topics = topics.saturating_add(1);
-        if topics > MAX_TREE_TOPICS {
+        if topics > max_topics {
             folded = folded.saturating_add(1);
             continue;
         }

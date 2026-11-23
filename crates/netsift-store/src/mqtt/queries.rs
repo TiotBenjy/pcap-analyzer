@@ -25,6 +25,8 @@ pub const MAX_TOPIC_SEARCH: usize = 200;
 pub const MAX_TOPIC_PEERS: usize = 20;
 /// Latest messages of a topic detail.
 pub const MAX_TOPIC_RECENT: usize = 5;
+/// Topics read to build a level of the tree under a time range.
+pub const MAX_RANGE_TOPICS: usize = 100_000;
 /// Rows per signal of [`signals`].
 pub const MAX_SIGNAL_ITEMS: usize = 50;
 /// Topics of a connection detail.
@@ -356,6 +358,7 @@ pub struct ConnectionEntry {
     pub malformed: u32,
     pub protocol_errors: u32,
     pub gaps: u32,
+    pub state_dropped: u32,
     pub client: EndpointInfo,
     pub server: EndpointInfo,
     /// A subscription reads every topic.
@@ -442,6 +445,7 @@ fn connection_entry(r: &Row<'_>) -> rusqlite::Result<ConnectionEntry> {
         malformed: r.get("malformed")?,
         protocol_errors: r.get("protocol_errors")?,
         gaps: r.get("gaps")?,
+        state_dropped: r.get("state_dropped")?,
         client: endpoint_info(r, "hc")?,
         server: endpoint_info(r, "hs")?,
         wildcard: r.get("wildcard_any")?,
@@ -502,12 +506,24 @@ pub struct ConnectionTopic {
 }
 
 /// A connection with its password (sensitive: detail route only), subscriptions and topics.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `Debug` hides the password.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ConnectionDetail {
     pub entry: ConnectionEntry,
     pub password: Option<String>,
     pub subscriptions: Vec<SubscriptionEntry>,
     pub topics: Vec<ConnectionTopic>,
+}
+
+impl std::fmt::Debug for ConnectionDetail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionDetail")
+            .field("entry", &self.entry)
+            .field("password", &self.password.as_ref().map(|_| "<redacted>"))
+            .field("subscriptions", &self.subscriptions.len())
+            .field("topics", &self.topics.len())
+            .finish()
+    }
 }
 
 /// The connection of flow `flow_id`, `None` when unknown.
@@ -1309,23 +1325,33 @@ struct TopicSum {
 }
 
 /// Topics (summed over their connections) of the topic flows overlapping `range`, below
-/// `parent` when set.
-fn topic_sums(conn: &Connection, parent: Option<&str>, range: TimeRange) -> Result<Vec<TopicSum>> {
+/// `parent` and containing `q` when set: at most [`MAX_RANGE_TOPICS`] (the first by name), and
+/// whether more were left out.
+fn topic_sums(
+    conn: &Connection,
+    parent: Option<&str>,
+    q: Option<&str>,
+    range: TimeRange,
+) -> Result<(Vec<TopicSum>, bool)> {
     let mut c = Conditions::new();
     c.push("t.topic != ''", []);
     if let Some(p) = parent {
         let [lo, hi] = below(p);
         c.push("t.topic >= ? AND t.topic < ?", [lo, hi]);
     }
+    if let Some(pattern) = like_pattern(q) {
+        c.push("t.topic LIKE ? ESCAPE '\\'", [Value::Text(pattern)]);
+    }
     push_topic_range(&mut c, range);
     let sql = format!(
         "SELECT t.topic, sum(CASE WHEN t.dir = 'c' THEN t.messages ELSE 0 END), \
          sum(CASE WHEN t.dir = 'b' THEN t.messages ELSE 0 END), sum(t.payload_bytes), \
          sum(t.retained), min(t.first_ts), max(t.last_ts) FROM mqtt_topic_flows t{} \
-         GROUP BY t.topic",
-        where_sql(&c)
+         GROUP BY t.topic ORDER BY t.topic LIMIT {}",
+        where_sql(&c),
+        MAX_RANGE_TOPICS.saturating_add(1)
     );
-    Ok(conn
+    let mut sums = conn
         .prepare(&sql)?
         .query_map(c.params().as_slice(), |r| {
             Ok(TopicSum {
@@ -1338,7 +1364,19 @@ fn topic_sums(conn: &Connection, parent: Option<&str>, range: TimeRange) -> Resu
                 last_ts: r.get(6)?,
             })
         })?
-        .collect::<rusqlite::Result<Vec<_>>>()?)
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let partial = sums.len() > MAX_RANGE_TOPICS;
+    sums.truncate(MAX_RANGE_TOPICS);
+    Ok((sums, partial))
+}
+
+/// One page of a level of the topic tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopicLevel {
+    pub page: Page<TopicNode>,
+    /// Under a range, more than [`MAX_RANGE_TOPICS`] topics were below the parent: the level is
+    /// built from the first ones by name.
+    pub partial: bool,
 }
 
 /// Children of `parent` (`None`: first level), by name. Without range they are read from the
@@ -1349,7 +1387,7 @@ pub fn topic_children(
     parent: Option<&str>,
     range: Option<TimeRange>,
     request: &PageRequest,
-) -> Result<Page<TopicNode>> {
+) -> Result<TopicLevel> {
     let Some(range) = range else {
         let mut c = Conditions::new();
         match parent {
@@ -1365,11 +1403,15 @@ pub fn topic_children(
             descending: false,
             filter: w.as_deref(),
         };
-        return keyset_page(conn, &query, &c.params(), request, node_row);
+        return Ok(TopicLevel {
+            page: keyset_page(conn, &query, &c.params(), request, node_row)?,
+            partial: false,
+        });
     };
     let depth = parent.map_or(0, |p| levels(p).len());
     let mut nodes: BTreeMap<String, (TopicNode, BTreeSet<String>)> = BTreeMap::new();
-    for t in topic_sums(conn, parent, range)? {
+    let (sums, partial) = topic_sums(conn, parent, None, range)?;
+    for t in sums {
         let parts = levels(&t.topic);
         let Some(name) = parts.get(depth) else {
             continue;
@@ -1426,7 +1468,10 @@ pub fn topic_children(
         (true, Some(last)) => Some(group_cursor(0, &last.name)?),
         _ => None,
     };
-    Ok(Page { items, next_cursor })
+    Ok(TopicLevel {
+        page: Page { items, next_cursor },
+        partial,
+    })
 }
 
 /// Topics containing `q` (at most [`MAX_TOPIC_SEARCH`]), as nodes, by path.
@@ -1447,9 +1492,9 @@ pub fn topic_search(
             .query_map(params![pattern, MAX_TOPIC_SEARCH], node_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?);
     };
-    let mut out: Vec<TopicNode> = topic_sums(conn, None, range)?
+    let mut out: Vec<TopicNode> = topic_sums(conn, None, Some(q), range)?
+        .0
         .into_iter()
-        .filter(|t| like_matches(&t.topic, q))
         .map(|t| {
             let parts = levels(&t.topic);
             TopicNode {
@@ -1471,12 +1516,6 @@ pub fn topic_search(
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out.truncate(MAX_TOPIC_SEARCH);
     Ok(out)
-}
-
-/// Case-insensitive ASCII containment, as SQLite's LIKE.
-fn like_matches(text: &str, q: &str) -> bool {
-    text.to_ascii_lowercase()
-        .contains(&q.trim().to_ascii_lowercase())
 }
 
 /// True when the topic filter `filter` matches `topic` (OASIS MQTT 3.1.1 section 4.7):

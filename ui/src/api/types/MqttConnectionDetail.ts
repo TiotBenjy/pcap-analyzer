@@ -8,10 +8,14 @@ import type { MqttWill } from "./MqttWill";
 
 /**
  * `GET /mqtt/connections/{flow}`: a connection with its password (sensitive), CONNECT,
- * CONNACK, end, subscriptions and topics.
+ * CONNACK, end, subscriptions and topics. `Debug` hides the password.
  */
 export type MqttConnectionDetail = { connection: MqttConnectionInfo, protocol_name: string | null, clean_start: boolean | null, keep_alive: number | null, server_keep_alive: number | null, session_expiry: number | null, auth_method: string | null, 
 /**
  * UTF-8 text, else `hex:` and its hexadecimal. Sensitive: masked by default.
  */
-password: string | null, password_len: number | null, will: MqttWill | null, connect_props: Array<MqttProperty>, connack_ts_us: number | null, session_present: boolean | null, connack_props: Array<MqttProperty>, disconnect_ts_us: number | null, disconnect_by: MqttDir | null, disconnect_reason: number | null, broker_software: string | null, pings: number, last_ping_ts_us: number | null, packets_c2s: number, packets_s2c: number, bytes_c2s: number, bytes_s2c: number, subscribe_count: number, stored_packets: number, protocol_errors: number, gaps: number, subscriptions: Array<MqttSubscriptionInfo>, topics: Array<MqttConnectionTopic>, };
+password: string | null, password_len: number | null, will: MqttWill | null, connect_props: Array<MqttProperty>, connack_ts_us: number | null, session_present: boolean | null, connack_props: Array<MqttProperty>, disconnect_ts_us: number | null, disconnect_by: MqttDir | null, disconnect_reason: number | null, broker_software: string | null, pings: number, last_ping_ts_us: number | null, packets_c2s: number, packets_s2c: number, bytes_c2s: number, bytes_s2c: number, subscribe_count: number, stored_packets: number, protocol_errors: number, gaps: number, 
+/**
+ * Topics, aliases and subscriptions not kept for lack of memory budget.
+ */
+state_dropped: number, subscriptions: Array<MqttSubscriptionInfo>, topics: Array<MqttConnectionTopic>, };

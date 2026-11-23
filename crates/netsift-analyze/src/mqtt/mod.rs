@@ -35,8 +35,8 @@ const PROBE_BYTES: usize = wire::MAX_PACKET_PREFIX + 8;
 const PROBE_SEGMENTS: usize = 8;
 /// Client segments accumulated for a CONNECT on another port.
 const PROBE_CONNECT_SEGMENTS: usize = 4;
-/// Bytes buffered by all the connections of a shard being probed; past it, new data is not probed.
-const PROBE_BUDGET: usize = 16 * 1024 * 1024;
+/// Segments of one connection of port 1883 probed while its first CONNECT is incomplete.
+const PROBE_MAX_SEGMENTS: usize = 128;
 
 /// Settings of the `mqtt` analyzer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,8 +44,16 @@ pub struct MqttConfig {
     /// Connections followed at a time; new ones are ignored beyond. One instance applies it as
     /// is; the engine gives each shard its share (at least 16).
     pub max_connections: usize,
-    /// Bytes of packets held per shard while they wait for their acknowledgement.
+    /// Bytes of packets held while they wait for their acknowledgement.
     pub max_pending_bytes: usize,
+    /// Bytes of packet prefixes above 4 KiB being buffered; past it, packets are decoded from
+    /// their first 4 KiB.
+    pub max_buffer_bytes: usize,
+    /// Bytes of the topic aggregates, aliases and subscriptions of the connections followed;
+    /// past it, new ones are not kept (topics go to the "other topics" bucket), and counted.
+    pub max_state_bytes: usize,
+    /// Bytes buffered by the connections being probed; past it, new data is not probed.
+    pub max_probe_bytes: usize,
 }
 
 impl Default for MqttConfig {
@@ -53,6 +61,9 @@ impl Default for MqttConfig {
         Self {
             max_connections: 65_536,
             max_pending_bytes: 32 * 1024 * 1024,
+            max_buffer_bytes: 64 * 1024 * 1024,
+            max_state_bytes: 128 * 1024 * 1024,
+            max_probe_bytes: 32 * 1024 * 1024,
         }
     }
 }
@@ -364,6 +375,8 @@ pub struct MqttConnection {
     pub malformed: u32,
     pub protocol_errors: u32,
     pub gaps: u32,
+    /// Topics, aliases and subscriptions not kept for lack of memory budget.
+    pub state_dropped: u32,
 }
 
 impl fmt::Debug for MqttConnection {
@@ -403,23 +416,81 @@ enum Flow {
     Ignored,
 }
 
-/// Data of a flow not decided yet, in arrival order.
+/// Contiguous data of one direction in a probe (consecutive segments coalesced), replayed in
+/// order once the connection is decided.
+#[derive(Debug, Clone, Copy)]
+struct Run {
+    dir: Direction,
+    /// Context of its first segment.
+    ctx: StreamCtx,
+    start: usize,
+    end: usize,
+}
+
+/// Data of a flow not decided yet: each direction in one buffer (decisions read it without
+/// copy), and the runs of their arrival order.
 #[derive(Debug, Default)]
 struct Probe {
-    segs: Vec<(Direction, StreamCtx, Vec<u8>)>,
-    bytes: usize,
+    /// `ToServer`, then `ToClient`.
+    data: [Vec<u8>; 2],
+    runs: Vec<Run>,
+    /// Segments received.
+    segments: usize,
+    /// Bytes charged to the probe budget of the shard: data and [`RUN_COST`] per run.
+    charged: usize,
+}
+
+/// Bytes charged for one run of a probe besides its data.
+const RUN_COST: usize = 128;
+
+const fn side_index(dir: Direction) -> usize {
+    match dir {
+        Direction::ToServer => 0,
+        Direction::ToClient => 1,
+    }
 }
 
 impl Probe {
-    /// Concatenated data of one direction.
-    fn side(&self, dir: Direction) -> Vec<u8> {
-        let mut out = Vec::new();
-        for (d, _, data) in &self.segs {
-            if *d == dir {
-                out.extend_from_slice(data);
+    /// Data of one direction.
+    fn side(&self, dir: Direction) -> &[u8] {
+        self.data
+            .get(side_index(dir))
+            .map_or(&[][..], Vec::as_slice)
+    }
+
+    fn data_len(&self) -> usize {
+        self.data
+            .iter()
+            .map(Vec::len)
+            .fold(0, usize::saturating_add)
+    }
+
+    /// Appends one segment; returns the bytes charged.
+    fn push(&mut self, dir: Direction, ctx: &StreamCtx, data: &[u8]) -> usize {
+        let d = side_index(dir);
+        let start = self.data.get(d).map_or(0, Vec::len);
+        let end = start.saturating_add(data.len());
+        let mut cost = data.len();
+        match self.runs.last_mut() {
+            Some(last) if last.dir == dir && ctx.gap_before == 0 && last.end == start => {
+                last.end = end;
+            }
+            _ => {
+                self.runs.push(Run {
+                    dir,
+                    ctx: *ctx,
+                    start,
+                    end,
+                });
+                cost = cost.saturating_add(RUN_COST);
             }
         }
-        out
+        if let Some(buf) = self.data.get_mut(d) {
+            buf.extend_from_slice(data);
+        }
+        self.segments = self.segments.saturating_add(1);
+        self.charged = self.charged.saturating_add(cost);
+        cost
     }
 }
 
@@ -481,27 +552,19 @@ impl Probe {
         let port_server = key.server.port == PORT;
         let port_client = key.client.port == PORT;
         let to_server = self.side(Direction::ToServer);
+        let full = self.data_len() >= PROBE_BYTES;
         if !port_server && !port_client {
-            // Any other port: the first data must come from the client and be a CONNECT.
-            if self
-                .segs
-                .first()
-                .is_some_and(|(d, _, _)| *d == Direction::ToClient)
-            {
+            // Any other port: the data must come from the client only, and be a CONNECT.
+            if self.runs.iter().any(|r| r.dir == Direction::ToClient) {
                 return Decision::Ignore;
             }
-            if self.segs.iter().any(|(d, _, _)| *d == Direction::ToClient) {
-                return Decision::Ignore;
-            }
-            return match wire::starts_connect(&to_server) {
+            return match wire::starts_connect(to_server) {
                 Some(true) => Decision::Mqtt {
                     swapped: false,
                     partial: None,
                 },
                 Some(false) => Decision::Ignore,
-                None if self.segs.len() >= PROBE_CONNECT_SEGMENTS || self.bytes >= PROBE_BYTES => {
-                    Decision::Ignore
-                }
+                None if self.segments >= PROBE_CONNECT_SEGMENTS || full => Decision::Ignore,
                 None => Decision::Wait,
             };
         }
@@ -517,7 +580,7 @@ impl Probe {
         } else {
             to_server
         };
-        match wire::starts_connect(&client) {
+        match wire::starts_connect(client) {
             Some(true) => {
                 return Decision::Mqtt {
                     swapped,
@@ -525,7 +588,8 @@ impl Probe {
                 };
             }
             None if !client.is_empty() => {
-                return if self.bytes >= PROBE_BYTES {
+                // A CONNECT still incomplete: at most `PROBE_MAX_SEGMENTS` segments of it.
+                return if full || self.segments >= PROBE_MAX_SEGMENTS {
                     Decision::Ignore
                 } else {
                     Decision::Wait
@@ -534,10 +598,10 @@ impl Probe {
             _ => {}
         }
         // Picked up in the middle: valid packets of the right types in both directions.
-        let Some((from_client, v5_client)) = leading_packets(&self.side(client_dir), true) else {
+        let Some((from_client, v5_client)) = leading_packets(self.side(client_dir), true) else {
             return Decision::Ignore;
         };
-        let Some((from_broker, v5_broker)) = leading_packets(&self.side(broker_dir), false) else {
+        let Some((from_broker, v5_broker)) = leading_packets(self.side(broker_dir), false) else {
             return Decision::Ignore;
         };
         if from_client.saturating_add(from_broker) >= 2 {
@@ -551,7 +615,7 @@ impl Probe {
                 partial: Some(version),
             };
         }
-        if self.segs.len() >= PROBE_SEGMENTS || self.bytes >= PROBE_BYTES {
+        if self.segments >= PROBE_SEGMENTS || full {
             Decision::Ignore
         } else {
             Decision::Wait
@@ -565,7 +629,7 @@ pub struct MqttAnalyzer {
     flows: HashMap<FlowId, Flow>,
     /// Connections being followed (decided MQTT).
     active: usize,
-    /// Bytes held by the probes of the shard (at most [`PROBE_BUDGET`]).
+    /// Bytes held by the probes of the shard (at most [`MqttConfig::max_probe_bytes`]).
     probe_bytes: usize,
     shared: Shared,
 }
@@ -588,7 +652,7 @@ impl MqttAnalyzer {
             flows: HashMap::new(),
             active: 0,
             probe_bytes: 0,
-            shared: Shared::new(config.mqtt.max_pending_bytes),
+            shared: Shared::new(&config.mqtt),
         }
     }
 
@@ -611,14 +675,25 @@ impl MqttAnalyzer {
         } else {
             (key.client, key.server)
         };
-        let first_ts = probe.segs.first().map_or(0, |(_, c, _)| c.ts_ns);
+        let first_ts = probe.runs.first().map_or(0, |r| r.ctx.ts_ns);
         let mut conn = Box::new(Conn::new(id, client, server, Transport::Tcp, first_ts));
         if let Some(v) = partial {
             conn.set_partial(v);
         }
-        for (dir, ctx, data) in &probe.segs {
-            let role = role(*dir, swapped);
-            conn.feed(role, data, ctx.ts_ns, ctx.gap_before, &mut self.shared, out);
+        for run in &probe.runs {
+            let data = probe
+                .side(run.dir)
+                .get(run.start..run.end)
+                .unwrap_or_default();
+            let role = role(run.dir, swapped);
+            conn.feed(
+                role,
+                data,
+                run.ctx.ts_ns,
+                run.ctx.gap_before,
+                &mut self.shared,
+                out,
+            );
         }
         self.active = self.active.saturating_add(1);
         self.flows.insert(id, Flow::Mqtt { conn, swapped });
@@ -671,21 +746,21 @@ impl Analyzer for MqttAnalyzer {
                 conn.feed(role, data, ctx.ts_ns, ctx.gap_before, &mut self.shared, out);
             }
             Flow::Probe(probe) => {
-                let room = PROBE_BYTES.saturating_sub(probe.bytes);
+                let room = PROBE_BYTES.saturating_sub(probe.data_len());
                 let kept = data.get(..data.len().min(room)).unwrap_or_default();
-                let over = self.probe_bytes.saturating_add(kept.len()) > PROBE_BUDGET;
-                if over || (ctx.gap_before > 0 && !probe.segs.is_empty()) {
-                    self.probe_bytes = self.probe_bytes.saturating_sub(probe.bytes);
+                let worst = kept.len().saturating_add(RUN_COST);
+                let over = self.probe_bytes.saturating_add(worst) > self.config.max_probe_bytes;
+                if over || (ctx.gap_before > 0 && !probe.runs.is_empty()) {
+                    self.probe_bytes = self.probe_bytes.saturating_sub(probe.charged);
                     *flow = Flow::Ignored;
                     return;
                 }
-                probe.bytes = probe.bytes.saturating_add(kept.len());
-                self.probe_bytes = self.probe_bytes.saturating_add(kept.len());
-                probe.segs.push((dir, *ctx, kept.to_vec()));
+                let cost = probe.push(dir, ctx, kept);
+                self.probe_bytes = self.probe_bytes.saturating_add(cost);
                 let decision = probe.decide(&ctx.key);
                 let release = match decision {
                     Decision::Wait if kept.len() == data.len() => 0,
-                    _ => probe.bytes,
+                    _ => probe.charged,
                 };
                 self.probe_bytes = self.probe_bytes.saturating_sub(release);
                 match decision {
@@ -718,7 +793,7 @@ impl Analyzer for MqttAnalyzer {
         match self.flows.remove(&ctx.id) {
             Some(Flow::Mqtt { conn, swapped }) => self.end(conn, Some((ctx, swapped)), out),
             Some(Flow::Probe(probe)) => {
-                self.probe_bytes = self.probe_bytes.saturating_sub(probe.bytes);
+                self.probe_bytes = self.probe_bytes.saturating_sub(probe.charged);
             }
             Some(Flow::Ignored) | None => {}
         }
@@ -736,19 +811,26 @@ impl Analyzer for MqttAnalyzer {
 }
 
 /// Display text: control characters and invisible or bidirectional formatting characters
-/// replaced by U+FFFD.
+/// replaced by U+FFFD, cut (on a character boundary) to the length of `s` (at least 8 bytes, so
+/// that a short value is never emptied): a field bounded by the parser stays within its bound
+/// (U+FFFD takes three bytes where a control took one).
 pub(crate) fn clean(s: &str) -> String {
-    s.chars()
-        .map(|c| {
-            if c.is_control()
-                || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}')
-            {
-                char::REPLACEMENT_CHARACTER
-            } else {
-                c
-            }
-        })
-        .collect()
+    let limit = s.len().max(8);
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        let c = if c.is_control()
+            || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}')
+        {
+            char::REPLACEMENT_CHARACTER
+        } else {
+            c
+        };
+        if out.len().saturating_add(c.len_utf8()) > limit {
+            break;
+        }
+        out.push(c);
+    }
+    out
 }
 
 #[cfg(test)]

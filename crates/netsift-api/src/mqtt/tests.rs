@@ -26,7 +26,7 @@ const BURST_GAP_NS: i64 = 600 * NS_PER_SEC;
 const TOTAL: u64 = SHOWCASE.connections + 3;
 
 struct Env {
-    _tmp: tempfile::TempDir,
+    tmp: tempfile::TempDir,
     app: Router,
     id: String,
     /// `[first, last]` packet time of each burst, microseconds.
@@ -83,7 +83,7 @@ impl Env {
         };
         let (app, _) = build(config, IngestOptions::default());
         Self {
-            _tmp: tmp,
+            tmp,
             app,
             id,
             bursts,
@@ -227,6 +227,17 @@ async fn detail_carries_the_password_and_the_transcript() {
     let detail = env.ok(&format!("/mqtt/connections/{flow}")).await;
     assert_eq!(detail["connection"], first);
     assert_eq!(detail["password"], "sensor-fixture");
+    // The DTO never prints the password.
+    let catalog = Catalog::open(env.tmp.path().join("data")).unwrap();
+    let session = catalog
+        .open_session(&env.id.parse().unwrap(), netsift_store::OpenMode::ReadOnly)
+        .unwrap();
+    let stored = netsift_store::mqtt::connection_detail(session.conn(), flow)
+        .unwrap()
+        .unwrap();
+    let typed = super::detail_info(stored);
+    assert_eq!(typed.password.as_deref(), Some("sensor-fixture"));
+    assert!(!format!("{typed:?}").contains("sensor-fixture"));
     assert_eq!(detail["will"]["topic"], "plant/line1/sensor-01/status");
     assert_eq!(detail["will"]["payload"]["text"], "offline");
     assert_eq!(detail["subscriptions"][0]["granted"], 1);

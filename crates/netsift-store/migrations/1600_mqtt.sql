@@ -65,7 +65,8 @@ CREATE TABLE mqtt_connections (
     packets_truncated  INTEGER NOT NULL DEFAULT 0,
     malformed          INTEGER NOT NULL DEFAULT 0,
     protocol_errors    INTEGER NOT NULL DEFAULT 0,
-    gaps               INTEGER NOT NULL DEFAULT 0
+    gaps               INTEGER NOT NULL DEFAULT 0,
+    state_dropped      INTEGER NOT NULL DEFAULT 0   -- topics, aliases, subscriptions not kept (memory budget)
 );
 -- List order (keyset (first_ts, flow_id)), overlap with a range.
 CREATE INDEX mqtt_connections_first_ts ON mqtt_connections (first_ts, flow_id);

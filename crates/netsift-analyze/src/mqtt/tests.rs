@@ -519,3 +519,192 @@ fn secrets_are_rendered_as_text_or_hex() {
     assert_eq!(render_secret(b"plain"), ("plain".to_owned(), "utf8"));
     assert_eq!(render_secret(&[0, 255]), ("hex:00ff".to_owned(), "hex"));
 }
+
+/// Runs `sc` through an analyzer built with `config`, returns the records and the analyzer
+/// (its budgets, once every connection ended).
+fn records_with(sc: &Scenario, config: &AnalyzerConfig) -> (Out, MqttAnalyzer) {
+    let mut analyzer = MqttAnalyzer::new(config);
+    let mut out = Out::default();
+    for r in run(&mut analyzer, sc.packets()) {
+        match r {
+            Record::Mqtt(MqttRecord::Connection(c)) => out.conns.push(*c),
+            Record::Mqtt(MqttRecord::Packet(p)) => out.packets.push(*p),
+            Record::Mqtt(MqttRecord::Topic(t)) => out.topics.push(t),
+            Record::Mqtt(MqttRecord::Subscription(s)) => out.subs.push(s),
+            Record::Credential(c) => out.creds.push(c),
+            other => panic!("unexpected record {other:?}"),
+        }
+    }
+    out.packets.sort_by_key(|p| (p.flow_id, p.seq));
+    (out, analyzer)
+}
+
+fn initial_budgets(config: &AnalyzerConfig) -> (usize, usize, usize) {
+    (
+        config.mqtt.max_pending_bytes,
+        config.mqtt.max_buffer_bytes,
+        config.mqtt.max_state_bytes,
+    )
+}
+
+#[test]
+fn state_budget_sends_topics_to_the_other_bucket_and_is_given_back() {
+    let mut config = AnalyzerConfig::default();
+    // Room for two topics of the burst below, not more.
+    config.mqtt.max_state_bytes = 2 * (super::conn::ENTRY_COST + 8);
+    let mut sc = Scenario::new();
+    let m = Mqtt::V311;
+    let mut s = sc.tcp_open(
+        mqtt_hosts::sensor(),
+        mqtt_hosts::broker(),
+        &TcpOptions::new(1883),
+    );
+    s.client_send(&ConnectSpec::v311("many").encode());
+    s.server_send(&m.connack(false, 0, None));
+    s.client_send(&m.subscribe(1, &[("cmd/#", 0)], None));
+    s.server_send(&m.suback(1, &[0]));
+    for i in 0..10 {
+        s.client_send(&m.publish(&format!("t/{i:05}"), b"x"));
+    }
+    s.close();
+    let (out, analyzer) = records_with(&sc, &config);
+    let [c] = out.conns.as_slice() else { panic!() };
+    assert!(c.state_dropped >= 8, "{c:?}");
+    let named = out.topics.iter().filter(|t| t.topic.is_some()).count();
+    assert!(named <= 2, "{:?}", out.topics);
+    let other = out.topics.iter().find(|t| t.topic.is_none()).unwrap();
+    assert_eq!(other.messages + named as u64, 10);
+    // Every byte is given back once the connection ends.
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+}
+
+#[test]
+fn buffer_budget_decodes_large_packets_from_a_short_prefix() {
+    let mut config = AnalyzerConfig::default();
+    config.mqtt.max_buffer_bytes = 0;
+    let mut sc = Scenario::new();
+    fx::gateway_session(&mut sc, mqtt_hosts::gateway(), mqtt_hosts::broker());
+    let (out, analyzer) = records_with(&sc, &config);
+    let image = out
+        .packets
+        .iter()
+        .find(|p| p.topic.as_deref() == Some("firmware/gw-7/image"))
+        .unwrap();
+    assert_eq!(image.payload_len, Some(fx::LARGE_PAYLOAD as u64));
+    assert_eq!(image.payload.as_ref().unwrap().len(), 512);
+    // The following packets stay aligned.
+    assert!(
+        out.packets
+            .iter()
+            .any(|p| p.topic.as_deref() == Some("firmware/gw-7/version"))
+    );
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+}
+
+#[test]
+fn pending_bounds_emit_without_waiting() {
+    // No pending budget: a QoS 1 PUBLISH is emitted at once, its PUBACK stored on its own.
+    let mut config = AnalyzerConfig::default();
+    config.mqtt.max_pending_bytes = 0;
+    let mut sc = Scenario::new();
+    fx::sensor_session(
+        &mut sc,
+        mqtt_hosts::sensor(),
+        mqtt_hosts::broker(),
+        "p-fixture",
+    );
+    let (out, analyzer) = records_with(&sc, &config);
+    let humidity = out
+        .packets
+        .iter()
+        .find(|p| p.topic.as_deref() == Some("plant/line1/humidity"))
+        .unwrap();
+    assert_eq!(humidity.ack_state, Some(AckState::Missing));
+    assert!(out.packets.iter().any(|p| p.ptype == PacketType::Puback));
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+
+    // More unacknowledged packets than `MAX_PENDING`: the excess is emitted at once, the rest at
+    // the end; every one is stored once.
+    let mut sc = Scenario::new();
+    let m = Mqtt::V311;
+    let mut s = sc.tcp_open(
+        mqtt_hosts::sensor(),
+        mqtt_hosts::broker(),
+        &TcpOptions::new(1883),
+    );
+    s.client_send(&ConnectSpec::v311("burst").encode());
+    s.server_send(&m.connack(false, 0, None));
+    let count = super::conn::MAX_PENDING + 50;
+    let mut burst = Vec::new();
+    for i in 0..count {
+        let id = u16::try_from(i + 1).unwrap();
+        burst.extend(m.publish_with("q/1", Some(id), 1, false, false, None, b"x"));
+    }
+    s.client_send(&burst);
+    s.close();
+    let config = AnalyzerConfig::default();
+    let (out, analyzer) = records_with(&sc, &config);
+    let publishes: Vec<_> = out
+        .packets
+        .iter()
+        .filter(|p| p.ptype == PacketType::Publish)
+        .collect();
+    assert_eq!(publishes.len(), count);
+    assert!(
+        publishes
+            .iter()
+            .all(|p| p.ack_state == Some(AckState::Missing))
+    );
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+}
+
+#[test]
+fn probe_of_one_byte_segments_is_bounded() {
+    // A CONNECT announcing 60 000 bytes, sent one byte per segment on 1883: given up after
+    // `PROBE_MAX_SEGMENTS` segments, without quadratic copies.
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        mqtt_hosts::sensor(),
+        mqtt_hosts::broker(),
+        &TcpOptions::new(1883),
+    );
+    let mut connect = vec![0x10];
+    connect.extend(netsift_fixtures::mqtt::wire::varint(60_000));
+    connect.extend(netsift_fixtures::mqtt::wire::string("MQTT"));
+    connect.extend([4, 2, 0, 60]);
+    connect.resize(2_000, b'a');
+    for b in connect {
+        s.client_send(&[b]);
+    }
+    s.close();
+    let start = std::time::Instant::now();
+    let (out, analyzer) = records_with(&sc, &AnalyzerConfig::default());
+    assert_eq!(out.conns.len(), 0);
+    assert_eq!(analyzer.probe_bytes, 0);
+    assert!(start.elapsed() < std::time::Duration::from_secs(20));
+
+    // A probe budget smaller than one segment: nothing is probed, nothing is held.
+    let mut config = AnalyzerConfig::default();
+    config.mqtt.max_probe_bytes = 16;
+    let mut sc = Scenario::new();
+    fx::sensor_session(
+        &mut sc,
+        mqtt_hosts::sensor(),
+        mqtt_hosts::broker(),
+        "b-fixture",
+    );
+    let (out, analyzer) = records_with(&sc, &config);
+    assert_eq!(out.conns.len(), 0);
+    assert_eq!(analyzer.probe_bytes, 0);
+}
+
+#[test]
+fn cleaned_text_stays_within_its_bound() {
+    let controls = "\u{1}".repeat(300);
+    let cleaned = super::clean(&controls);
+    assert!(cleaned.len() <= 300);
+    assert!(cleaned.chars().all(|c| c == char::REPLACEMENT_CHARACTER));
+    // A short value is never emptied.
+    assert_eq!(super::clean("\u{1}"), "\u{fffd}");
+    assert_eq!(super::clean("a/\u{202e}b"), "a/\u{fffd}b");
+}

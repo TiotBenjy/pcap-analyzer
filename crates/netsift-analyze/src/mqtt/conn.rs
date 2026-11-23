@@ -39,18 +39,47 @@ const MAX_SOFTWARE: usize = 128;
 /// Topic of the broker version.
 const SYS_VERSION: &str = "$SYS/broker/version";
 
-/// State shared by the connections of one shard.
+/// Body bytes a packet may always buffer; a larger prefix (up to [`wire::MAX_PACKET_PREFIX`])
+/// takes the rest from [`Shared::buffer_budget`], else the packet is decoded from this prefix.
+pub const SMALL_PACKET: usize = 4096;
+/// Bytes charged for one aggregated topic, alias or subscription besides its text.
+pub(crate) const ENTRY_COST: usize = 96;
+
+/// State shared by the connections of one shard (its share of the global bounds of
+/// [`super::MqttConfig`]).
 #[derive(Debug)]
+#[allow(clippy::struct_field_names)] // Three budgets.
 pub(crate) struct Shared {
     /// Bytes still allowed for packets waiting for their acknowledgement.
     pending_budget: usize,
+    /// Bytes still allowed for packet prefixes larger than [`SMALL_PACKET`] being buffered.
+    buffer_budget: usize,
+    /// Bytes still allowed for the topic aggregates, aliases and subscriptions of connections.
+    state_budget: usize,
 }
 
 impl Shared {
-    pub(crate) fn new(max_pending_bytes: usize) -> Self {
+    pub(crate) fn new(config: &super::MqttConfig) -> Self {
         Self {
-            pending_budget: max_pending_bytes,
+            pending_budget: config.max_pending_bytes,
+            buffer_budget: config.max_buffer_bytes,
+            state_budget: config.max_state_bytes,
         }
+    }
+
+    /// Takes `cost` bytes of the state budget; false when they are not left.
+    fn charge(&mut self, cost: usize) -> bool {
+        if self.state_budget >= cost {
+            self.state_budget = self.state_budget.saturating_sub(cost);
+            true
+        } else {
+            false
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn budgets(&self) -> (usize, usize, usize) {
+        (self.pending_budget, self.buffer_budget, self.state_budget)
     }
 }
 
@@ -88,6 +117,10 @@ struct Framer {
     /// Bytes of the current (decoded) packet still to discard.
     skip: u64,
     state: FramerState,
+    /// Body bytes decoded for the current packet.
+    target: usize,
+    /// Bytes of the buffer budget held for the current packet.
+    reserved: usize,
 }
 
 /// True when `data` starts with packets of types allowed for `role` whose headers are valid up
@@ -126,13 +159,14 @@ impl Framer {
         ts: i64,
         gap: u64,
         role: Dir,
+        budget: &mut usize,
         on: &mut dyn FnMut(Event<'_>),
     ) {
         if self.state == FramerState::Dead {
             return;
         }
         if gap > 0 {
-            self.gap(gap, on);
+            self.gap(gap, budget, on);
         }
         if let FramerState::Resync(tries) = self.state {
             if starts_cleanly(data, role) {
@@ -172,20 +206,31 @@ impl Framer {
                     HeaderStatus::Incomplete => {}
                     HeaderStatus::Invalid => {
                         self.state = FramerState::Dead;
-                        self.buf.clear();
+                        self.reset_buffer(budget);
                         on(Event::Invalid);
                         return;
                     }
                     HeaderStatus::Valid(h) => {
                         self.header = Some(h);
+                        let full = Self::target(h);
+                        let extra = full.saturating_sub(SMALL_PACKET);
+                        self.target = if extra == 0 {
+                            full
+                        } else if *budget >= extra {
+                            *budget = budget.saturating_sub(extra);
+                            self.reserved = extra;
+                            full
+                        } else {
+                            SMALL_PACKET
+                        };
                         if h.remaining == 0 {
-                            self.emit(h, on);
+                            self.emit(h, budget, on);
                         }
                     }
                 }
                 continue;
             };
-            let target = Self::target(header);
+            let target = self.target;
             let have = self
                 .buf
                 .len()
@@ -195,7 +240,7 @@ impl Framer {
             self.buf.extend_from_slice(head);
             data = rest;
             if have.saturating_add(n) >= target {
-                self.emit(header, on);
+                self.emit(header, budget, on);
             }
         }
     }
@@ -207,7 +252,25 @@ impl Framer {
             .min(wire::MAX_PACKET_PREFIX)
     }
 
-    fn emit(&mut self, header: FixedHeader, on: &mut dyn FnMut(Event<'_>)) {
+    /// Empties the buffer, gives its reservation back and releases a large allocation (a
+    /// connection that sent one large packet keeps only a small buffer).
+    fn reset_buffer(&mut self, budget: &mut usize) {
+        *budget = budget.saturating_add(self.reserved);
+        self.reserved = 0;
+        if self.buf.capacity() > SMALL_PACKET.saturating_add(16) {
+            self.buf = Vec::new();
+        } else {
+            self.buf.clear();
+        }
+        self.header = None;
+    }
+
+    /// Bytes of the buffer budget held (given back when the connection ends).
+    pub(crate) fn reserved(&self) -> usize {
+        self.reserved
+    }
+
+    fn emit(&mut self, header: FixedHeader, budget: &mut usize, on: &mut dyn FnMut(Event<'_>)) {
         let body = self
             .buf
             .get(usize::from(header.header_len)..)
@@ -217,13 +280,12 @@ impl Framer {
             body,
             ts: self.start_ts,
         });
-        let decoded = u64::try_from(Self::target(header)).unwrap_or(u64::MAX);
+        let decoded = u64::try_from(self.target).unwrap_or(u64::MAX);
         self.skip = u64::from(header.remaining).saturating_sub(decoded);
-        self.buf.clear();
-        self.header = None;
+        self.reset_buffer(budget);
     }
 
-    fn gap(&mut self, gap: u64, on: &mut dyn FnMut(Event<'_>)) {
+    fn gap(&mut self, gap: u64, budget: &mut usize, on: &mut dyn FnMut(Event<'_>)) {
         // Bytes of the current packet not received yet, when its end is known.
         let (left, dropped) = match self.header {
             Some(h) => {
@@ -233,8 +295,7 @@ impl Framer {
             None if self.buf.is_empty() && self.skip > 0 => (Some(self.skip), false),
             None => (None, false),
         };
-        self.buf.clear();
-        self.header = None;
+        self.reset_buffer(budget);
         match left {
             Some(left) if gap <= left => {
                 if dropped {
@@ -262,8 +323,8 @@ enum Pending {
     },
     Subscribe {
         row: Box<MqttPacket>,
-        /// Indices in `subs` of its filters.
-        subs: Vec<usize>,
+        /// Position in the packet and index in `subs` of its filters kept.
+        subs: Vec<(usize, usize)>,
         cost: usize,
     },
     Unsubscribe {
@@ -347,6 +408,8 @@ pub(crate) struct Conn {
     topics: [HashMap<String, TopicAgg>; 2],
     other: [TopicAgg; 2],
     subs: Vec<MqttSubscription>,
+    /// Bytes of [`Shared::state_budget`] taken by this connection (given back at its end).
+    charged: usize,
 }
 
 /// Password as stored: UTF-8 text without control characters, else `hex:` and hexadecimal.
@@ -556,6 +619,7 @@ impl Conn {
                 malformed: 0,
                 protocol_errors: 0,
                 gaps: 0,
+                state_dropped: 0,
             }),
             framers: [Framer::default(), Framer::default()],
             version: Version::V311,
@@ -568,6 +632,19 @@ impl Conn {
             topics: [HashMap::new(), HashMap::new()],
             other: [TopicAgg::default(), TopicAgg::default()],
             subs: Vec::new(),
+            charged: 0,
+        }
+    }
+
+    /// Takes `cost` bytes of the shard's state budget for an aggregate of this connection; when
+    /// they are not left, the aggregate is not kept and counted in `state_dropped`.
+    fn charge(&mut self, shared: &mut Shared, cost: usize) -> bool {
+        if shared.charge(cost) {
+            self.charged = self.charged.saturating_add(cost);
+            true
+        } else {
+            self.row.state_dropped = self.row.state_dropped.saturating_add(1);
+            false
         }
     }
 
@@ -594,7 +671,8 @@ impl Conn {
         };
         let mut framer = std::mem::take(slot);
         let mut kill = false;
-        framer.feed(data, ts, gap, dir, &mut |event| match event {
+        let mut budget = std::mem::take(&mut shared.buffer_budget);
+        framer.feed(data, ts, gap, dir, &mut budget, &mut |event| match event {
             Event::Packet { header, body, ts } => {
                 if !self.packet(dir, header, body, ts, shared, out) {
                     kill = true;
@@ -603,8 +681,10 @@ impl Conn {
             Event::Lost | Event::Gap => self.row.gaps = self.row.gaps.saturating_add(1),
             Event::Invalid => self.row.malformed = self.row.malformed.saturating_add(1),
         });
+        shared.buffer_budget = budget;
         if kill {
             framer.state = FramerState::Dead;
+            framer.reset_buffer(&mut shared.buffer_budget);
         }
         if let Some(slot) = self.framers.get_mut(dir.index()) {
             *slot = framer;
@@ -903,10 +983,14 @@ impl Conn {
         let named = !p.topic.value.is_empty();
         let (topic, source) = if named {
             let topic = clean(&p.topic.value);
-            if let (Some(a), Some(map)) = (alias, self.aliases.get_mut(d))
-                && (map.len() < MAX_ALIASES || map.contains_key(&a))
-            {
-                map.insert(a, topic.clone());
+            if let Some(a) = alias {
+                let known = self.aliases.get(d).is_some_and(|m| m.contains_key(&a));
+                let room = self.aliases.get(d).is_some_and(|m| m.len() < MAX_ALIASES);
+                if (known || (room && self.charge(shared, topic.len().saturating_add(ENTRY_COST))))
+                    && let Some(map) = self.aliases.get_mut(d)
+                {
+                    map.insert(a, topic.clone());
+                }
             }
             (Some(topic), TopicSource::Name)
         } else {
@@ -934,10 +1018,15 @@ impl Conn {
             }
         }
         // Topic aggregates: every PUBLISH, stored or not.
-        let agg = match (&topic, self.topics.get_mut(d)) {
-            (Some(t), Some(map)) if map.contains_key(t) || map.len() < MAX_TOPICS => {
-                Some(map.entry(t.clone()).or_default())
+        let keep = match (&topic, self.topics.get(d)) {
+            (Some(t), Some(map)) if map.contains_key(t) => true,
+            (Some(t), Some(map)) if map.len() < MAX_TOPICS => {
+                self.charge(shared, t.len().saturating_add(ENTRY_COST))
             }
+            _ => false,
+        };
+        let agg = match (&topic, self.topics.get_mut(d)) {
+            (Some(t), Some(map)) if keep => Some(map.entry(t.clone()).or_default()),
             _ => None,
         };
         match agg {
@@ -1128,7 +1217,10 @@ impl Conn {
                     break;
                 }
                 let filter = clean(&f.filter.value);
-                indices.push(self.subs.len());
+                if !self.charge(shared, filter.len().saturating_add(ENTRY_COST)) {
+                    continue;
+                }
+                indices.push((i, self.subs.len()));
                 self.subs.push(MqttSubscription {
                     flow_id: self.row.flow_id,
                     seq,
@@ -1229,9 +1321,9 @@ impl Conn {
                 for (i, f) in row.filters.iter_mut().enumerate() {
                     f.granted = s.codes.get(i).copied();
                 }
-                for (i, idx) in subs.iter().enumerate() {
+                for (i, idx) in &subs {
                     if let Some(sub) = self.subs.get_mut(*idx) {
-                        sub.granted = s.codes.get(i).copied();
+                        sub.granted = s.codes.get(*i).copied();
                     }
                 }
                 row.ack_ns = Some(ts.saturating_sub(row.ts));
@@ -1258,6 +1350,10 @@ impl Conn {
     ) {
         for (_, pending) in std::mem::take(&mut self.pending) {
             Self::flush(pending, shared, out);
+        }
+        shared.state_budget = shared.state_budget.saturating_add(self.charged);
+        for framer in &mut self.framers {
+            shared.buffer_budget = shared.buffer_budget.saturating_add(framer.reserved());
         }
         if let Some(cred) = self.credential.take() {
             out.emit(Record::Credential(cred));
@@ -1343,4 +1439,54 @@ enum AckStep {
     Received,
     /// PUBREL (from the publisher).
     Release,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_large_packet_leaves_no_large_buffer_behind() {
+        let mut framer = Framer::default();
+        let mut budget = 1024 * 1024;
+        let mut packet = vec![0x30];
+        let body_len = 100_000_u32;
+        let mut n = body_len;
+        loop {
+            let mut b = u8::try_from(n % 128).unwrap();
+            n /= 128;
+            if n > 0 {
+                b |= 0x80;
+            }
+            packet.push(b);
+            if n == 0 {
+                break;
+            }
+        }
+        packet.extend([0, 1, b't']);
+        packet.resize(packet.len() + usize::try_from(body_len).unwrap() - 3, 0);
+        packet.extend([0xC0, 0]);
+        let mut seen = Vec::new();
+        for chunk in packet.chunks(1460) {
+            framer.feed(chunk, 0, 0, Dir::Client, &mut budget, &mut |e| {
+                if let Event::Packet { header, body, .. } = e {
+                    seen.push((header.ptype, body.len()));
+                }
+            });
+        }
+        assert_eq!(
+            seen,
+            vec![
+                (PacketType::Publish, wire::MAX_PACKET_PREFIX),
+                (PacketType::Pingreq, 0)
+            ]
+        );
+        assert!(
+            framer.buf.capacity() <= SMALL_PACKET + 16,
+            "{}",
+            framer.buf.capacity()
+        );
+        assert_eq!(budget, 1024 * 1024);
+        assert_eq!(framer.reserved(), 0);
+    }
 }

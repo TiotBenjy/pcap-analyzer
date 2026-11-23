@@ -568,9 +568,17 @@ Ordre des blocs (une colonne sous 768 px) :
   détection et analyseur TCP, `conn.rs` : moteur de connexion indépendant du transport, que P5.15b alimentera avec
   les charges WebSocket) ; store : `crates/netsift-store/src/mqtt.rs` (lignes, étape `mqtt`) et `mqtt/queries.rs` ;
   API : `crates/netsift-api/src/mqtt.rs` ; UI : `ui/src/views/mqtt/`. Fuzz : cible `mqtt`.
-- Bornes supplémentaires : 16 Mio de données en attente de décision (sondes) par shard, au-delà les nouvelles
-  connexions ne sont pas sondées ; connexions suivies (65 536) et octets en attente d'accusé (32 Mio) partagés entre
-  les shards par le moteur (au moins 16 connexions et 1 Mio par shard).
+- Bornes globales, réparties entre les shards par le moteur (au moins 16 connexions et 1 Mio par shard, ADR-023) :
+  65 536 connexions suivies ; 32 Mio de paquets en attente d'accusé ; 64 Mio de préfixes de paquets au-delà de
+  4 Kio (sinon le paquet est décodé sur ses 4 premiers Kio : topic, propriétés et extrait restent lus) ; 128 Mio
+  d'agrégats (topics, alias, abonnements : au-delà, topic dans le seau « autres topics », alias ou abonnement non
+  gardé, compté dans `state_dropped`) ; 32 Mio de données des connexions en cours de détection (au-delà, une
+  nouvelle connexion n'est pas sondée). Le tampon d'un sens rend sa capacité au-delà de 4 Kio après chaque paquet.
+- Détection sur le port 1883 : données de chaque sens dans un tampon (lu sans copie), segments contigus d'un même
+  sens réunis ; un CONNECT incomplet est abandonné après 128 segments ; 128 octets imputés par suite de segments.
+- Sous plage, un niveau de l'arbre des topics est calculé sur au plus 100 000 topics sous son parent (les premiers
+  par nom) ; au-delà, la réponse le signale (`partial`) et la vue l'indique.
+- Textes nettoyés (U+FFFD sur 3 octets) recoupés à la longueur du champ lu, sur une frontière de caractère.
 - Fixtures : `netsift_fixtures::mqtt` (encodeur `wire`, `mqtt_showcase`, `mqtt_round`) ; session de démonstration :
   vitrine puis une ronde toutes les 20 s (`add_mqtt` dans `demo.rs`).
 - Mesure : voir `docs/PERFORMANCE.md` (`mqtt::tests::timings`, ignoré, mode release).

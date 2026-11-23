@@ -23,6 +23,7 @@ Chaque protocole concerné émet un `Record::Credential` (l'onglet ne fait qu'ag
 | LDAP simple bind | `ldap` | DN et secret |
 | SIP Digest (Authorization / Proxy-Authorization) | `sip-digest` | identifiant, domaine et URI, sans matériel de récupération (`docs/specs/sip.md`) |
 | Telnet | `telnet` | reconstitution de la saisie (phase 5) |
+| MQTT (CONNECT) | `mqtt` | nom d'utilisateur et mot de passe en clair (`plaintext`), nom seul ou méthode d'authentification 5.0 en `metadata-only` ; résultat du CONNACK (`docs/specs/mqtt.md`) |
 | NTLM (depuis SMB/HTTP) | `ntlm` | métadonnées (domaine, compte, station) et matériel de défi/réponse |
 | Handshakes WiFi (phase 5) | `wifi-eapol` | éléments EAPOL capturés |
 

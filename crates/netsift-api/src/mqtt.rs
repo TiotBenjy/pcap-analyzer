@@ -9,7 +9,7 @@
 //! | GET | `/sessions/{id}/mqtt/connections/{flow}/packets` | [`Page`]`<`[`MqttPacketInfo`]`>` |
 //! | GET | `/sessions/{id}/mqtt/clients` | [`Page`]`<`[`MqttClientInfo`]`>` |
 //! | GET | `/sessions/{id}/mqtt/brokers` | [`Page`]`<`[`MqttBrokerInfo`]`>` |
-//! | GET | `/sessions/{id}/mqtt/topics` | [`Page`]`<`[`MqttTopicNode`]`>` |
+//! | GET | `/sessions/{id}/mqtt/topics` | [`MqttTopicPage`] |
 //! | GET | `/sessions/{id}/mqtt/topics/node` | [`MqttTopicDetail`] |
 //! | GET | `/sessions/{id}/mqtt/messages` | [`Page`]`<`[`MqttPacketInfo`]`>` |
 //! | GET | `/sessions/{id}/mqtt/signals` | `Vec<`[`MqttSignal`]`>` |
@@ -604,8 +604,8 @@ pub struct MqttConnectionTopic {
 }
 
 /// `GET /mqtt/connections/{flow}`: a connection with its password (sensitive), CONNECT,
-/// CONNACK, end, subscriptions and topics.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+/// CONNACK, end, subscriptions and topics. `Debug` hides the password.
+#[derive(Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct MqttConnectionDetail {
     pub connection: MqttConnectionInfo,
@@ -637,8 +637,21 @@ pub struct MqttConnectionDetail {
     pub stored_packets: u32,
     pub protocol_errors: u32,
     pub gaps: u32,
+    /// Topics, aliases and subscriptions not kept for lack of memory budget.
+    pub state_dropped: u32,
     pub subscriptions: Vec<MqttSubscriptionInfo>,
     pub topics: Vec<MqttConnectionTopic>,
+}
+
+impl std::fmt::Debug for MqttConnectionDetail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MqttConnectionDetail")
+            .field("connection", &self.connection)
+            .field("password", &self.password.as_ref().map(|_| "<redacted>"))
+            .field("subscriptions", &self.subscriptions.len())
+            .field("topics", &self.topics.len())
+            .finish_non_exhaustive()
+    }
 }
 
 /// A filter of a SUBSCRIBE or UNSUBSCRIBE.
@@ -932,6 +945,19 @@ fn node_info(n: TopicNode) -> MqttTopicNode {
         first_ts_us: convert::us(n.first_ts),
         last_ts_us: convert::us(n.last_ts),
     }
+}
+
+/// `GET /mqtt/topics`: one page of a level of the tree (or of a search).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct MqttTopicPage {
+    pub items: Vec<MqttTopicNode>,
+    pub next_cursor: Option<String>,
+    /// Number of topics of a search; `null` for a level.
+    pub total_estimate: Option<u64>,
+    /// Under a time range, the level was built from the first 100,000 topics below its parent
+    /// (by name): the others are left out.
+    pub partial: bool,
 }
 
 /// A client that published under a node.
@@ -1263,74 +1289,80 @@ async fn connection(
     blocking(&state, move |s| {
         let (_, session) = open_ready(s, &id)?;
         let d = mqtt::connection_detail(session.conn(), flow)?.ok_or(ApiError::NotFound)?;
-        let e = d.entry;
-        let will = match (&e.will_topic, e.will_payload_len) {
-            (Some(topic), Some(len)) => Some(MqttWill {
-                topic: topic.clone(),
-                qos: e.will_qos.unwrap_or(0),
-                retain: e.will_retain.unwrap_or(false),
-                payload: payload(e.will_payload.as_deref().unwrap_or_default(), len, None),
-            }),
-            _ => None,
-        };
-        Ok(MqttConnectionDetail {
-            connection: connection_info(&e),
-            protocol_name: e.protocol_name,
-            clean_start: e.clean_start,
-            keep_alive: e.keep_alive,
-            server_keep_alive: e.server_keep_alive,
-            session_expiry: e.session_expiry,
-            auth_method: e.auth_method,
-            password: d.password,
-            password_len: e.password_len,
-            will,
-            connect_props: properties(e.connect_props),
-            connack_ts_us: e.connack_ts.map(convert::us),
-            session_present: e.session_present,
-            connack_props: properties(e.connack_props),
-            disconnect_ts_us: e.disconnect_ts.map(convert::us),
-            disconnect_by: e.disconnect_by.as_deref().map(MqttDir::parse),
-            disconnect_reason: e.disconnect_reason,
-            broker_software: e.broker_software,
-            pings: e.pings,
-            last_ping_ts_us: e.last_ping_ts.map(convert::us),
-            packets_c2s: e.packets_c2s,
-            packets_s2c: e.packets_s2c,
-            bytes_c2s: e.bytes_c2s,
-            bytes_s2c: e.bytes_s2c,
-            subscribe_count: e.subscribe_count,
-            stored_packets: e.stored_packets,
-            protocol_errors: e.protocol_errors,
-            gaps: e.gaps,
-            subscriptions: d
-                .subscriptions
-                .into_iter()
-                .map(|s| MqttSubscriptionInfo {
-                    ts_us: convert::us(s.ts),
-                    filter: s.filter,
-                    qos: s.qos,
-                    options: s.options,
-                    granted: s.granted,
-                    shared_group: s.shared_group,
-                    wildcard: s.wildcard,
-                    unsubscribed_ts_us: s.unsubscribed_ts.map(convert::us),
-                })
-                .collect(),
-            topics: d
-                .topics
-                .into_iter()
-                .map(|t| MqttConnectionTopic {
-                    topic: t.topic,
-                    dir: MqttDir::parse(&t.dir),
-                    messages: t.messages,
-                    payload_bytes: t.payload_bytes,
-                    retained: t.retained,
-                })
-                .collect(),
-        })
+        Ok(detail_info(d))
     })
     .await
     .map(Json)
+}
+
+/// DTO of a stored connection detail (password included).
+fn detail_info(d: mqtt::ConnectionDetail) -> MqttConnectionDetail {
+    let e = d.entry;
+    let will = match (&e.will_topic, e.will_payload_len) {
+        (Some(topic), Some(len)) => Some(MqttWill {
+            topic: topic.clone(),
+            qos: e.will_qos.unwrap_or(0),
+            retain: e.will_retain.unwrap_or(false),
+            payload: payload(e.will_payload.as_deref().unwrap_or_default(), len, None),
+        }),
+        _ => None,
+    };
+    MqttConnectionDetail {
+        connection: connection_info(&e),
+        protocol_name: e.protocol_name,
+        clean_start: e.clean_start,
+        keep_alive: e.keep_alive,
+        server_keep_alive: e.server_keep_alive,
+        session_expiry: e.session_expiry,
+        auth_method: e.auth_method,
+        password: d.password,
+        password_len: e.password_len,
+        will,
+        connect_props: properties(e.connect_props),
+        connack_ts_us: e.connack_ts.map(convert::us),
+        session_present: e.session_present,
+        connack_props: properties(e.connack_props),
+        disconnect_ts_us: e.disconnect_ts.map(convert::us),
+        disconnect_by: e.disconnect_by.as_deref().map(MqttDir::parse),
+        disconnect_reason: e.disconnect_reason,
+        broker_software: e.broker_software,
+        pings: e.pings,
+        last_ping_ts_us: e.last_ping_ts.map(convert::us),
+        packets_c2s: e.packets_c2s,
+        packets_s2c: e.packets_s2c,
+        bytes_c2s: e.bytes_c2s,
+        bytes_s2c: e.bytes_s2c,
+        subscribe_count: e.subscribe_count,
+        stored_packets: e.stored_packets,
+        protocol_errors: e.protocol_errors,
+        gaps: e.gaps,
+        state_dropped: e.state_dropped,
+        subscriptions: d
+            .subscriptions
+            .into_iter()
+            .map(|s| MqttSubscriptionInfo {
+                ts_us: convert::us(s.ts),
+                filter: s.filter,
+                qos: s.qos,
+                options: s.options,
+                granted: s.granted,
+                shared_group: s.shared_group,
+                wildcard: s.wildcard,
+                unsubscribed_ts_us: s.unsubscribed_ts.map(convert::us),
+            })
+            .collect(),
+        topics: d
+            .topics
+            .into_iter()
+            .map(|t| MqttConnectionTopic {
+                topic: t.topic,
+                dir: MqttDir::parse(&t.dir),
+                messages: t.messages,
+                payload_bytes: t.payload_bytes,
+                retained: t.retained,
+            })
+            .collect(),
+    }
 }
 
 async fn packets(
@@ -1420,7 +1452,7 @@ async fn topics(
     UrlPath(id): UrlPath<String>,
     ApiQuery(query): ApiQuery<TopicsQuery>,
     ApiRange(range): ApiRange,
-) -> Result<Json<Page<MqttTopicNode>>, ApiError> {
+) -> Result<Json<MqttTopicPage>, ApiError> {
     let id = parse_id(&id)?;
     let q = text("q", query.q)?;
     let parent = exact("parent", query.parent)?;
@@ -1435,17 +1467,19 @@ async fn topics(
                 .map(node_info)
                 .collect();
             let total = u64::try_from(items.len()).unwrap_or(u64::MAX);
-            return Ok(Page {
+            return Ok(MqttTopicPage {
                 items,
                 next_cursor: None,
                 total_estimate: Some(total),
+                partial: false,
             });
         }
-        let page = mqtt::topic_children(conn, parent.as_deref(), range, &request)?;
-        Ok(Page {
-            items: page.items.into_iter().map(node_info).collect(),
-            next_cursor: page.next_cursor,
+        let level = mqtt::topic_children(conn, parent.as_deref(), range, &request)?;
+        Ok(MqttTopicPage {
+            items: level.page.items.into_iter().map(node_info).collect(),
+            next_cursor: level.page.next_cursor,
             total_estimate: None,
+            partial: level.partial,
         })
     })
     .await

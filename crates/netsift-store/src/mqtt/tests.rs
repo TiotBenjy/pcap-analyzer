@@ -88,6 +88,7 @@ fn connection(
         malformed: 0,
         protocol_errors: 0,
         gaps: 0,
+        state_dropped: 0,
     }
 }
 
@@ -263,12 +264,16 @@ fn children_with_and_without_range() {
             .map(|n| (n.name, n.topics, n.messages_pub, n.children))
             .collect()
     };
-    let root = topic_children(&conn, None, None, &PageRequest::first(100)).unwrap();
+    let root = topic_children(&conn, None, None, &PageRequest::first(100))
+        .unwrap()
+        .page;
     assert_eq!(
         names(root),
         vec![(String::new(), 1, 1, 1), ("a".to_owned(), 4, 7, 3)]
     );
-    let a = topic_children(&conn, Some("a"), None, &PageRequest::first(100)).unwrap();
+    let a = topic_children(&conn, Some("a"), None, &PageRequest::first(100))
+        .unwrap()
+        .page;
     assert_eq!(
         names(a),
         vec![
@@ -279,16 +284,22 @@ fn children_with_and_without_range() {
     );
     // Covering range: same answer; narrow range: only the second connection's topics.
     let all = TimeRange::new(0, 100 * S).unwrap();
-    let a_all = topic_children(&conn, Some("a"), Some(all), &PageRequest::first(100)).unwrap();
+    let a_all = topic_children(&conn, Some("a"), Some(all), &PageRequest::first(100))
+        .unwrap()
+        .page;
     assert_eq!(names(a_all).len(), 3);
     let late = TimeRange::new(30 * S, 40 * S).unwrap();
-    let a_late = topic_children(&conn, Some("a"), Some(late), &PageRequest::first(100)).unwrap();
+    let a_late = topic_children(&conn, Some("a"), Some(late), &PageRequest::first(100))
+        .unwrap()
+        .page;
     assert_eq!(
         names(a_late),
         vec![("b!".to_owned(), 1, 1, 0), ("c".to_owned(), 1, 2, 0)]
     );
     // Pages without duplicate.
-    let first = topic_children(&conn, Some("a"), Some(all), &PageRequest::first(2)).unwrap();
+    let first = topic_children(&conn, Some("a"), Some(all), &PageRequest::first(2))
+        .unwrap()
+        .page;
     let rest = topic_children(
         &conn,
         Some("a"),
@@ -298,9 +309,28 @@ fn children_with_and_without_range() {
             cursor: first.next_cursor.clone(),
         },
     )
-    .unwrap();
+    .unwrap()
+    .page;
     assert_eq!(first.items.len() + rest.items.len(), 3);
     assert!(rest.next_cursor.is_none());
+}
+
+#[test]
+fn tree_beyond_its_bound_counts_the_topics_left_out() {
+    let conn = fixture();
+    build_tree(&conn, 2).unwrap();
+    let topics: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM mqtt_topics WHERE is_topic = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(topics, 2);
+    let folded = crate::query::get_meta(&conn, META_TOPICS_FOLDED).unwrap();
+    assert_eq!(folded.as_deref(), Some("3"));
+    // The topic count of the statistics adds them back.
+    assert_eq!(stats(&conn, None).unwrap().topics, 5);
 }
 
 #[test]
@@ -425,6 +455,7 @@ fn password_only_in_the_detail() {
     let conn = fixture();
     let d = connection_detail(&conn, 1).unwrap().unwrap();
     assert_eq!(d.password.as_deref(), Some("pw-fixture"));
+    assert!(!format!("{d:?}").contains("pw-fixture"));
     assert!(d.entry.has_password);
     assert!(connection_detail(&conn, 999).unwrap().is_none());
     // The list never reads the secrets table.

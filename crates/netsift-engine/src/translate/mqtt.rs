@@ -82,6 +82,7 @@ fn connection_row(c: MqttConnection) -> MqttConnectionRow {
         malformed: c.malformed,
         protocol_errors: c.protocol_errors,
         gaps: c.gaps,
+        state_dropped: c.state_dropped,
     }
 }
 

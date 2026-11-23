@@ -50,7 +50,9 @@ Fonctions pures, sans I/O, sans panique, fuzzées (cible `lineproto`) :
   texte gardés par ligne (au-delà, ligne marquée tronquée et suite ignorée jusqu'à la fin de ligne),
   2 000 lignes et 256 Kio par session ; au-delà, les compteurs continuent et la session est marquée
   « transcription tronquée ». Les lignes sont émises au fil de l'eau (pas de transcription en mémoire).
-- **Secrets** : l'argument de `PASS` et d'`ACCT` est stocké avec `secret = 1` ; l'API le sert dans la
+- **Secrets** : l'argument de `PASS` et d'`ACCT` est stocké avec `secret = 1`, ainsi que toute ligne
+  client qui commence par `PASS` / `ACCT` (casse indifférente) sans être une commande valide, et toute
+  ligne qui n'est pas un verbe FTP connu juste après une réponse `331` / `332` (mot de passe envoyé seul) ; l'API le sert dans la
   transcription d'une session (route de détail), l'UI le masque par défaut (`SecretValue`), comme le
   détail d'un identifiant. `Debug` des enregistrements le remplace par `<redacted>` : il n'apparaît dans
   aucun log. L'identifiant lui-même (USER/PASS, résultat) reste émis par l'analyseur `credentials`
@@ -64,12 +66,15 @@ Fonctions pures, sans I/O, sans panique, fuzzées (cible `lineproto`) :
   une réponse `1xx` est préliminaire, toute autre réponse termine la commande la plus ancienne (ordre
   RFC 959, pipelinage toléré, `ABOR` : la `426` termine le transfert, la `226` suivante l'`ABOR`).
 - **Canal de données** (ADR-032) : `PORT` / `EPRT` (actif) et réponses `227` / `229` (passif) donnent
-  l'adresse attendue du flux de données. Un flux TCP du même shard est associé au contrôle si son
-  extrémité répondante est cette adresse, ou à défaut si son port est le port attendu et qu'il relie les
-  deux mêmes adresses que le contrôle (NAT : `227` annonçant une adresse interne) ; il doit avoir été
-  créé après la commande qui a demandé le canal (`FlowId` = index de trame, ADR-022). La première
-  correspondance consomme l'attente. Le flux est rattaché au transfert en cours, ou au suivant si le
-  client ouvre le canal avant d'envoyer `RETR` (mode passif).
+  le port attendu du flux de données. Un flux TCP est associé au contrôle s'il relie les deux mêmes
+  adresses que lui et si son port répondant est le port attendu ; l'adresse annoncée n'intervient pas (NAT :
+  `227` annonçant une adresse interne). Un hôte tiers, un transfert FXP ou un serveur qui annonce une autre
+  adresse relient une autre paire : jamais associés. Le flux doit avoir été créé après la commande qui a
+  demandé le canal (`FlowId` = index de trame, ADR-022) et dans les 60 s qui suivent l'annonce. La première
+  correspondance consomme l'attente ; une attente non consommée tombe à la réponse définitive du transfert
+  ou à l'annonce suivante. Le flux est rattaché au transfert en cours, ou au suivant si le client ouvre le
+  canal avant d'envoyer `RETR` (mode passif) ; un canal ouvert d'avance et jamais réclamé est abandonné à
+  l'annonce suivante. La commande vue (`PASV`, `EPSV`, `PORT`, `EPRT`) est gardée avec le transfert.
 - **Transferts** : commandes `RETR` (téléchargement), `STOR`, `STOU`, `APPE` (dépôt), `LIST`, `NLST`,
   `MLSD` (listage). Pour chacun : horodatage de la commande, chemin tel qu'envoyé (borné à 1 024
   octets), sens, mode (actif / passif), flux de données, octets reçus sur le canal, réponse définitive
@@ -88,9 +93,9 @@ Fonctions pures, sans I/O, sans panique, fuzzées (cible `lineproto`) :
   ligne CRLF).
 - **Listages** : les 4 Kio premiers octets de la réponse d'un `LIST` / `NLST` / `MLSD`, nettoyés comme
   la transcription, sont gardés en texte (jamais un objet).
-- Bornes par shard : 4 096 sessions de contrôle et 1 024 flux de données suivis en même temps ; au-delà,
-  les nouveaux ne sont pas analysés (le résultat ne dépend alors du nombre de shards que parce qu'une
-  borne est atteinte, comme ADR-023).
+- Bornes : 4 096 sessions de contrôle et 1 024 flux de données suivis en même temps, au total, réparties
+  entre les shards par le moteur (au moins 16 par shard) ; au-delà, les nouveaux ne sont pas analysés (le
+  résultat ne dépend alors du nombre de shards que parce qu'une borne est atteinte, comme ADR-023).
 
 ### Tables (migration `1400_ftp.sql`, plage réservée 1400-1499)
 

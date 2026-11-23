@@ -518,6 +518,7 @@ CREATE TABLE ftp_transfers (
     path           TEXT,
     direction      TEXT NOT NULL CHECK (direction IN ('download', 'upload', 'listing')),
     mode           TEXT CHECK (mode IN ('active', 'passive')),
+    mode_command   TEXT,                          -- PASV, EPSV, PORT or EPRT
     data_flow_id   INTEGER,                       -- flows.id of the data connection
     status         INTEGER,                       -- final reply code
     status_text    TEXT,

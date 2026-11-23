@@ -88,6 +88,7 @@ function transfer(overrides: Partial<FtpTransferInfo> = {}): FtpTransferInfo {
     path: 'photos/harbour.png',
     direction: 'download',
     mode: 'passive',
+    mode_command: 'EPSV',
     data_flow_id: '9',
     status: 226,
     status_text: 'Transfer complete.',
@@ -176,6 +177,7 @@ describe('FTP view', () => {
     const img = await screen.findByRole('img', { name: 'Thumbnail of harbour.png' });
     expect(img.getAttribute('src')).toBe(PNG_URL);
     expect(screen.getByRole('link', { name: 'Open Pictures' })).toBeInTheDocument();
+    expect(screen.getByText('Passive (EPSV)')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Download' }));
     expect(objectsApi.downloadObject).toHaveBeenCalledWith(ID, { sha256: SHA, file_name: 'harbour.png' });
     await user.click(rows[1] as HTMLElement);
@@ -231,5 +233,8 @@ describe('FTP helpers', () => {
     expect(baseName('a/b/c.txt')).toBe('c.txt');
     expect(baseName('dir/')).toBe('dir');
     expect(baseName(null)).toBe('ftp-file');
+    expect(baseName('..')).toBe('ftp-file');
+    expect(baseName('a/../.hidden$x')).toBe('hidden_x');
+    expect(baseName('a/\u202egnp.exe')).toBe('gnp.exe');
   });
 });

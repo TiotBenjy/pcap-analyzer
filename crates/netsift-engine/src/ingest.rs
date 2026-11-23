@@ -250,6 +250,8 @@ fn join_rest(
 const MIN_DEFRAG_BYTES: usize = 64 * 1024;
 /// Smallest per-shard HTTP retention budget (a body preview and a small image).
 const MIN_RETAINED_BYTES: usize = 256 * 1024;
+/// Smallest per-shard number of FTP sessions and data connections followed at a time.
+const MIN_FTP_FLOWS: usize = 16;
 
 /// See [`RunCtx::parts`].
 struct Parts {
@@ -557,9 +559,12 @@ impl RunCtx<'_> {
         http.max_retained_bytes = (http.max_retained_bytes / shards.max(1)).max(MIN_RETAINED_BYTES);
         http.max_decoders = (http.max_decoders / shards.max(1)).max(1);
         http.max_brotli_decoders = (http.max_brotli_decoders / shards.max(1)).max(1);
-        // The FTP data budget is shared by the shards (ADR-032): a fresh one per import.
-        let ftp = registry.config().ftp.clone();
-        registry.config_mut().ftp = ftp.with_fresh_budget();
+        // The FTP data budget is shared by the shards (ADR-032): a fresh one per import. The
+        // bounds on followed sessions and data connections are global: each shard gets its share.
+        let mut ftp = registry.config().ftp.clone().with_fresh_budget();
+        ftp.max_controls = (ftp.max_controls / shards.max(1)).max(MIN_FTP_FLOWS);
+        ftp.max_data_flows = (ftp.max_data_flows / shards.max(1)).max(MIN_FTP_FLOWS);
+        registry.config_mut().ftp = ftp;
         Parts {
             capacity: o.channel_batches.max(1),
             limits: BatchLimits {

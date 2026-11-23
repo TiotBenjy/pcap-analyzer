@@ -153,7 +153,7 @@ fn render(out: &Out) -> String {
     for t in transfers(out) {
         writeln!(
             s,
-            "transfer {} #{} {} {:?} {} {:?} data={:?} status={:?} {:?} bytes={} rest={:?} \
+            "transfer {} #{} {} {:?} {} {:?} {:?} data={:?} status={:?} {:?} bytes={} rest={:?} \
              truncated={} object={:?} mime={:?} listing={:?}",
             t.flow_id.0,
             t.seq,
@@ -161,6 +161,7 @@ fn render(out: &Out) -> String {
             t.path,
             t.direction.as_str(),
             t.mode.map(super::DataMode::as_str),
+            t.mode_command,
             t.data_flow.map(|f| f.0),
             t.status,
             t.status_text,
@@ -388,4 +389,117 @@ fn the_shard_route_ignores_ports() {
         .map(|p| shard_hash(&decode(p.linktype, &p.data)))
         .collect();
     assert!(hashes.windows(2).all(|w| w[0] == w[1]), "{hashes:?}");
+}
+
+#[test]
+fn only_the_address_pair_of_the_control_is_paired() {
+    // ADR-032: a third host on the announced port, and an FXP transfer, link another pair than
+    // the control. They are never paired, whatever shard they reach.
+    let mut sc = Scenario::new();
+    ftp::ftp_cross_pair(&mut sc);
+    let out = run(&sc.into_packets());
+    let t = transfers(&out);
+    let genuine = t
+        .iter()
+        .find(|t| t.path.as_deref() == Some("genuine.txt"))
+        .unwrap();
+    assert_eq!(genuine.bytes, ftp::CROSS_FILE.len() as u64);
+    assert_eq!(genuine.mode_command, Some("PASV"));
+    let (_, content) = out
+        .blobs
+        .iter()
+        .find(|(b, _)| Some(*b) == genuine.object)
+        .unwrap();
+    assert_eq!(content, ftp::CROSS_FILE);
+    assert!(out.blobs.iter().all(|(_, c)| c != ftp::STOLEN));
+    let fxp = t
+        .iter()
+        .find(|t| t.path.as_deref() == Some("mirror.iso"))
+        .unwrap();
+    assert_eq!(fxp.data_flow, None);
+    assert_eq!((fxp.bytes, fxp.status), (0, Some(226)));
+}
+
+#[test]
+fn an_unclaimed_early_connection_or_announcement_never_reaches_a_later_transfer() {
+    let mut sc = Scenario::new();
+    let (client, server) = (ftp_hosts::client(), ftp_hosts::server());
+    let ctl = sc.tcp_open(client, server, &TcpOptions::new(21));
+    let mut ctl = ctl.park();
+    {
+        let mut s = sc.resume(&ctl);
+        s.server_send(b"220 ready\r\n");
+        s.client_send(b"PASV\r\n");
+        s.server_send(b"227 Entering Passive Mode (192,168,1,33,195,100)\r\n");
+        ctl = s.park();
+    }
+    // Opened early for the first PASV, then abandoned: a second PASV comes first.
+    let mut early = sc.tcp_open(client, server, &TcpOptions::new(50_020)).park();
+    {
+        let mut e = sc.resume(&early);
+        e.server_send(b"stale");
+        early = e.park();
+    }
+    sc.resume(&early).close();
+    {
+        let mut s = sc.resume(&ctl);
+        s.client_send(b"PASV\r\n");
+        s.server_send(b"227 Entering Passive Mode (192,168,1,33,195,101)\r\n");
+        s.client_send(b"RETR a.txt\r\n");
+        s.server_send(b"425 Can't open data connection.\r\n");
+        // The announcement of the failed transfer is gone: a late connection to its port is not
+        // given to the next transfer.
+        s.client_send(b"RETR b.txt\r\n");
+        ctl = s.park();
+    }
+    let mut late = sc.tcp_open(client, server, &TcpOptions::new(50_021)).park();
+    {
+        let mut e = sc.resume(&late);
+        e.server_send(b"late");
+        late = e.park();
+    }
+    sc.resume(&late).close();
+    {
+        let mut s = sc.resume(&ctl);
+        s.server_send(b"425 Can't open data connection.\r\n");
+        s.close();
+    }
+    let out = run(&sc.into_packets());
+    let t = transfers(&out);
+    assert_eq!(t.len(), 2);
+    assert!(t.iter().all(|t| t.data_flow.is_none()), "{t:?}");
+}
+
+#[test]
+fn a_password_without_its_verb_stays_secret() {
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        ftp_hosts::client(),
+        ftp_hosts::server(),
+        &TcpOptions::new(21),
+    );
+    s.server_send(b"220 ready\r\n");
+    s.client_send(b"USER bob\r\n");
+    s.server_send(b"331 Password required\r\n");
+    // A client that sends the password alone, then a mangled PASS.
+    s.client_send(b"hunter2\r\n");
+    s.server_send(b"530 Login incorrect\r\n");
+    s.client_send(b"pass\x01letmein\r\n");
+    s.server_send(b"500 Unknown command\r\n");
+    s.client_send(b"NOOP\r\n");
+    s.server_send(b"200 OK\r\n");
+    s.close();
+    let out = run(&sc.into_packets());
+    let lines: Vec<&super::FtpLine> = out
+        .records
+        .iter()
+        .filter_map(|r| match r {
+            Record::Ftp(FtpRecord::Line(l)) if l.kind == LineKind::Command => Some(l),
+            _ => None,
+        })
+        .collect();
+    let secret: Vec<bool> = lines.iter().map(|l| l.secret).collect();
+    assert_eq!(secret, vec![false, true, true, false]);
+    let debug = format!("{:?}", out.records);
+    assert!(!debug.contains("hunter2") && !debug.contains("letmein"));
 }

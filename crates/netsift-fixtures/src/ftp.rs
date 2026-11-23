@@ -370,6 +370,83 @@ pub fn ftp_showcase(sc: &mut Scenario) -> FtpShowcase {
     }
 }
 
+/// Content the third host sends on the announced data port (never the transferred file).
+pub const STOLEN: &[u8] = b"third-party content";
+/// File downloaded by the client of [`ftp_cross_pair`].
+pub const CROSS_FILE: &[u8] = b"genuine file content\n";
+
+/// Data connections between other address pairs than their control (ADR-032), which must never
+/// be paired: whether they reach the shard of the control depends on the number of shards.
+///
+/// 1. A third host (192.168.1.32) connects to the port announced by the server in its `227`
+///    before the client does, and sends [`STOLEN`]; the client then downloads [`CROSS_FILE`].
+/// 2. FXP: a client drives two servers; the second (the mirror) connects to the port announced
+///    by the first, which stays without data connection.
+pub fn ftp_cross_pair(sc: &mut Scenario) {
+    let (client, other, server, mirror) = (
+        ftp_hosts::client(),
+        ftp_hosts::client2(),
+        ftp_hosts::server(),
+        ftp_hosts::mirror(),
+    );
+    let mut ctl = login(sc, client, server, "dave", "cross-fixture", true);
+    on(sc, &mut ctl, |s| {
+        s.client_send(b"PASV\r\n");
+        s.server_send(
+            format!(
+                "227 Entering Passive Mode ({})\r\n",
+                host_port(server, 50_031)
+            )
+            .as_bytes(),
+        );
+    });
+    let mut thief = sc.tcp_open(other, server, &TcpOptions::new(50_031)).park();
+    on(sc, &mut thief, |s| {
+        s.server_send(STOLEN);
+    });
+    close(sc, thief);
+    let mut data = sc.tcp_open(client, server, &TcpOptions::new(50_031)).park();
+    on(sc, &mut ctl, |s| {
+        s.client_send(b"RETR genuine.txt\r\n");
+        s.server_send(b"150 Opening BINARY mode data connection.\r\n");
+    });
+    on(sc, &mut data, |s| {
+        s.server_send(CROSS_FILE);
+    });
+    close(sc, data);
+    on(sc, &mut ctl, |s| {
+        s.server_send(b"226 Transfer complete.\r\n");
+    });
+    quit(sc, ctl);
+    sc.advance(200 * NS_PER_MS);
+
+    // FXP: PASV on the server, the mirror connects to it, the server sends the file.
+    let mut ctl = login(sc, client, server, "erin", "fxp-fixture", true);
+    on(sc, &mut ctl, |s| {
+        s.client_send(b"PASV\r\n");
+        s.server_send(
+            format!(
+                "227 Entering Passive Mode ({})\r\n",
+                host_port(server, 50_032)
+            )
+            .as_bytes(),
+        );
+        s.client_send(b"RETR mirror.iso\r\n");
+    });
+    let mut fxp = sc.tcp_open(mirror, server, &TcpOptions::new(50_032)).park();
+    on(sc, &mut ctl, |s| {
+        s.server_send(b"150 Opening BINARY mode data connection.\r\n");
+    });
+    on(sc, &mut fxp, |s| {
+        s.server_send(&[0x42; 3000]);
+    });
+    close(sc, fxp);
+    on(sc, &mut ctl, |s| {
+        s.server_send(b"226 Transfer complete.\r\n");
+    });
+    quit(sc, ctl);
+}
+
 /// One small passive session (login, download of `files/<i>.txt`), for the demo session.
 pub fn ftp_round(sc: &mut Scenario, i: u32) {
     let (client, server) = (ftp_hosts::client(), ftp_hosts::server());

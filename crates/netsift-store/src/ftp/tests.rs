@@ -64,6 +64,7 @@ fn transfer_row(flow_id: i64, seq: u32, ts: i64, direction: &'static str) -> Ftp
         path: Some(format!("dir/file{flow_id}-{seq}.bin")),
         direction,
         mode: Some("passive"),
+        mode_command: Some("PASV"),
         data_flow_id: Some(flow_id + 1),
         status: Some(226),
         status_text: Some("Transfer complete.".to_owned()),
@@ -464,5 +465,74 @@ fn timings() {
             "{name}: stats {stats_time:?}, sessions {sessions_time:?}, search {search_time:?}, \
              transfers {transfers_time:?}, detail {detail_time:?}"
         );
+    }
+}
+
+/// Cost of the second `EXISTS` (FTP transfers) of the objects filtered by a time range, on
+/// 200 000 HTTP images and 50 000 FTP files. Run on demand in release mode:
+/// `./x.sh cargo test --release -p netsift-store --lib ftp::tests::objects_timings -- --ignored --nocapture`.
+#[test]
+#[ignore = "measurement, run on demand in release mode"]
+fn objects_timings() {
+    let conn = db();
+    conn.execute_batch("BEGIN").unwrap();
+    for i in 0..200_000_i64 {
+        conn.execute(
+            "INSERT INTO http_transactions (flow_id, seq, client_ip, client_port, server_ip, \
+             server_port, ts, end_ts, method, method_group, uri, host, status, status_key, \
+             status_class, content_type, resp_ts, resp_body_len, resp_body_state, \
+             resp_mime_magic, resp_sha256) \
+             VALUES (?1, 0, '10.0.0.1', 40000, '10.0.0.2', 80, ?2, ?2, 'GET', 'GET', ?3, \
+             'cdn.test', 200, 200, '2xx', 'image/png', ?2, 1000, 'complete', 'image/png', ?4)",
+            rusqlite::params![i, i * S, format!("/img/{i}.png"), format!("h{i:063x}")],
+        )
+        .unwrap();
+    }
+    for i in 0..50_000_i64 {
+        FtpRow::Session(session_row(
+            1_000_000 + i,
+            i * S,
+            i * S + S,
+            "u",
+            Some("accepted"),
+        ))
+        .insert(&conn)
+        .unwrap();
+        FtpRow::Transfer(FtpTransferRow {
+            sha256: Some(format!("f{i:063x}")),
+            mime: Some("image/png".to_owned()),
+            ..transfer_row(1_000_000 + i, 0, i * S, "download")
+        })
+        .insert(&conn)
+        .unwrap();
+    }
+    crate::objects::finalize(&conn).unwrap();
+    conn.execute_batch("COMMIT; ANALYZE").unwrap();
+    let total = 200_000 * S;
+    for (name, range) in [
+        ("whole", None),
+        ("1 h", TimeRange::new(total / 2, total / 2 + 3_600 * S)),
+        ("half", TimeRange::new(total / 4, total * 3 / 4)),
+    ] {
+        let filter = ObjectFilter {
+            images_only: true,
+            range,
+            ..ObjectFilter::default()
+        };
+        let t = std::time::Instant::now();
+        objects_page(
+            &conn,
+            &filter,
+            ObjectSort::Time,
+            true,
+            &PageRequest::first(100),
+        )
+        .unwrap();
+        crate::objects::count_objects(&conn, &filter).unwrap();
+        let page = t.elapsed();
+        let t = std::time::Instant::now();
+        crate::objects::stats(&conn, true, 50, range).unwrap();
+        let stats_time = t.elapsed();
+        println!("{name}: objects page + count {page:?}, stats {stats_time:?}");
     }
 }

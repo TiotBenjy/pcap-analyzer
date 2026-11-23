@@ -231,6 +231,8 @@ pub struct FtpTransferRow {
     pub direction: &'static str,
     /// `active` or `passive`.
     pub mode: Option<&'static str>,
+    /// `PASV`, `EPSV`, `PORT` or `EPRT`.
+    pub mode_command: Option<&'static str>,
     pub data_flow_id: Option<i64>,
     pub status: Option<u16>,
     pub status_text: Option<String>,
@@ -248,8 +250,9 @@ impl FtpTransferRow {
         conn.prepare_cached(
             "INSERT INTO ftp_transfers (flow_id, seq, ts, end_ts, command, path, direction, mode, \
              data_flow_id, status, status_text, bytes, restart_offset, truncated, sha256, mime, \
-             listing) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17) \
+             listing, mode_command) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
+                     ?18) \
              ON CONFLICT (flow_id, seq) DO NOTHING",
         )?
         .execute(params![
@@ -270,6 +273,7 @@ impl FtpTransferRow {
             self.sha256,
             self.mime,
             self.listing,
+            self.mode_command,
         ])?;
         Ok(())
     }
@@ -478,6 +482,7 @@ pub struct FtpTransferEntry {
     pub path: Option<String>,
     pub direction: String,
     pub mode: Option<String>,
+    pub mode_command: Option<String>,
     pub data_flow_id: Option<i64>,
     pub status: Option<u16>,
     pub status_text: Option<String>,
@@ -500,7 +505,8 @@ const TRANSFER_FROM: &str = "ftp_transfers t JOIN ftp_sessions s ON s.flow_id = 
 const TRANSFER_SELECT: &str = "t.id, t.flow_id, t.seq, t.ts, t.end_ts, t.command, t.path, \
     t.direction, t.mode, t.data_flow_id, t.status, t.status_text, t.bytes, t.restart_offset, \
     t.truncated, t.sha256, t.mime, t.listing, s.client_ip, s.server_ip, s.server_port, \
-    s.username, hc.names, hc.category, hc.country, hs.names, hs.category, hs.country";
+    s.username, hc.names, hc.category, hc.country, hs.names, hs.category, hs.country, \
+    t.mode_command";
 
 fn transfer_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<FtpTransferEntry> {
     let client: String = r.get(18)?;
@@ -515,6 +521,7 @@ fn transfer_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<FtpTransferEntry> {
         path: r.get(6)?,
         direction: r.get(7)?,
         mode: r.get(8)?,
+        mode_command: r.get(28)?,
         data_flow_id: r.get(9)?,
         status: r.get(10)?,
         status_text: r.get(11)?,

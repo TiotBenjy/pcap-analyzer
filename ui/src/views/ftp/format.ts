@@ -18,9 +18,17 @@ export function isErrorCode(head: string | null): boolean {
   return head !== null && /^[45]\d\d/.test(head);
 }
 
-/** Last segment of a path, for the name of a downloaded file. */
+/**
+ * Name of a downloaded file when the server gives none: the last segment of the path, with the
+ * same filter as the server (letters, digits, `.`, `-`, `_`; no leading dot, at most 64
+ * characters), else `ftp-file`.
+ */
 export function baseName(path: string | null): string {
-  if (path === null) return 'ftp-file';
-  const name = path.split(/[\\/]/).filter((s) => s !== '').at(-1) ?? '';
-  return name === '' ? 'ftp-file' : name;
+  const segment = (path ?? '').split(/[\\/]/).filter((s) => s !== '').at(-1) ?? '';
+  const safe = [...segment]
+    .map((c) => (/[A-Za-z0-9._-]/.test(c) ? c : '_'))
+    .join('')
+    .replace(/^[._]+/, '')
+    .slice(0, 64);
+  return /[A-Za-z0-9]/.test(safe) ? safe : 'ftp-file';
 }

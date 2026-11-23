@@ -1246,11 +1246,14 @@ acceptée : la remplacer par une nouvelle qui la référence.
     adresses sont toujours sur le même shard, vus dans l'ordre de capture. L'analyseur `ftp` associe donc
     le canal au contrôle dans son propre état, sans changer le moteur. Un test de l'analyseur vérifie que
     `shard_hash` ignore les ports (garde-fou si le routage change un jour) ;
-  - **association** : un flux TCP est le canal attendu si son extrémité répondante est l'adresse annoncée,
-    ou à défaut si son port est le port annoncé et qu'il relie les deux mêmes adresses que le contrôle ; il
-    doit avoir été créé après la commande qui a demandé le canal (`PASV`, `EPSV`, `PORT`, `EPRT`), ce que
-    donne son identifiant (index de trame de son premier paquet, ADR-022), sans horloge ; la première
-    correspondance consomme l'attente ; ordre de recherche déterministe (ordre des annonces) ;
+  - **association** : un flux TCP est le canal attendu s'il relie **les deux mêmes adresses que le
+    contrôle** (seule garantie qu'ils soient sur le même shard, quel que soit le nombre de shards) et si son
+    port répondant est le port annoncé ; l'adresse annoncée n'intervient pas (elle peut être interne, NAT).
+    Il doit avoir été créé après la commande qui a demandé le canal (`PASV`, `EPSV`, `PORT`, `EPRT`), ce que
+    donne son identifiant (index de trame de son premier paquet, ADR-022), et dans les 60 s (temps paquet)
+    qui suivent l'annonce ; la première correspondance consomme l'attente, ordre de recherche déterministe
+    (ordre des annonces). Une attente non consommée tombe à la réponse définitive du transfert ou à
+    l'annonce suivante, qui abandonne aussi un canal ouvert d'avance et jamais réclamé ;
   - (a) écarté : l'analyse des réponses par paquet dans le décodeur ne voit pas un `227` coupé entre deux
     segments ni retransmis (pas de réassemblage dans le décodeur), alourdit le thread unique du pipeline et
     modifie une interface figée, pour un gain limité aux cas ci-dessous. (b) écarté : sans connaître les
@@ -1262,12 +1265,14 @@ acceptée : la remplacer par une nouvelle qui la référence.
     complet. Un budget partagé plutôt que divisé par shard (`max_retained_bytes` d'HTTP) : un fichier de
     64 Mio reste extractible quel que soit le nombre de cœurs.
 - Conséquences et limites :
-  - **FXP** (transfert entre deux serveurs) et **serveur multi-adresses** dont la réponse `227` désigne une
-    autre adresse que celle du contrôle : le flux de données relie une autre paire, tombe sur un autre shard
-    et n'est pas associé ; le transfert garde sa commande, son chemin et son statut, sans taille ni contenu
-    (« canal de données non vu ») ;
+  - **FXP** (transfert entre deux serveurs), **serveur multi-adresses** dont la réponse `227` désigne une
+    autre adresse que celle du contrôle, et **hôte tiers** qui se connecte au port annoncé : le flux relie
+    une autre paire et n'est jamais associé, même s'il tombe par hasard sur le shard du contrôle (sinon le
+    résultat dépendrait du nombre de shards, et un tiers pourrait faire attribuer son contenu au transfert) ;
+    le transfert garde sa commande, son chemin et son statut, sans taille ni contenu (« canal de données non
+    vu »). Le test d'équivalence 1/4/7 shards contient un hôte tiers et un transfert FXP ;
   - **NAT** : vu d'un côté du NAT, le contrôle et les données relient les mêmes adresses ; un `227` qui
-    annonce l'adresse interne du serveur est associé par le port (repli) ;
+    annonce l'adresse interne du serveur est associé, puisque seule la paire compte ;
   - **segmentation du `227`** : sans effet, l'analyseur lit le flux réassemblé. Un `227` retenu par le
     réassemblage (segment perdu puis retransmis) arrive après l'ouverture du canal : les octets du canal
     reçus avant sa lecture sont perdus pour ce transfert, marqué tronqué ;
@@ -1277,6 +1282,7 @@ acceptée : la remplacer par une nouvelle qui la référence.
   - **déterminisme** : les flux d'une paire arrivent au même shard dans le même ordre pour 1 à N shards et
     tout découpage en chunks (test d'équivalence fichier unique et chunks, 1, 4 et 7 shards). Le résultat
     ne dépend du nombre de shards ou de l'ordonnancement que lorsqu'une borne est atteinte : sessions et flux
-    de données suivis par shard (4 096 et 1 024), budget mémoire partagé épuisé (comme le budget des blobs) ;
+    de données suivis (4 096 et 1 024 au total, partagés entre les shards comme les bornes HTTP, au moins 16
+    par shard), budget mémoire partagé épuisé (comme le budget des blobs) ;
   - FTPS implicite (990) et contrôle après `AUTH TLS` : chiffrés, non analysés (la note « suite chiffrée »
     l'indique) ; leurs flux de données ne sont pas associés.

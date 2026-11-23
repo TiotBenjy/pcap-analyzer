@@ -35,6 +35,7 @@ fn transfer_row(t: FtpTransfer) -> FtpTransferRow {
         path: t.path,
         direction: t.direction.as_str(),
         mode: t.mode.map(DataMode::as_str),
+        mode_command: t.mode_command,
         data_flow_id: t.data_flow.map(|f| f.0),
         status: t.status,
         status_text: t.status_text,

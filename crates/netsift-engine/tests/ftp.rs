@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use netsift_engine::{CancelToken, IngestOptions, IngestReport, ingest};
-use netsift_fixtures::ftp::ftp_showcase;
+use netsift_fixtures::ftp::{ftp_cross_pair, ftp_showcase};
 use netsift_fixtures::scenarios::{Kind, generate};
 use netsift_fixtures::{
     Encoding, Naming, Packet, Scenario, SplitBy, SplitOptions, split_to_dir, write_file,
@@ -77,10 +77,13 @@ fn ftp_tables(catalog: &Catalog, report: &IngestReport) -> String {
     s
 }
 
-/// The FTP showcase interleaved with the mixed demo traffic (spread over the shards).
+/// The FTP showcase and the data connections of other address pairs (third host, FXP),
+/// interleaved with the mixed demo traffic (spread over the shards).
 fn traffic() -> Vec<Packet> {
     let mut sc = Scenario::new();
     ftp_showcase(&mut sc);
+    sc.advance(1_000_000_000);
+    ftp_cross_pair(&mut sc);
     let mut packets = generate(Kind::Demo, 8, 7);
     packets.extend(sc.into_packets());
     packets.sort_by_key(|p| p.ts_ns);
@@ -101,15 +104,19 @@ fn ftp_tables_do_not_depend_on_shards_nor_chunks() {
         want.lines().filter(|l| l.starts_with("session ")).count() > 6,
         "{want}"
     );
+    // Image, report, README of the showcase and the genuine file of the third-host case.
     assert_eq!(
         want.lines().filter(|l| l.starts_with("object ")).count(),
-        3,
+        4,
         "{want}"
     );
-    assert!(
-        !want.contains("data=- "),
-        "every showcase transfer has its data: {want}"
-    );
+    // Only the FXP transfer is without data connection: the third host never got paired.
+    let without_data: Vec<&str> = want
+        .lines()
+        .filter(|l| l.starts_with("transfer ") && l.contains("data=- "))
+        .collect();
+    assert_eq!(without_data.len(), 1, "{want}");
+    assert!(without_data[0].contains("mirror.iso"), "{want}");
     for shards in [1, 4, 7] {
         let again = run(&catalog, &single, shards);
         assert_eq!(

@@ -236,6 +236,8 @@ pub struct FtpTransferInfo {
     pub direction: FtpDirection,
     /// `active` (`PORT` / `EPRT`) or `passive` (`PASV` / `EPSV`).
     pub mode: Option<String>,
+    /// Command that set the data connection up: `PASV`, `EPSV`, `PORT` or `EPRT`.
+    pub mode_command: Option<String>,
     /// Data connection (string), absent when none was seen.
     pub data_flow_id: Option<String>,
     /// Final reply code and text.
@@ -270,6 +272,7 @@ fn transfer_info(e: FtpTransferEntry) -> FtpTransferInfo {
         path: e.path,
         direction: FtpDirection::from_stored(&e.direction),
         mode: e.mode,
+        mode_command: e.mode_command,
         data_flow_id: e.data_flow_id.map(|f| f.to_string()),
         status: e.status,
         status_text: e.status_text,

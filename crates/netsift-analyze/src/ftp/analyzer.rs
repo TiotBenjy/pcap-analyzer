@@ -2,7 +2,6 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
-use std::net::IpAddr;
 
 use netsift_dissect::Decoded;
 use netsift_dissect::ftp::{
@@ -35,6 +34,23 @@ const MAX_OPEN_TRANSFERS: usize = 16;
 const MAX_PENDING: usize = 32;
 /// Bytes of a listing kept as text.
 pub const LISTING_BYTES: usize = 4096;
+/// Command verbs of RFC 959, 2228, 2389, 2428, 2640, 3659 and common `X` variants: after a
+/// `331` (password required), a line that is not one of them is taken as the password itself.
+const KNOWN_VERBS: &[&str] = &[
+    "ABOR", "ACCT", "ADAT", "ALLO", "APPE", "AUTH", "CCC", "CDUP", "CLNT", "CONF", "CWD", "DELE",
+    "ENC", "EPRT", "EPSV", "FEAT", "HELP", "HOST", "LANG", "LIST", "MDTM", "MIC", "MKD", "MLSD",
+    "MLST", "MODE", "NLST", "NOOP", "OPTS", "PASS", "PASV", "PBSZ", "PORT", "PROT", "PWD", "QUIT",
+    "REIN", "REST", "RETR", "RMD", "RNFR", "RNTO", "SITE", "SIZE", "SMNT", "STAT", "STOR", "STOU",
+    "STRU", "SYST", "TYPE", "USER", "XCUP", "XCWD", "XMKD", "XPWD", "XRMD",
+];
+
+/// True for a line that starts like `PASS` or `ACCT` (any case), even when what follows is not
+/// a well-formed argument: its text is a secret.
+fn looks_secret(text: &str) -> bool {
+    let head = text.trim_start().get(..4).unwrap_or_default();
+    head.eq_ignore_ascii_case("PASS") || head.eq_ignore_ascii_case("ACCT")
+}
+
 /// Controls waiting for a data connection on one port, per shard.
 const MAX_WAITERS_PER_PORT: usize = 64;
 
@@ -66,21 +82,34 @@ enum Pending {
     Other,
 }
 
-/// Data connection announced and not opened yet.
+/// An announced data connection expires after this long without being opened (packet time).
+pub const EXPECT_TTL_NS: i64 = 60 * 1_000_000_000;
+
+/// How a data connection was set up: the mode and the command seen (`PASV`, `EPSV`, `PORT`,
+/// `EPRT`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Channel {
+    mode: DataMode,
+    command: &'static str,
+}
+
+/// Data connection announced and not opened yet. Its address is not kept: the data flow must
+/// link the two addresses of the control, whatever the announced one (ADR-032).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Expect {
-    ip: IpAddr,
     port: u16,
     /// Frame of the command that asked for it: the data flow must be created after it.
     after_frame: u64,
-    mode: DataMode,
+    /// Time of the announcement (expiry).
+    ts: i64,
+    channel: Channel,
 }
 
 /// A paired data connection.
 struct DataFlow {
     control: FlowId,
     id: FlowId,
-    mode: DataMode,
+    channel: Channel,
     /// Transfer it carries, once known.
     transfer: Option<u32>,
     /// Per flow direction (`ToServer`, `ToClient`).
@@ -99,7 +128,7 @@ impl DataFlow {
     /// Index of the direction that carries data from the FTP server: the server opens the
     /// connection in active mode (flow client), the client in passive mode.
     const fn server_dir(&self) -> usize {
-        match self.mode {
+        match self.channel.mode {
             DataMode::Active => 0,
             DataMode::Passive => 1,
         }
@@ -123,7 +152,7 @@ struct Transfer {
     command: String,
     path: Option<String>,
     direction: TransferDirection,
-    mode: Option<DataMode>,
+    channel: Option<Channel>,
     restart_offset: Option<u64>,
     data: DataLink,
     status: Option<(u16, String)>,
@@ -172,6 +201,9 @@ struct Control {
     login: Option<bool>,
     /// `AUTH` accepted: nothing more is read.
     tls: bool,
+    /// Code of the last complete reply, until the next client line: after `331` / `332`
+    /// (password required), that line may be the password itself.
+    last_reply: Option<u16>,
     commands: u64,
     replies: u64,
     files: u64,
@@ -223,6 +255,7 @@ impl Control {
             username: None,
             login: None,
             tls: false,
+            last_reply: None,
             commands: 0,
             replies: 0,
             files: 0,
@@ -248,18 +281,21 @@ impl Control {
         }
     }
 
-    /// True when the flow `id` / `key` is the data connection this control waits for.
-    fn accepts(&self, id: FlowId, key: &FlowKey) -> bool {
+    /// True when the flow `id` / `key`, seen at `ts`, is the data connection this control waits
+    /// for. It must link the same two addresses as the control: only that pair guarantees that
+    /// both reach this shard whatever the number of shards (ADR-032). The announced address plays
+    /// no part (NAT: a `227` may announce an internal address).
+    fn accepts(&self, id: FlowId, key: &FlowKey, ts: i64) -> bool {
         let Some(e) = &self.expect else { return false };
         let after = u64::try_from(id.0).is_ok_and(|frame| frame > e.after_frame);
-        let pair = |a: IpAddr, b: IpAddr| {
-            (a == self.client.ip && b == self.server.ip)
-                || (a == self.server.ip && b == self.client.ip)
-        };
+        let (a, b) = (key.client.ip, key.server.ip);
+        let pair = (a == self.client.ip && b == self.server.ip)
+            || (a == self.server.ip && b == self.client.ip);
         id != self.id
             && after
+            && pair
             && key.server.port == e.port
-            && (key.server.ip == e.ip || pair(key.client.ip, key.server.ip))
+            && ts.saturating_sub(e.ts) <= EXPECT_TTL_NS
     }
 
     fn push_line(&mut self, ts: i64, line: Entry, out: &mut dyn RecordSink) {
@@ -420,12 +456,17 @@ impl FtpAnalyzer {
     ) {
         c.commands = c.commands.saturating_add(1);
         let ts = ctx.ts_ns;
-        let Some(cmd) = parse_command(text) else {
+        let after_331 = matches!(c.last_reply.take(), Some(331 | 332));
+        let parsed = parse_command(text).filter(|cmd| {
+            // A bare password sent after `331` may look like a verb (`hunter2`).
+            !after_331 || KNOWN_VERBS.iter().any(|v| cmd.is(v))
+        });
+        let Some(cmd) = parsed else {
             let line = Entry {
                 kind: LineKind::Command,
                 head: None,
                 text: text.to_owned(),
-                secret: false,
+                secret: after_331 || looks_secret(text),
                 truncated,
             };
             c.push_line(ts, line, out);
@@ -458,14 +499,18 @@ impl FtpAnalyzer {
                 } else {
                     parse_eprt_arg(cmd.arg)
                 };
-                if let Some((ip, port)) = addr {
+                if let Some((_, port)) = addr {
+                    let command = if verb == "PORT" { "PORT" } else { "EPRT" };
                     self.expect(
                         c,
                         Expect {
-                            ip,
                             port,
                             after_frame: ctx.frame,
-                            mode: DataMode::Active,
+                            ts,
+                            channel: Channel {
+                                mode: DataMode::Active,
+                                command,
+                            },
                         },
                     );
                 }
@@ -510,10 +555,10 @@ impl FtpAnalyzer {
         c.next_transfer = c.next_transfer.saturating_add(1);
         let (path, _) = clean(arg.as_bytes(), MAX_TEXT);
         let data = std::mem::replace(&mut c.early_data, DataLink::None);
-        let mode = match &data {
-            DataLink::Open(id) => self.data.get(id).map(|d| d.mode),
-            DataLink::Done(d) => Some(d.mode),
-            DataLink::None => c.expect.map(|e| e.mode),
+        let channel = match &data {
+            DataLink::Open(id) => self.data.get(id).map(|d| d.channel),
+            DataLink::Done(d) => Some(d.channel),
+            DataLink::None => c.expect.map(|e| e.channel),
         };
         match &data {
             DataLink::Open(id) => {
@@ -534,7 +579,7 @@ impl FtpAnalyzer {
             command: verb.to_owned(),
             path: (!path.is_empty()).then_some(path),
             direction,
-            mode,
+            channel,
             restart_offset,
             data,
             status: None,
@@ -592,6 +637,7 @@ impl FtpAnalyzer {
             let (banner, _) = clean(text.as_bytes(), MAX_SHORT);
             c.banner = Some(banner);
         }
+        c.last_reply = Some(code);
         if code < 200 {
             // Preliminary: the transfer at the front keeps waiting for its final reply.
             return;
@@ -621,13 +667,15 @@ impl FtpAnalyzer {
                 self.unexpect(c);
             }
             Pending::Pasv { frame } if code == 227 => {
-                if let Some((ip, port)) = parse_pasv_reply(text) {
-                    let mode = DataMode::Passive;
+                if let Some((_, port)) = parse_pasv_reply(text) {
                     let e = Expect {
-                        ip,
                         port,
                         after_frame: frame,
-                        mode,
+                        ts,
+                        channel: Channel {
+                            mode: DataMode::Passive,
+                            command: "PASV",
+                        },
                     };
                     self.expect(c, e);
                 }
@@ -635,10 +683,13 @@ impl FtpAnalyzer {
             Pending::Epsv { frame } if code == 229 => {
                 if let Some(port) = parse_epsv_reply(text) {
                     let e = Expect {
-                        ip: c.server.ip,
                         port,
                         after_frame: frame,
-                        mode: DataMode::Passive,
+                        ts,
+                        channel: Channel {
+                            mode: DataMode::Passive,
+                            command: "EPSV",
+                        },
                     };
                     self.expect(c, e);
                 }
@@ -646,6 +697,9 @@ impl FtpAnalyzer {
             Pending::Port if !ok => self.unexpect(c),
             Pending::Rest(offset) => c.rest = (code == 350).then_some(offset),
             Pending::Transfer(seq) => {
+                // The transfer is over: an announced connection never opened is dropped, never
+                // given to a later transfer.
+                self.unexpect(c);
                 let (status, _) = clean(text.as_bytes(), MAX_SHORT);
                 if let Some(i) = c.transfers.iter().position(|t| t.seq == seq) {
                     let ready = {
@@ -670,9 +724,13 @@ impl FtpAnalyzer {
         }
     }
 
-    /// Records the data connection `c` now waits for (replacing the previous one).
+    /// Records the data connection `c` now waits for (replacing the previous one). A data
+    /// connection opened early for the previous announcement and never claimed is dropped: it
+    /// must not go to the next transfer.
     fn expect(&mut self, c: &mut Control, e: Expect) {
         self.unexpect(c);
+        let early = std::mem::replace(&mut c.early_data, DataLink::None);
+        self.drop_link(early);
         let waiters = self.expected.entry(e.port).or_default();
         if waiters.len() >= MAX_WAITERS_PER_PORT {
             return;
@@ -702,22 +760,28 @@ impl FtpAnalyzer {
         let Some(waiters) = self.expected.get(&key.server.port) else {
             return false;
         };
-        let Some(control_id) = waiters
-            .iter()
-            .copied()
-            .find(|cid| self.controls.get(cid).is_some_and(|c| c.accepts(id, key)))
-        else {
+        let Some(control_id) = waiters.iter().copied().find(|cid| {
+            self.controls
+                .get(cid)
+                .is_some_and(|c| c.accepts(id, key, ts))
+        }) else {
             return false;
         };
         let Some(mut c) = self.controls.remove(&control_id) else {
             return false;
         };
-        let mode = c.expect.map_or(DataMode::Passive, |e| e.mode);
+        let channel = c.expect.map_or(
+            Channel {
+                mode: DataMode::Passive,
+                command: "PASV",
+            },
+            |e| e.channel,
+        );
         self.unexpect(&mut c);
         let mut flow = DataFlow {
             control: control_id,
             id,
-            mode,
+            channel,
             transfer: None,
             bytes: [0, 0],
             buf: [Vec::new(), Vec::new()],
@@ -735,7 +799,7 @@ impl FtpAnalyzer {
             .find(|t| matches!(t.data, DataLink::None) && t.status.is_none())
         {
             t.data = DataLink::Open(id);
-            t.mode = Some(mode);
+            t.channel = Some(channel);
             flow.transfer = Some(t.seq);
             cap(&mut flow, t.direction, &self.config);
         } else {
@@ -850,7 +914,8 @@ impl FtpAnalyzer {
             command: t.command,
             path: t.path,
             direction: t.direction,
-            mode: t.mode,
+            mode: t.channel.map(|ch| ch.mode),
+            mode_command: t.channel.map(|ch| ch.command),
             data_flow: None,
             status: t.status.as_ref().map(|(code, _)| *code),
             status_text: t.status.map(|(_, text)| text),

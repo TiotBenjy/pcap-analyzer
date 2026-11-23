@@ -170,6 +170,9 @@ async fn counters_agree_between_lists_stats_and_module() {
     assert_eq!(ftp_items.len(), 1);
     assert_eq!(ftp_items[0]["uri"], "photos/harbour.png");
     assert_eq!(ftp_items[0]["mime"], "image/png");
+    // A path, not a URL.
+    assert_eq!(ftp_items[0]["url"], Value::Null);
+    assert_eq!(ftp_items[0]["source"], "ftp");
 }
 
 #[tokio::test]

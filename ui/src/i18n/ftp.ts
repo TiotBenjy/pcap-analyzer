@@ -92,6 +92,11 @@ export const ftpEn = {
       status: 'Status',
       session: 'Client and server',
     },
+    badge: {
+      download: 'Download',
+      upload: 'Upload',
+      listing: 'Listing',
+    },
     rowLabel: 'Details of {{command}} {{path}}',
     noPath: 'No path',
     status: {
@@ -106,8 +111,8 @@ export const ftpEn = {
     reply: 'Reply',
     mode: 'Data connection',
     modes: {
-      active: 'Active (PORT, EPRT)',
-      passive: 'Passive (PASV, EPSV)',
+      active: 'Active ({{command}})',
+      passive: 'Passive ({{command}})',
     },
     restart: 'Restart offset',
     type: 'Detected type',
@@ -133,8 +138,8 @@ export const ftpFr: typeof ftpEn = {
     sessionsHint_one: '{{count}} serveur',
     sessionsHint_other: '{{count}} serveurs',
     accepted: 'Accès acceptés',
-    rejectedHint_one: '{{count}} refusée',
-    rejectedHint_other: '{{count}} refusées',
+    rejectedHint_one: '{{count}} refusé',
+    rejectedHint_other: '{{count}} refusés',
     downloads: 'Téléchargements',
     uploads: 'Dépôts',
     bytes: 'Volume',
@@ -214,6 +219,11 @@ export const ftpFr: typeof ftpEn = {
       status: 'Statut',
       session: 'Client et serveur',
     },
+    badge: {
+      download: 'Téléchargé',
+      upload: 'Déposé',
+      listing: 'Listage',
+    },
     rowLabel: 'Détail de {{command}} {{path}}',
     noPath: 'Aucun chemin',
     status: {
@@ -228,8 +238,8 @@ export const ftpFr: typeof ftpEn = {
     reply: 'Réponse',
     mode: 'Canal de données',
     modes: {
-      active: 'Actif (PORT, EPRT)',
-      passive: 'Passif (PASV, EPSV)',
+      active: 'Actif ({{command}})',
+      passive: 'Passif ({{command}})',
     },
     restart: 'Reprise à l\'octet',
     type: 'Type détecté',

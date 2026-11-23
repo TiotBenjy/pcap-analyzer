@@ -185,7 +185,11 @@ fn file_name(row: &ObjectRow) -> String {
     format!("{stem}-{short}.{}", extension(&row.mime))
 }
 
+/// The URL of an HTTP object; never for an FTP file, whose `uri` is a path.
 fn url(row: &ObjectRow) -> Option<String> {
+    if row.source != "http" {
+        return None;
+    }
     let uri = row.uri.as_deref()?;
     if uri.contains("://") {
         return Some(uri.to_owned());

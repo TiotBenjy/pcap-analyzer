@@ -68,9 +68,12 @@ pub struct FtpConfig {
     pub max_retained_bytes: usize,
     /// Largest file stored as an object (64 MiB, `docs/ARCHITECTURE.md`).
     pub object_max_bytes: usize,
-    /// Control sessions followed at a time per shard; new ones are ignored beyond.
+    /// Control sessions followed at a time; new ones are ignored beyond. One analyzer instance
+    /// applies it as is; the engine gives each shard its share (at least 16), so the memory of
+    /// these states (a few tens of KiB each at worst) does not grow with the number of cores.
     pub max_controls: usize,
-    /// Data connections followed at a time per shard; new ones are not paired beyond.
+    /// Data connections followed at a time (shared by the shards like [`Self::max_controls`]);
+    /// new ones are not paired beyond.
     pub max_data_flows: usize,
     /// Budget of [`Self::max_retained_bytes`] shared by the shards.
     pub budget: Arc<RetentionBudget>,
@@ -253,6 +256,8 @@ pub struct FtpTransfer {
     pub path: Option<String>,
     pub direction: TransferDirection,
     pub mode: Option<DataMode>,
+    /// Command that set the data connection up: `PASV`, `EPSV`, `PORT` or `EPRT`.
+    pub mode_command: Option<&'static str>,
     /// Data connection, when one was paired.
     pub data_flow: Option<FlowId>,
     /// Final reply (`226`, `426`, `550`...), when seen.

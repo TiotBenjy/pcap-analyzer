@@ -175,7 +175,6 @@ export function TransferList({ sessionId, items, oneDay, compact = false, hasMor
       hasMore={hasMore}
       loadingMore={loadingMore}
       onLoadMore={onLoadMore}
-      {...(compact ? { maxHeight: 320 } : {})}
     />
   );
 }
@@ -200,7 +199,7 @@ function DirectionBadge({ transfer: x }: { transfer: FtpTransferInfo }) {
   const { t } = useTranslation();
   return (
     <Badge tone={x.direction === 'upload' ? 'accent' : 'neutral'} className="max-w-full min-w-0 overflow-hidden">
-      <span className="truncate">{t(`views.ftp.transfers.direction.${x.direction}`)}</span>
+      <span className="truncate">{t(`views.ftp.transfers.badge.${x.direction}`)}</span>
     </Badge>
   );
 }
@@ -277,7 +276,13 @@ function TransferDetail({ sessionId, transfer: x }: { sessionId: string; transfe
         </Field>
         <Field label={t('views.ftp.transfers.mode')}>
           <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-meta">
-            {x.mode !== null && <span>{t(x.mode === 'active' ? 'views.ftp.transfers.modes.active' : 'views.ftp.transfers.modes.passive')}</span>}
+            {x.mode !== null && (
+              <span>
+                {t(x.mode === 'active' ? 'views.ftp.transfers.modes.active' : 'views.ftp.transfers.modes.passive', {
+                  command: x.mode_command ?? (x.mode === 'active' ? 'PORT' : 'PASV'),
+                })}
+              </span>
+            )}
             {x.data_flow_id === null ? (
               <span className="text-muted">{t('views.ftp.transfers.noData')}</span>
             ) : (

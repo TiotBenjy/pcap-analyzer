@@ -35,6 +35,10 @@ path: string | null, direction: FtpDirection,
  */
 mode: string | null, 
 /**
+ * Command that set the data connection up: `PASV`, `EPSV`, `PORT` or `EPRT`.
+ */
+mode_command: string | null, 
+/**
  * Data connection (string), absent when none was seen.
  */
 data_flow_id: string | null, 

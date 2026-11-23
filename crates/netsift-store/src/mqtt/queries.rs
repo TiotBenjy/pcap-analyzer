@@ -199,6 +199,8 @@ pub struct ConnectionFilter {
     pub broker: Option<(IpAddr, u16)>,
     pub client: Option<ClientKey>,
     pub signal: Option<Signal>,
+    /// One connection (flow id).
+    pub flow: Option<i64>,
     pub range: Option<TimeRange>,
 }
 
@@ -245,6 +247,9 @@ fn connection_conditions(f: &ConnectionFilter) -> Conditions {
     }
     if let Some(s) = f.signal {
         c.push(s.sql(), []);
+    }
+    if let Some(flow) = f.flow {
+        c.push("c.flow_id = ?", [Value::Integer(flow)]);
     }
     if let Some(r) = f.range {
         r.push_overlap(&mut c, "c.first_ts", "c.last_ts");

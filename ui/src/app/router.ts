@@ -85,6 +85,7 @@ const SESSION_VIEWS: Partial<Record<string, () => Promise<{ default: ComponentTy
   '/ftp': () => import('../views/ftp/FtpView'),
   '/http': () => import('../views/http/HttpView'),
   '/http-headers': () => import('../views/http/HttpHeadersView'),
+  '/mqtt': () => import('../views/mqtt/MqttView'),
   '/network': () => import('../views/network/NetworkView'),
   '/open-ports': () => import('../views/openPorts/OpenPortsView'),
   '/overview': () => import('../views/overview/OverviewView'),

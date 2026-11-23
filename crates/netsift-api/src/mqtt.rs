@@ -1098,6 +1098,7 @@ struct ConnectionsQuery {
     broker_port: Option<u16>,
     client: Option<String>,
     signal: Option<MqttSignalKind>,
+    flow: Option<i64>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -1236,6 +1237,7 @@ async fn connections(
         broker: broker_filter(query.broker, query.broker_port)?,
         client: client_key(query.client)?,
         signal: query.signal.map(MqttSignalKind::signal),
+        flow: query.flow,
         range: None,
     };
     let request = page_request(query.limit, query.cursor);

@@ -11,6 +11,7 @@ import { onlineEn } from './online';
 import { picturesEn } from './pictures';
 import { sipEn } from './sip';
 import { ssdpEn } from './ssdp';
+import { mqttEn } from './mqtt';
 import { telnetEn } from './telnet';
 import { tlsEn } from './tls';
 import { timeRangeEn } from './timeRange';
@@ -46,6 +47,7 @@ export const en = {
       documents: 'Documents',
       ftp: 'FTP',
       telnet: 'Telnet',
+      mqtt: 'MQTT',
       ssdp: 'SSDP',
       sip: 'SIP',
       arp: 'ARP',
@@ -658,6 +660,7 @@ export const en = {
         documents: 'Documents extracted from the traffic',
         ftp: 'FTP sessions, commands and transferred files',
         telnet: 'Telnet sessions',
+        mqtt: 'MQTT connections, clients, brokers and topics',
         ssdp: 'SSDP announcements of network devices',
         sip: 'SIP calls and registrations',
         arp: 'ARP requests, answers and conflicts',
@@ -1002,6 +1005,7 @@ export const en = {
     sip: sipEn,
     ssdp: ssdpEn,
     telnet: telnetEn,
+    mqtt: mqttEn,
     tls: tlsEn,
     updates: updatesEn,
   },

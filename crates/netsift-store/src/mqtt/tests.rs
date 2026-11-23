@@ -462,3 +462,124 @@ fn messages_and_packets() {
         2
     );
 }
+
+/// Timings of the queries of the view on 100 000 connections (200 brokers, 10 000 clients),
+/// 1 000 000 stored PUBLISH and 100 000 topics (`docs/PERFORMANCE.md`). Run with
+/// `./x.sh cargo test --release -p netsift-store mqtt::tests::timings -- --ignored --nocapture`.
+#[test]
+#[ignore = "measurement, run on demand in release mode"]
+#[allow(clippy::too_many_lines)] // Data generation, then one timing per query.
+fn timings() {
+    let conn = db();
+    conn.execute_batch("BEGIN").unwrap();
+    for i in 0..100_000_i64 {
+        let n = u32::try_from(i).unwrap();
+        let first = i * 10;
+        let mut c = connection(
+            i,
+            IpAddr::V4(Ipv4Addr::from(0x0a00_0000 + n % 10_000)),
+            IpAddr::V4(Ipv4Addr::from(0xc0a8_0000 + n % 200)),
+            first,
+            first + 8,
+        );
+        c.client_id = Some(format!("dev-{}", i % 10_000));
+        c.publish_c2s = 10;
+        if i % 7 == 0 {
+            c.login = Some("rejected");
+        }
+        if i % 3 == 0 {
+            c.password = Some("pw-fixture".to_owned());
+            c.auth = Some("password");
+        }
+        MqttRow::Connection(Box::new(c)).insert(&conn).unwrap();
+        for k in 0..10_u32 {
+            let topic_name = format!("site/{}/line{}/sensor{}", i % 50, k, (i / 50) % 200);
+            MqttRow::TopicFlow(topic(i, "c", &topic_name, 1, first + i64::from(k)))
+                .insert(&conn)
+                .unwrap();
+            MqttRow::Packet(Box::new(publish(i, k + 2, first + i64::from(k), &topic_name)))
+                .insert(&conn)
+                .unwrap();
+        }
+    }
+    conn.execute_batch("COMMIT; ANALYZE").unwrap();
+    let t = std::time::Instant::now();
+    finalize(&conn).unwrap();
+    println!("step mqtt: {:?}", t.elapsed());
+    let total = 1_000_000 * S;
+    for (name, range) in [
+        ("whole", None),
+        ("1 h", TimeRange::new(total / 2, total / 2 + 3_600 * S)),
+        ("half", TimeRange::new(total / 4, total * 3 / 4)),
+    ] {
+        let time = |f: &mut dyn FnMut()| {
+            let t = std::time::Instant::now();
+            f();
+            t.elapsed()
+        };
+        let stats_time = time(&mut || {
+            stats(&conn, range).unwrap();
+        });
+        let filter = ConnectionFilter {
+            range,
+            ..ConnectionFilter::default()
+        };
+        let list_time = time(&mut || {
+            connections_page(&conn, &filter, &PageRequest::first(200)).unwrap();
+            count_connections(&conn, &filter).unwrap();
+        });
+        let signal = ConnectionFilter {
+            signal: Some(Signal::AuthFailures),
+            range,
+            ..ConnectionFilter::default()
+        };
+        let signal_time = time(&mut || {
+            connections_page(&conn, &signal, &PageRequest::first(200)).unwrap();
+            count_connections(&conn, &signal).unwrap();
+        });
+        let signals_time = time(&mut || {
+            signals(&conn, range).unwrap();
+        });
+        let group = GroupFilter { q: None, range };
+        let clients_time = time(&mut || {
+            clients_page(&conn, &group, &PageRequest::first(200)).unwrap();
+            count_clients(&conn, &group).unwrap();
+        });
+        let brokers_time = time(&mut || {
+            brokers_page(&conn, &group, &PageRequest::first(200)).unwrap();
+            count_brokers(&conn, &group).unwrap();
+        });
+        let root_time = time(&mut || {
+            topic_children(&conn, None, range, &PageRequest::first(200)).unwrap();
+        });
+        let deep_time = time(&mut || {
+            topic_children(&conn, Some("site/7/line3"), range, &PageRequest::first(200)).unwrap();
+        });
+        let node_time = time(&mut || {
+            topic_detail(&conn, "site/7", range).unwrap();
+        });
+        let messages = MessageFilter {
+            range,
+            ..MessageFilter::default()
+        };
+        let messages_time = time(&mut || {
+            messages_page(&conn, &messages, &PageRequest::first(200)).unwrap();
+            count_messages(&conn, &messages).unwrap();
+        });
+        let prefix = MessageFilter {
+            prefix: Some("site/7".to_owned()),
+            range,
+            ..MessageFilter::default()
+        };
+        let prefix_time = time(&mut || {
+            messages_page(&conn, &prefix, &PageRequest::first(200)).unwrap();
+            count_messages(&conn, &prefix).unwrap();
+        });
+        println!(
+            "{name}: stats {stats_time:?}, connections {list_time:?}, signal filter \
+             {signal_time:?}, signals {signals_time:?}, clients {clients_time:?}, brokers \
+             {brokers_time:?}, topics root {root_time:?}, topics deep {deep_time:?}, node \
+             {node_time:?}, messages {messages_time:?}, messages below {prefix_time:?}"
+        );
+    }
+}

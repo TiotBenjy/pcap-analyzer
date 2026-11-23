@@ -285,6 +285,9 @@ async fn clients_brokers_topics_and_messages() {
     );
     let filtered = env.ok("/mqtt/connections?client=id:probe").await;
     assert_eq!(total(&filtered), 7);
+    let flow = filtered["items"][0]["flow_id"].as_i64().unwrap();
+    let one = env.ok(&format!("/mqtt/connections?flow={flow}")).await;
+    assert_eq!(total(&one), 1);
 
     let brokers = env.all("/mqtt/brokers", 1).await;
     assert_eq!(brokers.len() as u64, SHOWCASE.brokers);

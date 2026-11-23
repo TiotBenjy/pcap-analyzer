@@ -10,6 +10,7 @@ import { onlineFr } from './online';
 import { picturesFr } from './pictures';
 import { sipFr } from './sip';
 import { ssdpFr } from './ssdp';
+import { mqttFr } from './mqtt';
 import { telnetFr } from './telnet';
 import { tlsFr } from './tls';
 import { timeRangeFr } from './timeRange';
@@ -46,6 +47,7 @@ export const fr: Dictionary = {
       documents: 'Documents',
       ftp: 'FTP',
       telnet: 'Telnet',
+      mqtt: 'MQTT',
       ssdp: 'SSDP',
       sip: 'SIP',
       arp: 'ARP',
@@ -658,6 +660,7 @@ export const fr: Dictionary = {
         documents: 'Documents extraits du trafic',
         ftp: 'Sessions FTP, commandes et fichiers transférés',
         telnet: 'Sessions Telnet',
+        mqtt: 'Connexions MQTT, clients, brokers et topics',
         ssdp: 'Annonces SSDP des équipements réseau',
         sip: 'Appels et enregistrements SIP',
         arp: 'Requêtes, réponses et conflits ARP',
@@ -1002,6 +1005,7 @@ export const fr: Dictionary = {
     sip: sipFr,
     ssdp: ssdpFr,
     telnet: telnetFr,
+    mqtt: mqttFr,
     tls: tlsFr,
     updates: updatesFr,
   },

@@ -12,6 +12,7 @@ export const TIME_FILTER_VIEWS: ReadonlySet<NavId> = new Set<NavId>([
   'ftp',
   'http',
   'httpHeaders',
+  'mqtt',
   'network',
   'openPorts',
   'overview',

@@ -95,7 +95,8 @@ clair (TCP 1883 ou WebSocket), tout est lisible : identifiants de CONNECT, topic
   UNSUBSCRIBE / SUBACK (les suivants comptés) ; 8 Subscription Identifiers par PUBLISH.
 - Texte stocké pour affichage (identifiant, topic, raison...) : caractères de contrôle et caractères de
   mise en forme bidirectionnelle ou invisibles (U+200B à U+200F, U+202A à U+202E, U+2066 à U+2069,
-  U+FEFF) remplacés par U+FFFD, comme SIP ; la valeur exacte reste utilisée pour l'arbre des topics.
+  U+FEFF) remplacés par U+FFFD, comme SIP, topics compris : l'arbre des topics est construit sur ce texte
+  (deux topics qui ne diffèrent que par de tels caractères n'y font qu'un).
 - WebSocket (`netsift_dissect::websocket`, P5.15b) : décodeur de trames RFC 6455 incrémental (FIN, RSV,
   opcode, longueur 7/16/64 bits, masque) ; la charge est démasquée par morceaux sans jamais allouer selon
   la longueur annoncée ; trames de contrôle (ping, pong, close) de 125 octets au plus, code et raison de
@@ -142,7 +143,7 @@ ADR-032) : alias, accusés et compteurs n'ont besoin d'aucun état partagé.
   `malformed` incrémenté, premier type et décalage notés, le sens est abandonné (la spec impose de couper
   la connexion ; la suite n'est pas fiable).
 - Trou de réassemblage (`gap_before`) : s'il tombe dans un paquet dont la fin est connue et que le trou
-  y tient, le paquet est marqué incomplet et l'alignement est conservé ; sinon le sens se resynchronise
+  y tient, le paquet est abandonné (compté dans `gaps`) et l'alignement est conservé ; sinon le sens se resynchronise
   au début d'un segment suivant qui commence par un en-tête fixe valide d'un type permis dans ce sens et
   dont les paquets se décodent jusqu'à la fin du segment (ou au-delà, paquet en cours) ; au plus 64
   segments essayés, puis le sens est abandonné. Compteur `gaps`.
@@ -239,11 +240,12 @@ de `tls_sessions`).
   `version` (3, 4, 5, NULL si inconnu), `bridge`, `partial`, `client_id`, `assigned_client_id`,
   `clean_start`, `keep_alive`, `server_keep_alive`, `session_expiry`, `username`, `has_password`,
   `password_len`, `auth_method`, `auth` (`none`, `username`, `password`, `enhanced` ; NULL si `partial`),
-  `will_topic`, `will_qos`, `will_retain`, `will_payload_len`, `will_excerpt` (BLOB), `connect_props`
+  `will_topic`, `will_qos`, `will_retain`, `will_payload_len`, `will_payload` (BLOB, 512 octets), `connect_props`
   (JSON borné : Receive Maximum, Maximum Packet Size, Topic Alias Maximum, User Properties...),
   `connack_ts`, `connack_code`, `session_present`, `connack_props` (JSON borné : Maximum QoS, Retain
   Available, Reason String, Server Reference...), `login` (`accepted`, `rejected`, NULL sans CONNACK),
-  `end_kind` (`disconnect`, `close`, `reset`, `capture`), `disconnect_ts`, `disconnect_by` (`client`,
+  `end_kind` (`disconnect`, `close`, `reset`, `timeout` (inactive jusqu'à l'expiration du flux ou
+  évincée), `capture`), `disconnect_ts`, `disconnect_by` (`client`,
   `broker`), `disconnect_reason`, `broker_software`, compteurs `packets_c2s`, `packets_s2c`,
   `publish_c2s`, `publish_s2c`, `payload_bytes_c2s`, `payload_bytes_s2c`, `subscribe_count`, `pings`,
   `last_ping_ts`, `bytes_c2s`, `bytes_s2c` (octets sur le fil, comme Connexions), `stored_packets`,
@@ -257,23 +259,25 @@ de `tls_sessions`).
   `content_type`, `reason_code`, `reason_string`, `ack_state`, `ack_reason`, `ack_ns`, `filters` (JSON des
   filtres d'un SUBSCRIBE / UNSUBSCRIBE avec options et code accordé), `props` (JSON borné des autres
   propriétés : Message Expiry, Response Topic, Correlation Data, Subscription Identifiers, User
-  Properties), `incomplete` (trou dans le paquet), `malformed`.
+  Properties), `malformed` (paquet qui a arrêté le décodage du sens).
 - `mqtt_topic_flows` (agrégat par connexion, topic et sens, émis à la fin de la connexion) : `flow_id`,
-  `dir`, `topic` (NULL = seau « autres topics »), `messages`, `payload_bytes`, `first_ts`, `last_ts`,
-  `qos_mask`, `retained`, `max_payload`. Compte **tous** les PUBLISH, même au-delà de la borne de paquets
+  `dir`, `topic` (chaîne vide = seau « autres topics » : un topic MQTT n'est jamais vide), `messages`,
+  `payload_bytes`, `first_ts`, `last_ts`, `qos0`, `qos1`, `qos2` (messages par QoS), `retained`, `max_payload`. Compte **tous** les PUBLISH, même au-delà de la borne de paquets
   stockés.
-- `mqtt_subscriptions` : `flow_id`, `seq`, `ts`, `filter`, `qos`, `options`, `granted` (code du SUBACK),
-  `shared_group` (`$share/<groupe>/...`, 5.0), `unsubscribed_ts`.
+- `mqtt_subscriptions` : `flow_id`, `seq` et `idx` (SUBSCRIBE et rang du filtre), `ts`, `filter`, `qos`,
+  `options`, `granted` (code du SUBACK), `shared_group` (`$share/<groupe>/...`, 5.0), `wildcard` (lit tout :
+  `#`, `+/#`, `$SYS/#`, partagé ou non), `unsubscribed_ts`.
 - `mqtt_topics` (étape de fin d'import `mqtt`) : un nœud par niveau de l'arbre des topics, construit
   depuis `mqtt_topic_flows` : `path` (topic complet ou préfixe), `parent`, `name` (dernier niveau, chaîne
   vide permise : `a//b` et `/a` ont des niveaux vides), `depth`, `is_topic` (un PUBLISH a eu ce chemin
   exact), `children`, `topics` (topics sous le nœud, lui compris), `messages_pub` (client vers broker),
-  `messages_del` (broker vers client, livraisons aux abonnés), `payload_bytes`, `publishers` (connexions
-  distinctes qui publient sous le nœud), `retained`, `first_ts`, `last_ts`. Profondeur au plus 32 niveaux
-  (au-delà, le reste du topic est le nom du 32e nœud). Au plus 1 000 000 topics distincts : au-delà,
-  les topics de moindre volume (puis de plus grand nom) sont repliés dans un nœud « autres topics » de
-  leur parent, et `meta` note le nombre de topics repliés. Calcul sur la table complète dans un ordre
-  total (`topic`, puis `flow_id`) : le résultat ne dépend ni des chunks ni du nombre de shards.
+  `messages_del` (broker vers client, livraisons aux abonnés), `payload_bytes`, `retained`, `first_ts`,
+  `last_ts` ; les éditeurs d'un nœud sont comptés par la route de détail. Profondeur au plus 32 niveaux
+  (au-delà, le reste du topic est le nom du 32e nœud). Un parcours dans l'ordre de l'arbre (`/` trié avant
+  tout autre caractère : un sous-arbre est contigu), avec la pile des ancêtres du topic courant (mémoire
+  bornée par la profondeur). Au plus 1 000 000 topics distincts dans l'arbre : les suivants (dans l'ordre de
+  l'arbre) n'y sont pas, `meta` (`mqtt.topics_folded`) en note le nombre. Le résultat ne dépend ni des chunks
+  ni du nombre de shards.
 - Index (différés pendant l'import, ADR-023, sauf ceux de `mqtt_topics` remplie par l'étape) :
   `mqtt_connections (first_ts, flow_id)` (liste), `(first_ts, last_ts)` (chevauchement),
   `(server_ip, server_port, transport)` (brokers), `(client_id, first_ts)` (clients),
@@ -298,14 +302,14 @@ rien écrire.
 | Méthode | Route | Réponse |
 |---|---|---|
 | GET | `/sessions/{id}/mqtt/stats` | `MqttStats` : `connections` (par transport et par version), `clients`, `brokers`, `public_brokers`, `logins` acceptés / refusés / sans réponse, `anonymous_accepted`, `credentials`, `publish` par sens, `payload_bytes`, `subscriptions`, `topics`, `encrypted` (sessions TLS MQTT, P5.15b), top 10 des codes CONNACK (avec libellé), compteurs des signalements |
-| GET | `/sessions/{id}/mqtt/connections?q=&login=&auth=&version=&transport=&broker=&client_id=&signal=&limit=&cursor=` | `Page<MqttConnectionInfo>` par début croissant (keyset `(first_ts, flow_id)`), sans secret ; `q` cherche dans les adresses, l'identifiant client, le nom d'utilisateur et le chemin WebSocket ; `login` = `accepted`, `rejected`, `none` ; `auth` = `none`, `username`, `password`, `enhanced` ; `version` = `3.1`, `3.1.1`, `5.0`, `unknown` ; `broker` = `ip:port` ; `signal` = un des signalements |
+| GET | `/sessions/{id}/mqtt/connections?q=&login=&auth=&version=&transport=&broker=&broker_port=&client=&flow=&signal=&limit=&cursor=` | `Page<MqttConnectionInfo>` par début croissant (keyset `(first_ts, flow_id)`), sans secret ; `q` cherche dans les adresses, l'identifiant client, le nom d'utilisateur et le chemin WebSocket ; `login` = `accepted`, `rejected`, `none` ; `auth` = `none`, `username`, `password`, `enhanced` ; `version` = `3.1`, `3.1.1`, `5.0`, `unknown` ; `broker` et `broker_port` ensemble ; `client` = clé du client (`id:<identifiant>` ou `ip:<adresse>`, voir `/clients`) ; `flow` = une connexion ; `signal` = un des signalements |
 | GET | `/sessions/{id}/mqtt/connections/{flow}` | `MqttConnectionDetail` : la connexion, CONNECT / CONNACK / DISCONNECT décodés, testament (extrait rendu), propriétés, abonnements, 50 topics principaux de la connexion, **mot de passe** (secret, comme le détail d'une session FTP ou Telnet) ; 404 si inconnue |
 | GET | `/sessions/{id}/mqtt/connections/{flow}/packets?type=&limit=&cursor=` | `Page<MqttPacketInfo>` : transcription par `seq` croissant (keyset `seq`), extrait rendu (voir « Rendu des charges ») |
 | GET | `/sessions/{id}/mqtt/clients?q=&limit=&cursor=` | `Page<MqttClientInfo>` : connexions regroupées par identifiant client (identifiant vide ou inconnu : regroupé par adresse client) : adresses (au plus 8), noms d'utilisateur (au plus 4), brokers (au plus 4), versions, connexions, acceptées / refusées, PUBLISH par sens, topics publiés, abonnements, première et dernière activité ; keyset `(client_key)` |
 | GET | `/sessions/{id}/mqtt/brokers?q=&limit=&cursor=` | `Page<MqttBrokerInfo>` : regroupés par (adresse, port, transport) : catégorie d'adresse, `public`, logiciel annoncé, versions, connexions, clients distincts, connexions anonymes acceptées, refus, PUBLISH, topics, première et dernière activité ; tri par connexions décroissantes (keyset `(connections, ip, port, transport)`) |
 | GET | `/sessions/{id}/mqtt/topics?parent=&q=&limit=&cursor=` | `Page<MqttTopicNode>` : enfants directs de `parent` (absent = racine) par nom (keyset `name`) ; avec `q`, topics complets qui contiennent le texte (au plus 200, sans arbre) |
 | GET | `/sessions/{id}/mqtt/topics/node?path=` | `MqttTopicDetail` : nœud, éditeurs (au plus 20 : identifiant client, `Endpoint`, messages), abonnements dont le filtre couvre le chemin (au plus 20, jokers `+` et `#` appliqués selon la spec, `$` exclus des jokers de premier niveau), répartition des QoS, messages retenus, 5 derniers messages (extrait rendu) |
-| GET | `/sessions/{id}/mqtt/messages?topic=&prefix=&dir=&qos=&retain=&client_id=&broker=&flow=&q=&limit=&cursor=` | `Page<MqttMessageInfo>` : PUBLISH stockés par horodatage croissant (keyset `(ts, id)`) ; `q` cherche dans le topic et l'identifiant client (pas dans la charge) |
+| GET | `/sessions/{id}/mqtt/messages?topic=&prefix=&dir=&qos=&retain=&client=&broker=&broker_port=&flow=&q=&limit=&cursor=` | `Page<MqttMessageInfo>` : PUBLISH stockés par horodatage croissant (keyset `(ts, id)`) ; `q` cherche dans le topic et l'identifiant client (pas dans la charge) |
 | GET | `/sessions/{id}/mqtt/signals` | `Vec<MqttSignal>` : signalements (définitions ci-dessous), au plus 50 lignes par type, chacune avec ses compteurs et le filtre de liste à appliquer |
 | GET | `/sessions/{id}/mqtt/tls?q=&limit=&cursor=` | `Page<MqttTlsSessionInfo>` (P5.15b) : sessions TLS MQTT par horodatage (keyset `(ts, id)`), avec la raison (`port`, `alpn`) et les champs de `/tls/sessions` |
 
@@ -313,7 +317,7 @@ Valeurs invalides (`login`, `auth`, `version`, `transport`, `dir`, `qos`, `signa
 400 problem+json. `total_estimate` est le compte exact des lignes filtrées. Aucune liste ne sert de secret.
 
 **Rendu des charges** (fait côté Rust, testé par snapshot, même règle pour le testament) : l'API renvoie
-`payload_len`, `excerpt_len`, `excerpt_truncated`, `excerpt_hex` (hexadécimal) et `excerpt_text` : texte si
+`MqttPayload` : `len`, `excerpt_len`, `truncated`, `hex` (hexadécimal de l'extrait) et `text` : texte si
 l'extrait est de l'UTF-8 valide (un caractère coupé par la borne est toléré) sans caractère de contrôle
 autre que tabulation, LF et CR, ou si le Payload Format Indicator vaut 1 ; caractères de contrôle et de
 mise en forme bidirectionnelle ou invisibles échappés en `\xNN` / `\u{NNNN}` ; NULL sinon. L'UI les
@@ -360,8 +364,8 @@ Colonnes de valeurs repliées sous plage (PUBLISH, octets, messages d'un topic, 
 ## Mise en page (proposition)
 
 Onglet « MQTT » dans le groupe « Plus » de la barre latérale (icône lucide `RadioTower`), route `/mqtt`.
-Le sous-onglet actif et les filtres sont dans l'URL (`?tab=connections|clients|brokers|topics|messages|tls`
-et paramètres de filtre), retour arrière compris.
+Le sous-onglet initial se lit dans l'URL (`?tab=connections|clients|brokers|topics|messages`, `tls` en
+P5.15b), comme SMB ; les filtres restent dans l'état de la vue, comme les autres onglets récents (écart).
 
 Ordre des blocs (une colonne sous 768 px) :
 
@@ -511,6 +515,10 @@ Ordre des blocs (une colonne sous 768 px) :
 - Les brokers ne sont pas ajoutés comme rôle dans l'onglet Servers ni dans Open Ports (suivi possible).
 - Les compteurs d'une connexion sous plage sont ceux de la connexion entière (pas de répartition
   temporelle stockée), comme les autres éléments repliés.
+- Le signalement « refus répétés » se juge sur la session entière (5 refus d'une paire dans la session),
+  même sous plage ; les autres signalements suivent la plage.
+- Filtres des listes non reflétés dans l'URL (seul `?tab=` est lu à l'ouverture).
+- Carte « Signalements » : 3 lignes par signalement, les suivantes comptées (« et n autres »).
 
 ## Critères d'acceptation
 

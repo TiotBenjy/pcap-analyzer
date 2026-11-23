@@ -61,6 +61,7 @@ export const credentialsEn = {
     snmp: 'Community string',
     telnet: 'Login prompt',
     'sip-digest': 'SIP Digest',
+    mqtt: 'CONNECT login',
   },
   card: {
     from: 'From',
@@ -198,6 +199,7 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
     snmp: 'Communauté',
     telnet: 'Invite de connexion',
     'sip-digest': 'Digest SIP',
+    mqtt: 'Connexion CONNECT',
   },
   card: {
     from: 'De',

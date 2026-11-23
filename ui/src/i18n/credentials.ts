@@ -59,6 +59,7 @@ export const credentialsEn = {
     mail: 'Mail login',
     ldap: 'Simple bind',
     snmp: 'Community string',
+    telnet: 'Login prompt',
   },
   card: {
     from: 'From',
@@ -191,6 +192,7 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
     mail: 'Connexion mail',
     ldap: 'Bind simple',
     snmp: 'Communauté',
+    telnet: 'Invite de connexion',
   },
   card: {
     from: 'De',

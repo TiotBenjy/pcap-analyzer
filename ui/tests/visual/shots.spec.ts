@@ -82,6 +82,9 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'ssdp-filter': async (page) => `/sessions/${await demoSessionId(page)}/ssdp`,
   'ssdp-range': async (page) => rangedPath(page, 'ssdp'),
   'ssdp-raw': async (page) => `/sessions/${await demoSessionId(page)}/ssdp`,
+  telnet: async (page) => `/sessions/${await demoSessionId(page)}/telnet`,
+  'telnet-range': async (page) => rangedPath(page, 'telnet'),
+  'telnet-transcript': async (page) => `/sessions/${await demoSessionId(page)}/telnet`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
   'tls-range': async (page) => rangedPath(page, 'tls'),
   'connections-range': async (page) => rangedPath(page, 'connections'),
@@ -106,6 +109,9 @@ const DEMO_SECRETS = [
   'pa55-fixture',
   'demo-fixture',
 ];
+
+/** Passwords typed in the Telnet sessions of the demo (fake fixture values), never shown in clear text. */
+const TELNET_SECRETS = ['user-fixture', 'switch-fixture', 'wrong-fixture', 'env-fixture', 'cam-fixture', 'split-fixture', 'monitor-fixture'];
 
 /** Placeholder id when no session exists: the session views then render their error or not-found state. */
 const NO_SESSION = '00000000000000000000000000';
@@ -750,6 +756,27 @@ for (const lang of LANGS) {
             // Fixture passwords are masked in the transcript.
             const text = await page.evaluate(() => document.body.innerText);
             for (const secret of DEMO_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
+            }
+
+          if (view.startsWith('telnet') && !path.includes(NO_SESSION)) {
+            await expect(page.getByTestId('telnet-summary')).toBeVisible();
+            const sessions = page.getByRole('list', { name: D.views.telnet.sessions.label });
+            await expect(sessions).toBeVisible();
+            if (view === 'telnet-range') {
+              // Folded byte counters: "whole session" under the column title, or in each row below md.
+              const whole = page.getByText(new RegExp(escapeRe(D.timeRange.wholeSession), 'i')).locator('visible=true');
+              await expect(whole.first()).toBeVisible();
+            }
+            if (view === 'telnet-transcript') {
+              // The first session expanded: metadata, transcript in a wrapped mono block, password masked.
+              await sessions.getByRole('button', { expanded: false }).first().click();
+              await expect(page.getByTestId('telnet-transcript')).toBeVisible();
+              await expect(page.getByRole('button', { name: filled(D.secret.show, { label: D.views.telnet.detail.password }) }).first()).toBeVisible();
+              await page.waitForLoadState('networkidle');
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+            }
+            const text = await page.evaluate(() => document.body.innerText);
+            for (const secret of TELNET_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
           }
 
           if ((view === 'servers' || view === 'servers-range') && !path.includes(NO_SESSION)) {

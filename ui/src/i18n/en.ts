@@ -10,6 +10,7 @@ import { macAddressEn } from './macAddress';
 import { onlineEn } from './online';
 import { picturesEn } from './pictures';
 import { ssdpEn } from './ssdp';
+import { telnetEn } from './telnet';
 import { tlsEn } from './tls';
 import { timeRangeEn } from './timeRange';
 import { updatesEn } from './updates';
@@ -998,6 +999,7 @@ export const en = {
     online: onlineEn,
     pictures: picturesEn,
     ssdp: ssdpEn,
+    telnet: telnetEn,
     tls: tlsEn,
     updates: updatesEn,
   },

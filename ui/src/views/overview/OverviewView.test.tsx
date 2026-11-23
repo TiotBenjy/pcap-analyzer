@@ -113,7 +113,7 @@ describe('Overview view', () => {
     expect(band.getByText('2 anomalies')).toBeInTheDocument();
     expect(band.getByText('Link: Ethernet')).toBeInTheDocument();
     // Module cards: phase 3 views listed, clickable once their view exists and found something.
-    expect(screen.queryByRole('heading', { name: 'Telnet' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Documents' })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Connections' }).closest('a')).toHaveAttribute(
       'href',
       `/sessions/${ID}/connections`,

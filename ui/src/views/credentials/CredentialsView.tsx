@@ -54,6 +54,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
   smb: 'SMB',
   smtp: 'SMTP',
   snmp: 'SNMP',
+  telnet: 'Telnet',
 };
 
 /** Material named by each hashcat mode emitted by the analyzers. */

@@ -29,9 +29,10 @@ import { useViewableSession } from '../http/state';
 const route = getRouteApi('/sessions/$sessionId');
 
 /** Column layout of the session rows (wide screens), shared by the header and the rows. */
+// Top-aligned: the expand chevron stays on the first line when the badges wrap.
 const SESSION_GRID =
-  'md:grid md:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)_minmax(8.5rem,auto)_6.5rem] md:items-center md:gap-3 ' +
-  'xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)_minmax(9rem,auto)_6rem_6.5rem]';
+  'md:grid md:grid-cols-[minmax(15.5rem,1fr)_minmax(0,1fr)_minmax(8.5rem,auto)_6.5rem] md:items-start md:gap-3 ' +
+  'xl:grid-cols-[minmax(16rem,24rem)_minmax(0,1fr)_minmax(9rem,auto)_6rem_6.5rem]';
 const SELECT_CLASS = 'h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-body sm:w-auto sm:max-w-56';
 
 type LoginChoice = TelnetLoginFilter | 'all';
@@ -106,7 +107,7 @@ function StatBand({ stats }: { stats: TelnetStats }) {
         icon={KeyRound}
         label={t('views.telnet.stat.logins')}
         value={formatCount(stats.logins)}
-        hint={t('views.telnet.stat.loginsHint', { accepted: formatCount(stats.accepted), rejected: formatCount(stats.rejected) })}
+        hint={`${t('views.telnet.stat.accepted', { count: stats.accepted })}, ${t('views.telnet.stat.rejected', { count: stats.rejected })}`}
       />
       <StatCard
         icon={Scissors}
@@ -186,7 +187,6 @@ function SessionsCard({ sessionId, enabled, oneDay, ranged }: SessionsCardProps)
         hasMore={query.hasNextPage}
         loadingMore={query.isFetchingNextPage}
         onLoadMore={loadMore}
-        maxHeight={960}
       />
     );
 
@@ -286,12 +286,11 @@ function SessionRow({ session: s, oneDay, ranged }: { session: TelnetSessionInfo
         </span>
         <StatusBadges session={s} />
       </span>
-      {/* Narrow screens: start, duration and bytes on one line under the user. */}
+      {/* Narrow screens: start, then duration and bytes (folded: whole session under a range). */}
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-meta text-muted md:hidden">
         <Timestamp us={s.first_ts_us} withDate={!oneDay} />
-        <span className="num">{duration}</span>
         <span className="num" title={bytesTitle}>
-          {ranged ? t('timeRange.wholeSessionColumn', { label: bytes }) : bytes}
+          {ranged ? t('timeRange.wholeSessionColumn', { label: `${duration}, ${bytes}` }) : `${duration}, ${bytes}`}
         </span>
       </span>
       <Timestamp us={s.first_ts_us} withDate={!oneDay} className="hidden text-meta text-muted md:block" />
@@ -317,7 +316,7 @@ function SessionDetail({ sessionId, session: s }: { sessionId: string; session: 
   const detail = useTelnetSession(sessionId, s.flow_id, true);
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <dl className="grid min-w-0 gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,10rem),1fr))]">
+      <dl className="grid min-w-0 gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,9rem),1fr))]">
         {s.terminal !== null && (
           <Field label={t('views.telnet.detail.terminal')}>
             <span className="block font-mono break-all">{s.terminal}</span>
@@ -357,7 +356,7 @@ function SessionDetail({ sessionId, session: s }: { sessionId: string; session: 
         )}
       </dl>
       <div className="flex min-w-0 flex-col gap-1.5">
-        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div className="flex max-w-[100ch] min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <span className="text-meta font-medium">{t('views.telnet.detail.transcript')}</span>
           <span className="min-w-0 text-meta text-faint">{t('views.telnet.detail.transcriptNote')}</span>
         </div>
@@ -379,23 +378,42 @@ function SessionDetail({ sessionId, session: s }: { sessionId: string; session: 
   );
 }
 
+/** The runs without the empty lines that open most sessions (banner line ends). */
+function withoutLeadingBlankLines(runs: readonly TelnetRun[]): TelnetRun[] {
+  const out = [...runs];
+  while (out.length > 0) {
+    const first = out[0] as TelnetRun;
+    if (first.speaker === 'secret') break;
+    const text = first.text.replace(/^(?:[ \t]*\n)+/, '');
+    if (text === '') {
+      out.shift();
+      continue;
+    }
+    out[0] = { ...first, text };
+    break;
+  }
+  return out;
+}
+
 /**
  * The transcript as text: React escapes every run, nothing from the capture is interpreted.
- * Wraps long lines (never scrolls horizontally) and scrolls vertically inside its block.
+ * Wraps long lines (never scrolls horizontally) and is not a scroll container of its own: the
+ * session list already scrolls (two levels at most with the page).
  */
-function Transcript({ runs }: { runs: readonly TelnetRun[] }) {
+function Transcript({ runs: all }: { runs: readonly TelnetRun[] }) {
   const { t } = useTranslation();
+  const runs = withoutLeadingBlankLines(all);
   if (runs.length === 0) return <p className="text-meta text-muted">{t('views.telnet.detail.empty')}</p>;
   return (
     <div
       role="log"
       aria-label={t('views.telnet.detail.transcriptLabel')}
       data-testid="telnet-transcript"
-      className="relative max-h-[28rem] min-w-0 overflow-y-auto overscroll-contain rounded-md border border-line bg-surface p-3 font-mono text-meta leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]"
+      className="max-w-[100ch] min-w-0 rounded-md border border-line bg-surface p-3 font-mono text-meta leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]"
     >
       {runs.map((r, i) =>
         r.speaker === 'secret' ? (
-          <SecretValue key={i} value={r.text} label={t('views.telnet.detail.password')} className="align-middle font-sans" />
+          <SecretValue key={i} value={r.text} label={t('views.telnet.detail.password')} className="ml-1 align-middle font-sans" />
         ) : (
           <span key={i} className={r.speaker === 'client' ? 'text-accent' : undefined}>
             {r.text}

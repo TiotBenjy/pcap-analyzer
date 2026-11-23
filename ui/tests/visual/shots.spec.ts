@@ -85,6 +85,7 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   telnet: async (page) => `/sessions/${await demoSessionId(page)}/telnet`,
   'telnet-range': async (page) => rangedPath(page, 'telnet'),
   'telnet-transcript': async (page) => `/sessions/${await demoSessionId(page)}/telnet`,
+  'telnet-truncated': async (page) => `/sessions/${await demoSessionId(page)}/telnet`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
   'tls-range': async (page) => rangedPath(page, 'tls'),
   'connections-range': async (page) => rangedPath(page, 'connections'),
@@ -774,6 +775,18 @@ for (const lang of LANGS) {
               await expect(page.getByRole('button', { name: filled(D.secret.show, { label: D.views.telnet.detail.password }) }).first()).toBeVisible();
               await page.waitForLoadState('networkidle');
               await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+            }
+            if (view === 'telnet-truncated') {
+              // The camera session (2323) expanded: a transcript cut at its bound, in the scrolling list.
+              const row = sessions.getByRole('button', {
+                name: filled(D.views.telnet.sessions.rowLabel, { client: '192.168.1.11', server: '192.168.1.70' }),
+              });
+              await row.first().click();
+              await expect(page.getByTestId('telnet-transcript')).toBeVisible();
+              const note = page.getByText(D.views.telnet.detail.truncated);
+              await note.scrollIntoViewIfNeeded();
+              await expect(note).toBeVisible();
+              await page.waitForLoadState('networkidle');
             }
             const text = await page.evaluate(() => document.body.innerText);
             for (const secret of TELNET_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);

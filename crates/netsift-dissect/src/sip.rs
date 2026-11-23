@@ -261,6 +261,14 @@ pub fn parse(data: &[u8]) -> Option<SipMessage> {
     let start = start_line(trim_cr(window.get(..first_end)?))?;
     let (raw, raw_truncated) = raw_text(data, MAX_RAW);
     let raw = redact_auth(&raw);
+    // URI passwords of the head (start line and headers), never of the body.
+    let raw = match raw.find("\n\n") {
+        Some(end) => {
+            let (head, body) = raw.split_at(end);
+            format!("{}{body}", mask_uri_passwords(head))
+        }
+        None => mask_uri_passwords(&raw),
+    };
     let mut msg = SipMessage {
         start,
         call_id: None,
@@ -293,6 +301,22 @@ pub fn parse(data: &[u8]) -> Option<SipMessage> {
     let headers = collect_headers(head.header_lines(window), &mut msg.headers_truncated);
     for (name, value) in &headers {
         apply_header(&mut msg, name, value);
+    }
+    // A password in a SIP URI (`sip:user:password@host`, RFC 3261 section 19.1.1) is masked in
+    // every extracted URI.
+    for uri in [
+        msg.from.uri.as_mut(),
+        msg.to.uri.as_mut(),
+        msg.contact.as_mut(),
+        msg.auth.as_mut().and_then(|a| a.uri.as_mut()),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        *uri = mask_uri_passwords(uri);
+    }
+    if let StartLine::Request { uri, .. } = &mut msg.start {
+        *uri = mask_uri_passwords(uri);
     }
     let body = window.get(head.body_start..).unwrap_or_default();
     let body = match msg.content_length {
@@ -669,8 +693,11 @@ fn auth_params(text: &str) -> (&str, Vec<AuthParam>, bool) {
             rest = quoted.get(end.saturating_add(1)..).unwrap_or_default();
             (unescape(quoted.get(..end).unwrap_or(quoted)), true)
         } else {
-            let end = rest.find(',').unwrap_or(rest.len());
-            let v = rest.get(..end).unwrap_or_default().trim().to_owned();
+            // A token ends at a comma or a blank: `username=alice response=abc` is two parameters.
+            let end = rest
+                .find(|c: char| c == ',' || c.is_ascii_whitespace())
+                .unwrap_or(rest.len());
+            let v = rest.get(..end).unwrap_or_default().to_owned();
             rest = rest.get(end..).unwrap_or_default();
             (v, false)
         };
@@ -763,9 +790,11 @@ pub fn raw_text(data: &[u8], max: usize) -> (String, bool) {
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
+            // A lone CR is not a line end for the parser: never one in the text either (an
+            // authentication header must not pass for body text, see `redact_auth`).
             '\r' => {
                 if chars.peek() != Some(&'\n') {
-                    out.push('\n');
+                    out.push(char::REPLACEMENT_CHARACTER);
                 }
             }
             '\n' | '\t' => out.push(c),
@@ -774,6 +803,48 @@ pub fn raw_text(data: &[u8], max: usize) -> (String, bool) {
         }
     }
     (out, truncated)
+}
+
+/// `text` with the password of every `sip:` / `sips:` URI masked: `sip:alice:secret@host`
+/// becomes `sip:alice:<masked>@host`. The user part ends at `@`; a URI without `@` before its
+/// end (`;`, `?`, `>`, `,`, a quote or a blank) has no user part.
+pub fn mask_uri_passwords(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let mut out = String::with_capacity(text.len());
+    let mut done = 0usize;
+    let mut search = 0usize;
+    while let Some(found) = lower.get(search..).and_then(|t| t.find("sip")) {
+        let at = search.saturating_add(found);
+        let after = lower.get(at..).unwrap_or_default();
+        let scheme = if after.starts_with("sips:") {
+            5
+        } else if after.starts_with("sip:") {
+            4
+        } else {
+            search = at.saturating_add(3);
+            continue;
+        };
+        let user_start = at.saturating_add(scheme);
+        let rest = text.get(user_start..).unwrap_or_default();
+        let end = rest
+            .find(|c: char| {
+                matches!(c, '@' | ';' | '?' | '>' | ',' | '"' | '<') || c.is_whitespace()
+            })
+            .unwrap_or(rest.len());
+        search = user_start.saturating_add(end);
+        if !rest.get(end..).unwrap_or_default().starts_with('@') {
+            continue;
+        }
+        let Some(colon) = rest.get(..end).and_then(|u| u.find(':')) else {
+            continue;
+        };
+        let pass_start = user_start.saturating_add(colon).saturating_add(1);
+        out.push_str(text.get(done..pass_start).unwrap_or_default());
+        out.push_str(MASK);
+        done = user_start.saturating_add(end);
+    }
+    out.push_str(text.get(done..).unwrap_or_default());
+    out
 }
 
 /// What replaces a secret in the raw text.

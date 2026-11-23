@@ -343,3 +343,67 @@ fn content_length_out_of_range_is_refused() {
     let m = parse(b"OPTIONS sip:b SIP/2.0\r\nContent-Length: -5\r\n\r\n").unwrap();
     assert_eq!(m.content_length, None);
 }
+
+#[test]
+fn a_lone_carriage_return_never_hides_an_authorization() {
+    let text = b"REGISTER sip:r SIP/2.0\r\nVia: SIP/2.0/UDP x\r\r\nAuthorization: Digest username=\"a\", response=\"cafe1234\"\r\n\r\n";
+    let m = parse(text).unwrap();
+    assert!(!m.raw.contains("cafe1234"), "{}", m.raw);
+    assert!(m.raw.contains(
+        "Via: SIP/2.0/UDP x\u{FFFD}\nAuthorization: Digest username=\"a\", response=<masked>"
+    ));
+}
+
+#[test]
+fn unquoted_digest_values_end_at_a_blank() {
+    let m = parse(
+        b"REGISTER sip:r SIP/2.0\r\nAuthorization: Digest username=alice response=abc123\r\n\r\n",
+    )
+    .unwrap();
+    assert_eq!(m.auth.as_ref().unwrap().username.as_deref(), Some("alice"));
+    assert!(!m.raw.contains("abc123"), "{}", m.raw);
+}
+
+#[test]
+fn uri_passwords_are_masked() {
+    let text = "INVITE sip:bob:hunter2@example.com SIP/2.0\r\n\
+From: \"A\" <sips:alice:s3cret@example.com;transport=tls>;tag=1\r\n\
+To: sip:bob:hunter2@example.com\r\n\
+Contact: <sip:alice@10.0.0.1:5060>\r\n\
+Content-Length: 18\r\n\r\nsip:not:head@body\n";
+    let m = parse(text.as_bytes()).unwrap();
+    for secret in ["hunter2", "s3cret"] {
+        assert!(
+            !m.raw
+                .get(..m.raw.find("\n\n").unwrap())
+                .unwrap()
+                .contains(secret),
+            "{}",
+            m.raw
+        );
+    }
+    assert!(
+        m.raw
+            .starts_with("INVITE sip:bob:<masked>@example.com SIP/2.0\n")
+    );
+    assert!(m.raw.ends_with("sip:not:head@body\n"), "the body is kept");
+    assert_eq!(
+        m.from.uri.as_deref(),
+        Some("sips:alice:<masked>@example.com;transport=tls")
+    );
+    assert_eq!(m.to.uri.as_deref(), Some("sip:bob:<masked>@example.com"));
+    // A port is not a password: `user@host:port` and `host:port` are kept.
+    assert_eq!(m.contact.as_deref(), Some("sip:alice@10.0.0.1:5060"));
+    assert_eq!(
+        mask_uri_passwords("sip:10.0.0.1:5060;lr"),
+        "sip:10.0.0.1:5060;lr"
+    );
+    assert_eq!(mask_uri_passwords("SIP:u:p@h"), "SIP:u:<masked>@h");
+    assert_eq!(
+        mask_uri_passwords("gossip:u:p@h is sip"),
+        "gossip:u:<masked>@h is sip"
+    );
+    assert!(
+        matches!(&m.start, StartLine::Request { uri, .. } if uri == "sip:bob:<masked>@example.com")
+    );
+}

@@ -385,3 +385,183 @@ fn piped_input_typed_ahead_is_not_detected() {
     assert!(visible(&session).contains("piped-fixture"));
     assert_eq!(creds.len(), 0);
 }
+
+#[test]
+fn a_gap_taking_the_first_key_of_a_password_keeps_it_secret() {
+    // The segment of `h` is lost: the rest waits in the reassembly buffer while the server goes
+    // on, then arrives with a gap after the prompt line ended.
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        telnet_hosts::workstation(),
+        telnet_hosts::unix_server(),
+        &TcpOptions::new(fx::PORT),
+    );
+    s.server_send(&IAC_WILL_ECHO);
+    s.server_send(b"login: ");
+    for b in b"ops" {
+        s.client_send(&[*b]);
+        s.server_send(&[*b]);
+    }
+    s.client_send(b"\r\0");
+    s.server_send(b"\r\nPassword:");
+    let mut lost = None;
+    for (i, b) in b"hunter2".iter().enumerate() {
+        let range = s.client_send(&[*b]);
+        if i == 0 {
+            lost = Some(range.start);
+        }
+    }
+    s.client_send(b"\r\0");
+    s.server_send(b"\r\nLast login: never\r\n$ ");
+    s.close();
+    let lost = lost.unwrap();
+    let packets: Vec<_> = sc
+        .packets()
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != lost)
+        .map(|(_, p)| p.clone())
+        .collect();
+    let (session, creds) = session_of(&packets);
+    let text = visible(&session);
+    assert!(!text.contains("unter2"), "{text}");
+    assert!(text.contains("login: ops"), "{text}");
+    assert_eq!(creds.len(), 0);
+}
+
+#[test]
+fn a_command_typed_during_output_is_not_a_password() {
+    // (a) Type-ahead: the server prints while `ls` is typed, then echoes it late.
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        telnet_hosts::workstation(),
+        telnet_hosts::unix_server(),
+        &TcpOptions::new(fx::PORT),
+    );
+    s.server_send(&IAC_WILL_ECHO);
+    s.server_send(b"$ ");
+    s.client_send(b"l");
+    s.server_send(b"\r\nYou have new mail.\r\n");
+    s.client_send(b"s");
+    s.client_send(b"\r\0");
+    s.server_send(b"ls\r\nnotes.txt\r\n$ ");
+    s.close();
+    let (session, creds) = session_of(sc.packets());
+    assert_eq!(creds.len(), 0);
+    assert!(
+        session
+            .transcript
+            .iter()
+            .all(|r| r.speaker != Speaker::Secret)
+    );
+}
+
+#[test]
+fn a_command_echoed_after_its_line_end_is_not_a_password() {
+    // (b) Slow link: `l`, `s` and Enter leave before the first echo.
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        telnet_hosts::workstation(),
+        telnet_hosts::unix_server(),
+        &TcpOptions::new(fx::PORT),
+    );
+    s.server_send(&IAC_WILL_ECHO);
+    s.server_send(b"$ ");
+    s.client_send(b"l");
+    s.client_send(b"s");
+    s.client_send(b"\r\0");
+    s.server_send(b"ls\r\nnotes.txt\r\n$ ");
+    s.close();
+    let (session, creds) = session_of(sc.packets());
+    assert_eq!(creds.len(), 0);
+    assert!(
+        session
+            .transcript
+            .iter()
+            .all(|r| r.speaker != Speaker::Secret)
+    );
+    assert!(
+        visible(&session).contains("$ ls\nnotes.txt"),
+        "{}",
+        visible(&session)
+    );
+}
+
+/// Feeds stream data straight to the analyzer: `(to_server, gap_before, bytes)` per segment.
+fn drive(segments: &[(bool, u64, &[u8])]) -> (TelnetSession, Vec<Credential>) {
+    use crate::analyzer::Analyzer as _;
+    use netsift_flow::{Direction, Endpoint, FlowId, FlowKey, StreamCtx};
+    let key = FlowKey {
+        proto: 6,
+        client: Endpoint {
+            ip: "192.168.1.10".parse().unwrap(),
+            port: 49_152,
+        },
+        server: Endpoint {
+            ip: "192.168.1.2".parse().unwrap(),
+            port: fx::PORT,
+        },
+    };
+    let mut analyzer = TelnetAnalyzer::new(&AnalyzerConfig::default());
+    let mut out: Vec<Record> = Vec::new();
+    for (frame, (to_server, gap, data)) in (0u64..).zip(segments) {
+        let ctx = StreamCtx {
+            ts_ns: 1_000 + i64::try_from(frame).unwrap(),
+            chunk_id: 0,
+            frame,
+            id: FlowId(0),
+            key,
+            gap_before: *gap,
+        };
+        let dir = if *to_server {
+            Direction::ToServer
+        } else {
+            Direction::ToClient
+        };
+        analyzer.on_stream(&ctx, dir, data, &mut out);
+    }
+    analyzer.finish(&mut out);
+    let mut session = None;
+    let mut creds = Vec::new();
+    for r in out {
+        match r {
+            Record::Telnet(s) => session = Some(*s),
+            Record::Credential(c) => creds.push(c),
+            other => panic!("unexpected record {other:?}"),
+        }
+    }
+    (session.unwrap(), creds)
+}
+
+#[test]
+fn a_server_gap_keeps_the_password_being_typed() {
+    let (session, creds) = drive(&[
+        (false, 0, b"Password: "),
+        (true, 0, b"ab"),
+        // Server bytes lost while the password is typed.
+        (false, 5, b"\x07"),
+        (true, 0, b"cd\r\n"),
+        (false, 0, b"\r\nsw>"),
+        (true, 0, b"exit\r\n"),
+    ]);
+    assert!(!visible(&session).contains("abcd"));
+    assert_eq!(creds.len(), 1);
+    assert_eq!(creds[0].secret.as_deref(), Some("abcd"));
+}
+
+#[test]
+fn a_client_gap_after_an_unanswered_password_prompt_is_secret() {
+    // The first keys are lost and the rest arrives after the server went on.
+    let (session, creds) = drive(&[
+        (false, 0, b"login: "),
+        (true, 0, b"ops\r\n"),
+        (false, 0, b"Password:"),
+        (false, 0, b"\r\nLast login: never\r\n$ "),
+        (true, 1, b"unter2\r\n"),
+        (true, 0, b"id\r\n"),
+    ]);
+    let text = visible(&session);
+    assert!(!text.contains("unter2"), "{text}");
+    assert!(text.contains("id\n"), "{text}");
+    assert_eq!(creds.len(), 0);
+}

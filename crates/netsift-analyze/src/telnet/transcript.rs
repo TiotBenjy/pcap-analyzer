@@ -266,25 +266,33 @@ impl Transcript {
         self.text.len()
     }
 
-    /// The client's text from offset `from` on is a password: its client runs become secret.
-    pub(crate) fn relabel_secret(&mut self, from: usize) {
-        if from >= self.text.len() {
+    /// The client's text in `from..to` is a password: its client runs become secret.
+    pub(crate) fn relabel_secret(&mut self, from: usize, to: usize) {
+        let to = to.min(self.text.len());
+        if from >= to {
             return;
         }
-        let Some(idx) = self.runs.iter().rposition(|(start, _)| *start <= from) else {
-            return;
-        };
-        let mut idx = idx;
-        if let Some(&(start, Speaker::Client)) = self.runs.get(idx)
-            && start < from
-        {
-            idx = idx.saturating_add(1);
-            self.runs.insert(idx, (from, Speaker::Client));
-        }
-        for (_, speaker) in self.runs.iter_mut().skip(idx) {
-            if *speaker == Speaker::Client {
+        self.split_run(to);
+        self.split_run(from);
+        for (start, speaker) in &mut self.runs {
+            if *start >= from && *start < to && *speaker == Speaker::Client {
                 *speaker = Speaker::Secret;
             }
+        }
+    }
+
+    /// Makes a run start at `pos` (inside the text), splitting the run that covers it.
+    fn split_run(&mut self, pos: usize) {
+        if pos >= self.text.len() {
+            return;
+        }
+        let Some(idx) = self.runs.iter().rposition(|(start, _)| *start <= pos) else {
+            return;
+        };
+        if let Some(&(start, speaker)) = self.runs.get(idx)
+            && start < pos
+        {
+            self.runs.insert(idx.saturating_add(1), (pos, speaker));
         }
     }
 
@@ -611,8 +619,9 @@ mod tests {
         for &b in b"bc" {
             t.apply(Speaker::Client, Token::Char(b), &mut budget);
         }
-        t.relabel_secret(start);
         t.apply(Speaker::Client, Token::Newline, &mut budget);
+        let end = t.len() - 1;
+        t.relabel_secret(start, end);
         assert_eq!(render(t), "[S:Code: ][C:a][P:bc][C:\n]");
     }
 

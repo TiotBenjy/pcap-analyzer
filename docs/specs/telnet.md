@@ -82,9 +82,13 @@ Connexions TCP dont le port serveur (ou client, pour une connexion prise en cour
     `passwort`, `kennwort`, `contraseña`, `senha` ou `wachtwoord` (suivi ou non de `:` ou `?`), ou
     contient l'un d'eux et se termine par `:` (`Password for jdoe:`, `Enter password`, `Mot de passe :`) ;
 - écho absent : une ligne tapée touche par touche (au moins deux segments), sans qu'aucun caractère ne
-  revienne en écho alors que le serveur a annoncé `WILL ECHO`, est un mot de passe quelle que soit
-  l'invite (invite inconnue, ou absente de la capture) : elle devient secrète au moment de sa fin de
-  ligne et son identifiant porte le détail `detected=no-echo` ;
+  revienne en écho ni que le serveur n'envoie quoi que ce soit pendant la frappe, alors qu'il a annoncé
+  `WILL ECHO`, est suspecte. La décision attend la première réponse du serveur après la fin de ligne :
+  si elle commence par l'écho de la ligne (lien lent), c'est une saisie ordinaire ; sinon c'est un mot
+  de passe quelle que soit l'invite (invite inconnue, ou absente de la capture), rendu secret dans la
+  transcription, dont l'identifiant porte le détail `detected=no-echo`. Sans réponse avant la fin du
+  flux, la ligne est masquée sans identifiant. Une frappe anticipée pendant une sortie du serveur
+  n'est jamais suspecte ;
 - la saisie va jusqu'à la fin de ligne, effacements appliqués, bornée (256 caractères pour le nom,
   512 pour le mot de passe) ;
 - un mot de passe saisi crée un identifiant (avec le dernier nom saisi, sinon la variable `USER` de
@@ -99,8 +103,12 @@ Connexions TCP dont le port serveur (ou client, pour une connexion prise en cour
 
 **Mot de passe dans la transcription** : les caractères tapés à une invite de mot de passe reconnue,
 ou sur une ligne détectée par l'écho absent, forment un run `secret` (y compris un éventuel écho du
-serveur, absorbé). Une saisie de mot de passe le reste jusqu'à la fin de sa ligne même après un trou de
-réassemblage (la valeur, incomplète, ne donne alors pas d'identifiant). Choix retenu :
+serveur, absorbé). Après un trou de réassemblage côté client, une saisie de mot de passe le reste
+jusqu'à la fin de sa ligne, y compris quand le trou a emporté ses premières touches et que la suite
+arrive après d'autres sorties du serveur : une invite de mot de passe terminée ou coupée sans saisie
+est mémorisée, et la première ligne du client qui arrive après un trou est alors secrète. La valeur,
+incomplète, ne donne pas d'identifiant. Un trou côté serveur ne touche pas à la saisie en cours.
+Choix retenu :
 
 - le texte de la transcription stockée (`telnet_transcripts.transcript`) ne contient pas les runs
   secrets : un run secret y est un marqueur vide, et les valeurs sont rangées à part, dans l'ordre,
@@ -115,6 +123,8 @@ réassemblage (la valeur, incomplète, ne donne alors pas d'identifiant). Choix 
   - invite non reconnue (autre langue, `Code :`) quand le serveur ne fait pas d'écho négocié ou que
     la ligne part d'un bloc ;
   - mot de passe tapé par erreur à l'invite `login:` (renvoyé en écho, il est lu comme un nom) ;
+  - à l'inverse, si un trou emporte toute la ligne du mot de passe, la ligne suivante du client qui
+    arrive après un trou (une commande) est masquée par excès de prudence ;
 - seul le détail d'une session (`/telnet/sessions/{flow}`) recompose les runs avec leur valeur, comme le
   détail d'un identifiant (`/credentials/{entry}`, ADR-019) ; l'UI l'affiche dans `SecretValue`, donc
   masqué par défaut (longueur seule), avec Révéler et Copier.
@@ -185,7 +195,8 @@ Ordre des blocs (une colonne sous 768 px) :
    - ligne de métadonnées : terminal, fenêtre `80 x 24`, options actives en pastilles, `USER`
      d'environnement, octets par sens ;
    - transcription dans un bloc à chasse fixe (`whitespace-pre-wrap`, coupure des mots longs, jamais de
-     défilement horizontal, hauteur bornée avec défilement vertical interne), texte React échappé ;
+     défilement horizontal, largeur bornée à 100 caractères, sans défilement propre : la liste des
+     sessions défile, deux niveaux de défilement au plus avec la page), texte React échappé ;
      la saisie du client en couleur d'accent atténuée, le serveur en couleur de texte ; un run secret
      est un `SecretValue` en ligne (masqué par défaut) ;
    - mention « Transcription tronquée à 64 Kio / 2 000 lignes » le cas échéant.

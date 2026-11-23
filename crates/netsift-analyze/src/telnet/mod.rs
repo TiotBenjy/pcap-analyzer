@@ -165,6 +165,19 @@ struct Line {
     echoed: usize,
     /// Client segments that carried characters of the line.
     segments: u32,
+    /// The server sent something (not an echo) while the line was typed.
+    server_spoke: bool,
+}
+
+/// A line typed without echo, waiting for the server's answer: a password unless that answer
+/// starts with its echo.
+#[derive(Debug, Clone, Copy)]
+struct Suspect {
+    /// Transcript range of the typed text (before its line end).
+    start: usize,
+    end: usize,
+    /// Bytes of the line already seen again in the server's answer.
+    matched: usize,
 }
 
 /// State of one session except the two `IAC` decoders (borrowed separately while they feed).
@@ -186,6 +199,7 @@ struct Session {
     /// The server announced `WILL ECHO` (and not `WONT ECHO` since).
     server_echo: bool,
     line: Line,
+    suspect: Option<Suspect>,
     /// The next client character starts a new segment.
     new_segment: bool,
     transcript: Transcript,
@@ -322,19 +336,22 @@ impl Session {
                         self.line.segments = self.line.segments.saturating_add(1);
                     }
                 }
-                // Typed key by key to a server that echoes, and not one key echoed: a password
-                // whatever the prompt (unknown language, prompt missing from the capture).
+                // Typed key by key to a server that echoes, without one key echoed nor anything
+                // else from the server: a password whatever the prompt (unknown language, prompt
+                // missing from the capture), unless the server's answer is its (late) echo.
                 Token::Newline
                     if self.server_echo
                         && self.line.chars > 0
                         && self.line.echoed == 0
+                        && !self.line.server_spoke
                         && self.line.segments >= 2 =>
                 {
-                    self.login.force_password();
-                    self.echo.secret_pending();
-                    if let Some(start) = self.line.start {
-                        self.transcript.relabel_secret(start);
-                    }
+                    self.login.defer_line();
+                    self.suspect = self.line.start.map(|start| Suspect {
+                        start,
+                        end: self.transcript.len(),
+                        matched: 0,
+                    });
                 }
                 _ => {}
             }
@@ -346,18 +363,65 @@ impl Session {
                 Speaker::Client
             };
             self.transcript.apply(speaker, token, budget);
-            if token == Token::Newline {
-                self.line = Line::default();
+            match token {
+                Token::Newline => self.line = Line::default(),
+                Token::Erase | Token::EraseLine | Token::EraseWord => {
+                    // Erased below the first key typed: the line now starts where the text ends.
+                    if let Some(start) = self.line.start.as_mut() {
+                        *start = (*start).min(self.transcript.len());
+                    }
+                }
+                Token::Char(_) => {}
             }
         } else {
+            self.judge_suspect(token, ts, out);
             if self.echo.absorbs(token) {
                 if matches!(token, Token::Char(_)) {
                     self.line.echoed = self.line.echoed.saturating_add(1);
                 }
                 return;
             }
+            if self.line.start.is_some() {
+                self.line.server_spoke = true;
+            }
             self.login.server(token, out);
             self.transcript.apply(Speaker::Server, token, budget);
+        }
+    }
+
+    /// Compares the server's answer with the suspect line: its echo dismisses it, anything else
+    /// makes it a password (masked in the transcript, credential emitted).
+    fn judge_suspect(&mut self, token: Token, ts: i64, out: &mut dyn RecordSink) {
+        let Some(mut suspect) = self.suspect else {
+            return;
+        };
+        let Some(line) = self.login.suspect_bytes() else {
+            self.suspect = None;
+            return;
+        };
+        let echoed = match token {
+            Token::Char(c) => line.get(suspect.matched) == Some(&c),
+            _ => false,
+        };
+        if echoed {
+            suspect.matched = suspect.matched.saturating_add(1);
+            if suspect.matched >= line.len() {
+                self.suspect = None;
+                self.login.dismiss_suspect();
+            } else {
+                self.suspect = Some(suspect);
+            }
+        } else if suspect.matched > 0 {
+            // Its beginning came back: echoed (then something else).
+            self.suspect = None;
+            self.login.dismiss_suspect();
+        } else {
+            self.suspect = None;
+            // Its keys are not expected back any more: the line end can still match.
+            self.echo.secret_pending();
+            self.transcript.relabel_secret(suspect.start, suspect.end);
+            self.login
+                .confirm_suspect(ts, self.env_user.as_deref(), out);
         }
     }
 
@@ -367,8 +431,10 @@ impl Session {
             nvt.reset();
         }
         self.echo.clear();
-        self.login.reset();
-        self.line = Line::default();
+        self.login.reset(side == CLIENT);
+        if side == CLIENT {
+            self.line = Line::default();
+        }
     }
 
     fn options(&self) -> Vec<String> {
@@ -382,6 +448,11 @@ impl Session {
     }
 
     fn finish(mut self, bytes: Option<(u64, u64)>, out: &mut dyn RecordSink) -> usize {
+        // A suspect line never answered: masked, without credential.
+        if let Some(suspect) = self.suspect.take() {
+            self.transcript.relabel_secret(suspect.start, suspect.end);
+            self.login.drop_suspect();
+        }
         self.login.end(out);
         let options = self.options();
         let login = self.login.result();
@@ -497,6 +568,7 @@ fn open(ctx: &StreamCtx) -> Option<Flow> {
             echo: Echo::default(),
             server_echo: false,
             line: Line::default(),
+            suspect: None,
             new_segment: false,
             transcript: Transcript::default(),
             login: login::Login::new(ctx.id, oriented),

@@ -3,11 +3,13 @@
 //!
 //! The prompt is the server's current (unfinished) line when the client starts typing a line.
 //! The tracker sees the tokens of the transcript after echo merging, so an absorbed echo never
-//! reaches the server line. A line typed without any echo while the server echoes
-//! ([`Login::force_password`]) is read as a password too, whatever the prompt.
+//! reaches the server line. A line typed without any echo while the server echoes is held
+//! ([`Login::defer_line`]) until the server answers: a password if the answer is not its echo
+//! ([`Login::confirm_suspect`]), whatever the prompt.
 //!
-//! A password being typed stays one across a reassembly gap: the rest of the line is still
-//! secret, but the value is incomplete and no credential is emitted for it.
+//! A password being typed stays one across a reassembly gap of the client, also when the gap took
+//! its first keys (a password prompt left unanswered): the rest of the line is still secret, but
+//! the value is incomplete and no credential is emitted for it.
 
 use std::fmt;
 
@@ -126,6 +128,7 @@ fn outcome(line: &[u8]) -> Option<LoginResult> {
 }
 
 /// Login state of one session. `Debug` shows no input, name nor secret.
+#[allow(clippy::struct_excessive_bools)] // Independent states of the line being typed.
 pub(crate) struct Login {
     id: FlowId,
     /// Oriented key (client first).
@@ -137,8 +140,12 @@ pub(crate) struct Login {
     input: Vec<u8>,
     /// A gap removed part of the password being typed.
     damaged: bool,
-    /// The current line was read as a password from the missing echo.
-    by_echo: bool,
+    /// A password prompt ended (or was cut) without the client typing at it yet.
+    password_open: bool,
+    /// The line being typed ends as a suspect (no echo): kept until the server answers.
+    defer: bool,
+    /// The last line typed without echo, and the field it was typed at.
+    suspect: Option<(Field, String)>,
     user: Option<String>,
     pending: Option<Credential>,
     emitted: usize,
@@ -172,7 +179,9 @@ impl Login {
             typing: false,
             input: Vec::new(),
             damaged: false,
-            by_echo: false,
+            password_open: false,
+            defer: false,
+            suspect: None,
             user: None,
             pending: None,
             emitted: 0,
@@ -183,12 +192,24 @@ impl Login {
         }
     }
 
-    /// Bytes are missing: the line being typed is dropped, but a password being typed stays a
-    /// password up to the end of its line (its value is incomplete: no credential).
-    pub(crate) fn reset(&mut self) {
+    /// Bytes are missing in one direction (`client`: the client's). On the client side, the
+    /// line being typed is dropped, but a password being typed, or about to be typed at an
+    /// unanswered password prompt, stays a password up to the end of its line (its value is
+    /// incomplete: no credential). On the server side, only the prompt being read is dropped.
+    pub(crate) fn reset(&mut self, client: bool) {
+        if prompt(&self.server_line) == Prompt::Password {
+            self.password_open = true;
+        }
         self.server_line.clear();
+        if !client {
+            return;
+        }
         self.input.clear();
         if self.field == Field::Password {
+            self.damaged = true;
+        } else if !self.typing && self.password_open {
+            self.field = Field::Password;
+            self.typing = true;
             self.damaged = true;
         } else {
             self.field = Field::Other;
@@ -196,13 +217,41 @@ impl Login {
         }
     }
 
-    /// The line being typed (at any prompt) is a password: no echo came back from a server that
-    /// echoes.
-    pub(crate) fn force_password(&mut self) {
+    /// The line being typed got no echo from a server that echoes: at its end it is held as a
+    /// suspect instead of being read (user name, command), until the server answers.
+    pub(crate) fn defer_line(&mut self) {
         if self.typing && self.field != Field::Password {
-            self.field = Field::Password;
-            self.by_echo = true;
+            self.defer = true;
         }
+    }
+
+    /// Value of the suspect line, to compare with the server's answer.
+    pub(crate) fn suspect_bytes(&self) -> Option<&[u8]> {
+        self.suspect.as_ref().map(|(_, v)| v.as_bytes())
+    }
+
+    /// The server did not echo the suspect line: it was a password.
+    pub(crate) fn confirm_suspect(
+        &mut self,
+        ts: i64,
+        env_user: Option<&str>,
+        out: &mut dyn RecordSink,
+    ) {
+        if let Some((_, value)) = self.suspect.take() {
+            self.password_entered(value, ts, env_user, true, out);
+        }
+    }
+
+    /// The server echoed the suspect line: it is read as typed (user name, command).
+    pub(crate) fn dismiss_suspect(&mut self) {
+        if let Some((field, value)) = self.suspect.take() {
+            self.typed_line(field, &value);
+        }
+    }
+
+    /// No answer before the end of the flow: the line stays masked, without credential.
+    pub(crate) fn drop_suspect(&mut self) {
+        self.suspect = None;
     }
 
     /// The client typed `token`; returns `true` when it belongs to a password (secret).
@@ -216,6 +265,7 @@ impl Login {
         if !self.typing {
             self.typing = true;
             let p = prompt(&self.server_line);
+            self.password_open = false;
             if self.pending.is_some() {
                 match p {
                     Prompt::User | Prompt::Password => self.resolve(LoginResult::Rejected, out),
@@ -272,6 +322,9 @@ impl Login {
                 {
                     self.resolve(result, out);
                 }
+                if prompt(&self.server_line) == Prompt::Password {
+                    self.password_open = true;
+                }
                 self.server_line.clear();
             }
         }
@@ -279,43 +332,63 @@ impl Login {
 
     fn end_of_input(&mut self, ts: i64, env_user: Option<&str>, out: &mut dyn RecordSink) {
         let value = String::from_utf8_lossy(&self.input).into_owned();
-        match self.field {
-            Field::User => {
-                let name: String = value.trim().chars().take(MAX_IDENTITY).collect();
-                self.user = (!name.is_empty()).then_some(name);
+        if self.defer && !value.is_empty() {
+            self.suspect = Some((self.field, value));
+        } else if self.field == Field::Password {
+            if !value.is_empty() && !self.damaged {
+                self.password_entered(value, ts, env_user, false, out);
             }
-            Field::Password if !value.is_empty() && !self.damaged => {
-                self.attempts = self.attempts.saturating_add(1);
-                let mut cred = base_credential(
-                    "telnet",
-                    "telnet",
-                    self.id,
-                    &self.key,
-                    ts,
-                    SecretState::Plaintext,
-                );
-                cred.username = self.user.take().or_else(|| env_user.map(str::to_owned));
-                cred.secret = Some(value);
-                if self.by_echo {
-                    cred.details
-                        .push(("detected".to_owned(), "no-echo".to_owned()));
-                }
-                if cred.username.is_some() {
-                    self.last_user.clone_from(&cred.username);
-                }
-                if let Some(old) = self.pending.replace(cred) {
-                    self.emit(old, out);
-                }
-            }
-            Field::Password | Field::Other => {}
+        } else {
+            self.typed_line(self.field, &value);
         }
         self.input.clear();
         self.typing = false;
         self.field = Field::Other;
         self.damaged = false;
-        self.by_echo = false;
+        self.defer = false;
+        self.password_open = false;
         // The server's next output starts a new prompt.
         self.server_line.clear();
+    }
+
+    /// A line typed at a user name prompt, or elsewhere (not a password).
+    fn typed_line(&mut self, field: Field, value: &str) {
+        if field == Field::User {
+            let name: String = value.trim().chars().take(MAX_IDENTITY).collect();
+            self.user = (!name.is_empty()).then_some(name);
+        }
+    }
+
+    /// A complete password: a credential waiting for the server's verdict.
+    fn password_entered(
+        &mut self,
+        value: String,
+        ts: i64,
+        env_user: Option<&str>,
+        by_echo: bool,
+        out: &mut dyn RecordSink,
+    ) {
+        self.attempts = self.attempts.saturating_add(1);
+        let mut cred = base_credential(
+            "telnet",
+            "telnet",
+            self.id,
+            &self.key,
+            ts,
+            SecretState::Plaintext,
+        );
+        cred.username = self.user.take().or_else(|| env_user.map(str::to_owned));
+        cred.secret = Some(value);
+        if by_echo {
+            cred.details
+                .push(("detected".to_owned(), "no-echo".to_owned()));
+        }
+        if cred.username.is_some() {
+            self.last_user.clone_from(&cred.username);
+        }
+        if let Some(old) = self.pending.replace(cred) {
+            self.emit(old, out);
+        }
     }
 
     fn resolve(&mut self, result: LoginResult, out: &mut dyn RecordSink) {

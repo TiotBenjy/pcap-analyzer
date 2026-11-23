@@ -18,6 +18,7 @@
 //! - [`ports`]: open ports (SYN-ACK, UDP replies) with services detected by content;
 //! - [`servers`]: DHCP, NTP and Kerberos servers (the Servers view derives the other roles);
 //! - [`services`]: IANA service names of ports (embedded registry);
+//! - [`sip`]: SIP messages, SDP media, scanners and Digest authorizations;
 //! - [`smb`]: NetBIOS browser announcements, SMB negotiation and NTLMSSP;
 //! - [`ssdp`]: SSDP announcements, searches and answers (`UPnP` devices);
 //! - [`telnet`]: Telnet sessions (transcripts, negotiated options) and their logins.
@@ -55,6 +56,7 @@ pub mod record;
 pub mod registry;
 pub mod servers;
 pub mod services;
+pub mod sip;
 pub mod smb;
 pub mod ssdp;
 pub mod telnet;

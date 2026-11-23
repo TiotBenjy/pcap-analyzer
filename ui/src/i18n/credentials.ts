@@ -60,6 +60,7 @@ export const credentialsEn = {
     ldap: 'Simple bind',
     snmp: 'Community string',
     telnet: 'Login prompt',
+    'sip-digest': 'SIP Digest',
   },
   card: {
     from: 'From',
@@ -109,6 +110,9 @@ export const credentialsEn = {
     secret_field: 'Password field',
     server_challenge: 'Server challenge',
     dialect: 'Dialect',
+    uri: 'URI',
+    algorithm: 'Algorithm',
+    qop: 'Quality of protection (qop)',
   },
   result: {
     accepted: 'Accepted',
@@ -193,6 +197,7 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
     ldap: 'Bind simple',
     snmp: 'Communauté',
     telnet: 'Invite de connexion',
+    'sip-digest': 'Digest SIP',
   },
   card: {
     from: 'De',
@@ -242,6 +247,9 @@ export const credentialsFr: Widen<typeof credentialsEn> = {
     secret_field: 'Champ de mot de passe',
     server_challenge: 'Défi du serveur',
     dialect: 'Dialecte',
+    uri: 'URI',
+    algorithm: 'Algorithme',
+    qop: 'Qualité de protection (qop)',
   },
   result: {
     accepted: 'Accepté',

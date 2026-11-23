@@ -21,6 +21,7 @@ Chaque protocole concerné émet un `Record::Credential` (l'onglet ne fait qu'ag
 | SMTP AUTH, POP3, IMAP | `mail` | mécanisme et éléments transmis |
 | SNMP v1/v2c | `snmp` | community string et version |
 | LDAP simple bind | `ldap` | DN et secret |
+| SIP Digest (Authorization / Proxy-Authorization) | `sip-digest` | identifiant, domaine et URI, sans matériel de récupération (`docs/specs/sip.md`) |
 | Telnet | `telnet` | reconstitution de la saisie (phase 5) |
 | NTLM (depuis SMB/HTTP) | `ntlm` | métadonnées (domaine, compte, station) et matériel de défi/réponse |
 | Handshakes WiFi (phase 5) | `wifi-eapol` | éléments EAPOL capturés |

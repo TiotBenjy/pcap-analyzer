@@ -53,6 +53,8 @@ pub enum Record {
     OpenPort(OpenPortSeen),
     /// `servers`: one DHCP message, NTP response or KDC reply.
     Server(crate::servers::ServerRecord),
+    /// One SIP message on UDP or TCP 5060 (`sip` analyzer), boxed: wide.
+    Sip(Box<crate::sip::SipRecord>),
     /// SMB / NetBIOS browser announcement or SMB session (negotiation + NTLM auth metadata).
     Smb(SmbRecord),
     /// One SSDP datagram on UDP 1900 (`ssdp` analyzer).
@@ -135,10 +137,10 @@ impl SecretState {
 #[derive(Clone, PartialEq, Eq)]
 pub struct Credential {
     /// Emitting protocol, lower case (`smb`, `http`, `ftp`, `smtp`, `pop3`, `imap`, `ldap`,
-    /// `snmp`).
+    /// `snmp`, `sip`).
     pub source_protocol: &'static str,
     /// Credential type, lower case: `ntlmv1`, `ntlmv2`, `ntlm` (no crackable line), `http-basic`,
-    /// `http-form`, `ftp`, `mail`, `ldap`, `snmp`.
+    /// `http-form`, `ftp`, `mail`, `ldap`, `snmp`, `sip-digest`.
     pub kind: &'static str,
     /// Flow the credential belongs to, when it comes from a tracked flow.
     pub flow_id: Option<FlowId>,

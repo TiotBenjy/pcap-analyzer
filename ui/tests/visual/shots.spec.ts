@@ -86,6 +86,9 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   'telnet-range': async (page) => rangedPath(page, 'telnet'),
   'telnet-transcript': async (page) => `/sessions/${await demoSessionId(page)}/telnet`,
   'telnet-truncated': async (page) => `/sessions/${await demoSessionId(page)}/telnet`,
+  sip: async (page) => `/sessions/${await demoSessionId(page)}/sip`,
+  'sip-range': async (page) => rangedPath(page, 'sip'),
+  'sip-call': async (page) => `/sessions/${await demoSessionId(page)}/sip`,
   tls: async (page) => `/sessions/${await demoSessionId(page)}/tls`,
   'tls-range': async (page) => rangedPath(page, 'tls'),
   'connections-range': async (page) => rangedPath(page, 'connections'),
@@ -757,7 +760,7 @@ for (const lang of LANGS) {
             // Fixture passwords are masked in the transcript.
             const text = await page.evaluate(() => document.body.innerText);
             for (const secret of DEMO_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
-            }
+          }
 
           if (view.startsWith('telnet') && !path.includes(NO_SESSION)) {
             await expect(page.getByTestId('telnet-summary')).toBeVisible();
@@ -790,6 +793,31 @@ for (const lang of LANGS) {
             }
             const text = await page.evaluate(() => document.body.innerText);
             for (const secret of TELNET_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
+          }
+
+          if (view.startsWith('sip') && !path.includes(NO_SESSION)) {
+            await expect(page.getByTestId('sip-summary')).toBeVisible();
+            // The scanner sweep happens once, at the start of the capture: not in every range.
+            if (view !== 'sip-range') await expect(page.getByRole('list', { name: D.views.sip.scanners.label })).toBeVisible();
+            const dialogs = page.getByRole('list', { name: D.views.sip.dialogs.label });
+            await expect(dialogs).toBeVisible();
+            await expect(page.getByRole('list', { name: D.views.sip.messages.label })).toBeVisible();
+            if (view === 'sip-range') {
+              // Folded dialog counters: "whole session" under the column title, or in each row below xl.
+              const whole = page.getByText(new RegExp(escapeRe(D.timeRange.wholeSession), 'i')).locator('visible=true');
+              await expect(whole.first()).toBeVisible();
+            }
+            if (view === 'sip-call') {
+              // The first call expanded (the complete call of the showcase): steps, user agents and
+              // RTP streams with their flows; then the first message and its raw text.
+              await dialogs.getByRole('button', { expanded: false }).nth(0).click();
+              await expect(page.getByTestId('sip-media').first()).toBeVisible();
+              const messages = page.getByRole('list', { name: D.views.sip.messages.label });
+              await messages.getByRole('button', { expanded: false }).first().click();
+              await expect(page.getByTestId('sip-raw')).toBeVisible();
+              await page.waitForLoadState('networkidle');
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+            }
           }
 
           if ((view === 'servers' || view === 'servers-range') && !path.includes(NO_SESSION)) {

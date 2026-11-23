@@ -76,6 +76,8 @@ pub enum StoreRecord {
     OpenPort(OpenPortRow),
     /// DHCP message, NTP response or KDC reply (`servers`, see [`crate::servers`]).
     Server(crate::servers::ServerRow),
+    /// New SIP message (`sip_messages`; dialogs are built by the step `sip`).
+    Sip(Box<crate::sip::SipRow>),
     // The SMB rows below are boxed: they are wide (many optional text fields) and would otherwise
     // dominate the size of every `StoreRecord` (and of the writer's `Msg`).
     /// New NetBIOS browser announcement (`smb_announces`).
@@ -110,6 +112,7 @@ impl StoreRecord {
             Self::Http(_) => "http_transactions",
             Self::OpenPort(_) => "open_ports",
             Self::Server(r) => r.kind(),
+            Self::Sip(_) => "sip_messages",
             Self::SmbAnnounce(_) => "smb_announces",
             Self::SmbSession(_) => "smb_sessions",
             Self::Ssdp(_) => "ssdp_messages",
@@ -137,6 +140,7 @@ impl StoreRecord {
             Self::Http(r) => r.insert(conn),
             Self::OpenPort(r) => r.insert(conn),
             Self::Server(r) => r.insert(conn),
+            Self::Sip(r) => r.insert(conn),
             Self::SmbAnnounce(r) => r.insert(conn),
             Self::SmbSession(r) => r.insert(conn),
             Self::Ssdp(r) => r.insert(conn),

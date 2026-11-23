@@ -1,0 +1,229 @@
+---
+source: crates/netsift-api/src/sip/tests.rs
+expression: "(stats, dialogs)"
+---
+[
+  {
+    "call_duration_us": 1011000,
+    "call_states": [
+      {
+        "count": 1,
+        "state": "completed"
+      }
+    ],
+    "calls": 1,
+    "dialogs": 2,
+    "messages": 11,
+    "methods": [
+      {
+        "count": 2,
+        "name": "REGISTER"
+      },
+      {
+        "count": 1,
+        "name": "ACK"
+      },
+      {
+        "count": 1,
+        "name": "BYE"
+      },
+      {
+        "count": 1,
+        "name": "INVITE"
+      }
+    ],
+    "registrations": 1,
+    "requests": 5,
+    "responses": 6,
+    "scanner_messages": 0,
+    "senders": 4,
+    "statuses": [
+      {
+        "count": 3,
+        "reason": "OK",
+        "status": 200
+      },
+      {
+        "count": 1,
+        "reason": "Trying",
+        "status": 100
+      },
+      {
+        "count": 1,
+        "reason": "Ringing",
+        "status": 180
+      },
+      {
+        "count": 1,
+        "reason": "Unauthorized",
+        "status": 401
+      }
+    ],
+    "top_user_agents": [
+      {
+        "count": 4,
+        "name": "Softphone/3.1",
+        "scanner": null
+      },
+      {
+        "count": 3,
+        "name": "Deskphone 7.4.2",
+        "scanner": null
+      },
+      {
+        "count": 2,
+        "name": "Conference Unit 2.0",
+        "scanner": null
+      },
+      {
+        "count": 2,
+        "name": "Example PBX 18.2",
+        "scanner": null
+      }
+    ],
+    "user_agents": 4
+  },
+  {
+    "items": [
+      {
+        "answer_ts_us": 1700000622088500,
+        "auth_user": null,
+        "bye_ts_us": 1700000623099500,
+        "call_id": "round-0000@10.20.0.21",
+        "cancelled": false,
+        "challenged": false,
+        "client": {
+          "category": "private",
+          "country": null,
+          "ip": "10.20.0.21",
+          "names": []
+        },
+        "client_port": 5060,
+        "contact": "sip:201@10.20.0.21",
+        "dialog_type": "call",
+        "duration_us": 1011000,
+        "final_reason": "OK",
+        "final_status": 200,
+        "first_ts_us": 1700000619287000,
+        "from_name": "Alice",
+        "from_uri": "sip:201@10.20.0.21",
+        "id": 12,
+        "invite_ts_us": 1700000619287000,
+        "last_ts_us": 1700000623100000,
+        "media": [
+          {
+            "address": {
+              "category": "private",
+              "country": null,
+              "ip": "10.20.0.21",
+              "names": []
+            },
+            "bytes": 4280,
+            "codecs": [
+              "PCMU",
+              "PCMA",
+              "telephone-event"
+            ],
+            "direction": "sendrecv",
+            "first_flow_id": 119,
+            "flow_count": 1,
+            "media": "audio",
+            "offer_ts_us": 1700000619287000,
+            "offered_by": "10.20.0.21",
+            "packets": 20,
+            "port": 40002,
+            "proto": "RTP/AVP"
+          },
+          {
+            "address": {
+              "category": "private",
+              "country": null,
+              "ip": "10.20.0.22",
+              "names": []
+            },
+            "bytes": 4280,
+            "codecs": [
+              "PCMU",
+              "PCMA",
+              "telephone-event"
+            ],
+            "direction": "sendrecv",
+            "first_flow_id": 119,
+            "flow_count": 1,
+            "media": "audio",
+            "offer_ts_us": 1700000622088500,
+            "offered_by": "10.20.0.22",
+            "packets": 20,
+            "port": 42002,
+            "proto": "RTP/AVP"
+          }
+        ],
+        "method": "INVITE",
+        "requests": 3,
+        "responses": 4,
+        "ringing_ts_us": 1700000620088000,
+        "scanner": null,
+        "server": {
+          "category": "private",
+          "country": null,
+          "ip": "10.20.0.22",
+          "names": []
+        },
+        "server_agent": "Softphone/3.1",
+        "server_port": 5060,
+        "state": "completed",
+        "to_name": null,
+        "to_uri": "sip:202@10.20.0.22",
+        "transport": "udp",
+        "user_agent": "Deskphone 7.4.2"
+      },
+      {
+        "answer_ts_us": null,
+        "auth_user": "203",
+        "bye_ts_us": null,
+        "call_id": "refresh-0000@10.20.0.23",
+        "cancelled": false,
+        "challenged": true,
+        "client": {
+          "category": "private",
+          "country": null,
+          "ip": "10.20.0.23",
+          "names": []
+        },
+        "client_port": 5060,
+        "contact": "sip:203@10.20.0.23",
+        "dialog_type": "register",
+        "duration_us": null,
+        "final_reason": "OK",
+        "final_status": 200,
+        "first_ts_us": 1700000623300500,
+        "from_name": null,
+        "from_uri": "sip:203@pbx.example.test",
+        "id": 10,
+        "invite_ts_us": null,
+        "last_ts_us": 1700000623352000,
+        "media": [],
+        "method": "REGISTER",
+        "requests": 2,
+        "responses": 2,
+        "ringing_ts_us": null,
+        "scanner": null,
+        "server": {
+          "category": "private",
+          "country": null,
+          "ip": "10.20.0.2",
+          "names": []
+        },
+        "server_agent": "Example PBX 18.2",
+        "server_port": 5060,
+        "state": "ok",
+        "to_name": null,
+        "to_uri": "sip:203@pbx.example.test",
+        "transport": "udp",
+        "user_agent": "Conference Unit 2.0"
+      }
+    ],
+    "next_cursor": null,
+    "total_estimate": 2
+  }
+]

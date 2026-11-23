@@ -35,6 +35,7 @@ mod range;
 mod servers;
 mod sessions;
 mod settings;
+mod sip;
 mod smb;
 mod ssdp;
 mod telnet;
@@ -275,6 +276,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(servers::routes())
         .merge(sessions::routes())
         .merge(settings::routes())
+        .merge(sip::routes())
         .merge(smb::routes())
         .merge(ssdp::routes())
         .merge(telnet::routes())

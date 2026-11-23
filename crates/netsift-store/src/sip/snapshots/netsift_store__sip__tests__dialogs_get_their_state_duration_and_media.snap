@@ -1,0 +1,12 @@
+---
+source: crates/netsift-store/src/sip/tests.rs
+expression: dump(&conn)
+---
+1 call-a INVITE completed 200 7000000000 10.20.0.21>10.20.0.22 r=3/4 ua=Phone 21 sa=Server 22 auth=- ch=0 sc=- m=2
+2 call-b INVITE rejected 486 - 10.20.0.21>10.20.0.2 r=2/1 ua=Phone 21 sa=Server 2 auth=- ch=0 sc=- m=0
+3 call-c INVITE cancelled 487 - 10.20.0.22>10.20.0.21 r=2/3 ua=Phone 22 sa=Server 21 auth=- ch=0 sc=- m=0
+4 orphan UNKNOWN ok 200 - 10.20.0.2>10.20.0.22 r=0/1 ua=Server 2 sa=- auth=- ch=0 sc=- m=0
+5 reg-a REGISTER ok 200 - 10.20.0.21>10.20.0.2 r=2/2 ua=Phone 21 sa=Server 2 auth=201 ch=1 sc=- m=0
+6 scan-1 OPTIONS no-answer - - 203.0.113.66>10.20.0.2 r=1/0 ua=friendly-scanner sa=- auth=- ch=0 sc=SIPVicious m=0
+1 audio 10.20.0.21:40000 PCMU,PCMA by=10.20.0.21 flows=1 p=200 b=34400 first=100
+1 audio 10.20.0.22:42000 PCMU,PCMA by=10.20.0.22 flows=1 p=200 b=34400 first=100

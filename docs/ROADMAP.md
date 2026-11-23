@@ -567,9 +567,25 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       Ethernet à 112 px sous plage. Suivis : trois formes de la mention à 375 px (note, ligne, parenthèses) ;
       « Session entière » sur deux lignes dans le détail SMB de Servers à 1280 px ; formes « (session entière) »
       de Credentials et Open Ports non converties.
-- [~] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
+- [x] **P5.6** `feat/sip` — Référence `private/sip.png`. Méthodes (graphe), dialogues et appels (INVITE -> BYE, durée,
       statut), REGISTER, user-agents (scanners comme `friendly-scanner`), messages bruts dépliables, flux RTP
       associés sans lecture audio, identifiants SIP Digest vers Credentials.
+      Fusionné le 2026-11-23 (44e5982) : parseur SIP/SDP borné (cible `udp_services`), UDP et TCP 5060 (découpage par
+      `Content-Length`, lots de 64 messages), étape de fin d'import `sip` (dialogues par Call-ID dans un ordre total,
+      états, durées, étapes datées) et jointure des médias aux flux UDP qui chevauchent l'offre (linéaire : table
+      d'extrémités, sommes préfixes ; appel vu en cours de route couvert), scanners par user-agent, test
+      d'équivalence chunks et 1/4/7 shards ; en-têtes d'authentification et mots de passe d'URI masqués dans le
+      brut avant stockage ; identifiants Digest en `sip-digest` `metadata-only` (sans nonce ni réponse).
+      **Décision utilisateur en attente** : ligne hashcat 11400 pour SIP Digest (tâche à part si souhaitée).
+      Suivis : `/sip/stats` linéaire (environ 280 ms à 1 M de messages, agrégats précalculés au-delà) ; clé Digest
+      non token qui récupère du texte (`response=abc secret, nonce=`) et mot de passe d'URI coupé par une borne
+      (malformés, en clair dans le brut) ; raison d'un statut = `min(reason)` ; vue vide si l'étape `sip` n'a pas
+      tourné (indicateur « en attente » à prévoir, comme Network) ; SIP sur autre port ou WebSocket non vu ; détail
+      d'un appel qui défile dans la liste à 375 px (comme SSDP) ; octets RTP en compte exact ; badges de méthode
+      en couleur d'accent.
+      Suivis transverses de la vague : `<pre>` brut de SSDP encore en `max-h` (défilement imbriqué, corrigé dans
+      SIP et FTP) ; pastille de `Badge` invisible sur une rangée dépliée ; scratchpad partagé entre agents (noms de
+      journaux uniques).
 - [x] **P5.7** `feat/compressed-captures` — Lecture `.zst` et `.lz4` (`netsift-capture`), comme `.gz` ; en
       parallèle de n'importe quelle vague.
       Fusionné le 2026-11-22 (ADR-029 : `ruzstd`, blocs `lz4_flex` et couche frame LZ4 écrite d'après la spec,

@@ -105,6 +105,25 @@ fn search_never_matches_a_secret() {
     assert_eq!(count("192.168.1.21"), 1);
     assert_eq!(count("hunter2"), 0);
     assert_eq!(count("100%"), 0);
+    // Quotes and backslashes are found despite their JSON escaping.
+    let conn2 = db();
+    let mut r = row(2, 10, 20, None, 0);
+    r.transcript
+        .push(run(Speaker::Client, "echo \"hi\" > C:\\tmp\n"));
+    r.insert(&conn2).unwrap();
+    let found = |q: &str| {
+        count_sessions(
+            &conn2,
+            &TelnetFilter {
+                q: Some(q.to_owned()),
+                ..TelnetFilter::default()
+            },
+        )
+        .unwrap()
+    };
+    assert_eq!(found("echo \"hi\""), 1);
+    assert_eq!(found("C:\\tmp"), 1);
+    assert_eq!(found("C:\\x"), 0);
 }
 
 #[test]

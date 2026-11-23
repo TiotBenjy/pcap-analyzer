@@ -329,16 +329,26 @@ fn like_pattern(q: Option<&str>) -> Option<String> {
     Some(out)
 }
 
+/// LIKE pattern of `q` as written inside a JSON string (`"` -> `\"`, `\` -> `\\`...).
+fn json_pattern(q: Option<&str>) -> Option<String> {
+    let q = q.map(str::trim).filter(|q| !q.is_empty())?;
+    let quoted = serde_json::to_string(q).ok()?;
+    let inner = quoted.get(1..quoted.len().saturating_sub(1))?;
+    like_pattern(Some(inner))
+}
+
 fn conditions(filter: &TelnetFilter) -> Conditions {
     let mut c = Conditions::new();
     if let Some(p) = like_pattern(filter.q.as_deref()) {
-        // `transcript` holds no secret (they are in `secrets`, never searched).
+        // The transcript is JSON: the search text is matched in its JSON form (`"` and `\`
+        // escaped). It holds no secret (they are in `secrets`, never searched).
+        let json = json_pattern(filter.q.as_deref()).unwrap_or_else(|| p.clone());
         c.push(
             "t.client_ip LIKE ? ESCAPE '\\' OR t.server_ip LIKE ? ESCAPE '\\' \
              OR t.username LIKE ? ESCAPE '\\' OR t.env_user LIKE ? ESCAPE '\\' \
              OR t.terminal LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM telnet_transcripts x \
              WHERE x.flow_id = t.flow_id AND x.transcript LIKE ? ESCAPE '\\')",
-            std::iter::repeat_n(Value::Text(p), 6),
+            std::iter::repeat_n(Value::Text(p), 5).chain([Value::Text(json)]),
         );
     }
     match filter.login {

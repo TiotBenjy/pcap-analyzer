@@ -40,7 +40,7 @@ import type { ConnectionFilters } from './filterState';
 // Fixed widths for the figures: every row gets the same columns, whatever its content.
 const ROW_GRID =
   'md:grid md:grid-cols-[4.5rem_minmax(0,1.1fr)_minmax(0,1fr)_9rem] md:items-start md:gap-3 ' +
-  'xl:grid-cols-[8.5rem_minmax(15rem,24rem)_minmax(0,1fr)_10rem_6.5rem]';
+  'xl:grid-cols-[7.5rem_minmax(14rem,0.8fr)_minmax(0,1.2fr)_9.5rem_6rem]';
 
 type All<V> = V | 'all';
 

@@ -365,6 +365,14 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
   de 2 000 lignes au plus et transferts) 1 ms. Les compteurs de sessions (`count(DISTINCT ...)` sur les
   sessions qui chevauchent la plage) sont linéaires en sessions : environ 2 s pour 1 M de sessions FTP,
   au-delà des 300 ms (agrégats précalculés à prévoir si le cas se présente).
+- `/objects` sous plage (Pictures, Documents) avec les transferts FTP (`ftp::tests::objects_timings`,
+  ignoré, mode release, 200 000 images HTTP et 50 000 fichiers FTP) : la seconde condition `EXISTS` sur
+  `ftp_transfers` coûtait jusqu'à +60 % sur la page et +100 % sur les statistiques (moitié de la session :
+  page et total 291 ms, statistiques 1,2 s, contre 197 ms et 600 ms avec HTTP seul). Les comptes et les
+  statistiques réunissent désormais les empreintes de la plage une fois (`o.sha256 IN (... UNION ALL
+  ...)`, index sur `ts`), la page garde les `EXISTS` corrélés qui s'arrêtent avec elle : page et total
+  40 ms sur la session, 110 ms sur 1 h, 178 ms sur la moitié ; statistiques 133 ms, 17 ms et 497 ms
+  (au-dessus des 300 ms sur une plage large, déjà le cas avant FTP avec 600 ms).
 - Import : une ligne `ftp_lines` par commande ou réponse (au plus 2 000 et 256 Kio par session), une ligne
   par transfert ; le contenu d'un transfert est tenu en mémoire jusqu'à sa fin (budget de 128 Mio partagé
   par les shards, ADR-032), écrit une fois dans `blobs/` s'il est complet.

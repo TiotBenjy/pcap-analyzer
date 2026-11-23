@@ -297,10 +297,10 @@ impl ModuleRows {
                 "SELECT count(*) FROM http_transactions WHERE ts >= ?1 AND ts < ?2"
             }
             Self::Pictures => {
-                "SELECT count(*) FROM objects o WHERE o.mime LIKE 'image/%' AND (EXISTS \
-                 (SELECT 1 FROM http_transactions t WHERE t.resp_sha256 = o.sha256 \
-                  AND t.ts >= ?1 AND t.ts < ?2) OR EXISTS (SELECT 1 FROM ftp_transfers f \
-                  WHERE f.sha256 = o.sha256 AND f.ts >= ?1 AND f.ts < ?2))"
+                "SELECT count(*) FROM objects o WHERE o.mime LIKE 'image/%' AND o.sha256 IN \
+                 (SELECT t.resp_sha256 FROM http_transactions t WHERE t.ts >= ?1 AND t.ts < ?2 \
+                  AND t.resp_sha256 IS NOT NULL UNION ALL SELECT f.sha256 FROM ftp_transfers f \
+                  WHERE f.ts >= ?1 AND f.ts < ?2 AND f.sha256 IS NOT NULL)"
             }
             Self::Smb => {
                 "SELECT (SELECT count(*) FROM smb_announces WHERE first_ts < ?2 \

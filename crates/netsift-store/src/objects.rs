@@ -202,21 +202,34 @@ const FILTER: &str = "(?1 = 0 OR o.mime LIKE 'image/%') \
      AND (?5 IS NULL OR o.size >= ?5) \
      AND (?6 IS NULL OR o.size <= ?6)";
 
-/// Objects carried by a transaction or an FTP transfer of the range (`?7`, `?8`; indexes
-/// `(resp_sha256, ts)` and `(sha256, ts)`).
-const RANGE_FILTER: &str = "(EXISTS (SELECT 1 FROM http_transactions t \
+/// Objects carried by a transaction or an FTP transfer of the range (`?7`, `?8`), for a page:
+/// correlated look-ups (indexes `(resp_sha256, ts)` and `(sha256, ts)`) that stop with the page.
+const RANGE_PAGE_FILTER: &str = "(EXISTS (SELECT 1 FROM http_transactions t \
     WHERE t.resp_sha256 = o.sha256 AND t.ts >= ?7 AND t.ts < ?8) \
     OR EXISTS (SELECT 1 FROM ftp_transfers f WHERE f.sha256 = o.sha256 \
     AND f.ts >= ?7 AND f.ts < ?8))";
 
-/// [`FILTER`] and its values, plus the range when set.
-fn filter_sql(f: &ObjectFilter) -> (String, Vec<Value>) {
+/// Same objects for a count, which reads them all: the digests of the range are gathered once
+/// (indexes on `ts`), then each object is a lookup in that set rather than two correlated
+/// sub-queries (P5.8, `docs/PERFORMANCE.md`).
+const RANGE_FILTER: &str = "o.sha256 IN (SELECT t.resp_sha256 FROM http_transactions t \
+    WHERE t.ts >= ?7 AND t.ts < ?8 AND t.resp_sha256 IS NOT NULL \
+    UNION ALL SELECT f.sha256 FROM ftp_transfers f \
+    WHERE f.ts >= ?7 AND f.ts < ?8 AND f.sha256 IS NOT NULL)";
+
+/// [`FILTER`] and its values, plus the range when set (`page`: the form for a keyset page).
+fn filter_sql(f: &ObjectFilter, page: bool) -> (String, Vec<Value>) {
     let mut values = filter_params(f).to_vec();
     match f.range {
         None => (FILTER.to_owned(), values),
         Some(r) => {
             values.extend(r.values());
-            (format!("{FILTER} AND {RANGE_FILTER}"), values)
+            let range = if page {
+                RANGE_PAGE_FILTER
+            } else {
+                RANGE_FILTER
+            };
+            (format!("{FILTER} AND {range}"), values)
         }
     }
 }
@@ -281,7 +294,7 @@ pub fn objects_page(
     descending: bool,
     request: &PageRequest,
 ) -> Result<Page<ObjectRow>> {
-    let (where_sql, values) = filter_sql(filter);
+    let (where_sql, values) = filter_sql(filter, true);
     let query = Keyset {
         from: FROM,
         select: COLUMNS,
@@ -305,7 +318,7 @@ pub fn objects_page(
 
 /// Number of objects matching `filter`.
 pub fn count_objects(conn: &Connection, filter: &ObjectFilter) -> Result<u64> {
-    let (where_sql, values) = filter_sql(filter);
+    let (where_sql, values) = filter_sql(filter, false);
     let sql = format!("SELECT count(*) FROM objects AS o WHERE {where_sql}");
     let n: i64 = conn.query_row(&sql, rusqlite::params_from_iter(values.iter()), |r| {
         r.get(0)
@@ -345,9 +358,10 @@ pub fn stats(
 ) -> Result<ObjectStats> {
     let images = i64::from(images_only);
     let in_range = range.map_or("", |_| {
-        " AND (EXISTS (SELECT 1 FROM http_transactions t WHERE t.resp_sha256 = o.sha256 \
-          AND t.ts >= ?98 AND t.ts < ?99) OR EXISTS (SELECT 1 FROM ftp_transfers f \
-          WHERE f.sha256 = o.sha256 AND f.ts >= ?98 AND f.ts < ?99))"
+        " AND o.sha256 IN (SELECT t.resp_sha256 FROM http_transactions t \
+          WHERE t.ts >= ?98 AND t.ts < ?99 AND t.resp_sha256 IS NOT NULL \
+          UNION ALL SELECT f.sha256 FROM ftp_transfers f \
+          WHERE f.ts >= ?98 AND f.ts < ?99 AND f.sha256 IS NOT NULL)"
     });
     let (count, bytes, mut occurrences): (i64, i64, i64) = query_row_ranged(
         conn,

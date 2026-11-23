@@ -62,9 +62,10 @@ Connexions TCP dont le port serveur (ou client, pour une connexion prise en cour
   serveur qui diffère, l'attente est vidée (le serveur n'écho pas, ou affiche autre chose). File
   d'attente bornée à 512 éléments.
 - Bornes par session : 64 Kio de texte et 2 000 lignes (et 8 192 runs) ; au-delà, la transcription
-  s'arrête et l'indicateur `truncated` est posé (la détection des identifiants continue). Budget
-  global de 32 Mio de transcriptions en cours par shard : au-delà, les nouvelles données ne sont plus
-  transcrites (`truncated`).
+  s'arrête et l'indicateur `truncated` est posé (la détection des identifiants continue). Budget de
+  32 Mio de transcriptions en cours par shard : chaque session y impute la plus grande taille atteinte
+  par son texte (au plus 64 Kio), si bien qu'un texte effacé puis retapé (indicateur de progression
+  `|/-\`) ne coûte rien de plus ; au-delà, les nouvelles données ne sont plus transcrites (`truncated`).
 
 **Options négociées** : une option est « active » si un côté l'a proposée (`WILL`) et l'autre acceptée
 (`DO`), dans un ordre quelconque. Résumé enregistré : liste des options actives, type de terminal

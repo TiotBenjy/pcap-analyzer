@@ -235,7 +235,8 @@ pub(crate) struct Transcript {
     line_start: usize,
     lines: u32,
     truncated: bool,
-    /// Bytes appended so far (charged to the shard budget, erases do not refund).
+    /// Largest size the text reached (at most [`MAX_BYTES`]), charged to the shard budget: text
+    /// typed again after an erase costs nothing more.
     pub(crate) charged: usize,
 }
 
@@ -336,7 +337,8 @@ impl Transcript {
     }
 
     fn append(&mut self, speaker: Speaker, byte: u8, budget: &mut usize) {
-        if self.text.len() >= MAX_BYTES || *budget == 0 {
+        let grows = self.text.len() >= self.charged;
+        if self.text.len() >= MAX_BYTES || (grows && *budget == 0) {
             self.truncated = true;
             return;
         }
@@ -348,8 +350,10 @@ impl Transcript {
             self.runs.push((self.text.len(), speaker));
         }
         self.text.push(byte);
-        *budget = budget.saturating_sub(1);
-        self.charged = self.charged.saturating_add(1);
+        if self.text.len() > self.charged {
+            self.charged = self.text.len();
+            *budget = budget.saturating_sub(1);
+        }
     }
 
     /// Removes the last byte of the current line (a whole UTF-8 sequence); `false` at the start
@@ -571,6 +575,28 @@ mod tests {
         }
         assert!(t.truncated());
         assert_eq!(t.len(), MAX_RUNS);
+    }
+
+    #[test]
+    fn repeated_erases_charge_the_largest_size_only() {
+        // A spinner (`|`, `/`, `-`, `\` each erased) forever: the budget pays for one byte.
+        let mut t = Transcript::default();
+        let mut budget = 100;
+        t.apply(Speaker::Server, Token::Char(b'['), &mut budget);
+        for i in 0..200_000_usize {
+            let c = b"|/-\\"[i % 4];
+            t.apply(Speaker::Server, Token::Char(c), &mut budget);
+            t.apply(Speaker::Server, Token::Erase, &mut budget);
+        }
+        assert!(!t.truncated());
+        assert_eq!((t.charged, budget), (2, 98));
+        assert!(t.charged <= MAX_BYTES);
+        // An empty budget still allows text below the size already paid for.
+        let mut empty = 0;
+        t.apply(Speaker::Server, Token::Char(b'x'), &mut empty);
+        assert!(!t.truncated());
+        t.apply(Speaker::Server, Token::Char(b'y'), &mut empty);
+        assert!(t.truncated());
     }
 
     #[test]

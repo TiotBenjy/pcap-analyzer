@@ -233,7 +233,8 @@ describe('SIP view', () => {
     const messages = await screen.findByRole('list', { name: 'SIP messages' });
     await user.click(within(messages).getAllByRole('button', { expanded: false })[0] as HTMLElement);
     const raw = await screen.findByTestId('sip-raw');
-    expect(raw.textContent).toBe(RAW);
+    // Trailing empty lines are not displayed.
+    expect(raw.textContent).toBe(RAW.replace(/\n+$/, ''));
     expect(raw.querySelector('script')).toBeNull();
     expect(screen.getByRole('button', { name: 'Copy raw message' })).toBeInTheDocument();
   });

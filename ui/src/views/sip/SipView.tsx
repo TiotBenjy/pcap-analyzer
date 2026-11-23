@@ -31,7 +31,7 @@ import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { StatCard } from '../../components/StatCard';
 import { Timestamp } from '../../components/Timestamp';
-import { WholeSessionHeader } from '../../components/WholeSession';
+import { WholeSessionHeader, WholeSessionLine } from '../../components/WholeSession';
 import { formatByteCount, formatCount, formatDuration, formatTimestamp } from '../../lib/format';
 import { useDebounced } from '../../lib/useDebounced';
 import { SessionGate } from '../connections/SessionGate';
@@ -45,8 +45,8 @@ const DIALOG_GRID =
   'xl:grid-cols-[136px_minmax(0,1fr)_112px_minmax(7rem,0.5fr)_96px_112px]';
 /** Column layout of the message rows (wide screens). */
 const MESSAGE_GRID =
-  'md:grid md:grid-cols-[72px_128px_minmax(8rem,1fr)_minmax(0,1fr)] md:items-center md:gap-3 ' +
-  'xl:grid-cols-[80px_136px_minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(0,1.2fr)]';
+  'md:grid md:grid-cols-[72px_200px_minmax(0,1.6fr)_minmax(0,1fr)] md:items-center md:gap-3 ' +
+  'xl:grid-cols-[80px_200px_minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(0,1.2fr)]';
 const SELECT_CLASS = 'h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-body';
 
 type KindFilter = SipMessageKind | 'all';
@@ -363,7 +363,7 @@ function ListLoading() {
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:gap-3">
+    <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
       <dt className="shrink-0 text-meta text-muted sm:w-40">{label}</dt>
       <dd className="min-w-0 flex-1">{children}</dd>
     </div>
@@ -418,7 +418,10 @@ function ScannerRow({ scanner: s, oneDay, onShowMessages }: { scanner: SipScanne
         <span className="num">{t('views.sip.scanners.messages', { count: s.messages })}</span>
         <span className="font-mono">{s.methods.join(', ')}</span>
         <span className="num">{t('views.sip.scanners.targets', { count: s.targets })}</span>
-        <Timestamp us={s.last_ts_us} withDate={!oneDay} />
+        <span className="flex items-center gap-1.5">
+          <span>{t('views.sip.scanners.col.lastSeen')}</span>
+          <Timestamp us={s.last_ts_us} withDate={!oneDay} className="text-fg" />
+        </span>
       </span>
       <span className="shrink-0">
         <Button
@@ -589,7 +592,10 @@ function DialogRow({ dialog: d, oneDay, ranged }: { dialog: SipDialogInfo; oneDa
         <span className="num text-meta text-muted md:text-right md:text-table md:text-fg">{durationText(t, d)}</span>
       </span>
       {/* Below xl: the message count on its own line, with the "whole session" mention under a range. */}
-      <span className="num text-meta text-muted md:col-span-4 xl:hidden">{ranged ? t('timeRange.wholeSessionColumn', { label: count }) : count}</span>
+      <span className="num flex flex-wrap gap-x-1.5 text-meta text-muted md:col-span-4 xl:hidden">
+        <span>{count}</span>
+        {ranged && <WholeSessionLine inline />}
+      </span>
       <span className="num hidden text-right xl:block">{formatCount(d.requests + d.responses)}</span>
     </span>
   );
@@ -815,7 +821,10 @@ function MessageHeader() {
       <div className={MESSAGE_GRID}>
         <span>{t('views.sip.messages.col.time')}</span>
         <span>{t('views.sip.messages.col.type')}</span>
-        <span>{t('views.sip.messages.col.source')}</span>
+        <span>
+          <span className="xl:hidden">{t('views.sip.messages.col.sourceDestination')}</span>
+          <span className="hidden xl:inline">{t('views.sip.messages.col.source')}</span>
+        </span>
         <span className="hidden xl:block">{t('views.sip.messages.col.destination')}</span>
         <span>{t('views.sip.messages.col.callId')}</span>
       </div>
@@ -832,14 +841,15 @@ function MessageRow({ message: m, oneDay }: { message: SipMessageInfo; oneDay: b
           <MessageBadge message={m} />
         </span>
       </span>
-      <span className="flex min-w-0 items-center gap-1.5 text-meta md:block">
+      {/* Source and destination together up to xl, in two columns from xl. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta xl:block">
         <Endpoint endpoint={m.source} port={m.src_port} show="address" className="text-meta" />
-        <ArrowRight aria-hidden size={14} strokeWidth={1.75} className="shrink-0 text-faint md:hidden" />
-        <span className="min-w-0 md:hidden">
+        <ArrowRight aria-hidden size={14} strokeWidth={1.75} className="shrink-0 text-faint xl:hidden" />
+        <span className="min-w-0 xl:hidden">
           <Endpoint endpoint={m.destination} port={m.dst_port} show="address" className="text-meta" />
         </span>
       </span>
-      <span className="hidden min-w-0 xl:block">
+      <span className="hidden min-w-0 text-meta xl:block">
         <Endpoint endpoint={m.destination} port={m.dst_port} show="address" className="text-meta" />
       </span>
       <Clip value={m.call_id ?? '-'} mono className="text-meta text-muted" />
@@ -864,11 +874,12 @@ function MessageDetail({ message: m }: { message: SipMessageInfo }) {
         <CopyButton value={m.raw} name={t('views.sip.messages.rawName')} />
       </div>
       {/* Text only: React escapes it, nothing in a capture is ever interpreted as markup. */}
+      {/* Bounded to 4 KiB: no height limit, long lines wrap (no scrolling inside the list). */}
       <pre
         data-testid="sip-raw"
-        className="max-h-80 max-w-full min-w-0 overflow-auto rounded-md border border-line bg-surface p-3 font-mono text-meta whitespace-pre"
+        className="max-w-full min-w-0 rounded-md border border-line bg-surface p-3 font-mono text-meta whitespace-pre-wrap [overflow-wrap:anywhere]"
       >
-        {m.raw}
+        {m.raw.replace(/\n+$/, '')}
       </pre>
     </div>
   );

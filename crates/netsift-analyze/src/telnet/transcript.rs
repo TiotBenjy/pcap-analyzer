@@ -214,6 +214,15 @@ impl Echo {
         self.queue.clear();
         self.erase_tail = 0;
     }
+
+    /// The characters still expected belong to a password (their echo is rarely sent).
+    pub(crate) fn secret_pending(&mut self) {
+        for e in &mut self.queue {
+            if let Expect::Char { secret, .. } = e {
+                *secret = true;
+            }
+        }
+    }
 }
 
 /// The bounded transcript of a session. `Debug` shows sizes only.
@@ -252,9 +261,30 @@ impl Transcript {
         self.truncated
     }
 
-    #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.text.len()
+    }
+
+    /// The client's text from offset `from` on is a password: its client runs become secret.
+    pub(crate) fn relabel_secret(&mut self, from: usize) {
+        if from >= self.text.len() {
+            return;
+        }
+        let Some(idx) = self.runs.iter().rposition(|(start, _)| *start <= from) else {
+            return;
+        };
+        let mut idx = idx;
+        if let Some(&(start, Speaker::Client)) = self.runs.get(idx)
+            && start < from
+        {
+            idx = idx.saturating_add(1);
+            self.runs.insert(idx, (from, Speaker::Client));
+        }
+        for (_, speaker) in self.runs.iter_mut().skip(idx) {
+            if *speaker == Speaker::Client {
+                *speaker = Speaker::Secret;
+            }
+        }
     }
 
     /// Lines started so far (a last line without line end counts).
@@ -541,6 +571,23 @@ mod tests {
         }
         assert!(t.truncated());
         assert_eq!(t.len(), MAX_RUNS);
+    }
+
+    #[test]
+    fn relabel_turns_the_typed_line_secret() {
+        let mut t = Transcript::default();
+        let mut budget = usize::MAX;
+        for &b in b"Code: " {
+            t.apply(Speaker::Server, Token::Char(b), &mut budget);
+        }
+        t.apply(Speaker::Client, Token::Char(b'a'), &mut budget);
+        let start = t.len();
+        for &b in b"bc" {
+            t.apply(Speaker::Client, Token::Char(b), &mut budget);
+        }
+        t.relabel_secret(start);
+        t.apply(Speaker::Client, Token::Newline, &mut budget);
+        assert_eq!(render(t), "[S:Code: ][C:a][P:bc][C:\n]");
     }
 
     #[test]

@@ -250,3 +250,138 @@ fn shard_budget_truncates_new_transcripts() {
     // The budget is given back at the end of the flow.
     assert_eq!(analyzer.budget, 40);
 }
+
+/// Runs `packets` and returns the session and its credentials.
+fn session_of(packets: &[netsift_fixtures::Packet]) -> (TelnetSession, Vec<Credential>) {
+    let mut analyzer = TelnetAnalyzer::new(&AnalyzerConfig::default());
+    let mut session = None;
+    let mut creds = Vec::new();
+    for r in run(&mut analyzer, packets) {
+        match r {
+            Record::Telnet(s) => session = Some(*s),
+            Record::Credential(c) => creds.push(c),
+            other => panic!("unexpected record {other:?}"),
+        }
+    }
+    (session.unwrap(), creds)
+}
+
+/// Text of the runs that are not secret.
+fn visible(s: &TelnetSession) -> String {
+    s.transcript
+        .iter()
+        .filter(|r| r.speaker != Speaker::Secret)
+        .map(|r| r.text.as_str())
+        .collect()
+}
+
+const IAC_WILL_ECHO: [u8; 3] = [255, 251, 1];
+
+#[test]
+fn a_gap_inside_a_password_keeps_the_rest_secret() {
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        telnet_hosts::workstation(),
+        telnet_hosts::unix_server(),
+        &TcpOptions::new(fx::PORT),
+    );
+    s.server_send(&IAC_WILL_ECHO);
+    s.server_send(b"Password:");
+    let mut lost = None;
+    for (i, b) in b"hunter2".iter().enumerate() {
+        let range = s.client_send(&[*b]);
+        if i == 1 {
+            lost = Some(range.start);
+        }
+    }
+    s.client_send(b"\r\0");
+    s.server_send(b"\r\nLast login: never\r\n$ ");
+    s.client_send(b"id\r\0");
+    s.server_send(b"id\r\nuid=0(root)\r\n$ ");
+    s.close();
+    let lost = lost.unwrap();
+    let packets: Vec<_> = sc
+        .packets()
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != lost)
+        .map(|(_, p)| p.clone())
+        .collect();
+    let (session, creds) = session_of(&packets);
+    let text = visible(&session);
+    assert!(!text.contains("nter2"), "{text}");
+    assert!(!text.contains("hunter"), "{text}");
+    let secret: String = session
+        .transcript
+        .iter()
+        .filter(|r| r.speaker == Speaker::Secret)
+        .map(|r| r.text.as_str())
+        .collect();
+    assert_eq!(secret, "hnter2");
+    // The value is incomplete: no credential for it.
+    assert_eq!(creds.len(), 0);
+}
+
+#[test]
+fn keys_typed_without_echo_to_an_echoing_server_are_a_password() {
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        telnet_hosts::workstation(),
+        telnet_hosts::switch(),
+        &TcpOptions::new(fx::PORT),
+    );
+    s.server_send(&IAC_WILL_ECHO);
+    s.server_send(b"Username: ");
+    for b in b"ops" {
+        s.client_send(&[*b]);
+        s.server_send(&[*b]);
+    }
+    s.client_send(b"\r\0");
+    s.server_send(b"\r\n");
+    // A prompt no rule knows: the missing echo tells.
+    s.server_send(b"Code PIN ");
+    for b in b"4321" {
+        s.client_send(&[*b]);
+    }
+    s.client_send(b"\r\0");
+    s.server_send(b"\r\nsw>");
+    s.client_send(b"exit\r\0");
+    s.close();
+    let (session, creds) = session_of(sc.packets());
+    let text = visible(&session);
+    assert!(!text.contains("4321"), "{text}");
+    assert!(text.contains("Username: ops\n"), "{text}");
+    assert_eq!(creds.len(), 1);
+    assert_eq!(creds[0].username.as_deref(), Some("ops"));
+    assert_eq!(creds[0].secret.as_deref(), Some("4321"));
+    assert!(
+        creds[0]
+            .details
+            .contains(&("detected".to_owned(), "no-echo".to_owned()))
+    );
+    assert!(
+        creds[0]
+            .details
+            .contains(&("result".to_owned(), "accepted".to_owned()))
+    );
+}
+
+#[test]
+fn piped_input_typed_ahead_is_not_detected() {
+    // `(echo user; echo pass) | telnet host`: both lines in one segment before any prompt. The
+    // password stays visible in the transcript (documented limit).
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        telnet_hosts::workstation(),
+        telnet_hosts::unix_server(),
+        &TcpOptions::new(fx::PORT),
+    );
+    s.client_send(b"user\r\npiped-fixture\r\n");
+    s.server_send(b"login: ");
+    s.server_send(b"Password:");
+    s.server_send(b"\r\n$ ");
+    s.close();
+    let (session, creds) = session_of(sc.packets());
+    assert!(visible(&session).contains("piped-fixture"));
+    assert_eq!(creds.len(), 0);
+}

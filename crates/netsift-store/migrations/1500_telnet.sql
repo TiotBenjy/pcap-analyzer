@@ -33,8 +33,10 @@ CREATE INDEX telnet_sessions_span ON telnet_sessions (first_ts, last_ts);
 
 -- Transcript of a session (same flow_id). `transcript` is a JSON array of runs `[speaker, text]`
 -- (speaker `c` client, `s` server, `p` secret); a secret run never holds its text, which is in
--- `secrets` (JSON array of strings, in the order of the `p` runs). `secrets` is sensitive: never
--- logged, served only by the detail route of the API, masked by default in the UI.
+-- `secrets` (JSON array of strings, in the order of the `p` runs). Only what the analyzer knows as
+-- a password is secret: one typed at an unrecognized prompt, typed ahead, or with the prompt
+-- missing stays client text here (docs/specs/telnet.md). `secrets` is sensitive: never logged,
+-- served only by the detail route of the API, masked by default in the UI.
 CREATE TABLE telnet_transcripts (
     flow_id    INTEGER PRIMARY KEY,                 -- telnet_sessions.flow_id
     transcript TEXT NOT NULL DEFAULT '[]',          -- JSON runs, secrets removed

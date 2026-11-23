@@ -3,7 +3,11 @@
 //!
 //! The prompt is the server's current (unfinished) line when the client starts typing a line.
 //! The tracker sees the tokens of the transcript after echo merging, so an absorbed echo never
-//! reaches the server line.
+//! reaches the server line. A line typed without any echo while the server echoes
+//! ([`Login::force_password`]) is read as a password too, whatever the prompt.
+//!
+//! A password being typed stays one across a reassembly gap: the rest of the line is still
+//! secret, but the value is incomplete and no credential is emitted for it.
 
 use std::fmt;
 
@@ -52,8 +56,32 @@ enum Prompt {
     Other,
 }
 
-/// Endings of a user name prompt (lower case).
-const USER_PROMPTS: [&str; 5] = ["login:", "username:", "user name:", "user:", "login as:"];
+/// Endings of a user name prompt (lower case), before its colon.
+const USER_PROMPTS: [&str; 11] = [
+    "login",
+    "username",
+    "user name",
+    "user",
+    "login as",
+    "utilisateur",
+    "identifiant",
+    "benutzername",
+    "benutzer",
+    "usuario",
+    "nom d'utilisateur",
+];
+/// Words of a password prompt (lower case): English, French, German, Spanish, Portuguese, Dutch.
+const PASSWORD_WORDS: [&str; 9] = [
+    "password",
+    "passwd",
+    "passcode",
+    "mot de passe",
+    "passwort",
+    "kennwort",
+    "contraseña",
+    "senha",
+    "wachtwoord",
+];
 /// Words of a server line that rejects a login (lower case).
 const REJECTED: [&str; 6] = [
     "incorrect",
@@ -66,15 +94,16 @@ const REJECTED: [&str; 6] = [
 
 /// Classifies the server's current line, read as a prompt.
 fn prompt(line: &[u8]) -> Prompt {
-    let text = String::from_utf8_lossy(line).to_ascii_lowercase();
+    let text = String::from_utf8_lossy(line).to_lowercase();
     let text = text.trim_end();
-    if USER_PROMPTS.iter().any(|p| text.ends_with(p)) {
+    // `Password:`, `Mot de passe :`, `Enter password`, `Passwort?`
+    let bare = text.trim_end_matches([':', '?']).trim_end();
+    let colon = bare.len() < text.len();
+    if colon && USER_PROMPTS.iter().any(|p| bare.ends_with(p)) {
         return Prompt::User;
     }
-    if text.ends_with(':')
-        && ["password", "passwd", "passcode"]
-            .iter()
-            .any(|p| text.contains(p))
+    if PASSWORD_WORDS.iter().any(|w| bare.ends_with(w))
+        || (colon && PASSWORD_WORDS.iter().any(|w| bare.contains(w)))
     {
         return Prompt::Password;
     }
@@ -106,6 +135,10 @@ pub(crate) struct Login {
     /// The client started typing the current line.
     typing: bool,
     input: Vec<u8>,
+    /// A gap removed part of the password being typed.
+    damaged: bool,
+    /// The current line was read as a password from the missing echo.
+    by_echo: bool,
     user: Option<String>,
     pending: Option<Credential>,
     emitted: usize,
@@ -114,8 +147,8 @@ pub(crate) struct Login {
     pub(crate) accepted_user: Option<String>,
     /// User name of the last attempt.
     pub(crate) last_user: Option<String>,
-    pub(crate) any_accepted: bool,
-    pub(crate) any_rejected: bool,
+    /// Accepted once one attempt was, else rejected once one was.
+    overall: Option<LoginResult>,
 }
 
 impl fmt::Debug for Login {
@@ -138,23 +171,38 @@ impl Login {
             field: Field::Other,
             typing: false,
             input: Vec::new(),
+            damaged: false,
+            by_echo: false,
             user: None,
             pending: None,
             emitted: 0,
             attempts: 0,
             accepted_user: None,
             last_user: None,
-            any_accepted: false,
-            any_rejected: false,
+            overall: None,
         }
     }
 
-    /// Bytes are missing: the line being typed is dropped.
+    /// Bytes are missing: the line being typed is dropped, but a password being typed stays a
+    /// password up to the end of its line (its value is incomplete: no credential).
     pub(crate) fn reset(&mut self) {
         self.server_line.clear();
-        self.field = Field::Other;
-        self.typing = false;
         self.input.clear();
+        if self.field == Field::Password {
+            self.damaged = true;
+        } else {
+            self.field = Field::Other;
+            self.typing = false;
+        }
+    }
+
+    /// The line being typed (at any prompt) is a password: no echo came back from a server that
+    /// echoes.
+    pub(crate) fn force_password(&mut self) {
+        if self.typing && self.field != Field::Password {
+            self.field = Field::Password;
+            self.by_echo = true;
+        }
     }
 
     /// The client typed `token`; returns `true` when it belongs to a password (secret).
@@ -184,8 +232,8 @@ impl Login {
         let secret = self.field == Field::Password;
         match token {
             Token::Char(c) => {
-                let max = if secret { MAX_SECRET } else { MAX_IDENTITY };
-                if self.field != Field::Other && self.input.len() < max {
+                // Every line is kept (bounded): it may turn out to be a password.
+                if self.input.len() < MAX_SECRET {
                     self.input.push(c);
                 }
                 secret
@@ -233,10 +281,10 @@ impl Login {
         let value = String::from_utf8_lossy(&self.input).into_owned();
         match self.field {
             Field::User => {
-                let name = value.trim();
-                self.user = (!name.is_empty()).then(|| name.to_owned());
+                let name: String = value.trim().chars().take(MAX_IDENTITY).collect();
+                self.user = (!name.is_empty()).then_some(name);
             }
-            Field::Password if !value.is_empty() => {
+            Field::Password if !value.is_empty() && !self.damaged => {
                 self.attempts = self.attempts.saturating_add(1);
                 let mut cred = base_credential(
                     "telnet",
@@ -248,7 +296,13 @@ impl Login {
                 );
                 cred.username = self.user.take().or_else(|| env_user.map(str::to_owned));
                 cred.secret = Some(value);
-                self.last_user.clone_from(&cred.username);
+                if self.by_echo {
+                    cred.details
+                        .push(("detected".to_owned(), "no-echo".to_owned()));
+                }
+                if cred.username.is_some() {
+                    self.last_user.clone_from(&cred.username);
+                }
                 if let Some(old) = self.pending.replace(cred) {
                     self.emit(old, out);
                 }
@@ -258,6 +312,8 @@ impl Login {
         self.input.clear();
         self.typing = false;
         self.field = Field::Other;
+        self.damaged = false;
+        self.by_echo = false;
         // The server's next output starts a new prompt.
         self.server_line.clear();
     }
@@ -268,12 +324,14 @@ impl Login {
         };
         match result {
             LoginResult::Accepted => {
-                self.any_accepted = true;
+                self.overall = Some(LoginResult::Accepted);
                 if self.accepted_user.is_none() {
                     self.accepted_user.clone_from(&cred.username);
                 }
             }
-            LoginResult::Rejected => self.any_rejected = true,
+            LoginResult::Rejected => {
+                self.overall.get_or_insert(LoginResult::Rejected);
+            }
         }
         cred.details
             .push(("result".to_owned(), result.as_str().to_owned()));
@@ -296,13 +354,7 @@ impl Login {
 
     /// Overall result: accepted if one attempt was, else rejected if one was.
     pub(crate) fn result(&self) -> Option<LoginResult> {
-        if self.any_accepted {
-            Some(LoginResult::Accepted)
-        } else if self.any_rejected {
-            Some(LoginResult::Rejected)
-        } else {
-            None
-        }
+        self.overall
     }
 }
 
@@ -317,6 +369,15 @@ mod tests {
         assert_eq!(prompt(b"Password:"), Prompt::Password);
         assert_eq!(prompt(b"jdoe@host's password: "), Prompt::Password);
         assert_eq!(prompt(b"Enter PASSCODE:"), Prompt::Password);
+        assert_eq!(prompt("Mot de passe : ".as_bytes()), Prompt::Password);
+        assert_eq!(prompt(b"Passwort:"), Prompt::Password);
+        assert_eq!(prompt(b"Enter password"), Prompt::Password);
+        assert_eq!(prompt("Contraseña:".as_bytes()), Prompt::Password);
+        assert_eq!(prompt(b"Nom d'utilisateur : "), Prompt::User);
+        assert_eq!(prompt(b"Benutzername:"), Prompt::User);
+        // A user word without colon is no prompt (`last login`...).
+        assert_eq!(prompt(b"Welcome user"), Prompt::Other);
+        assert_eq!(prompt(b"password policy changed today"), Prompt::Other);
         assert_eq!(prompt(b"[jdoe@host ~]$ "), Prompt::Shell);
         assert_eq!(prompt(b"Router#"), Prompt::Shell);
         assert_eq!(prompt(b"Press any key"), Prompt::Other);

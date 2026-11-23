@@ -155,8 +155,20 @@ impl Options {
     }
 }
 
+/// What the client typed on its current line, for the missing-echo password heuristic.
+#[derive(Debug, Clone, Copy, Default)]
+struct Line {
+    /// Offset in the transcript of the first character typed.
+    start: Option<usize>,
+    chars: usize,
+    /// Characters of the line echoed by the server.
+    echoed: usize,
+    /// Client segments that carried characters of the line.
+    segments: u32,
+}
+
 /// State of one session except the two `IAC` decoders (borrowed separately while they feed).
-#[derive(Debug)]
+/// `Debug` shows no user name nor text.
 struct Session {
     id: FlowId,
     /// Oriented key: `client` is the Telnet client.
@@ -171,8 +183,26 @@ struct Session {
     window: Option<(u16, u16)>,
     env_user: Option<String>,
     echo: Echo,
+    /// The server announced `WILL ECHO` (and not `WONT ECHO` since).
+    server_echo: bool,
+    line: Line,
+    /// The next client character starts a new segment.
+    new_segment: bool,
     transcript: Transcript,
     login: login::Login,
+}
+
+impl fmt::Debug for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Session")
+            .field("id", &self.id)
+            .field("key", &self.key)
+            .field("server_echo", &self.server_echo)
+            .field("echo", &self.echo)
+            .field("transcript", &self.transcript)
+            .field("login", &self.login)
+            .finish_non_exhaustive()
+    }
 }
 
 const CLIENT: usize = 0;
@@ -214,6 +244,13 @@ impl Session {
             Event::Command(wire::EL) => self.token(side, Token::EraseLine, ts, budget, out),
             Event::Command(_) => {}
             Event::Negotiation { verb, option } => {
+                if side == SERVER && option == wire::opt::ECHO {
+                    match verb {
+                        Verb::Will => self.server_echo = true,
+                        Verb::Wont => self.server_echo = false,
+                        Verb::Do | Verb::Dont => {}
+                    }
+                }
                 let set = match verb {
                     Verb::Will => self.will.get_mut(side),
                     Verb::Do => self.do_.get_mut(side),
@@ -276,6 +313,31 @@ impl Session {
         out: &mut dyn RecordSink,
     ) {
         if side == CLIENT {
+            match token {
+                Token::Char(_) => {
+                    self.line.start.get_or_insert(self.transcript.len());
+                    self.line.chars = self.line.chars.saturating_add(1);
+                    if self.new_segment {
+                        self.new_segment = false;
+                        self.line.segments = self.line.segments.saturating_add(1);
+                    }
+                }
+                // Typed key by key to a server that echoes, and not one key echoed: a password
+                // whatever the prompt (unknown language, prompt missing from the capture).
+                Token::Newline
+                    if self.server_echo
+                        && self.line.chars > 0
+                        && self.line.echoed == 0
+                        && self.line.segments >= 2 =>
+                {
+                    self.login.force_password();
+                    self.echo.secret_pending();
+                    if let Some(start) = self.line.start {
+                        self.transcript.relabel_secret(start);
+                    }
+                }
+                _ => {}
+            }
             let secret = self.login.client(token, ts, self.env_user.as_deref(), out);
             self.echo.typed(token, secret);
             let speaker = if secret {
@@ -284,8 +346,14 @@ impl Session {
                 Speaker::Client
             };
             self.transcript.apply(speaker, token, budget);
+            if token == Token::Newline {
+                self.line = Line::default();
+            }
         } else {
             if self.echo.absorbs(token) {
+                if matches!(token, Token::Char(_)) {
+                    self.line.echoed = self.line.echoed.saturating_add(1);
+                }
                 return;
             }
             self.login.server(token, out);
@@ -300,6 +368,7 @@ impl Session {
         }
         self.echo.clear();
         self.login.reset();
+        self.line = Line::default();
     }
 
     fn options(&self) -> Vec<String> {
@@ -426,6 +495,9 @@ fn open(ctx: &StreamCtx) -> Option<Flow> {
             window: None,
             env_user: None,
             echo: Echo::default(),
+            server_echo: false,
+            line: Line::default(),
+            new_segment: false,
             transcript: Transcript::default(),
             login: login::Login::new(ctx.id, oriented),
         },
@@ -470,6 +542,9 @@ impl Analyzer for TelnetAnalyzer {
         if ctx.gap_before > 0 {
             decoder.reset();
             session.gap(side);
+        }
+        if side == CLIENT {
+            session.new_segment = true;
         }
         let budget = &mut self.budget;
         decoder.feed(data, &mut |event| {

@@ -73,10 +73,17 @@ Connexions TCP dont le port serveur (ou client, pour une connexion prise en cour
 
 **Identifiants** (`Record::Credential`, protocole et type `telnet`, secret `plaintext`) :
 
-- l'invite est la ligne courante du serveur au premier caractère tapé par le client sur une ligne :
-  se termine (sans casse, espaces finaux ignorés) par `login:`, `username:`, `user name:`, `user:`,
-  `login as:` -> saisie du nom ; contient `password` ou `passwd` ou `passcode` et se termine par `:` ->
-  saisie du mot de passe ;
+- l'invite est la ligne courante du serveur au premier caractère tapé par le client sur une ligne
+  (sans casse, espaces finaux ignorés) :
+  - saisie du nom : se termine par `:` précédé de `login`, `username`, `user name`, `user`, `login as`,
+    `utilisateur`, `nom d'utilisateur`, `identifiant`, `benutzername`, `benutzer` ou `usuario` ;
+  - saisie du mot de passe : se termine par `password`, `passwd`, `passcode`, `mot de passe`,
+    `passwort`, `kennwort`, `contraseña`, `senha` ou `wachtwoord` (suivi ou non de `:` ou `?`), ou
+    contient l'un d'eux et se termine par `:` (`Password for jdoe:`, `Enter password`, `Mot de passe :`) ;
+- écho absent : une ligne tapée touche par touche (au moins deux segments), sans qu'aucun caractère ne
+  revienne en écho alors que le serveur a annoncé `WILL ECHO`, est un mot de passe quelle que soit
+  l'invite (invite inconnue, ou absente de la capture) : elle devient secrète au moment de sa fin de
+  ligne et son identifiant porte le détail `detected=no-echo` ;
 - la saisie va jusqu'à la fin de ligne, effacements appliqués, bornée (256 caractères pour le nom,
   512 pour le mot de passe) ;
 - un mot de passe saisi crée un identifiant (avec le dernier nom saisi, sinon la variable `USER` de
@@ -89,14 +96,24 @@ Connexions TCP dont le port serveur (ou client, pour une connexion prise en cour
 - au plus 128 identifiants par connexion (`MAX_PER_FLOW` des credentials). Jamais dans un log : le
   `Debug` des structures masque saisies, transcriptions et secrets.
 
-**Mot de passe dans la transcription** : les caractères tapés à une invite de mot de passe forment un
-run `secret` (y compris un éventuel écho du serveur, absorbé). Choix retenu :
+**Mot de passe dans la transcription** : les caractères tapés à une invite de mot de passe reconnue,
+ou sur une ligne détectée par l'écho absent, forment un run `secret` (y compris un éventuel écho du
+serveur, absorbé). Une saisie de mot de passe le reste jusqu'à la fin de sa ligne même après un trou de
+réassemblage (la valeur, incomplète, ne donne alors pas d'identifiant). Choix retenu :
 
-- le texte de la transcription stockée (`telnet_transcripts.transcript`) ne contient **jamais** le secret :
-  un run secret y est un marqueur vide, et les valeurs sont rangées à part, dans l'ordre, dans la
-  colonne `secrets` (comme `credentials.secret`, même base) ;
-- la recherche `q` porte sur `transcript`, donc jamais sur un mot de passe, et la liste des sessions ne
-  renvoie aucune transcription ;
+- le texte de la transcription stockée (`telnet_transcripts.transcript`) ne contient pas les runs
+  secrets : un run secret y est un marqueur vide, et les valeurs sont rangées à part, dans l'ordre,
+  dans la colonne `secrets` (comme `credentials.secret`, même base) ;
+- la recherche `q` porte sur `transcript`, jamais sur `secrets`, et la liste des sessions ne renvoie
+  aucune transcription ;
+- un mot de passe que ces règles ne reconnaissent pas reste un run `client` en clair, stocké dans
+  `transcript` et trouvé par `q`. Cas connus :
+  - frappe anticipée : tout envoyé d'un bloc avant les invites (`(echo user; echo pass) | telnet`), ou
+    client en mode ligne sans écho du serveur, si l'invite n'est pas reconnue ;
+  - invite absente de la capture (connexion reprise en cours) et serveur sans `WILL ECHO` ;
+  - invite non reconnue (autre langue, `Code :`) quand le serveur ne fait pas d'écho négocié ou que
+    la ligne part d'un bloc ;
+  - mot de passe tapé par erreur à l'invite `login:` (renvoyé en écho, il est lu comme un nom) ;
 - seul le détail d'une session (`/telnet/sessions/{flow}`) recompose les runs avec leur valeur, comme le
   détail d'un identifiant (`/credentials/{entry}`, ADR-019) ; l'UI l'affiche dans `SecretValue`, donc
   masqué par défaut (longueur seule), avec Révéler et Copier.
@@ -104,6 +121,9 @@ run `secret` (y compris un éventuel écho du serveur, absorbé). Choix retenu :
 Variante écartée : servir les secrets par une route à part, à la demande. Elle aurait demandé un
 `SecretValue` asynchrone propre à cette vue, pour une protection identique à celle de Credentials,
 dont les secrets sont déjà servis par une route de détail.
+
+La recherche `q` compare le texte cherché à sa forme JSON (`"` et `\` échappés comme dans `transcript`) ;
+elle ne trouve pas un texte à cheval sur deux runs (une invite et la saisie qui la suit).
 
 ### Tables (migration `1500_telnet.sql`, plage réservée 1500-1599)
 
@@ -215,4 +235,7 @@ aucune session (« Aucune session Telnet »), plage vide (état vide commun « R
   (`docs/PERFORMANCE.md`).
 - Limites : une session reprise en cours (sans les invites) n'a pas d'identifiant ; l'écho n'est fusionné que s'il
   suit la frappe dans l'ordre (une frappe anticipée pendant une sortie du serveur peut apparaître deux fois) ;
-  les écrans plein écran (éditeurs, `top`) ne sont pas rejoués, seul leur texte reste, séquences retirées.
+  les écrans plein écran (éditeurs, `top`) ne sont pas rejoués, seul leur texte reste, séquences retirées ;
+  le budget de transcriptions est par shard (et non global comme les bornes d'ADR-023) : au-delà de 32 Mio
+  de transcriptions en cours dans un shard, quelles sessions sont tronquées dépend du nombre de shards ;
+  mots de passe laissés en clair : voir « Mot de passe dans la transcription ».

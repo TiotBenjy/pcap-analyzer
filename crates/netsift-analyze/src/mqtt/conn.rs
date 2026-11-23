@@ -44,6 +44,10 @@ const SYS_VERSION: &str = "$SYS/broker/version";
 pub const SMALL_PACKET: usize = 4096;
 /// Bytes charged for one aggregated topic, alias or subscription besides its text.
 pub(crate) const ENTRY_COST: usize = 96;
+/// Bytes charged for one topic alias: its topic may grow up to [`wire::MAX_TOPIC`].
+pub(crate) const ALIAS_COST: usize = ENTRY_COST + wire::MAX_TOPIC;
+/// Bytes charged for a connection followed: its two small buffers and fixed state.
+pub(crate) const BASE_COST: usize = 2 * SMALL_PACKET + 1024;
 
 /// State shared by the connections of one shard (its share of the global bounds of
 /// [`super::MqttConfig`]).
@@ -160,7 +164,7 @@ impl Framer {
         gap: u64,
         role: Dir,
         budget: &mut usize,
-        on: &mut dyn FnMut(Event<'_>),
+        on: &mut dyn FnMut(Event<'_>) -> bool,
     ) {
         if self.state == FramerState::Dead {
             return;
@@ -207,7 +211,7 @@ impl Framer {
                     HeaderStatus::Invalid => {
                         self.state = FramerState::Dead;
                         self.reset_buffer(budget);
-                        on(Event::Invalid);
+                        let _ = on(Event::Invalid);
                         return;
                     }
                     HeaderStatus::Valid(h) => {
@@ -223,8 +227,8 @@ impl Framer {
                         } else {
                             SMALL_PACKET
                         };
-                        if h.remaining == 0 {
-                            self.emit(h, budget, on);
+                        if h.remaining == 0 && !self.emit(h, budget, on) {
+                            return;
                         }
                     }
                 }
@@ -239,8 +243,8 @@ impl Framer {
             let (head, rest) = data.split_at(n);
             self.buf.extend_from_slice(head);
             data = rest;
-            if have.saturating_add(n) >= target {
-                self.emit(header, budget, on);
+            if have.saturating_add(n) >= target && !self.emit(header, budget, on) {
+                return;
             }
         }
     }
@@ -270,12 +274,19 @@ impl Framer {
         self.reserved
     }
 
-    fn emit(&mut self, header: FixedHeader, budget: &mut usize, on: &mut dyn FnMut(Event<'_>)) {
+    /// Reports the packet buffered; false when it was rejected: the direction is abandoned at
+    /// once, nothing after it in the segment is decoded.
+    fn emit(
+        &mut self,
+        header: FixedHeader,
+        budget: &mut usize,
+        on: &mut dyn FnMut(Event<'_>) -> bool,
+    ) -> bool {
         let body = self
             .buf
             .get(usize::from(header.header_len)..)
             .unwrap_or_default();
-        on(Event::Packet {
+        let go_on = on(Event::Packet {
             header,
             body,
             ts: self.start_ts,
@@ -283,9 +294,14 @@ impl Framer {
         let decoded = u64::try_from(self.target).unwrap_or(u64::MAX);
         self.skip = u64::from(header.remaining).saturating_sub(decoded);
         self.reset_buffer(budget);
+        if !go_on {
+            self.state = FramerState::Dead;
+            self.skip = 0;
+        }
+        go_on
     }
 
-    fn gap(&mut self, gap: u64, budget: &mut usize, on: &mut dyn FnMut(Event<'_>)) {
+    fn gap(&mut self, gap: u64, budget: &mut usize, on: &mut dyn FnMut(Event<'_>) -> bool) {
         // Bytes of the current packet not received yet, when its end is known.
         let (left, dropped) = match self.header {
             Some(h) => {
@@ -299,14 +315,14 @@ impl Framer {
         match left {
             Some(left) if gap <= left => {
                 if dropped {
-                    on(Event::Lost);
+                    let _ = on(Event::Lost);
                 }
                 self.skip = left.saturating_sub(gap);
             }
             _ => {
                 self.skip = 0;
                 self.state = FramerState::Resync(0);
-                on(Event::Gap);
+                let _ = on(Event::Gap);
             }
         }
     }
@@ -538,6 +554,14 @@ fn props_list(p: &Properties, skip_publish_columns: bool) -> Vec<(String, String
     out
 }
 
+/// Approximate memory of a list of properties.
+fn pairs_cost(pairs: &[(String, String)]) -> usize {
+    pairs
+        .iter()
+        .map(|(k, v)| k.len().saturating_add(v.len()).saturating_add(48))
+        .fold(0, usize::saturating_add)
+}
+
 /// True for a filter that reads every topic (`#`, `+/#`, `$SYS/#`), shared or not.
 fn reads_everything(filter: &str) -> bool {
     let inner = shared_parts(filter).map_or(filter, |(_, f)| f);
@@ -636,6 +660,17 @@ impl Conn {
         }
     }
 
+    /// Takes [`BASE_COST`] for a connection being followed (its buffers and fixed state); false
+    /// when the state budget is spent: the connection is not followed.
+    pub(crate) fn charge_base(&mut self, shared: &mut Shared) -> bool {
+        if shared.charge(BASE_COST) {
+            self.charged = self.charged.saturating_add(BASE_COST);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Takes `cost` bytes of the shard's state budget for an aggregate of this connection; when
     /// they are not left, the aggregate is not kept and counted in `state_dropped`.
     fn charge(&mut self, shared: &mut Shared, cost: usize) -> bool {
@@ -670,22 +705,20 @@ impl Conn {
             return;
         };
         let mut framer = std::mem::take(slot);
-        let mut kill = false;
         let mut budget = std::mem::take(&mut shared.buffer_budget);
         framer.feed(data, ts, gap, dir, &mut budget, &mut |event| match event {
-            Event::Packet { header, body, ts } => {
-                if !self.packet(dir, header, body, ts, shared, out) {
-                    kill = true;
-                }
+            // A rejected (malformed) packet stops the framer at once.
+            Event::Packet { header, body, ts } => self.packet(dir, header, body, ts, shared, out),
+            Event::Lost | Event::Gap => {
+                self.row.gaps = self.row.gaps.saturating_add(1);
+                true
             }
-            Event::Lost | Event::Gap => self.row.gaps = self.row.gaps.saturating_add(1),
-            Event::Invalid => self.row.malformed = self.row.malformed.saturating_add(1),
+            Event::Invalid => {
+                self.row.malformed = self.row.malformed.saturating_add(1);
+                true
+            }
         });
         shared.buffer_budget = budget;
-        if kill {
-            framer.state = FramerState::Dead;
-            framer.reset_buffer(&mut shared.buffer_budget);
-        }
         if let Some(slot) = self.framers.get_mut(dir.index()) {
             *slot = framer;
         }
@@ -771,8 +804,8 @@ impl Conn {
             return false;
         };
         match packet {
-            Packet::Connect(c) => self.connect(dir, header, &c, seq, ts, out),
-            Packet::Connack(c) => self.connack(dir, header, &c, seq, ts, out),
+            Packet::Connect(c) => self.connect(dir, header, &c, seq, ts, shared, out),
+            Packet::Connack(c) => self.connack(dir, header, &c, seq, ts, shared, out),
             Packet::Publish(p) => self.publish(dir, header, *p, seq, ts, shared, out),
             Packet::Puback(a) | Packet::Pubcomp(a) => {
                 self.ack(dir, header, &a, seq, ts, AckStep::Final, shared, out);
@@ -814,6 +847,7 @@ impl Conn {
         true
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn connect(
         &mut self,
         dir: Dir,
@@ -821,6 +855,7 @@ impl Conn {
         c: &wire::Connect,
         seq: u32,
         ts: i64,
+        shared: &mut Shared,
         out: &mut dyn RecordSink,
     ) {
         if self.connect_seen || dir != Dir::Client {
@@ -909,6 +944,14 @@ impl Conn {
                 details,
             });
         }
+        // Kept for the whole connection: charged to the state budget, dropped beyond it.
+        let will = self.row.will_payload.as_ref().map_or(0, Vec::len)
+            + self.row.will_topic.as_ref().map_or(0, String::len);
+        let cost = pairs_cost(&self.row.connect_props).saturating_add(will);
+        if cost > 0 && !self.charge(shared, cost) {
+            self.row.connect_props.clear();
+            self.row.will_payload = None;
+        }
         if self.store_slot() {
             let mut row = self.base_row(seq, ts, dir, header);
             row.props.clone_from(&self.row.connect_props);
@@ -916,6 +959,7 @@ impl Conn {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn connack(
         &mut self,
         dir: Dir,
@@ -923,6 +967,7 @@ impl Conn {
         c: &wire::Connack,
         seq: u32,
         ts: i64,
+        shared: &mut Shared,
         out: &mut dyn RecordSink,
     ) {
         if dir != Dir::Broker || self.row.connack_ts.is_some() {
@@ -950,6 +995,10 @@ impl Conn {
                 cred.details
                     .push(("connack".to_owned(), format!("{:#04x}", c.code)));
                 out.emit(Record::Credential(cred));
+            }
+            let cost = pairs_cost(&self.row.connack_props);
+            if cost > 0 && !self.charge(shared, cost) {
+                self.row.connack_props.clear();
             }
         }
         if self.store_slot() {
@@ -986,7 +1035,8 @@ impl Conn {
             if let Some(a) = alias {
                 let known = self.aliases.get(d).is_some_and(|m| m.contains_key(&a));
                 let room = self.aliases.get(d).is_some_and(|m| m.len() < MAX_ALIASES);
-                if (known || (room && self.charge(shared, topic.len().saturating_add(ENTRY_COST))))
+                // A flat cost per alias: its topic may be replaced by a longer one at any time.
+                if (known || (room && self.charge(shared, ALIAS_COST)))
                     && let Some(map) = self.aliases.get_mut(d)
                 {
                     map.insert(a, topic.clone());
@@ -1472,6 +1522,7 @@ mod tests {
                 if let Event::Packet { header, body, .. } = e {
                     seen.push((header.ptype, body.len()));
                 }
+                true
             });
         }
         assert_eq!(

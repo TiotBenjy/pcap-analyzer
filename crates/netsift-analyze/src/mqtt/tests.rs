@@ -551,7 +551,7 @@ fn initial_budgets(config: &AnalyzerConfig) -> (usize, usize, usize) {
 fn state_budget_sends_topics_to_the_other_bucket_and_is_given_back() {
     let mut config = AnalyzerConfig::default();
     // Room for two topics of the burst below, not more.
-    config.mqtt.max_state_bytes = 2 * (super::conn::ENTRY_COST + 8);
+    config.mqtt.max_state_bytes = super::conn::BASE_COST + 2 * (super::conn::ENTRY_COST + 8);
     let mut sc = Scenario::new();
     let m = Mqtt::V311;
     let mut s = sc.tcp_open(
@@ -707,4 +707,94 @@ fn cleaned_text_stays_within_its_bound() {
     // A short value is never emptied.
     assert_eq!(super::clean("\u{1}"), "\u{fffd}");
     assert_eq!(super::clean("a/\u{202e}b"), "a/\u{fffd}b");
+}
+
+#[test]
+fn aliases_and_properties_are_charged_to_the_state_budget() {
+    use netsift_fixtures::mqtt::wire::{Props, prop};
+    // Aliases set with one-byte topics, then republished with long topics: a flat cost per
+    // alias, so the budget is never exceeded; beyond it, aliases are not kept and counted.
+    let mut config = AnalyzerConfig::default();
+    config.mqtt.max_state_bytes = super::conn::BASE_COST + 3 * super::conn::ALIAS_COST;
+    let m = Mqtt::V5;
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        mqtt_hosts::plc(),
+        mqtt_hosts::broker(),
+        &TcpOptions::new(1883),
+    );
+    s.client_send(&ConnectSpec::v5("alias").encode());
+    s.server_send(&m.connack(
+        false,
+        0,
+        Some(&Props::new().u16(prop::TOPIC_ALIAS_MAXIMUM, 16)),
+    ));
+    let long = "x".repeat(1000);
+    for round in 0..2 {
+        for a in 1..=8u16 {
+            let topic = if round == 0 {
+                format!("{a}")
+            } else {
+                format!("{long}{a}")
+            };
+            let alias = Props::new().u16(prop::TOPIC_ALIAS, a);
+            s.client_send(&m.publish_with(&topic, None, 0, false, false, Some(&alias), b"v"));
+        }
+    }
+    s.close();
+    let (out, analyzer) = records_with(&sc, &config);
+    let [c] = out.conns.as_slice() else { panic!() };
+    assert!(c.state_dropped > 0, "{c:?}");
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+
+    // Properties of CONNECT and CONNACK beyond the budget: not kept, counted.
+    let mut config = AnalyzerConfig::default();
+    config.mqtt.max_state_bytes = super::conn::BASE_COST + 16;
+    let mut sc = Scenario::new();
+    fx::plc_session(
+        &mut sc,
+        mqtt_hosts::plc(),
+        mqtt_hosts::broker(),
+        "q-fixture",
+    );
+    let (out, analyzer) = records_with(&sc, &config);
+    let [c] = out.conns.as_slice() else { panic!() };
+    assert_eq!(c.connect_props, Vec::new());
+    assert_eq!(c.connack_props, Vec::new());
+    assert!(c.state_dropped >= 2, "{c:?}");
+    assert_eq!(analyzer.shared.budgets(), initial_budgets(&config));
+
+    // No room for a connection at all: it is not followed.
+    let mut config = AnalyzerConfig::default();
+    config.mqtt.max_state_bytes = 16;
+    let (out, _) = records_with(&sc, &config);
+    assert_eq!(out.conns.len(), 0);
+}
+
+#[test]
+fn nothing_is_decoded_after_a_malformed_packet() {
+    let m = Mqtt::V311;
+    let mut sc = Scenario::new();
+    let mut s = sc.tcp_open(
+        mqtt_hosts::sensor(),
+        mqtt_hosts::broker(),
+        &TcpOptions::new(1883),
+    );
+    s.client_send(&ConnectSpec::v311("bad").encode());
+    s.server_send(&m.connack(false, 0, None));
+    // A wildcard in a PUBLISH topic is malformed; a valid PUBLISH follows in the same segment.
+    let mut segment = m.publish("a/#", b"x");
+    segment.extend(m.publish("after", b"y"));
+    s.client_send(&segment);
+    s.client_send(&m.publish("later", b"z"));
+    s.close();
+    let (out, _) = records_with(&sc, &AnalyzerConfig::default());
+    let [c] = out.conns.as_slice() else { panic!() };
+    assert_eq!(c.malformed, 1);
+    assert_eq!(c.publish_c2s, 0);
+    assert!(
+        out.packets.iter().all(|p| p.topic.is_none()),
+        "{:?}",
+        out.packets
+    );
 }

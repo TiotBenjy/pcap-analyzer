@@ -677,6 +677,11 @@ impl MqttAnalyzer {
         };
         let first_ts = probe.runs.first().map_or(0, |r| r.ctx.ts_ns);
         let mut conn = Box::new(Conn::new(id, client, server, Transport::Tcp, first_ts));
+        if !conn.charge_base(&mut self.shared) {
+            // No state budget left: the connection is not followed.
+            self.flows.insert(id, Flow::Ignored);
+            return;
+        }
         if let Some(v) = partial {
             conn.set_partial(v);
         }

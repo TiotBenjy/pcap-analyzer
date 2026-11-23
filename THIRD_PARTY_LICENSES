@@ -84,7 +84,7 @@ color_quant 1.1.0 (Rust crate) - MIT - [31]
 commander 2.20.3 (npm package) - MIT - [32]
 concurrent-queue 2.5.0 (Rust crate) - Apache-2.0 OR MIT - [9]
 const-oid 0.10.2 (Rust crate) - Apache-2.0 OR MIT - [33]
-cookie 0.18.2 (Rust crate) - MIT OR Apache-2.0 - [34]
+cookie 0.18.3 (Rust crate) - MIT OR Apache-2.0 - [34]
 cookie-es 3.1.1 (npm package) - MIT - [35]
 core-foundation 0.10.1 (Rust crate) - MIT OR Apache-2.0 - [36]
 core-foundation-sys 0.8.7 (Rust crate) - MIT OR Apache-2.0 - [36]
@@ -1739,7 +1739,7 @@ DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
 [34] MIT License
-Used by: cookie 0.18.2
+Used by: cookie 0.18.3
 ==============================================================================
 
 Copyright (c) 2017 Sergio Benitez

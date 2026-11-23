@@ -43,4 +43,4 @@ Règles transverses (sauf mention contraire) :
 | `ftp.md` | FTP | 5 |
 | `telnet.md` | Telnet | 5 |
 | `sip.md` | SIP | 5 |
-| `mqtt.md` | MQTT (proposition, à valider) | 5 |
+| `mqtt.md` | MQTT | 5 |

@@ -5,9 +5,10 @@ avec l'errata 01), OASIS MQTT Version 5.0 (2019), et MQTT V3.1 (publication IBM 
 nom de protocole `MQIsdp`. WebSocket : RFC 6455 et section 6 des deux specs OASIS. Aucun code GPL
 (Wireshark ou autre) n'est porté.
 
-**Statut : proposition soumise à l'utilisateur.** Aucune capture de référence : la disposition de la vue
-(section « Mise en page ») et les choix signalés dans « Questions ouvertes » sont à valider avant
-d'implémenter. La taille de la tâche conduit à proposer deux branches (« Découpage proposé »).
+**Statut : validée par l'utilisateur le 2026-11-23** (disposition et réponses de la section
+« Décisions »). Aucune capture de référence : la disposition de la vue (section « Mise en page ») est une
+proposition de cette spec. La tâche est découpée en deux branches (« Découpage ») : P5.15a (`feat/mqtt`,
+MQTT sur TCP et vue) puis P5.15b (`feat/mqtt-ws-tls`, WebSocket et TLS).
 
 ## Référence
 
@@ -206,7 +207,7 @@ texte nettoyé). Indice déclaratif, comme les user-agents SIP.
   specs) : le moteur ne voit qu'un flux d'octets. Trames texte : non conformes, comptées, ignorées.
   Trame `close` : code et raison gardés (`ws_close_code`).
 - `permessage-deflate` négocié : les trames compressées (RSV1) ne sont pas décodées, la connexion est
-  marquée `ws_compressed` et ne porte que ses métadonnées (question ouverte 7).
+  marquée `ws_compressed` et ne porte que ses métadonnées (décision 7).
 - La transaction HTTP de l'Upgrade reste dans `http_transactions` comme aujourd'hui.
 
 ### MQTT sur TLS (P5.15b)
@@ -493,8 +494,8 @@ Ordre des blocs (une colonne sous 768 px) :
   MQTT-SN résolus (décision de P5.16). Rien n'est préparé dans le code de P5.15 au-delà du `tab` d'URL
   extensible.
 - **IBM MQ** (P5.17) : modèle différent (gestionnaires de files, canaux, files, pas de topics MQTT) :
-  onglet séparé recommandé (« IBM MQ », plage 1800-1899 proposée), avec un renvoi croisé dans l'en-tête
-  de l'onglet MQTT si les deux sont présents. À trancher (question ouverte 8).
+  onglet séparé (« IBM MQ », plage 1800-1899 proposée), avec un renvoi croisé dans l'en-tête
+  de l'onglet MQTT si les deux sont présents. Décision 8.
 
 ## Écarts assumés
 
@@ -553,10 +554,10 @@ Ordre des blocs (une colonne sous 768 px) :
 - Moins de 300 ms par requête sur une session synthétique volumineuse (1 M de PUBLISH stockés, 100 000
   connexions, 100 000 topics), mesure notée ici ; durée de l'étape `mqtt` notée.
 
-## Découpage proposé
+## Découpage
 
 La tâche dépasse une branche de taille habituelle (parseur, moteur, analyseur, deux transports de plus,
-six sous-onglets). Proposition :
+six sous-onglets). Découpage retenu (décision 9) :
 
 - **P5.15a `feat/mqtt`** : parseur MQTT, moteur de connexion, analyseur TCP (1883 et détection
   heuristique), identifiants, libellé `mqtt`, migration `1600_mqtt.sql`, étape `mqtt`, API (sans
@@ -572,25 +573,20 @@ Un ADR est proposé avec P5.15b : un analyseur (`http`) qui délègue un tunnel 
 protocole dans le même shard (alternative écartée : l'analyseur `mqtt` relit lui-même l'Upgrade HTTP,
 ce qui dupliquerait le parseur d'en-têtes HTTP).
 
-## Questions ouvertes
+## Décisions
 
-1. **Extrait de charge stocké** : 512 octets par PUBLISH ? Recommandation : oui (assez pour un JSON de
-   capteur courant, coût de stockage borné) ; 256 si la taille des sessions préoccupe.
-2. **Mot de passe dans le détail de connexion** : affiché aussi là (masqué, `SecretValue`, route de
-   détail seulement), comme FTP et Telnet, en plus de Credentials ? Recommandation : oui.
-3. **Transcription fusionnée** : accusés rattachés à leur PUBLISH / SUBSCRIBE, PINGs seulement comptés ?
-   Recommandation : oui (lisible, deux à quatre fois moins de lignes).
-4. **Plafond de 10 000 paquets stockés par connexion**, compteurs et topics complets au-delà ?
-   Recommandation : oui.
-5. **Brokers publics** : catégorie d'adresse seulement, sans liste intégrée de brokers de test connus ?
-   Recommandation : oui pour P5.15 (une petite liste par nom DNS / SNI pourra venir plus tard).
-6. **Seuil des échecs répétés** : 5 refus d'une même adresse vers un même broker ? Recommandation : 5.
-7. **WebSocket compressé** (`permessage-deflate`) : métadonnées seulement ? Recommandation : oui, rare
-   pour MQTT ; décodage à reprendre si une capture réelle le montre.
-8. **Emplacement de MQTT-SN et IBM MQ** : MQTT-SN en sous-onglet de MQTT, IBM MQ en onglet séparé ?
-   Recommandation : oui.
-9. **Découpage P5.15a / P5.15b** ? Recommandation : oui.
-10. **Libellé `mqtt` pour TCP 1883** dans la classification (Overview, Connexions), 8883 restant `tls` ?
-    Recommandation : oui.
-11. **Décodage des charges** (JSON indenté, Sparkplug B) hors périmètre, texte et hexa seulement ?
-    Recommandation : oui, à reprendre en tâche à part si besoin.
+Réponses retenues par l'utilisateur le 2026-11-23 (les recommandations de la proposition) :
+
+1. **Extrait de charge stocké** : 512 premiers octets par PUBLISH (et par testament).
+2. **Mot de passe dans le détail de connexion** : affiché aussi là, masqué par défaut (`SecretValue`), servi
+   seulement par la route de détail, comme FTP et Telnet, en plus de Credentials.
+3. **Transcription fusionnée** : accusés rattachés à leur PUBLISH / SUBSCRIBE / UNSUBSCRIBE, PINGREQ /
+   PINGRESP seulement comptés.
+4. **Plafond de 10 000 paquets stockés par connexion** ; compteurs et agrégats de topics complets au-delà.
+5. **Brokers publics** : catégorie d'adresse seulement, sans liste intégrée de brokers connus.
+6. **Seuil des échecs répétés** : 5 connexions refusées d'une même adresse vers un même broker.
+7. **WebSocket compressé** (`permessage-deflate`) : métadonnées seulement (P5.15b).
+8. **MQTT-SN** en sous-onglet de MQTT (P5.16), **IBM MQ** en onglet séparé (P5.17).
+9. **Découpage** en P5.15a puis P5.15b.
+10. **Libellé `mqtt`** pour TCP 1883 dans la classification ; 8883 reste `tls`.
+11. **Charges** : texte et hexadécimal seulement, sans décodage applicatif (JSON indenté, Sparkplug B).

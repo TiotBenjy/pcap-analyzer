@@ -355,6 +355,61 @@ fn pages_of_dialogs_and_messages_have_no_gap() {
     assert_eq!(seen.iter().map(|s| s.2).sum::<usize>(), 2);
 }
 
+/// A call seen from its middle (its first SDP is a refreshing re-INVITE, its RTP began half an hour
+/// earlier) keeps its flow; two calls that reuse the same address and port each get their own.
+#[test]
+fn media_join_keeps_calls_seen_midway_and_separates_reused_ports() {
+    let conn = db();
+    let rows = [
+        SipRow {
+            media: audio(21, 40_000),
+            ..request(2_000 * S, 21, 22, "INVITE", "midway")
+        },
+        response(2_000 * S + 1, 22, 21, 200, "INVITE", "midway"),
+        // Two later calls from .23, both on port 50000, ten minutes apart.
+        SipRow {
+            media: audio(23, 50_000),
+            ..request(3_000 * S, 23, 22, "INVITE", "reuse-1")
+        },
+        request(3_030 * S, 23, 22, "BYE", "reuse-1"),
+        SipRow {
+            media: audio(23, 50_000),
+            ..request(3_600 * S, 23, 22, "INVITE", "reuse-2")
+        },
+        request(3_660 * S, 23, 22, "BYE", "reuse-2"),
+    ];
+    for r in &rows {
+        r.insert(&conn).unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO flows (id, transport, src_ip, src_port, dst_ip, dst_port, first_ts, last_ts, \
+                            bytes_fwd, bytes_rev, packets_fwd, packets_rev) VALUES \
+         (10, 17, '10.20.0.21', 40000, '10.20.0.22', 42000, 100000000000, 2100000000000, 1, 1, 500, 500), \
+         (20, 17, '10.20.0.23', 50000, '10.20.0.22', 42000, 3001000000000, 3030000000000, 1, 1, 30, 30), \
+         (30, 17, '10.20.0.22', 42000, '10.20.0.23', 50000, 3601000000000, 3660000000000, 1, 1, 60, 60);",
+    )
+    .unwrap();
+    finalize(&conn).unwrap();
+    let joined: Vec<(String, i64, i64, Option<i64>)> = conn
+        .prepare(
+            "SELECT d.call_id, m.flow_count, m.packets, m.first_flow_id FROM sip_media m \
+             JOIN sip_dialogs d ON d.id = m.dialog_id ORDER BY d.call_id",
+        )
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        joined,
+        [
+            ("midway".to_owned(), 1, 1000, Some(10)),
+            ("reuse-1".to_owned(), 1, 60, Some(20)),
+            ("reuse-2".to_owned(), 1, 120, Some(30)),
+        ]
+    );
+}
+
 /// A session of `calls` calls of 8 messages (1 M messages for 125 000 calls), one in 250 through
 /// a media gateway, with their RTP flows and 200 000 flows of that gateway (measurement only).
 fn volume(calls: i64) -> Connection {

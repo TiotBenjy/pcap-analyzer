@@ -228,7 +228,7 @@ pub struct SipMediaInfo {
     pub flow_count: u64,
     pub packets: u64,
     pub bytes: u64,
-    /// Smallest flow id, for a link to the flow.
+    /// The joined flow that started first, for a link to the flow.
     pub first_flow_id: Option<u64>,
 }
 

@@ -24,9 +24,6 @@ use crate::records::conversion;
 pub const MAX_DIALOG_MEDIA: usize = 16;
 /// RTP flows may outlive the dialog's last message by this much (ns) and still be joined.
 pub const RTP_GRACE_NS: i64 = 10_000_000_000;
-/// A joined flow starts at most this long (ns) before the offer of its media: the UDP flow
-/// timeout, so an older flow on the same address and port belongs to an earlier exchange.
-pub const RTP_LEAD_NS: i64 = 60_000_000_000;
 /// Distinct methods listed per scanner.
 const MAX_SCANNER_METHODS: u32 = 16;
 /// Distinct senders whose first software is remembered per dialog.
@@ -597,18 +594,29 @@ pub(crate) fn finalize(conn: &Connection) -> Result<()> {
 }
 
 /// Joins each media of `sip_media` to the UDP flows of its address and port that overlap
-/// `[offer, end of the dialog + RTP_GRACE_NS]` and started at most `RTP_LEAD_NS` before the offer.
+/// `[offer, end of the dialog + RTP_GRACE_NS]`, whenever they started (a call seen from its middle
+/// only shows a refreshing re-INVITE, long after its RTP began).
 ///
-/// Linear in the flows: the distinct media ends go to a temporary table keyed by `(ip, port)`;
-/// the flows that reach an end as destination are found through `flows_service`
+/// Linear in the flows (plus sorts): the distinct media ends go to a temporary table keyed by
+/// `(ip, port)`; the flows that reach an end as destination are found through `flows_service`
 /// (`(dst_ip, dst_port, transport)`, exact), those that leave from one by a single pass over the
 /// flows with a key lookup in that table (`flows` has no `(src_ip, src_port)` index, and a media
-/// gateway may send hundreds of thousands of flows from one address). The candidates, indexed by
-/// `(ip, port, first_ts)`, are then aggregated per media with bounded range reads.
+/// gateway may send hundreds of thousands of flows from one address). Candidates and media are
+/// then read once each, grouped by end, and each media is answered by binary searches over the
+/// flows of its end ([`EndFlows`]), whatever the number of flows that reuse the same port.
 pub(crate) fn join_media_flows(conn: &Connection) -> Result<()> {
+    let any: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM sip_media WHERE port > 0)",
+        [],
+        |r| r.get(0),
+    )?;
+    if !any {
+        return Ok(());
+    }
     conn.execute_batch(
         "DROP TABLE IF EXISTS temp.sip_media_ends; \
          DROP TABLE IF EXISTS temp.sip_media_flows; \
+         DROP TABLE IF EXISTS temp.sip_media_join; \
          CREATE TEMP TABLE sip_media_ends (ip TEXT NOT NULL, port INTEGER NOT NULL, \
              PRIMARY KEY (ip, port)) WITHOUT ROWID; \
          INSERT OR IGNORE INTO temp.sip_media_ends SELECT ip, port FROM sip_media WHERE port > 0; \
@@ -626,20 +634,155 @@ pub(crate) fn join_media_flows(conn: &Connection) -> Result<()> {
              FROM flows f CROSS JOIN temp.sip_media_ends e \
                  ON e.ip = f.src_ip AND e.port = f.src_port \
              WHERE f.transport = 17 AND NOT (f.dst_ip = f.src_ip AND f.dst_port = f.src_port); \
-         CREATE INDEX temp.sip_media_flows_end ON sip_media_flows (ip, port, first_ts);",
+         CREATE INDEX temp.sip_media_flows_end ON sip_media_flows (ip, port, first_ts, flow_id); \
+         CREATE TEMP TABLE sip_media_join (id INTEGER PRIMARY KEY, flow_count INTEGER NOT NULL, \
+             packets INTEGER NOT NULL, bytes INTEGER NOT NULL, first_flow_id INTEGER);",
     )?;
-    conn.execute(
-        "UPDATE sip_media SET (flow_count, packets, bytes, first_flow_id) = \
-         (SELECT count(*), coalesce(sum(c.packets), 0), coalesce(sum(c.bytes), 0), min(c.flow_id) \
-          FROM temp.sip_media_flows c, sip_dialogs d \
-          WHERE d.id = sip_media.dialog_id AND c.ip = sip_media.ip AND c.port = sip_media.port \
-          AND c.first_ts >= sip_media.offer_ts - ?2 AND c.first_ts <= d.last_ts + ?1 \
-          AND c.last_ts >= sip_media.offer_ts) \
-         WHERE port > 0",
-        [RTP_GRACE_NS, RTP_LEAD_NS],
+    {
+        let mut flows = conn.prepare(
+            "SELECT ip, port, flow_id, first_ts, last_ts, packets, bytes FROM temp.sip_media_flows \
+             ORDER BY ip, port, first_ts, flow_id",
+        )?;
+        let mut flows = flows.query([])?;
+        let mut media = conn.prepare(
+            "SELECT m.id, m.ip, m.port, m.offer_ts, d.last_ts FROM sip_media m \
+             JOIN sip_dialogs d ON d.id = m.dialog_id WHERE m.port > 0 \
+             ORDER BY m.ip, m.port, m.id",
+        )?;
+        let mut media = media.query([])?;
+        let mut insert = conn.prepare(
+            "INSERT INTO temp.sip_media_join (id, flow_count, packets, bytes, first_flow_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )?;
+        // Next flow row not yet put in a group, and the group being answered.
+        let mut next_flow: Option<(String, i64, [i64; 5])> = read_flow(flows.next()?)?;
+        let mut group = EndFlows::default();
+        while let Some(m) = media.next()? {
+            let (id, ip, port): (i64, String, i64) = (m.get(0)?, m.get(1)?, m.get(2)?);
+            let (offer, end): (i64, i64) = (m.get(3)?, m.get(4)?);
+            if group
+                .key
+                .as_ref()
+                .is_none_or(|(gi, gp)| (gi.as_str(), *gp) != (ip.as_str(), port))
+            {
+                // Skip the flows of ends without media, then gather those of this end.
+                while next_flow
+                    .as_ref()
+                    .is_some_and(|(fi, fp, _)| (fi.as_str(), *fp) < (ip.as_str(), port))
+                {
+                    next_flow = read_flow(flows.next()?)?;
+                }
+                let mut rows = Vec::new();
+                while let Some((fi, fp, v)) = next_flow.take() {
+                    if (fi.as_str(), fp) != (ip.as_str(), port) {
+                        next_flow = Some((fi, fp, v));
+                        break;
+                    }
+                    rows.push(v);
+                    next_flow = read_flow(flows.next()?)?;
+                }
+                group = EndFlows::new((ip, port), &rows);
+            }
+            let j = group.overlapping(offer, end.saturating_add(RTP_GRACE_NS));
+            insert.execute(params![id, j.count, j.packets, j.bytes, j.first_flow])?;
+        }
+    }
+    conn.execute_batch(
+        "UPDATE sip_media SET flow_count = j.flow_count, packets = j.packets, bytes = j.bytes, \
+             first_flow_id = j.first_flow_id \
+         FROM temp.sip_media_join j WHERE j.id = sip_media.id; \
+         DROP TABLE temp.sip_media_join; DROP TABLE temp.sip_media_flows; \
+         DROP TABLE temp.sip_media_ends;",
     )?;
-    conn.execute_batch("DROP TABLE temp.sip_media_flows; DROP TABLE temp.sip_media_ends;")?;
     Ok(())
+}
+
+/// One candidate flow row: `(ip, port, [flow id, first ts, last ts, packets, bytes])`.
+fn read_flow(row: Option<&rusqlite::Row<'_>>) -> Result<Option<(String, i64, [i64; 5])>> {
+    let Some(r) = row else { return Ok(None) };
+    Ok(Some((
+        r.get(0)?,
+        r.get(1)?,
+        [r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?],
+    )))
+}
+
+/// Flows overlapping one media.
+struct Joined {
+    count: i64,
+    packets: i64,
+    bytes: i64,
+    /// The flow that started first.
+    first_flow: Option<i64>,
+}
+
+/// The flows of one media end, prepared to answer "which flows overlap `[a, b]`" in logarithmic
+/// time: a flow overlaps when `first <= b` and `last >= a`, and every flow with `last < a` has
+/// `first <= b` (as `a <= b`), so the overlapping ones are those with `first <= b` minus those
+/// with `last < a`, counted and summed by prefix sums over both orders.
+#[derive(Default)]
+struct EndFlows {
+    key: Option<(String, i64)>,
+    /// Sorted by first ts: first ts, flow id, running max of the last ts.
+    firsts: Vec<i64>,
+    ids: Vec<i64>,
+    max_last: Vec<i64>,
+    /// Prefix sums (packets, bytes) in first-ts order, `len + 1` entries.
+    by_first: Vec<(i64, i64)>,
+    /// Last ts sorted, with the prefix sums (packets, bytes) in that order.
+    lasts: Vec<i64>,
+    by_last: Vec<(i64, i64)>,
+}
+
+impl EndFlows {
+    /// `rows`: `[flow id, first ts, last ts, packets, bytes]`, sorted by first ts then id.
+    fn new(key: (String, i64), rows: &[[i64; 5]]) -> Self {
+        let mut e = Self {
+            key: Some(key),
+            ..Self::default()
+        };
+        e.by_first.push((0, 0));
+        let mut max_last = i64::MIN;
+        for [id, first, last, packets, bytes] in rows {
+            e.firsts.push(*first);
+            e.ids.push(*id);
+            max_last = max_last.max(*last);
+            e.max_last.push(max_last);
+            let (p, b) = e.by_first.last().copied().unwrap_or_default();
+            e.by_first
+                .push((p.saturating_add(*packets), b.saturating_add(*bytes)));
+        }
+        let mut by_last: Vec<(i64, i64, i64)> = rows.iter().map(|r| (r[2], r[3], r[4])).collect();
+        by_last.sort_unstable();
+        e.by_last.push((0, 0));
+        for (last, packets, bytes) in by_last {
+            e.lasts.push(last);
+            let (p, b) = e.by_last.last().copied().unwrap_or_default();
+            e.by_last
+                .push((p.saturating_add(packets), b.saturating_add(bytes)));
+        }
+        e
+    }
+
+    fn overlapping(&self, a: i64, b: i64) -> Joined {
+        let started = self.firsts.partition_point(|f| *f <= b);
+        let ended = self.lasts.partition_point(|l| *l < a);
+        let sum = |v: &[(i64, i64)], i: usize| v.get(i).copied().unwrap_or_default();
+        let (p1, b1) = sum(&self.by_first, started);
+        let (p0, b0) = sum(&self.by_last, ended);
+        // First flow (in start order) still running at `a`: the running max is sorted.
+        let i = self
+            .max_last
+            .get(..started)
+            .unwrap_or_default()
+            .partition_point(|m| *m < a);
+        Joined {
+            count: i64::try_from(started.saturating_sub(ended)).unwrap_or(0),
+            packets: p1.saturating_sub(p0),
+            bytes: b1.saturating_sub(b0),
+            first_flow: (i < started).then(|| self.ids.get(i).copied()).flatten(),
+        }
+    }
 }
 
 // ---- messages ----------------------------------------------------------------------------------

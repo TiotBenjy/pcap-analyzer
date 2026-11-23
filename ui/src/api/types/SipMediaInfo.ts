@@ -26,6 +26,6 @@ offered_by: string, offer_ts_us: number,
  */
 flow_count: number, packets: number, bytes: number, 
 /**
- * Smallest flow id, for a link to the flow.
+ * The joined flow that started first, for a link to the flow.
  */
 first_flow_id: number | null, };

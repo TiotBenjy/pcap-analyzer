@@ -666,7 +666,7 @@
   },
   {
    "name": "cookie",
-   "version": "0.18.2",
+   "version": "0.18.3",
    "source": "cargo",
    "declared": "MIT OR Apache-2.0",
    "license": "MIT",

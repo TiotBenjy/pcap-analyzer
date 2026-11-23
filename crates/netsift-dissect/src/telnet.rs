@@ -139,8 +139,9 @@ enum State {
     SbIac,
 }
 
-/// Incremental decoder of one direction (see the module documentation).
-#[derive(Debug, Clone, Default)]
+/// Incremental decoder of one direction (see the module documentation). `Debug` shows the size
+/// of a sub-negotiation in progress, never its bytes (`NEW-ENVIRON` may carry a user name).
+#[derive(Clone, Default)]
 pub struct Decoder {
     state: State,
     sb_option: u8,
@@ -148,6 +149,17 @@ pub struct Decoder {
     sb_truncated: bool,
     /// Bytes of the current sub-negotiation, kept or not.
     sb_scanned: usize,
+}
+
+impl std::fmt::Debug for Decoder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Decoder")
+            .field("state", &self.state)
+            .field("sb_option", &self.sb_option)
+            .field("sb_len", &self.sb_buf.len())
+            .field("sb_truncated", &self.sb_truncated)
+            .finish_non_exhaustive()
+    }
 }
 
 const ESCAPED_IAC: [u8; 1] = [IAC];

@@ -41,7 +41,9 @@ ports des flux RTP de la voix, sans qu'il soit besoin de lire l'audio.
   `Authentication-Info`, lignes repliées comprises (rejointes à leur en-tête), est réécrite. Schéma
   `Digest` : `username`, `realm`, `uri`, `algorithm`, `qop`, `stale` et `domain` restent lisibles, toute
   autre valeur (`response`, `nonce`, `cnonce`, `opaque`, `nc`...) devient `<masked>`. `Basic`, schéma
-  inconnu et `Authentication-Info` : toute la valeur devient `<masked>`. Ni le stockage, ni l'API, ni
+  inconnu et `Authentication-Info` : toute la valeur devient `<masked>`. Une valeur non citée s'arrête
+  à la première virgule ou espace. Un retour chariot isolé devient U+FFFD (jamais une fin de ligne,
+  comme pour le parseur) : un en-tête d'authentification ne peut pas passer pour du corps. Ni le stockage, ni l'API, ni
   l'UI (affichage et copie) ne voient donc ces secrets ; les `Debug` des types qui portent le brut ne
   l'impriment jamais.
 - Champs extraits : méthode ou code et raison, URI de requête, Call-ID, From et To (nom affiché, URI,
@@ -110,13 +112,17 @@ ports des flux RTP de la voix, sans qu'il soit besoin de lire l'audio.
     (>= 300), `no-answer`.
 - `sip_media` (même étape) : un enregistrement par (dialogue, type de média, adresse, port) annoncé
   dans un SDP du dialogue : protocole, codecs, direction, émetteur de l'offre et heure de la première
-  annonce, puis les flux UDP dont une extrémité est cette adresse et ce port, qui chevauchent
-  `[première annonce, fin du dialogue + 10 s]` et qui ont commencé au plus 60 s (délai d'expiration des
-  flux UDP) avant l'annonce : nombre de flux, paquets, octets, premier flux (plus petit identifiant).
-  Aucune lecture du contenu RTP. Jointure linéaire en nombre de flux : extrémités distinctes dans une
-  table temporaire, flux en destination par l'index `flows_service`, flux en source par un seul
-  parcours de `flows` (une passerelle média peut émettre des centaines de milliers de flux d'une même
-  adresse), puis agrégation par lectures d'index bornées.
+  annonce, puis les flux UDP dont une extrémité est cette adresse et ce port et qui chevauchent
+  `[première annonce, fin du dialogue + 10 s]`, quel que soit leur début : un appel vu en cours de route
+  (capture en tampon tournant commencée pendant l'appel) n'a comme premier SDP qu'un re-INVITE de
+  rafraîchissement (RFC 4028), bien après le début de son RTP, et garde son flux. Résultat : nombre de
+  flux, paquets, octets, premier flux (celui qui a commencé le premier). Aucune lecture du contenu RTP.
+  Jointure linéaire en nombre de flux : extrémités distinctes dans une table temporaire, flux en
+  destination par l'index `flows_service`, flux en source par un seul parcours de `flows` (une
+  passerelle média peut émettre des centaines de milliers de flux d'une même adresse), puis un
+  parcours des candidats et des médias groupés par extrémité, chaque média étant résolu par recherches
+  dichotomiques et sommes préfixes : le coût ne dépend pas du nombre d'appels qui réutilisent un même
+  port.
 - Index (différés pendant l'import, ADR-023, sauf ceux des tables remplies par l'étape) :
   `(ts)` pour la liste, `(call_id, ts)` pour l'étape et le filtre de dialogue, `(kind, method, ts)` et
   `(status, reason, ts)` pour les compteurs et filtres, `(software, scanner, ts)` pour les user-agents,
@@ -209,7 +215,11 @@ aucune donnée SIP (« Aucun message SIP »), plage vide (« Rien dans la plage 
 - Pas de lecture ni d'export audio du RTP (hors périmètre, ROADMAP).
 - Les flux RTP joints sont comptés en entier : un flux UDP qui porte plusieurs appels (même adresse et
   même port réutilisés en moins de 60 s, délai d'expiration des flux UDP) est rattaché à chacun avec
-  tous ses paquets.
+  tous ses paquets. Deux appels qui réutilisent le même port à plus de 60 s d'intervalle ont chacun leur
+  flux (le flux du premier se termine avant l'offre du second).
+- Mots de passe dans les URI SIP (`sip:user:password@host`, RFC 3261 section 19.1.1) : masqués
+  (`<masked>`) dans la ligne de requête et les en-têtes du brut, et dans l'URI de requête, From, To,
+  Contact et l'`uri` du Digest extraits.
 
 ## Critères d'acceptation
 
@@ -241,4 +251,4 @@ aucune donnée SIP (« Aucun message SIP »), plage vide (« Rien dans la plage 
 - Mesure (`sip::tests::timings`, ignoré, mode release, 1 M de messages et 325 000 flux UDP, machine de
   développement chargée) : `/sip/stats` 249 à 283 ms sur la session, 32 ms sur 1 h, 275 à 288 ms sur la
   moitié ; pages de messages 3 à 26 ms, d'appels 14 à 40 ms ; scanners 2 à 30 ms ; étape `sip` 8,3 à
-  8,8 s, dont 1,6 s pour joindre 250 000 médias aux flux (`docs/PERFORMANCE.md`).
+  9,4 s, dont 1,6 à 2,7 s pour joindre 250 000 médias aux flux (`docs/PERFORMANCE.md`).

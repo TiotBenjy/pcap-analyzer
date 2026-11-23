@@ -401,11 +401,13 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
   bornés en SQL), dialogues 15 à 24 ms (index couvrant `(method, state, duration_ns)`, 116 ms avant).
   Coût linéaire en nombre de messages de la plage : au-delà d'environ 1 M de messages SIP, `/sip/stats`
   dépasse 300 ms (agrégats précalculés par l'étape `sip` à prévoir si le cas se présente).
-- Étape de fin d'import `sip` : 8,3 à 8,8 s pour 1 M de messages, 125 500 dialogues et 325 000 flux UDP
+- Étape de fin d'import `sip` : 8,3 à 9,4 s pour 1 M de messages, 125 500 dialogues et 325 000 flux UDP
   (un parcours par l'index `(call_id, ts)`, mémoire bornée à un dialogue). Dont la jointure des
-  250 000 médias aux flux : 1,6 s, dont 200 000 flux émis par la même adresse de passerelle (table
-  temporaire des extrémités, `flows_service` en destination, un parcours des flux en source). La
-  sous-requête corrélée d'origine prenait 17,5 s pour 500 médias dans ce cas (mesure de revue).
+  250 000 médias aux flux : 2,7 s (charge moyenne 4), dont 200 000 flux émis par la même adresse de
+  passerelle (table temporaire des extrémités, `flows_service` en destination, un parcours des flux
+  en source, puis un parcours groupé par extrémité avec recherches dichotomiques et sommes préfixes,
+  sans borne sur le début des flux). La sous-requête corrélée d'origine prenait 17,5 s pour 500 médias
+  dans ce cas (mesure de revue).
 - Stockage : un enregistrement par message avec son texte brut borné à 4 096 octets (400 à 600 octets
   pour un message courant, plus le SDP), secrets d'authentification masqués avant stockage.
 

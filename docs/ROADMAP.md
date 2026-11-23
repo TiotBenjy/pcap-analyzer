@@ -644,8 +644,16 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       crates de vues par groupe d'onglets, `netsift-api` réduite à l'assemblage du routeur, aux sessions, imports et
       exports ; aides de test partagées dans une crate de support (dev-dependency). Mesure `cargo build --timings` et
       durée de `./x.sh check` avant/après dans `docs/PERFORMANCE.md`, ADR pour les règles de dépendances
-      (`docs/ARCHITECTURE.md`), types ts-rs inchangés, aucune route modifiée. Après P5.15a, avant P5.15b, P5.16 et P5.17.
-      Suivi possible selon le gain mesuré : même découpage pour `netsift-store` et `netsift-analyze`.
+      (`docs/ARCHITECTURE.md`), types ts-rs inchangés, aucune route modifiée. Après P5.15a, avant P5.22.
+      Suivi possible selon le gain mesuré : même découpage pour `netsift-analyze`.
+- [ ] **P5.22** `refactor/store-split` — Demande de l'utilisateur le 2026-11-23, après P5.21 : même découpage pour
+      `netsift-store` (environ 28 000 lignes dont 9 000 de tests ; toute modification recompile aussi l'API). Socle
+      (connexion, pragmas, migrations et plages de `schema.rs`, writer par lots, `meta`, étapes de fin d'import, plages
+      ADR-030, keyset) dans une crate, requêtes et étapes de fin d'import par groupe d'onglets dans des crates alignées
+      sur les groupes de vues de P5.21 (une crate de vues de l'API ne dépend que du socle et de son groupe du store).
+      Schéma, migrations et contenu des sessions inchangés (une session existante s'ouvre à l'identique), test
+      d'équivalence d'import inchangé. Mesure avant/après dans `docs/PERFORMANCE.md`, ADR et `docs/ARCHITECTURE.md`
+      mis à jour. Avant P5.15b, P5.16 et P5.17.
 - [ ] **P5.15b** `feat/mqtt-ws-tls` — Après P5.15a, en parallèle de P5.16 et P5.17. MQTT sur WebSocket (Upgrade HTTP,
       sous-protocole `mqtt`, trames WebSocket RFC 6455 démasquées dans l'analyseur HTTP existant et confiées au moteur
       MQTT, ADR à écrire ; `permessage-deflate` en métadonnées seulement). MQTT sur TLS (8883) : pas de déchiffrement,

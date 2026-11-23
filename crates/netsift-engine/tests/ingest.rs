@@ -1165,6 +1165,103 @@ fn telnet_sessions_are_the_same_on_any_shard_count_and_keep_secrets_apart() {
     );
 }
 
+/// MQTT connections are followed by the shard of their TCP connection: connections, stored
+/// packets, topic aggregates, subscriptions, secrets and the topic tree of the step `mqtt` are
+/// the same with one file or chunks (a 1 MiB message across many), and with 1, 4 or 7 shards.
+#[test]
+fn mqtt_tables_are_the_same_on_any_shard_count_and_chunking() {
+    let tmp = TempDir::new().unwrap();
+    let catalog = Catalog::open(tmp.path().join("data")).unwrap();
+    let mut sc = Scenario::new();
+    netsift_fixtures::mqtt::mqtt_showcase(&mut sc);
+    for round in 0..3 {
+        sc.advance(2 * netsift_fixtures::time::NS_PER_SEC);
+        netsift_fixtures::mqtt::mqtt_round(&mut sc, round);
+    }
+    let mut packets = traffic();
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+
+    let single = tmp.path().join("mqtt.pcapng");
+    write_file(&single, &packets, &Encoding::pcapng()).unwrap();
+    let reference = run(&catalog, &single, &options(1));
+    let dir = tmp.path().join("chunks");
+    split(&dir, &packets, Naming::Dumpcap, vec![Encoding::pcap()]);
+
+    let dump = |report: &IngestReport| {
+        let session = catalog
+            .open_session(&report.session, OpenMode::ReadOnly)
+            .unwrap();
+        let mut out = rows(
+            &session,
+            "SELECT flow_id || ' ' || client_ip || ' -> ' || server_ip || ':' || server_port || ' ' \
+             || coalesce(version, '-') || ' ' || coalesce(client_id, '-') || ' ' || \
+             coalesce(login, '-') || ' ' || end_kind || ' ' || publish_c2s || '/' || publish_s2c \
+             || ' ' || stored_packets || ' ' || bytes_c2s || '/' || bytes_s2c || ' ' || partial \
+             FROM mqtt_connections ORDER BY flow_id",
+        );
+        out.extend(rows(
+            &session,
+            "SELECT flow_id || ' ' || seq || ' ' || ts || ' ' || dir || ' ' || ptype || ' ' || \
+             coalesce(topic, '-') || ' ' || coalesce(ack_state, '-') || ' ' || size || ' ' || \
+             filters FROM mqtt_packets ORDER BY flow_id, seq",
+        ));
+        out.extend(rows(
+            &session,
+            "SELECT flow_id || ' ' || dir || ' ' || topic || ' ' || messages || ' ' || \
+             payload_bytes FROM mqtt_topic_flows ORDER BY flow_id, dir, topic",
+        ));
+        out.extend(rows(
+            &session,
+            "SELECT flow_id || ' ' || filter || ' ' || coalesce(granted, '-') || ' ' || \
+             coalesce(unsubscribed_ts, '-') FROM mqtt_subscriptions ORDER BY flow_id, seq, idx",
+        ));
+        out.extend(rows(
+            &session,
+            "SELECT path || ' ' || coalesce(parent, '-') || ' ' || topics || ' ' || \
+             messages_pub || ' ' || messages_del FROM mqtt_topics ORDER BY path",
+        ));
+        out.extend(rows(
+            &session,
+            "SELECT flow_id || ' ' || password FROM mqtt_connect_secrets ORDER BY flow_id",
+        ));
+        out
+    };
+    let want = dump(&reference);
+    let showcase = netsift_fixtures::mqtt::SHOWCASE;
+    let connections = scalar(
+        &catalog,
+        &reference,
+        "SELECT count(*) FROM mqtt_connections",
+    );
+    // The showcase, then one sensor and (rounds 0 and 2) one PLC connection per round.
+    assert_eq!(
+        connections,
+        i64::try_from(showcase.connections).unwrap() + 5
+    );
+    assert!(
+        want.iter().any(|l| l.contains("firmware/gw-7/image")),
+        "{want:?}"
+    );
+    assert!(
+        want.iter().any(|l| l.starts_with("plant/line1 plant ")),
+        "{want:?}"
+    );
+    for shards in [1, 4, 7] {
+        let chunked = run(&catalog, &dir, &options(shards));
+        assert_eq!(dump(&chunked), want, "{shards} shards");
+    }
+    // Credentials of MQTT: the showcase ones, the periodic logins folded into them.
+    assert_eq!(
+        scalar(
+            &catalog,
+            &reference,
+            "SELECT count(*) FROM credentials WHERE protocol = 'mqtt'"
+        ),
+        i64::try_from(showcase.credentials).unwrap()
+    );
+}
+
 /// The messages of one Call-ID cross flows and shards (requests and answers on different flows,
 /// a BYE from the other side, RTP on its own flows): dialogs, media and their flows are the same
 /// with one file or chunks, and with 1, 4 or 7 shards.

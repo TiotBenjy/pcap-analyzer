@@ -25,6 +25,7 @@ mod geoip;
 mod guard;
 mod http;
 mod imports;
+mod mqtt;
 mod network;
 mod objects;
 mod online;
@@ -269,6 +270,7 @@ pub(crate) fn build(config: ApiConfig, ingest: IngestOptions) -> (Router, Arc<Ap
         .merge(geoip::routes())
         .merge(http::routes())
         .merge(imports::routes())
+        .merge(mqtt::routes())
         .merge(network::routes())
         .merge(objects::routes())
         .merge(overview::routes())

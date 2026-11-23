@@ -865,7 +865,6 @@ pub struct MqttBrokerInfo {
     pub anonymous_accepted: u64,
     pub rejected: u64,
     pub messages: u64,
-    pub topics: u64,
     pub first_ts_us: i64,
     pub last_ts_us: i64,
 }
@@ -890,7 +889,6 @@ fn broker_info(b: BrokerEntry) -> MqttBrokerInfo {
         anonymous_accepted: b.anonymous_accepted,
         rejected: b.rejected,
         messages: b.messages,
-        topics: b.topics,
         first_ts_us: convert::us(b.first_ts),
         last_ts_us: convert::us(b.last_ts),
     }

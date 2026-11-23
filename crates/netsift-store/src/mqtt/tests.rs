@@ -497,9 +497,14 @@ fn timings() {
             MqttRow::TopicFlow(topic(i, "c", &topic_name, 1, first + i64::from(k)))
                 .insert(&conn)
                 .unwrap();
-            MqttRow::Packet(Box::new(publish(i, k + 2, first + i64::from(k), &topic_name)))
-                .insert(&conn)
-                .unwrap();
+            MqttRow::Packet(Box::new(publish(
+                i,
+                k + 2,
+                first + i64::from(k),
+                &topic_name,
+            )))
+            .insert(&conn)
+            .unwrap();
         }
     }
     conn.execute_batch("COMMIT; ANALYZE").unwrap();

@@ -18,4 +18,4 @@ exposed: boolean,
 /**
  * Announced on `$SYS/broker/version` (declarative).
  */
-software: string | null, versions: Array<MqttVersion>, connections: number, clients: number, anonymous_accepted: number, rejected: number, messages: number, topics: number, first_ts_us: number, last_ts_us: number, };
+software: string | null, versions: Array<MqttVersion>, connections: number, clients: number, anonymous_accepted: number, rejected: number, messages: number, first_ts_us: number, last_ts_us: number, };

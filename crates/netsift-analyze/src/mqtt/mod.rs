@@ -35,6 +35,8 @@ const PROBE_BYTES: usize = wire::MAX_PACKET_PREFIX + 8;
 const PROBE_SEGMENTS: usize = 8;
 /// Client segments accumulated for a CONNECT on another port.
 const PROBE_CONNECT_SEGMENTS: usize = 4;
+/// Bytes buffered by all the connections of a shard being probed; past it, new data is not probed.
+const PROBE_BUDGET: usize = 16 * 1024 * 1024;
 
 /// Settings of the `mqtt` analyzer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -563,6 +565,8 @@ pub struct MqttAnalyzer {
     flows: HashMap<FlowId, Flow>,
     /// Connections being followed (decided MQTT).
     active: usize,
+    /// Bytes held by the probes of the shard (at most [`PROBE_BUDGET`]).
+    probe_bytes: usize,
     shared: Shared,
 }
 
@@ -583,6 +587,7 @@ impl MqttAnalyzer {
             config: config.mqtt.clone(),
             flows: HashMap::new(),
             active: 0,
+            probe_bytes: 0,
             shared: Shared::new(config.mqtt.max_pending_bytes),
         }
     }
@@ -666,15 +671,24 @@ impl Analyzer for MqttAnalyzer {
                 conn.feed(role, data, ctx.ts_ns, ctx.gap_before, &mut self.shared, out);
             }
             Flow::Probe(probe) => {
-                if ctx.gap_before > 0 && !probe.segs.is_empty() {
+                let room = PROBE_BYTES.saturating_sub(probe.bytes);
+                let kept = data.get(..data.len().min(room)).unwrap_or_default();
+                let over = self.probe_bytes.saturating_add(kept.len()) > PROBE_BUDGET;
+                if over || (ctx.gap_before > 0 && !probe.segs.is_empty()) {
+                    self.probe_bytes = self.probe_bytes.saturating_sub(probe.bytes);
                     *flow = Flow::Ignored;
                     return;
                 }
-                let room = PROBE_BYTES.saturating_sub(probe.bytes);
-                let kept = data.get(..data.len().min(room)).unwrap_or_default();
                 probe.bytes = probe.bytes.saturating_add(kept.len());
+                self.probe_bytes = self.probe_bytes.saturating_add(kept.len());
                 probe.segs.push((dir, *ctx, kept.to_vec()));
-                match probe.decide(&ctx.key) {
+                let decision = probe.decide(&ctx.key);
+                let release = match decision {
+                    Decision::Wait if kept.len() == data.len() => 0,
+                    _ => probe.bytes,
+                };
+                self.probe_bytes = self.probe_bytes.saturating_sub(release);
+                match decision {
                     Decision::Wait => {
                         if kept.len() < data.len() {
                             *flow = Flow::Ignored;
@@ -701,8 +715,12 @@ impl Analyzer for MqttAnalyzer {
     }
 
     fn on_flow_end(&mut self, ctx: &FlowCtx, out: &mut dyn RecordSink) {
-        if let Some(Flow::Mqtt { conn, swapped }) = self.flows.remove(&ctx.id) {
-            self.end(conn, Some((ctx, swapped)), out);
+        match self.flows.remove(&ctx.id) {
+            Some(Flow::Mqtt { conn, swapped }) => self.end(conn, Some((ctx, swapped)), out),
+            Some(Flow::Probe(probe)) => {
+                self.probe_bytes = self.probe_bytes.saturating_sub(probe.bytes);
+            }
+            Some(Flow::Ignored) | None => {}
         }
     }
 

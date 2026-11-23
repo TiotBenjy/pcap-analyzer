@@ -306,7 +306,7 @@ rien écrire.
 | GET | `/sessions/{id}/mqtt/connections/{flow}` | `MqttConnectionDetail` : la connexion, CONNECT / CONNACK / DISCONNECT décodés, testament (extrait rendu), propriétés, abonnements, 50 topics principaux de la connexion, **mot de passe** (secret, comme le détail d'une session FTP ou Telnet) ; 404 si inconnue |
 | GET | `/sessions/{id}/mqtt/connections/{flow}/packets?type=&limit=&cursor=` | `Page<MqttPacketInfo>` : transcription par `seq` croissant (keyset `seq`), extrait rendu (voir « Rendu des charges ») |
 | GET | `/sessions/{id}/mqtt/clients?q=&limit=&cursor=` | `Page<MqttClientInfo>` : connexions regroupées par identifiant client (identifiant vide ou inconnu : regroupé par adresse client) : adresses (au plus 8), noms d'utilisateur (au plus 4), brokers (au plus 4), versions, connexions, acceptées / refusées, PUBLISH par sens, topics publiés, abonnements, première et dernière activité ; keyset `(client_key)` |
-| GET | `/sessions/{id}/mqtt/brokers?q=&limit=&cursor=` | `Page<MqttBrokerInfo>` : regroupés par (adresse, port, transport) : catégorie d'adresse, `public`, logiciel annoncé, versions, connexions, clients distincts, connexions anonymes acceptées, refus, PUBLISH, topics, première et dernière activité ; tri par connexions décroissantes (keyset `(connections, ip, port, transport)`) |
+| GET | `/sessions/{id}/mqtt/brokers?q=&limit=&cursor=` | `Page<MqttBrokerInfo>` : regroupés par (adresse, port, transport) : catégorie d'adresse, `public`, logiciel annoncé, versions, connexions, clients distincts, connexions anonymes acceptées, refus, PUBLISH, première et dernière activité (pas de nombre de topics : un parcours de tous les agrégats de topics par page) ; tri par connexions décroissantes (keyset `(connections, ip, port, transport)`) |
 | GET | `/sessions/{id}/mqtt/topics?parent=&q=&limit=&cursor=` | `Page<MqttTopicNode>` : enfants directs de `parent` (absent = racine) par nom (keyset `name`) ; avec `q`, topics complets qui contiennent le texte (au plus 200, sans arbre) |
 | GET | `/sessions/{id}/mqtt/topics/node?path=` | `MqttTopicDetail` : nœud, éditeurs (au plus 20 : identifiant client, `Endpoint`, messages), abonnements dont le filtre couvre le chemin (au plus 20, jokers `+` et `#` appliqués selon la spec, `$` exclus des jokers de premier niveau), répartition des QoS, messages retenus, 5 derniers messages (extrait rendu) |
 | GET | `/sessions/{id}/mqtt/messages?topic=&prefix=&dir=&qos=&retain=&client=&broker=&broker_port=&flow=&q=&limit=&cursor=` | `Page<MqttMessageInfo>` : PUBLISH stockés par horodatage croissant (keyset `(ts, id)`) ; `q` cherche dans le topic et l'identifiant client (pas dans la charge) |
@@ -430,7 +430,7 @@ Ordre des blocs (une colonne sous 768 px) :
 
 - `DataTable` (mode `cards` sous `md`) : broker (`Endpoint` adresse et port, drapeau), transport
   (TCP, ou WebSocket et chemin), badge « Public » / « Exposé », logiciel annoncé, versions vues,
-  connexions, clients, anonymes acceptées, refus, messages, topics, première et dernière activité. Clic :
+  connexions, clients, anonymes acceptées, refus, messages, première et dernière activité. Clic :
   sous-onglet Connexions filtré sur ce broker.
 
 ### Topics
@@ -561,6 +561,19 @@ Ordre des blocs (une colonne sous 768 px) :
   verts à 375, 768, 1280 et 1920 px, en `en` et `fr`, aucun mot de passe en clair sur les captures.
 - Moins de 300 ms par requête sur une session synthétique volumineuse (1 M de PUBLISH stockés, 100 000
   connexions, 100 000 topics), mesure notée ici ; durée de l'étape `mqtt` notée.
+
+## Notes d'implémentation (P5.15a)
+
+- Parseur : `crates/netsift-dissect/src/mqtt.rs` ; analyseur : `crates/netsift-analyze/src/mqtt/` (`mod.rs` :
+  détection et analyseur TCP, `conn.rs` : moteur de connexion indépendant du transport, que P5.15b alimentera avec
+  les charges WebSocket) ; store : `crates/netsift-store/src/mqtt.rs` (lignes, étape `mqtt`) et `mqtt/queries.rs` ;
+  API : `crates/netsift-api/src/mqtt.rs` ; UI : `ui/src/views/mqtt/`. Fuzz : cible `mqtt`.
+- Bornes supplémentaires : 16 Mio de données en attente de décision (sondes) par shard, au-delà les nouvelles
+  connexions ne sont pas sondées ; connexions suivies (65 536) et octets en attente d'accusé (32 Mio) partagés entre
+  les shards par le moteur (au moins 16 connexions et 1 Mio par shard).
+- Fixtures : `netsift_fixtures::mqtt` (encodeur `wire`, `mqtt_showcase`, `mqtt_round`) ; session de démonstration :
+  vitrine puis une ronde toutes les 20 s (`add_mqtt` dans `demo.rs`).
+- Mesure : voir `docs/PERFORMANCE.md` (`mqtt::tests::timings`, ignoré, mode release).
 
 ## Découpage
 

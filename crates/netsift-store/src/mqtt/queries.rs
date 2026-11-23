@@ -257,6 +257,22 @@ fn connection_conditions(f: &ConnectionFilter) -> Conditions {
     c
 }
 
+/// Topic flows `t` overlapping `range`: their connection first (the narrow `mqtt_connections`
+/// is read by its span index), then the rows of these connections by primary key. Reading the
+/// span of `mqtt_topic_flows` itself would scan every row started before the end of the range.
+fn push_topic_range(c: &mut Conditions, range: TimeRange) {
+    c.push(
+        "t.flow_id IN (SELECT r.flow_id FROM mqtt_connections r WHERE r.first_ts < ? \
+         AND r.last_ts >= ?) AND t.first_ts < ? AND t.last_ts >= ?",
+        [
+            Value::Integer(range.to_ns()),
+            Value::Integer(range.from_ns()),
+            Value::Integer(range.to_ns()),
+            Value::Integer(range.from_ns()),
+        ],
+    );
+}
+
 /// Overlap conditions alone (aggregates).
 fn range_conditions(range: Option<TimeRange>) -> Conditions {
     let mut c = Conditions::new();
@@ -1097,7 +1113,6 @@ pub struct BrokerEntry {
     /// Accepted connections from public addresses.
     pub public_clients_accepted: u64,
     pub messages: u64,
-    pub topics: u64,
     pub first_ts: i64,
     pub last_ts: i64,
 }
@@ -1126,9 +1141,8 @@ pub fn brokers_page(
          coalesce(sum(c.auth = 'none' AND c.login = 'accepted'), 0), \
          coalesce(sum(c.login = 'rejected'), 0), \
          coalesce(sum(c.login = 'accepted' AND c.client_ip IN {PUBLIC}), 0), \
-         sum(c.publish_c2s + c.publish_s2c), min(c.first_ts), max(c.last_ts), \
-         json_group_array(c.flow_id) FROM mqtt_connections c{} \
-         GROUP BY bkey{having} ORDER BY count(*) DESC, bkey LIMIT ?",
+         sum(c.publish_c2s + c.publish_s2c), min(c.first_ts), max(c.last_ts) \
+         FROM mqtt_connections c{} GROUP BY bkey{having} ORDER BY count(*) DESC, bkey LIMIT ?",
         where_sql(&c)
     );
     let fetch = i64::from(limit) + 1;
@@ -1154,7 +1168,6 @@ pub fn brokers_page(
         i64,
         i64,
         i64,
-        String,
     );
     let raws: Vec<Raw> = conn
         .prepare(&sql)?
@@ -1174,7 +1187,6 @@ pub fn brokers_page(
                 r.get(11)?,
                 r.get(12)?,
                 r.get(13)?,
-                r.get(14)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1200,7 +1212,6 @@ pub fn brokers_page(
             messages,
             first,
             last,
-            flows,
         ) = raw;
         let addr: IpAddr = server_ip.parse().map_err(|_| StoreError::InvalidValue {
             field: "server_ip",
@@ -1224,7 +1235,6 @@ pub fn brokers_page(
             rejected: unsigned(rejected),
             public_clients_accepted: unsigned(public),
             messages: unsigned(messages),
-            topics: topics_of_flows(conn, &flows, "c")?.max(topics_of_flows(conn, &flows, "b")?),
             first_ts: first,
             last_ts: last,
         });
@@ -1307,7 +1317,7 @@ fn topic_sums(conn: &Connection, parent: Option<&str>, range: TimeRange) -> Resu
         let [lo, hi] = below(p);
         c.push("t.topic >= ? AND t.topic < ?", [lo, hi]);
     }
-    range.push_overlap(&mut c, "t.first_ts", "t.last_ts");
+    push_topic_range(&mut c, range);
     let sql = format!(
         "SELECT t.topic, sum(CASE WHEN t.dir = 'c' THEN t.messages ELSE 0 END), \
          sum(CASE WHEN t.dir = 'b' THEN t.messages ELSE 0 END), sum(t.payload_bytes), \
@@ -1535,7 +1545,7 @@ pub fn topic_detail(
         [Value::Text(path.to_owned()), lo, hi],
     );
     if let Some(r) = range {
-        r.push_overlap(&mut c, "t.first_ts", "t.last_ts");
+        push_topic_range(&mut c, r);
     }
     let w = where_sql(&c);
     let sql = format!(
@@ -1762,15 +1772,17 @@ pub fn stats(conn: &Connection, range: Option<TimeRange>) -> Result<StatsRow> {
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let topics: i64 = match range {
+        // The tree of the step `mqtt`, plus the topics left out of it.
         None => conn.query_row(
-            "SELECT count(DISTINCT topic) FROM mqtt_topic_flows WHERE topic != ''",
-            [],
+            "SELECT (SELECT count(*) FROM mqtt_topics WHERE is_topic = 1) + coalesce((SELECT \
+             CAST(value AS INTEGER) FROM meta WHERE key = ?1), 0)",
+            params![super::META_TOPICS_FOLDED],
             |r| r.get(0),
         )?,
         Some(r) => {
             let mut tc = Conditions::new();
             tc.push("t.topic != ''", []);
-            r.push_overlap(&mut tc, "t.first_ts", "t.last_ts");
+            push_topic_range(&mut tc, r);
             conn.query_row(
                 &format!(
                     "SELECT count(DISTINCT t.topic) FROM mqtt_topic_flows t{}",

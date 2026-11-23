@@ -155,7 +155,7 @@ fn add_telnet(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
 /// Gap between two periodic MQTT rounds (sensor report, PLC by topic alias every other round).
 const MQTT_EVERY_SECONDS: i64 = 20;
 
-/// MQTT connections of the MQTT view (`netsift_fixtures::mqtt`): the showcase once (every QoS,
+/// MQTT connections of the MQTT view (`netsift_fixtures::mqtt`): the showcase once (every `QoS`,
 /// 5.0 aliases, anonymous public broker, `#` subscription, rejected logins, large message,
 /// connection picked up in the middle), then a round every `MQTT_EVERY_SECONDS` over the
 /// `seconds` following `start`, merged into `packets`.

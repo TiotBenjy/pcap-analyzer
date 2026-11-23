@@ -15,7 +15,8 @@ export function Transcript({ lines, truncated }: { lines: readonly FtpLine[]; tr
     <div className="relative max-h-96 max-w-full min-w-0 overflow-auto rounded-md border border-line bg-subtle p-3">
       <ol aria-label={t('views.ftp.detail.transcriptLabel')} data-testid="ftp-transcript" className="flex min-w-0 flex-col font-mono text-meta">
         {lines.map((l) => (
-          <li key={l.seq} className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
+          // Hanging indent: a long line wraps under its text, not under its verb or code.
+          <li key={l.seq} className="min-w-0 pl-4 -indent-4 whitespace-pre-wrap [overflow-wrap:anywhere]">
             <Line line={l} />
           </li>
         ))}
@@ -40,7 +41,7 @@ function Line({ line: l }: { line: FtpLine }) {
         {l.head !== null && <span className="font-semibold text-fg">{l.head}</span>}
         {l.head !== null && l.text !== '' && ' '}
         {l.secret ? (
-          <SecretValue value={l.text} label={t('views.ftp.detail.password')} className="align-top" />
+          <SecretValue value={l.text} label={t('views.ftp.detail.password')} inline className="indent-0" />
         ) : (
           <span className={l.head === null ? 'text-fg' : 'text-accent'}>{l.text}</span>
         )}

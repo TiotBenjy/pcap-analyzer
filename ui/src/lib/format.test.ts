@@ -11,6 +11,7 @@ import {
   formatCount,
   formatDate,
   formatDuration,
+  formatFixedDuration,
   formatLatency,
   formatLongDate,
   formatMonthDay,
@@ -49,6 +50,10 @@ describe('formatBytes', () => {
 describe('formatDuration', () => {
   it('picks a compact unit pair', () => {
     expect(formatDuration(0.25, 'en')).toBe('0.25\u00a0s');
+    expect(formatFixedDuration(0.01, 'en')).toBe('0.010\u00a0s');
+    expect(formatFixedDuration(0.232, 'fr')).toBe('0,232\u00a0s');
+    expect(formatFixedDuration(12.3456, 'en')).toBe('12.346\u00a0s');
+    expect(formatFixedDuration(725, 'en')).toBe('12\u00a0min 05\u00a0s');
     expect(formatDuration(43, 'en')).toBe('43\u00a0s');
     expect(formatDuration(725, 'en')).toBe('12\u00a0min 05\u00a0s');
     expect(formatDuration(3 * 3600 + 120, 'en')).toBe('3\u00a0h 02\u00a0min');

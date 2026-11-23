@@ -11,18 +11,27 @@ interface SecretValueProps {
   /** Rendering of the revealed value (highlighting...); the raw value by default. */
   children?: ReactNode;
   className?: string;
+  /**
+   * Inside a line of text (transcript): the buttons keep their 32 px target but overflow the
+   * line instead of making it taller, and the value stays on one line (truncated, full text on
+   * hover once shown).
+   */
+  inline?: boolean;
 }
 
 /**
  * Sensitive value (credential, cookie, token): masked by default, with buttons to reveal it and
  * to copy it. The masked state shows the length only, never a part of the value.
  */
-export function SecretValue({ value, label, children, className }: SecretValueProps) {
+export function SecretValue({ value, label, children, className, inline = false }: SecretValueProps) {
   const { t } = useTranslation();
   const [shown, setShown] = useState(false);
   return (
-    <span className={cn('inline-flex max-w-full min-w-0 items-start gap-1', className)}>
-      <span className={cn('min-w-0 [overflow-wrap:anywhere]', !shown && 'text-muted italic')}>
+    <span className={cn('inline-flex max-w-full min-w-0 gap-1', inline ? 'h-[1lh] items-center align-top' : 'items-start', className)}>
+      <span
+        className={cn('min-w-0', inline ? 'truncate' : '[overflow-wrap:anywhere]', !shown && 'text-muted italic')}
+        {...(inline && shown ? { title: value } : {})}
+      >
         {shown ? (children ?? value) : t('secret.hidden', { count: [...value].length })}
       </span>
       <button

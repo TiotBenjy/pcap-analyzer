@@ -18,7 +18,7 @@ import { SegmentedControl } from '../../components/SegmentedControl';
 import { Skeleton } from '../../components/Skeleton';
 import { Timestamp } from '../../components/Timestamp';
 import { WholeSessionHeader } from '../../components/WholeSession';
-import { formatCount, formatDuration } from '../../lib/format';
+import { formatCount, formatFixedDuration } from '../../lib/format';
 import { useDebounced } from '../../lib/useDebounced';
 import { Field, ListLoading } from './parts';
 import { Transcript } from './Transcript';
@@ -207,7 +207,7 @@ function SessionRow({ session: s, oneDay, ranged }: { session: FtpSessionInfo; o
       </span>
       <span className="num hidden text-right md:block">{formatCount(s.commands)}</span>
       <span className="num hidden text-right md:block">{formatCount(s.files)}</span>
-      <span className="num hidden text-right text-meta text-muted xl:block">{formatDuration(duration(s))}</span>
+      <span className="num hidden text-right text-meta text-muted xl:block">{formatFixedDuration(duration(s))}</span>
       <Timestamp us={s.first_ts_us} withDate={!oneDay} className="hidden text-meta text-muted xl:block" />
     </span>
   );
@@ -246,7 +246,7 @@ function SessionDetail({ sessionId, session: s, oneDay }: { sessionId: string; s
         </Field>
         <Field label={t('views.ftp.sessions.col.start')}>
           <Timestamp us={s.first_ts_us} withDate={!oneDay} className="text-meta" />
-          <span className="num text-meta text-muted">{`, ${formatDuration(duration(s))}`}</span>
+          <span className="num text-meta text-muted">{`, ${formatFixedDuration(duration(s))}`}</span>
         </Field>
       </dl>
       <h3 className="text-meta font-medium text-muted">{t('views.ftp.detail.transcript')}</h3>

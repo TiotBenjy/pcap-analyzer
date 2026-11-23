@@ -25,7 +25,9 @@ pub const MAX_TREE_TOPICS: u64 = 1_000_000;
 /// `meta` key of the topics left out of the tree.
 pub const META_TOPICS_FOLDED: &str = "mqtt.topics_folded";
 /// `meta` key: MQTT connections detected but not followed (connection maximum or state budget
-/// reached), summed over the shards.
+/// reached), summed over the shards; a minimum (connections not probed are not detected). Each
+/// shard adds its count: not idempotent, harmless today, but a future resumed import replaying a
+/// batch would have to recompute or deduplicate it.
 pub const META_UNFOLLOWED: &str = "mqtt.connections_unfollowed";
 
 /// One MQTT connection. `Debug` hides the password.

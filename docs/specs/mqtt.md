@@ -172,7 +172,10 @@ ADR-032) : alias, accusés et compteurs n'ont besoin d'aucun état partagé.
 - Connexions suivies en même temps : 65 536 au total, réparties entre les shards par le moteur (au moins
   16 par shard), comme FTP ; au-delà, ou si le budget d'état est épuisé, une nouvelle connexion détectée
   n'est pas analysée et elle est comptée (`mqtt.connections_unfollowed` dans `meta`, `unfollowed` des
-  statistiques, note sous les chiffres de la vue). Le résultat ne dépend du nombre de shards que lorsqu'une
+  statistiques, note « au moins n » sous les chiffres de la vue). C'est un minimum : une connexion qui n'a pas
+  pu être sondée faute de budget de sonde n'est pas détectée, donc pas comptée. Le compteur est ajouté à
+  `meta` par chaque shard (ajout non idempotent : sans conséquence aujourd'hui, mais une future reprise
+  d'import qui rejouerait un lot devrait le recalculer ou le dédupliquer). Le résultat ne dépend du nombre de shards que lorsqu'une
   borne est atteinte (ADR-023) : chaque shard en a sa part, une capture déséquilibrée peut en épuiser une
   avant les autres.
 
@@ -304,7 +307,7 @@ rien écrire.
 
 | Méthode | Route | Réponse |
 |---|---|---|
-| GET | `/sessions/{id}/mqtt/stats` | `MqttStats` : `connections` (par transport et par version), `clients`, `brokers`, `public_brokers`, `logins` acceptés / refusés / sans réponse, `anonymous_accepted`, `credentials`, `publish` par sens, `payload_bytes`, `subscriptions`, `topics`, `unfollowed` (connexions détectées non suivies, session entière même sous plage), `encrypted` (sessions TLS MQTT, P5.15b), top 10 des codes CONNACK (avec libellé), compteurs des signalements |
+| GET | `/sessions/{id}/mqtt/stats` | `MqttStats` : `connections` (par transport et par version), `clients`, `brokers`, `public_brokers`, `logins` acceptés / refusés / sans réponse, `anonymous_accepted`, `credentials`, `publish` par sens, `payload_bytes`, `subscriptions`, `topics`, `unfollowed` (connexions détectées non suivies, au moins ; session entière même sous plage), `encrypted` (sessions TLS MQTT, P5.15b), top 10 des codes CONNACK (avec libellé), compteurs des signalements |
 | GET | `/sessions/{id}/mqtt/connections?q=&login=&auth=&version=&transport=&broker=&broker_port=&client=&flow=&signal=&limit=&cursor=` | `Page<MqttConnectionInfo>` par début croissant (keyset `(first_ts, flow_id)`), sans secret ; `q` cherche dans les adresses, l'identifiant client, le nom d'utilisateur et le chemin WebSocket ; `login` = `accepted`, `rejected`, `none` ; `auth` = `none`, `username`, `password`, `enhanced` ; `version` = `3.1`, `3.1.1`, `5.0`, `unknown` ; `broker` et `broker_port` ensemble ; `client` = clé du client (`id:<identifiant>` ou `ip:<adresse>`, voir `/clients`) ; `flow` = une connexion ; `signal` = un des signalements |
 | GET | `/sessions/{id}/mqtt/connections/{flow}` | `MqttConnectionDetail` : la connexion, CONNECT / CONNACK / DISCONNECT décodés, testament (extrait rendu), propriétés, abonnements, 50 topics principaux de la connexion, **mot de passe** (secret, comme le détail d'une session FTP ou Telnet) ; 404 si inconnue |
 | GET | `/sessions/{id}/mqtt/connections/{flow}/packets?type=&limit=&cursor=` | `Page<MqttPacketInfo>` : transcription par `seq` croissant (keyset `seq`), extrait rendu (voir « Rendu des charges ») |
@@ -377,7 +380,7 @@ Ordre des blocs (une colonne sous 768 px) :
    (indice « TCP / WebSocket »), Clients, Brokers (indice « n publics », ambre s'il y en a), Messages
    publiés (indice : octets de charge), Topics, MQTT chiffré (sessions TLS ; P5.15b, absent avant). Dessous,
    si des connexions détectées n'ont pas été suivies (borne de connexions ou de mémoire), une note ambre
-   les compte.
+   les compte (« au moins n », le compteur étant un minimum).
 3. **Carte « Signalements »** (absente sans signalement) : une ligne par type présent : libellé, phrase
    d'explication (tableau ci-dessus), compteur, bouton « Voir » qui ouvre le sous-onglet concerné avec le
    filtre en pastille (`signal=`), lien « Voir dans Credentials » pour les identifiants en clair. Pas de
@@ -587,7 +590,9 @@ Ordre des blocs (une colonne sous 768 px) :
     comptée, voir plus haut) ; puis, à leur apparition, les valeurs d'identité du CONNECT (nom du protocole,
     identifiant, utilisateur, mot de passe, méthode d'authentification, identifiant attribué, logiciel du broker :
     bornées par le parseur, environ 2,6 Kio au plus, toujours gardées et imputées dans la limite de ce qui reste), le
-    credential en attente du CONNACK (émis aussitôt, sans le résultat, s'il est refusé), le will et les propriétés
+    credential en attente du CONNACK (rendu dès son émission au CONNACK ; s'il est refusé, émis aussitôt sans le
+    résultat du CONNACK, il ne se replie alors pas avec les observations complètes du même client ; cela n'arrive
+    qu'une fois le budget atteint), le will et les propriétés
     (non gardés s'ils sont refusés), les topics, alias et abonnements (au-delà, topic dans le seau « autres topics »,
     alias ou abonnement non gardé) ; chaque refus compte dans `state_dropped` ;
   - 32 Mio de données des connexions en cours de détection (au-delà, une nouvelle connexion n'est pas sondée).

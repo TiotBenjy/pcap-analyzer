@@ -1036,7 +1036,8 @@ pub struct MqttStats {
     pub subscriptions: u64,
     pub topics: u64,
     /// MQTT connections detected but not followed (connection maximum or memory bound reached
-    /// during the import), over the whole session.
+    /// during the import), over the whole session; a minimum (connections not probed for lack
+    /// of probe budget are not detected).
     pub unfollowed: u64,
     /// Most frequent CONNACK codes (at most 10).
     pub connack_codes: Vec<MqttConnackCount>,

@@ -472,6 +472,8 @@ pub(crate) struct Conn {
     pending: BTreeMap<(Dir, u16), Pending>,
     /// Credential of the CONNECT, waiting for the CONNACK.
     credential: Option<Box<Credential>>,
+    /// Bytes of the state budget taken by `credential` (given back when it is emitted).
+    credential_cost: usize,
     aliases: [HashMap<u16, String>; 2],
     /// Topic Alias Maximum announced by the receiver of each direction.
     alias_max: [u16; 2],
@@ -714,6 +716,7 @@ impl Conn {
             next_seq: 0,
             pending: BTreeMap::new(),
             credential: None,
+            credential_cost: 0,
             aliases: [HashMap::new(), HashMap::new()],
             alias_max: [0, 0],
             topics: [HashMap::new(), HashMap::new()],
@@ -1043,11 +1046,12 @@ impl Conn {
         .into_iter()
         .fold(0, usize::saturating_add);
         self.charged = self.charged.saturating_add(shared.take(identity));
-        if let Some(cost) = self.credential.as_deref().map(credential_cost)
-            && !self.charge(shared, cost)
-            && let Some(cred) = self.credential.take()
-        {
-            out.emit(Record::Credential(*cred));
+        if let Some(cost) = self.credential.as_deref().map(credential_cost) {
+            if self.charge(shared, cost) {
+                self.credential_cost = cost;
+            } else if let Some(cred) = self.credential.take() {
+                out.emit(Record::Credential(*cred));
+            }
         }
         let will = self.row.will_payload.as_ref().map_or(0, Vec::len)
             + self.row.will_topic.as_ref().map_or(0, String::len);
@@ -1095,6 +1099,10 @@ impl Conn {
                 cred.details
                     .push(("connack".to_owned(), format!("{:#04x}", c.code)));
                 out.emit(Record::Credential(*cred));
+                // Emitted: its bytes are given back at once.
+                let cost = std::mem::take(&mut self.credential_cost);
+                self.charged = self.charged.saturating_sub(cost);
+                shared.state_budget = shared.state_budget.saturating_add(cost);
             }
             let assigned = self.row.assigned_client_id.as_ref().map_or(0, String::len);
             self.charged = self.charged.saturating_add(shared.take(assigned));
@@ -1645,5 +1653,52 @@ mod tests {
         );
         assert_eq!(budget, 1024 * 1024);
         assert_eq!(framer.held(), 0);
+    }
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use netsift_fixtures::mqtt::wire::{ConnectSpec, Mqtt};
+
+    use super::*;
+
+    #[test]
+    fn the_pending_credential_is_given_back_at_the_connack() {
+        let config = super::super::MqttConfig::default();
+        let mut shared = Shared::new(&config);
+        let ep = |last, port| Endpoint {
+            ip: IpAddr::V4(Ipv4Addr::new(192, 168, 1, last)),
+            port,
+        };
+        let mut conn = Conn::new(FlowId(1), ep(60, 49_152), ep(40, 1883), Transport::Tcp, 0);
+        assert!(conn.charge_base(&mut shared));
+        let mut out: Vec<Record> = Vec::new();
+        let mut connect = ConnectSpec::v311("sensor");
+        connect.username = Some("user".to_owned());
+        connect.password = Some(b"secret".to_vec());
+        conn.feed(Dir::Client, &connect.encode(), 1, 0, &mut shared, &mut out);
+        let waiting = shared.budgets().2;
+        assert!(conn.credential.is_some());
+        conn.feed(
+            Dir::Broker,
+            &Mqtt::V311.connack(false, 0, None),
+            2,
+            0,
+            &mut shared,
+            &mut out,
+        );
+        assert!(conn.credential.is_none());
+        assert!(out.iter().any(|r| matches!(r, Record::Credential(_))));
+        // The credential's bytes are back as soon as it is emitted, not at the connection end.
+        assert!(
+            shared.budgets().2 > waiting,
+            "{} {waiting}",
+            shared.budgets().2
+        );
+        assert_eq!(conn.credential_cost, 0);
+        conn.finish(None, &mut shared, &mut out);
+        assert_eq!(shared.budgets().2, config.max_state_bytes);
     }
 }

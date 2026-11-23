@@ -291,7 +291,7 @@ describe('MQTT view', () => {
     vi.mocked(mqttApi.getMqttStats).mockResolvedValue({ ...stats(), unfollowed: 1240 });
     renderApp(`/sessions/${ID}/mqtt`);
     const note = await screen.findByTestId('mqtt-unfollowed');
-    expect(note.textContent).toBe('1,240 MQTT connections not analyzed (connection or memory bound reached during the import)');
+    expect(note.textContent).toBe('At least 1,240 MQTT connections not analyzed (connection or memory bound reached during the import)');
   });
 
   it('expands a connection: password masked, transcript, escaped payload', async () => {

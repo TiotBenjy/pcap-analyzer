@@ -47,7 +47,7 @@ pub struct MqttConfig {
     pub max_connections: usize,
     /// Bytes of packets held while they wait for their acknowledgement.
     pub max_pending_bytes: usize,
-    /// Bytes of packet buffers beyond their first 8 bytes; past it, a packet is decoded from a
+    /// Bytes of packet buffers beyond their first 64 bytes; past it, a packet is decoded from a
     /// shorter prefix (its first 4 KiB, else what its buffer already holds).
     pub max_buffer_bytes: usize,
     /// Bytes of the state of the connections followed: fixed part (about 1.4 KiB each: past it,

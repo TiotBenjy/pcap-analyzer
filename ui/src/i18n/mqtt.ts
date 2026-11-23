@@ -5,8 +5,8 @@ export const mqttEn = {
   subtitle: 'MQTT connections, clients, brokers and topics',
   loadError: 'Could not load the MQTT data',
   empty: 'No MQTT connection',
-  unfollowed_one: '{{count}} MQTT connection not analyzed (connection or memory bound reached during the import)',
-  unfollowed_other: '{{count}} MQTT connections not analyzed (connection or memory bound reached during the import)',
+  unfollowed_one: 'At least {{count}} MQTT connection not analyzed (connection or memory bound reached during the import)',
+  unfollowed_other: 'At least {{count}} MQTT connections not analyzed (connection or memory bound reached during the import)',
   stat: {
     label: 'MQTT figures',
     connections: 'Connections',
@@ -441,8 +441,8 @@ export const mqttFr: typeof mqttEn = {
   subtitle: 'Connexions MQTT, clients, brokers et topics',
   loadError: 'Impossible de charger les données MQTT',
   empty: 'Aucune connexion MQTT',
-  unfollowed_one: "{{count}} connexion MQTT non analysée (borne de connexions ou de mémoire atteinte pendant l'import)",
-  unfollowed_other: "{{count}} connexions MQTT non analysées (borne de connexions ou de mémoire atteinte pendant l'import)",
+  unfollowed_one: "Au moins {{count}} connexion MQTT non analysée (borne de connexions ou de mémoire atteinte pendant l'import)",
+  unfollowed_other: "Au moins {{count}} connexions MQTT non analysées (borne de connexions ou de mémoire atteinte pendant l'import)",
   stat: {
     label: 'Chiffres MQTT',
     connections: 'Connexions',

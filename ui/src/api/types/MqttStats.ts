@@ -16,7 +16,8 @@ no_answer: number, anonymous_accepted: number,
 with_password: number, publish_c2s: number, publish_s2c: number, payload_bytes: number, subscriptions: number, topics: number, 
 /**
  * MQTT connections detected but not followed (connection maximum or memory bound reached
- * during the import), over the whole session.
+ * during the import), over the whole session; a minimum (connections not probed for lack
+ * of probe budget are not detected).
  */
 unfollowed: number, 
 /**

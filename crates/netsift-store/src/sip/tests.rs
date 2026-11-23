@@ -355,51 +355,26 @@ fn pages_of_dialogs_and_messages_have_no_gap() {
     assert_eq!(seen.iter().map(|s| s.2).sum::<usize>(), 2);
 }
 
-/// Time and query plan of each aggregate of `/sip/stats` without range (measurement only).
-#[allow(clippy::print_stdout)]
-fn print_plans(conn: &Connection) {
-    for sql in [
-        "SELECT kind, method, count(*) FROM sip_messages GROUP BY kind, method",
-        "SELECT status, reason, count(*) FROM sip_messages WHERE status IS NOT NULL \
-         GROUP BY status, reason",
-        "SELECT count(*) FROM sip_messages WHERE scanner IS NOT NULL",
-        "SELECT count(DISTINCT src_ip) FROM sip_messages",
-        "SELECT software, scanner, count(*) AS n FROM sip_messages WHERE software IS NOT NULL \
-         GROUP BY software, scanner",
-        "SELECT method, state, count(*), coalesce(sum(duration_ns), 0) FROM sip_dialogs \
-         GROUP BY method, state",
-    ] {
-        let t = std::time::Instant::now();
-        let mut stmt = conn.prepare(sql).unwrap();
-        let n = stmt.query_map([], |_| Ok(())).unwrap().count();
-        let plan: Vec<String> = conn
-            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
-            .unwrap()
-            .query_map([], |r| r.get(3))
-            .unwrap()
-            .map(Result::unwrap)
-            .collect();
-        println!("{:?} {n} rows {sql}\n  {}", t.elapsed(), plan.join(" | "));
-    }
-}
-
-/// `cargo test -p netsift-store --release sip::tests::timings -- --ignored --nocapture`.
-#[test]
-#[ignore = "measurement"]
-#[allow(clippy::print_stdout)]
-fn timings() {
+/// A session of `calls` calls of 8 messages (1 M messages for 125 000 calls), one in 250 through
+/// a media gateway, with their RTP flows and 200 000 flows of that gateway (measurement only).
+fn volume(calls: i64) -> Connection {
     let conn = db();
     conn.execute_batch("BEGIN").unwrap();
     // 1 M messages: 125 000 calls of 8 messages, one call every 4 s, 500 phones.
-    let calls = 125_000_i64;
     for c in 0..calls {
         let base = c * 4 * S;
         let a = u8::try_from(c % 250).unwrap();
         let b = u8::try_from((c + 7) % 250).unwrap();
         let id = format!("call-{c}");
+        // One call in 250 goes through the media gateway (.2, a port per call).
+        let offer = if c % 250 == 0 {
+            audio(2, 10_000 + u16::try_from(c / 250 % 5_000).unwrap())
+        } else {
+            audio(a, 40_000)
+        };
         let mut v = vec![
             SipRow {
-                media: audio(a, 40_000),
+                media: offer,
                 ..request(base, a, b, "INVITE", &id)
             },
             response(base + 1, b, a, 100, "INVITE", &id),
@@ -431,12 +406,105 @@ fn timings() {
             r.insert(&conn).unwrap();
         }
     }
+    // UDP flows: the RTP of every call, and 200 000 flows sent by the media gateway from its
+    // ports (the case of a loaded SBC: one address in every media join).
+    {
+        let mut insert = conn
+            .prepare(
+                "INSERT INTO flows (id, transport, src_ip, src_port, dst_ip, dst_port, first_ts, \
+                 last_ts, bytes_fwd, bytes_rev, packets_fwd, packets_rev) \
+                 VALUES (?1, 17, ?2, ?3, ?4, ?5, ?6, ?7, 17200, 17200, 100, 100)",
+            )
+            .unwrap();
+        for c in 0..calls {
+            let base = c * 4 * S;
+            let a = u8::try_from(c % 250).unwrap();
+            let b = u8::try_from((c + 7) % 250).unwrap();
+            insert
+                .execute(rusqlite::params![
+                    c,
+                    v4(a).to_string(),
+                    40_000,
+                    v4(b).to_string(),
+                    42_000,
+                    base + S,
+                    base + 3 * S
+                ])
+                .unwrap();
+        }
+        for i in 0..200_000_i64 {
+            let ts = i * calls * 4 * S / 200_000;
+            insert
+                .execute(rusqlite::params![
+                    calls + i,
+                    v4(2).to_string(),
+                    10_000 + i % 50_000,
+                    format!("10.30.{}.{}", i % 250, i / 250 % 250),
+                    20_000 + i % 1_000,
+                    ts,
+                    ts + 2 * S
+                ])
+                .unwrap();
+        }
+    }
     conn.execute_batch("COMMIT; ANALYZE").unwrap();
+    conn
+}
+
+/// Time and query plan of each aggregate of `/sip/stats` without range (measurement only).
+#[allow(clippy::print_stdout)]
+fn print_plans(conn: &Connection) {
+    for sql in [
+        "SELECT kind, method, count(*) FROM sip_messages GROUP BY kind, method",
+        "SELECT status, reason, count(*) FROM sip_messages WHERE status IS NOT NULL \
+         GROUP BY status, reason",
+        "SELECT status, min(reason), count(*) AS n FROM sip_messages WHERE status IS NOT NULL \
+         GROUP BY status ORDER BY n DESC, status LIMIT 10",
+        "SELECT software, scanner, n, count(*) OVER () FROM (SELECT software, scanner, \
+         count(*) AS n FROM sip_messages WHERE software IS NOT NULL GROUP BY software, scanner) \
+         ORDER BY n DESC, software, scanner LIMIT 10",
+        "SELECT count(*) FROM sip_messages WHERE scanner IS NOT NULL",
+        "SELECT count(DISTINCT src_ip) FROM sip_messages",
+        "SELECT software, scanner, count(*) AS n FROM sip_messages WHERE software IS NOT NULL \
+         GROUP BY software, scanner",
+        "SELECT method, state, count(*), coalesce(sum(duration_ns), 0) FROM sip_dialogs \
+         GROUP BY method, state",
+    ] {
+        let t = std::time::Instant::now();
+        let mut stmt = conn.prepare(sql).unwrap();
+        let n = stmt.query_map([], |_| Ok(())).unwrap().count();
+        let plan: Vec<String> = conn
+            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .unwrap()
+            .query_map([], |r| r.get(3))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        println!("{:?} {n} rows {sql}\n  {}", t.elapsed(), plan.join(" | "));
+    }
+}
+
+/// `cargo test -p netsift-store --release sip::tests::timings -- --ignored --nocapture`.
+#[test]
+#[ignore = "measurement"]
+#[allow(clippy::print_stdout)]
+fn timings() {
+    let calls = 125_000_i64;
+    let conn = volume(calls);
     let t = std::time::Instant::now();
     conn.execute_batch("BEGIN").unwrap();
     finalize(&conn).unwrap();
     conn.execute_batch("COMMIT; ANALYZE").unwrap();
     println!("finalize {:?}", t.elapsed());
+    let t = std::time::Instant::now();
+    conn.execute_batch("BEGIN").unwrap();
+    join_media_flows(&conn).unwrap();
+    conn.execute_batch("COMMIT").unwrap();
+    println!("media join alone {:?}", t.elapsed());
+    let joined: i64 = conn
+        .query_row("SELECT sum(flow_count) FROM sip_media", [], |r| r.get(0))
+        .unwrap();
+    println!("media joined to {joined} flows");
     print_plans(&conn);
     let total = calls * 4 * S;
     for (name, range) in [

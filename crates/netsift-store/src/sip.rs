@@ -24,6 +24,11 @@ use crate::records::conversion;
 pub const MAX_DIALOG_MEDIA: usize = 16;
 /// RTP flows may outlive the dialog's last message by this much (ns) and still be joined.
 pub const RTP_GRACE_NS: i64 = 10_000_000_000;
+/// A joined flow starts at most this long (ns) before the offer of its media: the UDP flow
+/// timeout, so an older flow on the same address and port belongs to an earlier exchange.
+pub const RTP_LEAD_NS: i64 = 60_000_000_000;
+/// Distinct methods listed per scanner.
+const MAX_SCANNER_METHODS: u32 = 16;
 /// Distinct senders whose first software is remembered per dialog.
 const MAX_AGENTS: usize = 8;
 
@@ -74,8 +79,8 @@ pub struct SipMediaDesc {
     pub direction: Option<String>,
 }
 
-/// One SIP message emitted by the analyzer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One SIP message emitted by the analyzer. `Debug` never prints the raw text.
+#[derive(Clone, PartialEq, Eq)]
 pub struct SipRow {
     pub ts: i64,
     pub src_ip: IpAddr,
@@ -113,6 +118,22 @@ pub struct SipRow {
     pub size: u64,
     pub raw: String,
     pub raw_truncated: bool,
+}
+
+impl std::fmt::Debug for SipRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SipRow")
+            .field("ts", &self.ts)
+            .field("src", &(self.src_ip, self.src_port))
+            .field("dst", &(self.dst_ip, self.dst_port))
+            .field("kind", &self.kind)
+            .field("method", &self.method)
+            .field("status", &self.status)
+            .field("call_id", &self.call_id)
+            .field("size", &self.size)
+            .field("raw", &format_args!("<{} bytes>", self.raw.len()))
+            .finish_non_exhaustive()
+    }
 }
 
 impl SipMediaDesc {
@@ -529,7 +550,7 @@ pub(crate) fn finalize(conn: &Connection) -> Result<()> {
         "SELECT call_id, ts, src_ip, src_port, dst_ip, dst_port, transport, kind = 'request', \
          method, status, reason, from_name, from_uri, to_name, to_uri, contact, software, \
          scanner, auth_user, media FROM sip_messages WHERE call_id IS NOT NULL \
-         ORDER BY call_id, ts, src_ip, src_port, cseq, kind, raw",
+         ORDER BY call_id, ts, src_ip, src_port, dst_ip, dst_port, transport, cseq, kind, raw",
     )?;
     let mut rows = stmt.query([])?;
     let mut current: Option<Dialog> = None;
@@ -571,19 +592,53 @@ pub(crate) fn finalize(conn: &Connection) -> Result<()> {
     if let Some(done) = current {
         done.write(conn)?;
     }
+    join_media_flows(conn)?;
+    Ok(())
+}
+
+/// Joins each media of `sip_media` to the UDP flows of its address and port that overlap
+/// `[offer, end of the dialog + RTP_GRACE_NS]` and started at most `RTP_LEAD_NS` before the offer.
+///
+/// Linear in the flows: the distinct media ends go to a temporary table keyed by `(ip, port)`;
+/// the flows that reach an end as destination are found through `flows_service`
+/// (`(dst_ip, dst_port, transport)`, exact), those that leave from one by a single pass over the
+/// flows with a key lookup in that table (`flows` has no `(src_ip, src_port)` index, and a media
+/// gateway may send hundreds of thousands of flows from one address). The candidates, indexed by
+/// `(ip, port, first_ts)`, are then aggregated per media with bounded range reads.
+pub(crate) fn join_media_flows(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS temp.sip_media_ends; \
+         DROP TABLE IF EXISTS temp.sip_media_flows; \
+         CREATE TEMP TABLE sip_media_ends (ip TEXT NOT NULL, port INTEGER NOT NULL, \
+             PRIMARY KEY (ip, port)) WITHOUT ROWID; \
+         INSERT OR IGNORE INTO temp.sip_media_ends SELECT ip, port FROM sip_media WHERE port > 0; \
+         CREATE TEMP TABLE sip_media_flows (ip TEXT NOT NULL, port INTEGER NOT NULL, \
+             flow_id INTEGER NOT NULL, first_ts INTEGER NOT NULL, last_ts INTEGER NOT NULL, \
+             packets INTEGER NOT NULL, bytes INTEGER NOT NULL); \
+         INSERT INTO temp.sip_media_flows \
+             SELECT e.ip, e.port, f.id, f.first_ts, f.last_ts, f.packets_fwd + f.packets_rev, \
+                    f.bytes_fwd + f.bytes_rev \
+             FROM temp.sip_media_ends e JOIN flows f \
+                 ON f.dst_ip = e.ip AND f.dst_port = e.port AND f.transport = 17; \
+         INSERT INTO temp.sip_media_flows \
+             SELECT e.ip, e.port, f.id, f.first_ts, f.last_ts, f.packets_fwd + f.packets_rev, \
+                    f.bytes_fwd + f.bytes_rev \
+             FROM flows f CROSS JOIN temp.sip_media_ends e \
+                 ON e.ip = f.src_ip AND e.port = f.src_port \
+             WHERE f.transport = 17 AND NOT (f.dst_ip = f.src_ip AND f.dst_port = f.src_port); \
+         CREATE INDEX temp.sip_media_flows_end ON sip_media_flows (ip, port, first_ts);",
+    )?;
     conn.execute(
         "UPDATE sip_media SET (flow_count, packets, bytes, first_flow_id) = \
-         (SELECT count(*), coalesce(sum(f.packets_fwd + f.packets_rev), 0), \
-                 coalesce(sum(f.bytes_fwd + f.bytes_rev), 0), min(f.id) \
-          FROM flows f WHERE f.transport = 17 \
-          AND ((f.dst_ip = sip_media.ip AND f.dst_port = sip_media.port) \
-               OR (f.src_ip = sip_media.ip AND f.src_port = sip_media.port)) \
-          AND f.last_ts >= sip_media.offer_ts \
-          AND f.first_ts <= (SELECT d.last_ts FROM sip_dialogs d WHERE d.id = sip_media.dialog_id) \
-                            + ?1) \
+         (SELECT count(*), coalesce(sum(c.packets), 0), coalesce(sum(c.bytes), 0), min(c.flow_id) \
+          FROM temp.sip_media_flows c, sip_dialogs d \
+          WHERE d.id = sip_media.dialog_id AND c.ip = sip_media.ip AND c.port = sip_media.port \
+          AND c.first_ts >= sip_media.offer_ts - ?2 AND c.first_ts <= d.last_ts + ?1 \
+          AND c.last_ts >= sip_media.offer_ts) \
          WHERE port > 0",
-        [RTP_GRACE_NS],
+        [RTP_GRACE_NS, RTP_LEAD_NS],
     )?;
+    conn.execute_batch("DROP TABLE temp.sip_media_flows; DROP TABLE temp.sip_media_ends;")?;
     Ok(())
 }
 
@@ -609,8 +664,9 @@ pub struct SipMessageFilter {
     pub range: Option<TimeRange>,
 }
 
-/// One stored message with what the session knows about both ends.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One stored message with what the session knows about both ends. `Debug` never prints the raw
+/// text.
+#[derive(Clone, PartialEq, Eq)]
 pub struct SipMessageEntry {
     pub id: i64,
     pub ts: i64,
@@ -636,6 +692,23 @@ pub struct SipMessageEntry {
     pub raw_truncated: bool,
     pub source: EndpointInfo,
     pub destination: EndpointInfo,
+}
+
+impl std::fmt::Debug for SipMessageEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SipMessageEntry")
+            .field("id", &self.id)
+            .field("ts", &self.ts)
+            .field("src", &(self.src_ip, self.src_port))
+            .field("dst", &(self.dst_ip, self.dst_port))
+            .field("kind", &self.kind)
+            .field("method", &self.method)
+            .field("status", &self.status)
+            .field("call_id", &self.call_id)
+            .field("size", &self.size)
+            .field("raw", &format_args!("<{} bytes>", self.raw.len()))
+            .finish_non_exhaustive()
+    }
 }
 
 const MESSAGE_FROM: &str = "sip_messages m \
@@ -1019,7 +1092,7 @@ pub struct SipStatsRows {
     pub call_duration_ns: i64,
     /// `(method, requests)`, most frequent first.
     pub methods: Vec<(String, u64)>,
-    /// `(status, most frequent reason, responses)`, most frequent first.
+    /// `(status, one reason phrase (the smallest), responses)`, most frequent first.
     pub statuses: Vec<(u16, String, u64)>,
     /// `(user agent, scanner tool, messages)`, most frequent first.
     pub top_agents: Vec<(String, Option<String>, u64)>,
@@ -1053,38 +1126,24 @@ pub fn stats(conn: &Connection, limit: u32, range: Option<TimeRange>) -> Result<
         .sort_by(|x, y| y.1.cmp(&x.1).then_with(|| x.0.cmp(&y.0)));
     out.methods.truncate(limit as usize);
 
-    let statuses: Vec<(u16, Option<String>, i64)> = query_ranged(
+    // Top statuses in SQL, each with one of its reason phrases (the smallest: reasons are the
+    // standard phrase in practice), in one pass over the covering index.
+    out.statuses = query_ranged(
         conn,
         &format!(
-            "SELECT status, reason, count(*) FROM sip_messages WHERE status IS NOT NULL{and_ts} \
-             GROUP BY status, reason"
+            "SELECT status, min(reason), count(*) AS n FROM sip_messages \
+             WHERE status IS NOT NULL{and_ts} GROUP BY status ORDER BY n DESC, status LIMIT ?1"
         ),
-        &[],
+        &[&limit],
         range,
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        |r| {
+            Ok((
+                r.get(0)?,
+                r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                unsigned(r.get(2)?),
+            ))
+        },
     )?;
-    // Per status: total, and the most frequent reason (ties: the smallest text).
-    let mut by_status: Vec<(u16, String, u64, u64)> = Vec::new();
-    for (status, reason, n) in statuses {
-        let n = unsigned(n);
-        let reason = reason.unwrap_or_default();
-        match by_status.iter_mut().find(|e| e.0 == status) {
-            Some(e) => {
-                e.2 += n;
-                if n > e.3 || (n == e.3 && reason < e.1) {
-                    e.1 = reason;
-                    e.3 = n;
-                }
-            }
-            None => by_status.push((status, reason, n, n)),
-        }
-    }
-    by_status.sort_by(|x, y| y.2.cmp(&x.2).then_with(|| x.0.cmp(&y.0)));
-    out.statuses = by_status
-        .into_iter()
-        .take(limit as usize)
-        .map(|(s, r, n, _)| (s, r, n))
-        .collect();
 
     out.scanner_messages = unsigned(query_row_ranged(
         conn,
@@ -1100,24 +1159,22 @@ pub fn stats(conn: &Connection, limit: u32, range: Option<TimeRange>) -> Result<
         range,
         |r| r.get(0),
     )?);
-    let agents: Vec<(String, Option<String>, i64)> = query_ranged(
+    // Top user agents in SQL, with the number of distinct ones in the same pass (the scanner tool
+    // is a function of the user agent: one group per user agent).
+    let agents: Vec<(String, Option<String>, u64, i64)> = query_ranged(
         conn,
         &format!(
-            "SELECT software, scanner, count(*) AS n FROM sip_messages \
-             WHERE software IS NOT NULL{and_ts} GROUP BY software, scanner"
+            "SELECT software, scanner, n, count(*) OVER () FROM \
+             (SELECT software, scanner, count(*) AS n FROM sip_messages \
+              WHERE software IS NOT NULL{and_ts} GROUP BY software, scanner) \
+             ORDER BY n DESC, software, scanner LIMIT ?1"
         ),
-        &[],
+        &[&limit],
         range,
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, unsigned(r.get(2)?), r.get(3)?)),
     )?;
-    out.agents = agents.len() as u64;
-    let mut agents: Vec<(String, Option<String>, u64)> = agents
-        .into_iter()
-        .map(|(s, t, n)| (s, t, unsigned(n)))
-        .collect();
-    agents.sort_by(|x, y| y.2.cmp(&x.2).then_with(|| x.0.cmp(&y.0)));
-    agents.truncate(limit as usize);
-    out.top_agents = agents;
+    out.agents = agents.first().map_or(0, |a| unsigned(a.3));
+    out.top_agents = agents.into_iter().map(|(a, t, n, _)| (a, t, n)).collect();
 
     dialog_stats(conn, range, &mut out)?;
     Ok(out)
@@ -1181,15 +1238,14 @@ pub fn scanners(
 ) -> Result<Vec<SipScannerEntry>> {
     let plan = PointSql::new(conn, "sip_messages", "ts", range)?;
     let a = plan.and();
-    query_ranged(
+    let mut rows = query_ranged(
         conn,
         &format!(
-            "SELECT s.tool, s.ip, s.n, s.methods, s.targets, s.first_ts, s.last_ts, h.names, \
-             h.category, h.country FROM \
+            "SELECT s.tool, s.ip, s.n, s.targets, s.first_ts, s.last_ts, h.names, h.category, \
+             h.country FROM \
              (SELECT scanner AS tool, src_ip AS ip, count(*) AS n, \
-              group_concat(DISTINCT method) AS methods, count(DISTINCT dst_ip) AS targets, \
-              min(ts) AS first_ts, max(ts) AS last_ts FROM sip_messages \
-              WHERE scanner IS NOT NULL{a} GROUP BY scanner, src_ip \
+              count(DISTINCT dst_ip) AS targets, min(ts) AS first_ts, max(ts) AS last_ts \
+              FROM sip_messages WHERE scanner IS NOT NULL{a} GROUP BY scanner, src_ip \
               ORDER BY n DESC, scanner, src_ip LIMIT ?1) s \
              LEFT JOIN hosts h ON h.ip = s.ip ORDER BY s.n DESC, s.tool, s.ip"
         ),
@@ -1197,30 +1253,38 @@ pub fn scanners(
         range,
         |r| {
             let raw: String = r.get(1)?;
-            let methods: Option<String> = r.get(3)?;
-            let mut methods: Vec<String> = methods
-                .unwrap_or_default()
-                .split(',')
-                .filter(|m| !m.is_empty())
-                .map(str::to_owned)
-                .collect();
-            methods.sort();
             Ok(SipScannerEntry {
                 tool: r.get(0)?,
                 ip: ip(&raw, 1)?,
                 messages: unsigned(r.get(2)?),
-                methods,
-                targets: unsigned(r.get(4)?),
-                first_ts: r.get(5)?,
-                last_ts: r.get(6)?,
+                methods: Vec::new(),
+                targets: unsigned(r.get(3)?),
+                first_ts: r.get(4)?,
+                last_ts: r.get(5)?,
                 address: EndpointInfo {
-                    names: json_strings(r.get(7)?, 7)?,
-                    category: r.get(8)?,
-                    country: r.get(9)?,
+                    names: json_strings(r.get(6)?, 6)?,
+                    category: r.get(7)?,
+                    country: r.get(8)?,
                 },
             })
         },
-    )
+    )?;
+    // Distinct methods of each scanner, bounded (a tool may send any token as a method).
+    for row in &mut rows {
+        let address = row.ip.to_string();
+        row.methods = query_ranged(
+            conn,
+            &format!(
+                "SELECT DISTINCT method FROM sip_messages \
+                 WHERE scanner = ?1 AND src_ip = ?2 AND method IS NOT NULL{a} \
+                 ORDER BY method LIMIT ?3"
+            ),
+            &[&row.tool, &address, &MAX_SCANNER_METHODS],
+            range,
+            |r| r.get(0),
+        )?;
+    }
+    Ok(rows)
 }
 
 #[cfg(test)]

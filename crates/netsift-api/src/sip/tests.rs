@@ -283,6 +283,27 @@ async fn message_filters_scanners_credentials_and_validation() {
     assert_eq!(count(&agent), env.counts.scanner as u64);
     let from = env.ok("/sip/messages?src=203.0.113.66&kind=request").await;
     assert_eq!(count(&from), env.counts.scanner as u64);
+    // The Digest proof and the challenge nonce never leave the server (masked before storage).
+    let registers = env.all("/sip/messages?method=register", 50).await;
+    assert_eq!(registers.len(), 8);
+    for m in &registers {
+        let raw = m["raw"].as_str().unwrap();
+        assert!(
+            !raw.contains("response=\"") && !raw.contains("nonce=\""),
+            "{raw}"
+        );
+        assert!(
+            !raw.contains("5f2a7c") && !raw.contains("000000000000"),
+            "{raw}"
+        );
+    }
+    assert!(
+        registers
+            .iter()
+            .any(|m| m["raw"].as_str().unwrap().contains(
+                "Authorization: Digest username=\"201\", realm=\"pbx.example.test\", nonce=<masked>"
+            ))
+    );
     let big = env.ok("/sip/messages?q=oversized").await;
     assert_eq!(big["items"][0]["raw_truncated"], true);
 

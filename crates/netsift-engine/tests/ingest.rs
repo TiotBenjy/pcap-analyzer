@@ -1178,6 +1178,16 @@ fn sip_dialogs_are_the_same_on_any_shard_count_and_chunking() {
         sc.advance(2 * netsift_fixtures::time::NS_PER_SEC);
         netsift_fixtures::sip::sip_round(&mut sc, round);
     }
+    // A Basic authorization (never a credential, always masked in the stored raw text).
+    let basic = b"OPTIONS sip:pbx SIP/2.0\r\nCall-ID: basic-1\r\nCSeq: 1 OPTIONS\r\n\
+        Proxy-Authorization: Basic dXNlcjpzZWNyZXQ=\r\nContent-Length: 0\r\n\r\n";
+    sc.udp(
+        netsift_fixtures::sip::sip_hosts::bob(),
+        netsift_fixtures::sip::sip_hosts::pbx(),
+        5060,
+        5060,
+        basic,
+    );
     let mut packets = traffic();
     packets.extend(sc.into_packets());
     packets.sort_by_key(|p| p.ts_ns);
@@ -1190,6 +1200,19 @@ fn sip_dialogs_are_the_same_on_any_shard_count_and_chunking() {
     assert!(want.contains(" cancelled "), "{want}");
     assert!(want.contains("flows=1"), "{want}");
     assert!(want.contains("credential sip-digest 201"), "{want}");
+    let leaks = scalar(
+        &catalog,
+        &reference,
+        "SELECT count(*) FROM sip_messages WHERE raw LIKE '%response=\"%' \
+         OR raw LIKE '%nonce=\"%' OR raw LIKE '%dXNlcjpzZWNyZXQ%'",
+    );
+    assert_eq!(leaks, 0, "secrets in the stored raw text");
+    let masked = scalar(
+        &catalog,
+        &reference,
+        "SELECT count(*) FROM sip_messages WHERE raw LIKE '%Proxy-Authorization: <masked>%'",
+    );
+    assert_eq!(masked, 1);
     for shards in [1, 4, 7] {
         let again = run(&catalog, &single, &options(shards));
         assert_eq!(

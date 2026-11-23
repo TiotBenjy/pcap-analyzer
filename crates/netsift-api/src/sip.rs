@@ -341,7 +341,7 @@ pub struct SipNameCount {
     pub count: u64,
 }
 
-/// One status code of the ranking, with its most frequent reason phrase.
+/// One status code of the ranking, with one of its reason phrases (the smallest).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct SipStatusCount {

@@ -628,17 +628,22 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       format actuel d'hashcat, au lieu de `.hccapx`), points d'accès (BSSID, SSID, canal, chiffrement,
       constructeur), broadcast, client à client, probe requests ; s'appuie sur le décodage 802.11/radiotap
       existant et sur l'OUI de P5.4.
-- [~] **P5.15** `feat/mqtt` — Sans référence (spec à créer, soumise à l'utilisateur avant la vue). MQTT 3.1, 3.1.1
-      et 5.0 sur TCP (1883 et détection heuristique sur tout port, CONNECT valide en premier paquet) : CONNECT
-      (client id, version, keepalive, clean session, will), CONNACK (codes de retour, raisons 5.0), identifiants
-      `username`/`password` vers Credentials (masqués), SUBSCRIBE/UNSUBSCRIBE (filtres, QoS), PUBLISH (topic, QoS,
-      retain, dup, taille, extrait de charge utile borné et affiché en texte/hexa échappé), PING, DISCONNECT ;
-      clients, brokers, arbre des topics avec volumes, connexions sans authentification et brokers publics signalés.
-      MQTT sur WebSocket (Upgrade HTTP, sous-protocole `mqtt`, trames WebSocket démasquées dans l'analyseur HTTP
-      existant). MQTT sur TLS (8883) : pas de déchiffrement, sessions TLS du port ou d'ALPN `mqtt` reprises de
-      l'onglet TLS (SNI, JA3/JA4, certificat) et listées comme MQTT chiffré. Spec : OASIS MQTT 3.1.1 et 5.0.
+- [~] **P5.15a** `feat/mqtt` — Sans référence ; spec `specs/mqtt.md` validée le 2026-11-23 avec les recommandations
+      de ses questions ouvertes (extrait de 512 octets, 10 000 paquets stockés par connexion, broker public d'après la
+      catégorie d'adresse, seuil de 5 refus, `mqtt` pour TCP 1883). MQTT 3.1, 3.1.1 et 5.0 sur TCP (1883 et détection
+      heuristique sur tout port, CONNECT valide en premier paquet) : CONNECT (client id, version, keepalive, clean
+      session, will), CONNACK (codes de retour, raisons 5.0), identifiants `username`/`password` vers Credentials
+      (masqués), SUBSCRIBE/UNSUBSCRIBE (filtres, QoS), PUBLISH (topic, QoS, retain, dup, taille, extrait de charge utile
+      borné et affiché en texte/hexa échappé), PING, DISCONNECT ; clients, brokers, arbre des topics avec volumes,
+      signalements (connexions sans authentification, brokers publics...). Migrations 1600-1699. Spec : OASIS MQTT 3.1.1
+      et 5.0.
+- [ ] **P5.15b** `feat/mqtt-ws-tls` — Après P5.15a, en parallèle de P5.16 et P5.17. MQTT sur WebSocket (Upgrade HTTP,
+      sous-protocole `mqtt`, trames WebSocket RFC 6455 démasquées dans l'analyseur HTTP existant et confiées au moteur
+      MQTT, ADR à écrire ; `permessage-deflate` en métadonnées seulement). MQTT sur TLS (8883) : pas de déchiffrement,
+      sessions TLS du port ou d'ALPN `mqtt` reprises de l'onglet TLS (SNI, JA3/JA4, certificat) et listées dans le
+      sous-onglet « Chiffré ». `specs/mqtt.md`.
 
-Après P5.15 (même onglet ou onglet voisin, en parallèle l'une de l'autre) :
+Après P5.15a (MQTT-SN en sous-onglet de MQTT, IBM MQ en onglet séparé, en parallèle l'une de l'autre et de P5.15b) :
 
 - [ ] **P5.16** `feat/mqtt-sn` — MQTT-SN 1.2 sur UDP (1883/1884, détection heuristique) dans l'onglet MQTT :
       CONNECT, REGISTER (topic id -> nom, table par client), PUBLISH par topic id résolu, topics prédéfinis et courts,

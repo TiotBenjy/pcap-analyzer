@@ -233,8 +233,9 @@ function ConnectionRow({ connection: c, oneDay, ranged }: { connection: MqttConn
   return (
     <span className={`flex min-w-0 flex-col gap-1 ${ROW_GRID}`}>
       <Timestamp us={c.first_ts_us} withDate={!oneDay} className="hidden text-meta text-muted md:block" />
-      {/* Client, then the arrow at the start of the broker line: never an arrow at a line end. */}
-      <span className="flex min-w-0 flex-col gap-0.5 text-meta">
+      {/* Client, then arrow and broker together: on the same line when there is room, never an
+          arrow at a line end. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-meta">
         <span className="min-w-0 max-w-full">
           <Endpoint endpoint={c.client} show="address" className="text-meta" />
         </span>

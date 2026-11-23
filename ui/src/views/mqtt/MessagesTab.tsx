@@ -203,10 +203,13 @@ function MessageDetail({ message: m, onShowConnection }: { message: MqttPacketIn
             <Endpoint endpoint={m.client} show="address" className="text-meta" />
           </span>
         )}
-        {m.client !== null && m.broker !== null && <ArrowRight aria-hidden size={14} strokeWidth={1.75} className="shrink-0 text-faint" />}
+        {/* The arrow stays with the broker: never an arrow at a line end. */}
         {m.broker !== null && (
-          <span className="min-w-0 max-w-full">
-            <Endpoint endpoint={m.broker} port={m.broker_port} show="address" className="text-meta" />
+          <span className="flex min-w-0 max-w-full items-center gap-1.5">
+            {m.client !== null && <ArrowRight aria-hidden size={14} strokeWidth={1.75} className="shrink-0 text-faint" />}
+            <span className="min-w-0 max-w-full">
+              <Endpoint endpoint={m.broker} port={m.broker_port} show="address" className="text-meta" />
+            </span>
           </span>
         )}
         {m.topic_alias !== null && (

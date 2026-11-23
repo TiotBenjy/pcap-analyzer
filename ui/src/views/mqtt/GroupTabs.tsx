@@ -78,7 +78,9 @@ const CLIENT_COLUMNS: ColumnSets = {
 };
 
 const BROKER_COLUMNS: ColumnSets = {
-  narrow: ['broker', 'status', 'connections', 'clients', 'anonymous', 'rejected'],
+  // Below 1280 px, the broker software tells more than the client and anonymous counts (the
+  // signals already point at anonymous brokers).
+  narrow: ['broker', 'status', 'software', 'connections', 'rejected'],
   mid: ['broker', 'status', 'software', 'connections', 'clients', 'anonymous', 'rejected'],
   all: ['broker', 'status', 'software', 'versions', 'connections', 'clients', 'anonymous', 'rejected', 'messages', 'last'],
 };

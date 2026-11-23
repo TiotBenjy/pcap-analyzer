@@ -488,7 +488,7 @@ Ordre des blocs (une colonne sous 768 px) :
   détail d'une connexion en une colonne, hexa sur 8 octets, fil d'Ariane replié à « … / parent / nœud »
   avec le chemin complet en infobulle.
 - 768 px : tableaux en mode tableau avec colonnes secondaires masquées (versions, première activité,
-  topics publiés ; dans Brokers, la colonne Clients plutôt que Logiciel), détail en une colonne.
+  topics publiés ; dans Brokers, Clients et Anonymes plutôt que Logiciel), détail en une colonne.
 - 1280 px : détail de connexion en deux colonnes, Topics en deux volets.
 - 1920 px : toutes les colonnes.
 - Aucun graphique : les volumes sont des colonnes chiffrées ; pas de graphe client -> broker (illisible

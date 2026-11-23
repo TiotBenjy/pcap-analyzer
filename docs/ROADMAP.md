@@ -597,8 +597,17 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       seul flux (appariement et budget non fuzzés) ; FTP sur port non standard non détecté ; `LPRT`/`LPSV` ; Pictures
       affiche « Hôte / Type déclaré : Inconnu » pour un objet FTP et garde l'aide « URL or host » ; extension `.bin`
       des documents non image (P5.11).
-- [~] **P5.9** `feat/telnet` — Référence `private/telnet.png`. Sessions en transcription (négociation d'options retirée,
+- [x] **P5.9** `feat/telnet` — Référence `private/telnet.png`. Sessions en transcription (négociation d'options retirée,
       échos fusionnés, bornée), identifiants login/password vers Credentials (masqués).
+      Fusionné le 2026-11-23 (3043b07) : décodeur IAC incrémental borné (cible de fuzz `telnet`), transcription
+      bornée (64 Kio, 2 000 lignes, budget de 32 Mio par shard imputé au maximum atteint), échos fusionnés,
+      identifiants par invite (en, fr, de, es, pt, nl) et par saisie sans écho sous `WILL ECHO` jugée sur la réponse
+      du serveur ; mot de passe jamais dans le texte stocké (colonne `secrets`, recomposé par le détail seul), y
+      compris après un trou de réassemblage. Suivis : fuites documentées (frappe anticipée, invite absente ou non
+      reconnue sans écho négocié, mot de passe tapé à `login:`) ; budget par shard et non global (ADR-023) ;
+      recherche `q` linéaire en volume de texte (FTS si besoin) ; option « déplié au départ » d'`ExpandableList` ;
+      session tronquée longue à parcourir dans la liste de 640 px ; pastille de `Badge` invisible sur une rangée
+      dépliée (`bg-subtle`, composant commun, aussi FTP et SIP) ; écrans plein écran non rejoués.
 - [ ] **P5.10** `feat/wifi` — Références `private/wifi-1-handshakes.png` à `private/wifi-5-probe-requests.png`. Onglets : handshakes WPA (export hc22000,
       format actuel d'hashcat, au lieu de `.hccapx`), points d'accès (BSSID, SSID, canal, chiffrement,
       constructeur), broadcast, client à client, probe requests ; s'appuie sur le décodage 802.11/radiotap

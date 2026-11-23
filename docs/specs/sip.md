@@ -107,7 +107,9 @@ ports des flux RTP de la voix, sans qu'il soit besoin de lire l'audio.
   `(ts)` pour la liste, `(call_id, ts)` pour l'étape et le filtre de dialogue, `(kind, method, ts)` et
   `(status, ts)` pour les compteurs et filtres, `(software, scanner, ts)` pour les user-agents,
   `(scanner, src_ip, ts)` pour les scanners, `(src_ip, ts)` pour le filtre d'émetteur ;
-  `sip_dialogs (first_ts, id)`, `(method, first_ts)`, `(first_ts, last_ts)` ; `sip_media (dialog_id)`.
+  `sip_dialogs (first_ts, last_ts, method, state, duration_ns)` (ordre de la liste, chevauchement et
+  compteurs sous plage, couvrant), `(method, first_ts)` (liste d'un type), `(method, state, duration_ns)`
+  (compteurs sans plage, couvrant) ; `sip_media (dialog_id, ...)` (contrainte d'unicité).
 
 ### API (`crates/netsift-api/src/sip.rs`)
 
@@ -191,6 +193,9 @@ aucune donnée SIP (« Aucun message SIP »), plage vide (« Rien dans la plage 
 - SIP sur TLS (5061) et SIP sur WebSocket (RFC 7118) non analysés ; SIP sur un port autre que 5060
   non reconnu.
 - Pas de lecture ni d'export audio du RTP (hors périmètre, ROADMAP).
+- Les flux RTP joints sont comptés en entier : un flux UDP qui porte plusieurs appels (même adresse et
+  même port réutilisés en moins de 60 s, délai d'expiration des flux UDP) est rattaché à chacun avec
+  tous ses paquets.
 
 ## Critères d'acceptation
 
@@ -218,4 +223,7 @@ aucune donnée SIP (« Aucun message SIP »), plage vide (« Rien dans la plage 
   analyseur : `crates/netsift-analyze/src/sip/` ; store : `crates/netsift-store/src/sip.rs` (étape
   `sip`) ; API : `crates/netsift-api/src/sip.rs` ; UI : `ui/src/views/sip/`.
 - Démonstration : `add_sip` dans `crates/netsift-cli/src/demo.rs` (vitrine puis un appel toutes les
-  `SIP_EVERY_SECONDS`).
+  `SIP_EVERY_SECONDS`, et un renouvellement d'enregistrement un tour sur deux).
+- Mesure (`sip::tests::timings`, ignoré, mode release, 1 M de messages, machine de développement) :
+  `/sip/stats` 252 ms sur la session, 32 ms sur 1 h, 279 ms sur la moitié ; pages de messages 3 à 24 ms,
+  d'appels 14 à 58 ms ; scanners 1 à 25 ms ; étape `sip` 6,5 à 7 s (`docs/PERFORMANCE.md`).

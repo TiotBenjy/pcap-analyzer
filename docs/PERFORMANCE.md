@@ -389,6 +389,21 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
 - Stockage : au plus 64 Kio de texte par session (bornes de l'analyseur) ; une capture réelle compte rarement plus
   de quelques centaines de sessions Telnet.
 
+## SIP (P5.6, 2026-11-23, `feat/sip`)
+
+- Requêtes de la vue sur 1 000 000 de messages (125 000 appels de 8 messages, 500 enregistrements et des
+  balayages, `sip::tests::timings`, ignoré, mode release, store seul) : `/sip/stats` 252 ms sur la session,
+  32 ms sur 1 h, 279 ms sur la moitié ; page de messages 3 à 24 ms ; page d'appels avec leurs médias
+  14 à 58 ms ; recherche dans les enregistrements 3 ms ; scanners 1 à 25 ms. Détail de `/sip/stats` sur la
+  session : méthodes 100 ms, user-agents 90 ms, codes de réponse 47 ms (index couvrants terminés par `ts`),
+  dialogues 15 ms (index couvrant `(method, state, duration_ns)`, 116 ms avant). Coût linéaire en nombre
+  de messages de la plage : au-delà d'environ 1 M de messages SIP, `/sip/stats` dépasse 300 ms (agrégats
+  précalculés par l'étape `sip` à prévoir si le cas se présente).
+- Étape de fin d'import `sip` : 6,5 à 7 s pour 1 M de messages et 125 500 dialogues (un parcours par
+  l'index `(call_id, ts)`, mémoire bornée à un dialogue), plus la jointure des médias aux flux.
+- Stockage : un enregistrement par message avec son texte brut borné à 4 096 octets (400 à 600 octets
+  pour un message courant, plus le SDP).
+
 ## Filtre temporel (P5.2b, 2026-11-22, `feat/time-filter-aggregates`)
 
 Même machine, jeu régénéré à l'identique (8 894 735 paquets sur 7 jours, 843 955 flux, 676 978 conversations),

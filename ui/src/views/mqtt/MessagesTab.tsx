@@ -1,3 +1,4 @@
+import { ArrowRight } from 'lucide-react';
 import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MqttMessageParams } from '../../api/mqtt';
@@ -24,9 +25,10 @@ import { reasonLabel } from './labels';
 import { Choice, PayloadView, Properties, Select } from './parts';
 
 /** Column layout of the message rows (wide screens). */
+// Fixed widths for the figures: every row gets the same columns, whatever its badges.
 const ROW_GRID =
-  'md:grid md:grid-cols-[6rem_minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(6rem,auto)] md:items-center md:gap-3 ' +
-  'xl:grid-cols-[8.5rem_minmax(0,0.7fr)_minmax(0,1.8fr)_minmax(10rem,auto)_6.5rem]';
+  'md:grid md:grid-cols-[4.5rem_minmax(0,0.8fr)_minmax(0,1.6fr)_12rem] md:items-center md:gap-3 ' +
+  'xl:grid-cols-[8.5rem_minmax(0,0.7fr)_minmax(0,1.8fr)_14rem_6.5rem]';
 
 type DirChoice = MqttDir | 'all';
 type QosChoice = '0' | '1' | '2' | 'all';
@@ -139,7 +141,7 @@ function RowHeader() {
         <span>{t('views.mqtt.messages.col.time')}</span>
         <span>{t('views.mqtt.messages.col.client')}</span>
         <span>{t('views.mqtt.messages.col.topic')}</span>
-        <span className="text-right">{t('views.mqtt.messages.col.size')}</span>
+        <span className="text-right">{t('views.mqtt.messages.col.sizeQos')}</span>
         <span className="hidden xl:block">{t('views.mqtt.messages.col.dir')}</span>
       </div>
     </div>
@@ -181,7 +183,7 @@ function MessageRow({ message: m, oneDay }: { message: MqttPacketInfo; oneDay: b
         <span className="num">{size}</span>
         <Flags message={m} />
       </span>
-      <span className="hidden min-w-0 flex-wrap items-center justify-end gap-1.5 md:flex">
+      <span className="hidden min-w-0 flex-wrap items-center justify-end gap-1 md:flex">
         <span className="num text-meta">{size}</span>
         <Flags message={m} />
       </span>
@@ -196,8 +198,17 @@ function MessageDetail({ message: m, onShowConnection }: { message: MqttPacketIn
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-meta">
         <span className="text-muted">{t(`views.mqtt.messages.dirs.${m.dir}`)}</span>
-        {m.client !== null && <Endpoint endpoint={m.client} show="address" className="text-meta" />}
-        {m.broker !== null && <Endpoint endpoint={m.broker} port={m.broker_port} show="address" className="text-meta" />}
+        {m.client !== null && (
+          <span className="min-w-0 max-w-full">
+            <Endpoint endpoint={m.client} show="address" className="text-meta" />
+          </span>
+        )}
+        {m.client !== null && m.broker !== null && <ArrowRight aria-hidden size={14} strokeWidth={1.75} className="shrink-0 text-faint" />}
+        {m.broker !== null && (
+          <span className="min-w-0 max-w-full">
+            <Endpoint endpoint={m.broker} port={m.broker_port} show="address" className="text-meta" />
+          </span>
+        )}
         {m.topic_alias !== null && (
           <span className="text-muted">
             {m.topic_source === 'unresolved'
@@ -211,7 +222,6 @@ function MessageDetail({ message: m, onShowConnection }: { message: MqttPacketIn
           </span>
         )}
       </div>
-      <span className="min-w-0 font-mono text-meta break-all">{m.topic ?? t('views.mqtt.messages.unknownTopic')}</span>
       {m.payload !== null && <PayloadView payload={m.payload} contentType={m.content_type} format={m.payload_format} />}
       <Properties props={m.props} />
       <div>

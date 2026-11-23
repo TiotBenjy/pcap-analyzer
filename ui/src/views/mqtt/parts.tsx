@@ -131,7 +131,7 @@ function hexDump(hex: string, perLine: number): string {
   return lines.join('\n');
 }
 
-type PayloadMode = 'text' | 'hex';
+export type PayloadMode = 'text' | 'hex';
 
 /**
  * A payload excerpt rendered by the server: escaped text or a hexadecimal dump, always as React
@@ -141,13 +141,17 @@ export function PayloadView({
   payload,
   contentType,
   format,
+  mode: shared,
 }: {
   payload: MqttPayload;
   contentType?: string | null;
   format?: number | null;
+  /** Mode chosen for several payloads at once: no toggle of its own. */
+  mode?: PayloadMode;
 }) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<PayloadMode>(payload.text === null ? 'hex' : 'text');
+  const [own, setMode] = useState<PayloadMode>(payload.text === null ? 'hex' : 'text');
+  const mode = shared ?? own;
   const wide = useMediaQuery(SM_QUERY);
   const size =
     payload.truncated
@@ -158,7 +162,7 @@ export function PayloadView({
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-        {payload.text !== null && (
+        {payload.text !== null && shared === undefined && (
           <SegmentedControl
             hideLabel
             label={t('views.mqtt.payload.label')}

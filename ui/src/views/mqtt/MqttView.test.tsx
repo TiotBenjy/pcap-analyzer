@@ -183,6 +183,7 @@ function detail(): MqttConnectionDetail {
     stored_packets: 3,
     protocol_errors: 0,
     gaps: 0,
+    state_dropped: 0,
     subscriptions: [
       {
         ts_us: T0,
@@ -251,8 +252,8 @@ beforeEach(() => {
   vi.mocked(mqttApi.listMqttTopics).mockImplementation((_id, params) =>
     Promise.resolve(
       params.parent === 'plant'
-        ? page([node({ path: 'plant/line1', name: 'line1', depth: 2, children: 0, is_topic: true, topics: 1 })])
-        : page([node()]),
+        ? { ...page([node({ path: 'plant/line1', name: 'line1', depth: 2, children: 0, is_topic: true, topics: 1 })]), partial: false }
+        : { ...page([node()]), partial: false },
     ),
   );
   vi.mocked(mqttApi.getMqttTopic).mockResolvedValue({
@@ -277,7 +278,8 @@ describe('MQTT view', () => {
     const list = await screen.findByRole('list', { name: 'MQTT connections' });
     expect(within(list).getByText('legacy-gw')).toBeInTheDocument();
     expect(within(list).getByText('Anonymous')).toBeInTheDocument();
-    expect(within(list).getByText('Rejected: Bad user name or password')).toBeInTheDocument();
+    expect(within(list).getByText('Rejected')).toBeInTheDocument();
+    expect(within(list).getByText('Bad user name or password')).toBeInTheDocument();
     // The list never fetches a password.
     expect(mqttApi.getMqttConnection).not.toHaveBeenCalled();
   });

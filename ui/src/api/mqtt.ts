@@ -13,7 +13,7 @@ import type { MqttSignal } from './types/MqttSignal';
 import type { MqttSignalKind } from './types/MqttSignalKind';
 import type { MqttStats } from './types/MqttStats';
 import type { MqttTopicDetail } from './types/MqttTopicDetail';
-import type { MqttTopicNode } from './types/MqttTopicNode';
+import type { MqttTopicPage } from './types/MqttTopicPage';
 import type { Page } from './types/Page';
 
 /** Values of the result filter of the connections, in display order. */
@@ -154,7 +154,7 @@ export function listMqttTopics(
   params: { parent: string | null; q?: string; limit?: number; cursor?: string | null },
   signal?: AbortSignal,
   range: TimeRange | null = null,
-): Promise<Page<MqttTopicNode>> {
+): Promise<MqttTopicPage> {
   const q = new URLSearchParams();
   if (params.q !== undefined && params.q !== '') q.set('q', params.q);
   // An empty parent (`/x` has an empty first level) is kept: `parent=` differs from no parent.

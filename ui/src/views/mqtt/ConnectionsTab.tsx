@@ -29,7 +29,7 @@ import { SecretValue } from '../../components/SecretValue';
 import { Skeleton } from '../../components/Skeleton';
 import { Timestamp } from '../../components/Timestamp';
 import { WholeSessionHeader } from '../../components/WholeSession';
-import { formatByteCount, formatBytes, formatCount, formatLatency, formatNumber, formatSpan, formatTimestamp } from '../../lib/format';
+import { formatByteCount, formatBytes, formatCount, formatFixedDuration, formatLatency, formatNumber, formatTimestamp } from '../../lib/format';
 import { useDebounced } from '../../lib/useDebounced';
 import { hexCode, reasonLabel } from './labels';
 import { Field, PayloadView, Properties, Select } from './parts';
@@ -37,11 +37,18 @@ import { FilterChips } from './filters';
 import type { ConnectionFilters } from './filterState';
 
 /** Column layout of the connection rows (wide screens), shared by the header and the rows. */
+// Fixed widths for the figures: every row gets the same columns, whatever its content.
 const ROW_GRID =
-  'md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(7.5rem,auto)] md:items-start md:gap-3 ' +
-  'xl:grid-cols-[8.5rem_minmax(0,1.4fr)_minmax(0,1fr)_minmax(9rem,auto)_6rem]';
+  'md:grid md:grid-cols-[4.5rem_minmax(0,1.1fr)_minmax(0,1fr)_9rem] md:items-start md:gap-3 ' +
+  'xl:grid-cols-[8.5rem_minmax(15rem,24rem)_minmax(0,1fr)_10rem_6.5rem]';
 
 type All<V> = V | 'all';
+
+/** Height of the connection list: room for a connection unfolded on its CONNECT and CONNACK. */
+const LIST_HEIGHT = 760;
+/** Topics and packets of a connection shown before « show all ». */
+const FIRST_TOPICS = 5;
+const FIRST_PACKETS = 12;
 
 interface ConnectionsTabProps {
   sessionId: string;
@@ -110,6 +117,7 @@ export function ConnectionsTab({ sessionId, enabled, oneDay, ranged, filters, on
         hasMore={query.hasNextPage}
         loadingMore={query.isFetchingNextPage}
         onLoadMore={loadMore}
+        maxHeight={LIST_HEIGHT}
       />
     );
 
@@ -167,10 +175,13 @@ function RowHeader({ ranged }: { ranged: boolean }) {
   return (
     <div aria-hidden className="hidden border-b border-line py-2 pr-3 pl-9 text-meta font-medium text-muted md:block">
       <div className={ROW_GRID}>
-        <span className="hidden xl:block">{t('views.mqtt.connections.col.start')}</span>
+        <span>{t('views.mqtt.connections.col.start')}</span>
         <span>{t('views.mqtt.connections.col.endpoints')}</span>
         <span>{t('views.mqtt.connections.col.client')}</span>
-        <span className="text-right">
+        <span className="text-right xl:hidden">
+          <WholeSessionHeader label={t('views.mqtt.connections.col.messagesDuration')} ranged={ranged} />
+        </span>
+        <span className="hidden text-right xl:block">
           <WholeSessionHeader label={t('views.mqtt.connections.col.messages')} ranged={ranged} />
         </span>
         <span className="hidden text-right xl:block">
@@ -204,8 +215,9 @@ function StatusBadges({ connection: c }: { connection: MqttConnectionInfo }) {
       {c.auth === 'password' && <Badge>{t('views.mqtt.connections.badge.credentials')}</Badge>}
       {c.auth === 'enhanced' && <Badge>{t('views.mqtt.connections.badge.enhanced')}</Badge>}
       {c.login === 'accepted' && <Badge tone="success">{t('views.mqtt.connections.badge.accepted')}</Badge>}
+      {c.login === 'rejected' && <Badge tone="warning">{t('views.mqtt.connections.badge.rejected')}</Badge>}
       {c.login === 'rejected' && c.connack_code !== null && (
-        <Badge tone="danger">{t('views.mqtt.connections.badge.rejected', { reason: reasonLabel(t, c.connack_code, c.version) })}</Badge>
+        <span className="min-w-0 text-meta break-words text-warning">{reasonLabel(t, c.connack_code, c.version)}</span>
       )}
       {c.partial && <Badge>{t('views.mqtt.connections.badge.partial')}</Badge>}
       {c.packets_truncated && <Badge>{t('views.mqtt.connections.badge.truncated')}</Badge>}
@@ -217,10 +229,10 @@ function ConnectionRow({ connection: c, oneDay, ranged }: { connection: MqttConn
   const { t } = useTranslation();
   const messages = t('views.mqtt.connections.messagesValue', { sent: formatCount(c.publish_c2s), received: formatCount(c.publish_s2c) });
   const messagesTitle = t('views.mqtt.connections.messagesTitle', { sent: formatCount(c.publish_c2s), received: formatCount(c.publish_s2c) });
-  const duration = formatSpan(c.first_ts_us, c.last_ts_us);
+  const duration = formatFixedDuration(Math.max(0, c.last_ts_us - c.first_ts_us) / 1e6);
   return (
     <span className={`flex min-w-0 flex-col gap-1 ${ROW_GRID}`}>
-      <Timestamp us={c.first_ts_us} withDate={!oneDay} className="hidden text-meta text-muted xl:block" />
+      <Timestamp us={c.first_ts_us} withDate={!oneDay} className="hidden text-meta text-muted md:block" />
       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-meta">
         <span className="min-w-0 max-w-full">
           <Endpoint endpoint={c.client} show="address" className="text-meta" />
@@ -236,14 +248,15 @@ function ConnectionRow({ connection: c, oneDay, ranged }: { connection: MqttConn
         <StatusBadges connection={c} />
       </span>
       {/* Narrow screens: start, then messages and duration (whole connection under a range). */}
-      <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-meta text-muted md:hidden xl:hidden">
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-meta text-muted md:hidden">
         <Timestamp us={c.first_ts_us} withDate={!oneDay} />
         <span className="num" title={messagesTitle}>
           {ranged ? t('timeRange.wholeSessionColumn', { label: `${messages}, ${duration}` }) : `${messages}, ${duration}`}
         </span>
       </span>
-      <span className="num hidden text-right text-meta md:block" title={messagesTitle}>
-        {messages}
+      <span className="hidden min-w-0 flex-col items-end text-meta md:flex" title={messagesTitle}>
+        <span className="num text-right">{messages}</span>
+        <span className="num text-right text-muted xl:hidden">{duration}</span>
       </span>
       <span className="num hidden text-right text-meta text-muted xl:block">{duration}</span>
     </span>
@@ -497,13 +510,27 @@ function Subscriptions({ detail: d, oneDay }: { detail: MqttConnectionDetail; on
   );
 }
 
+/** « Show all n » under a list cut to its first rows. */
+function ShowAll({ total, onShow }: { total: number; onShow: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div>
+      <Button variant="secondary" onClick={onShow}>
+        {t('views.mqtt.detail.showAll', { count: total })}
+      </Button>
+    </div>
+  );
+}
+
 function Topics({ detail: d }: { detail: MqttConnectionDetail }) {
   const { t } = useTranslation();
+  const [all, setAll] = useState(false);
   if (d.topics.length === 0) return null;
+  const shown = all ? d.topics : d.topics.slice(0, FIRST_TOPICS);
   return (
     <Section title={t('views.mqtt.detail.topics')}>
       <ul className="flex min-w-0 flex-col gap-1 text-meta">
-        {d.topics.map((topic, i) => (
+        {shown.map((topic, i) => (
           <li key={i} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
             <span className={topic.topic === null ? 'text-muted italic' : 'min-w-0 font-mono break-all'}>
               {topic.topic ?? t('views.mqtt.detail.otherTopics')}
@@ -514,6 +541,14 @@ function Topics({ detail: d }: { detail: MqttConnectionDetail }) {
           </li>
         ))}
       </ul>
+      {shown.length < d.topics.length && (
+        <ShowAll
+          total={d.topics.length}
+          onShow={() => {
+            setAll(true);
+          }}
+        />
+      )}
     </Section>
   );
 }
@@ -623,7 +658,9 @@ function Transcript({
 }) {
   const { t } = useTranslation();
   const packets = useMqttPackets(sessionId, c.flow_id, true);
-  const items = packets.data?.pages.flatMap((p) => p.items) ?? [];
+  const [all, setAll] = useState(false);
+  const loaded = packets.data?.pages.flatMap((p) => p.items) ?? [];
+  const items = all ? loaded : loaded.slice(0, FIRST_PACKETS);
   return (
     <Section title={t('views.mqtt.detail.transcript')}>
       <span className="text-meta text-faint">{ranged ? t('views.mqtt.detail.rangeNote') : t('views.mqtt.detail.transcriptNote')}</span>
@@ -650,7 +687,15 @@ function Transcript({
           ))}
         </div>
       )}
-      {packets.hasNextPage && (
+      {items.length < loaded.length && (
+        <ShowAll
+          total={packets.data?.pages[0]?.total_estimate ?? loaded.length}
+          onShow={() => {
+            setAll(true);
+          }}
+        />
+      )}
+      {all && packets.hasNextPage && (
         <div>
           <Button
             variant="secondary"
@@ -666,6 +711,7 @@ function Transcript({
       {d.connection.packets_truncated && <p className="text-meta text-warning">{t('views.mqtt.detail.storedNote')}</p>}
       {d.connection.malformed > 0 && <p className="text-meta text-danger">{t('views.mqtt.detail.malformed')}</p>}
       {d.gaps > 0 && <p className="text-meta text-warning">{t('views.mqtt.detail.gaps', { count: d.gaps })}</p>}
+      {d.state_dropped > 0 && <p className="text-meta text-warning">{t('views.mqtt.detail.stateDropped', { count: d.state_dropped })}</p>}
     </Section>
   );
 }

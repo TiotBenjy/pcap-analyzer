@@ -17,11 +17,13 @@ import { Skeleton } from '../../components/Skeleton';
 import { Timestamp } from '../../components/Timestamp';
 import { WholeSessionLine } from '../../components/WholeSession';
 import { wholeSessionHeader } from '../../components/wholeSessionHeader';
-import { formatByteCount, formatCount } from '../../lib/format';
+import { formatBytes, formatCount } from '../../lib/format';
+import { useMediaQuery } from '../../lib/useMediaQuery';
 import { useDebounced } from '../../lib/useDebounced';
 import { LoadMore } from '../connections/LoadMore';
 import { ClientId } from './ConnectionsTab';
-import { Field, PayloadView } from './parts';
+import { Field, type PayloadMode, PayloadView, Select } from './parts';
+import { SegmentedControl } from '../../components/SegmentedControl';
 
 interface TopicsTabProps {
   sessionId: string;
@@ -45,7 +47,8 @@ export function TopicsTab({ sessionId, enabled, oneDay, ranged, onShowMessages }
   const [parent, setParent] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const query = useMqttTopics(sessionId, q === '' ? parent : null, q, enabled);
-  const columns = useTopicColumns(oneDay, ranged, q !== '');
+  const [sort, setSort] = useState<SortKey>('name');
+  const columns = useTopicColumns(oneDay, ranged, q !== '', selected);
   const open = (node: MqttTopicNode) => {
     setSelected(node.path);
     if (q === '' && node.children > 0) setParent(node.path);
@@ -68,9 +71,12 @@ export function TopicsTab({ sessionId, enabled, oneDay, ranged, onShowMessages }
       </div>
     );
   else {
-    const items = query.data.pages.flatMap((p) => p.items);
+    const loaded = query.data.pages.flatMap((p) => p.items);
+    const items = sort === 'name' ? loaded : [...loaded].sort((a, b) => b.messages_pub + b.messages_del - (a.messages_pub + a.messages_del));
+    const partial = query.data.pages.some((p) => p.partial);
     list = (
       <>
+        {partial && <p className="border-b border-line px-3 py-2 text-meta text-warning sm:px-4">{t('views.mqtt.topics.partial')}</p>}
         {q !== '' && (
           <p className="border-b border-line px-3 py-2 text-meta text-muted sm:px-4">{t('views.mqtt.topics.results', { count: items.length })}</p>
         )}
@@ -102,6 +108,14 @@ export function TopicsTab({ sessionId, enabled, oneDay, ranged, onShowMessages }
       <Card
         title={t('views.mqtt.topics.title')}
         flush
+        actions={
+          <Select
+            label={t('views.mqtt.topics.sortLabel')}
+            value={sort}
+            options={(['name', 'messages'] as const).map((v) => ({ value: v, label: t(`views.mqtt.topics.sort.${v}`) }))}
+            onChange={setSort}
+          />
+        }
         filters={
           <>
             <div role="search" className="flex min-w-0 flex-wrap items-center gap-2">
@@ -177,23 +191,33 @@ function Breadcrumb({ path, onGo }: { path: string | null; onGo: (p: string | nu
   );
 }
 
-function useTopicColumns(oneDay: boolean, ranged: boolean, search: boolean) {
+type SortKey = 'name' | 'messages';
+
+/** Payload and last activity fit only when the table has the width (no detail beside it). */
+const BYTES_QUERY = '(min-width: 1024px) and (max-width: 1279px), (min-width: 1536px)';
+const LAST_QUERY = '(min-width: 1800px)';
+
+function useTopicColumns(oneDay: boolean, ranged: boolean, search: boolean, selected: string | null) {
   const { t } = useTranslation();
+  const bytes = useMediaQuery(BYTES_QUERY);
+  const last = useMediaQuery(LAST_QUERY);
   return useMemo<ColumnDef<MqttTopicNode>[]>(() => {
     const counter = (label: string) => wholeSessionHeader(label, ranged);
-    return [
+    const columns: ColumnDef<MqttTopicNode>[] = [
       {
         id: 'name',
         meta: { card: 'title' },
         accessorFn: (n) => (search ? n.path : n.name),
         header: t('views.mqtt.topics.col.name'),
-        size: 260,
+        size: 220,
         cell: ({ row }) => {
           const n = row.original;
           const text = search ? n.path : n.name === '' ? t('views.mqtt.topics.emptyName') : n.name;
+          const current = n.path === selected;
+          const style = current ? 'font-semibold text-accent' : n.name === '' && !search ? 'text-muted italic' : '';
           return (
-            <span className="flex min-w-0 items-center gap-1.5">
-              <MiddleTruncate text={text} title={n.path} className={`min-w-0 font-mono ${n.name === '' && !search ? 'text-muted italic' : ''}`} />
+            <span className="flex min-w-0 items-center gap-1.5" aria-current={current ? 'true' : undefined}>
+              <MiddleTruncate text={text} title={n.path} className={`min-w-0 font-mono ${style}`} />
               {!search && n.is_topic && n.children > 0 && <span className="shrink-0 text-meta text-muted">{t('views.mqtt.topics.asTopic')}</span>}
               {!search && n.children > 0 && <ChevronRight aria-label={t('views.mqtt.topics.open', { name: text })} size={14} strokeWidth={1.75} className="shrink-0 text-faint" />}
             </span>
@@ -205,7 +229,7 @@ function useTopicColumns(oneDay: boolean, ranged: boolean, search: boolean) {
         meta: { align: 'right' },
         accessorFn: (n) => n.topics,
         header: t('views.mqtt.topics.col.topics'),
-        size: 90,
+        size: 80,
         cell: ({ row }) => <span className="num">{formatCount(row.original.topics)}</span>,
       },
       {
@@ -213,7 +237,7 @@ function useTopicColumns(oneDay: boolean, ranged: boolean, search: boolean) {
         meta: { align: 'right' },
         accessorFn: (n) => n.messages_pub,
         header: counter(t('views.mqtt.topics.col.published')),
-        size: 110,
+        size: 100,
         cell: ({ row }) => <span className="num">{formatCount(row.original.messages_pub)}</span>,
       },
       {
@@ -221,26 +245,29 @@ function useTopicColumns(oneDay: boolean, ranged: boolean, search: boolean) {
         meta: { align: 'right' },
         accessorFn: (n) => n.messages_del,
         header: counter(t('views.mqtt.topics.col.delivered')),
-        size: 110,
+        size: 100,
         cell: ({ row }) => <span className="num">{formatCount(row.original.messages_del)}</span>,
       },
-      {
+    ];
+    if (bytes)
+      columns.push({
         id: 'bytes',
         meta: { align: 'right' },
         accessorFn: (n) => n.payload_bytes,
         header: counter(t('views.mqtt.topics.col.bytes')),
-        size: 120,
-        cell: ({ row }) => <span className="num">{formatByteCount(row.original.payload_bytes)}</span>,
-      },
-      {
+        size: 110,
+        cell: ({ row }) => <span className="num">{formatBytes(row.original.payload_bytes)}</span>,
+      });
+    if (last)
+      columns.push({
         id: 'last',
         accessorFn: (n) => n.last_ts_us,
         header: counter(t('views.mqtt.topics.col.lastSeen')),
         size: oneDay ? 130 : 170,
         cell: ({ row }) => <Timestamp us={row.original.last_ts_us} withDate={!oneDay} />,
-      },
-    ];
-  }, [t, oneDay, ranged, search]);
+      });
+    return columns;
+  }, [t, oneDay, ranged, search, selected, bytes, last]);
 }
 
 function TopicDetail({
@@ -260,6 +287,7 @@ function TopicDetail({
 }) {
   const { t } = useTranslation();
   const detail = useMqttTopic(sessionId, path, enabled);
+  const [mode, setMode] = useState<PayloadMode>('text');
   let body: ReactNode;
   if (path === null) body = <EmptyState title={t('views.mqtt.topics.detail.hint')} />;
   else if (detail.isPending) body = <Skeleton height={200} />;
@@ -345,7 +373,21 @@ function TopicDetail({
           )}
         </div>
         <div className="flex min-w-0 flex-col gap-2">
-          <span className="text-meta font-medium">{t('views.mqtt.topics.detail.recent')}</span>
+          <span className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <span className="text-meta font-medium">{t('views.mqtt.topics.detail.recent')}</span>
+            {d.recent.length > 0 && (
+              <SegmentedControl
+                hideLabel
+                label={t('views.mqtt.payload.label')}
+                value={mode}
+                options={[
+                  { value: 'text', label: t('views.mqtt.payload.text') },
+                  { value: 'hex', label: t('views.mqtt.payload.hex') },
+                ]}
+                onChange={setMode}
+              />
+            )}
+          </span>
           {d.recent.length === 0 ? (
             <p className="text-meta text-muted">{t('views.mqtt.topics.detail.noRecent')}</p>
           ) : (
@@ -356,7 +398,14 @@ function TopicDetail({
                   {!exact && m.topic !== null && <span className="min-w-0 font-mono break-all text-accent">{m.topic}</span>}
                   <ClientId id={m.client_id} />
                 </span>
-                {m.payload !== null && <PayloadView payload={m.payload} contentType={m.content_type} format={m.payload_format} />}
+                {m.payload !== null && (
+                  <PayloadView
+                    payload={m.payload}
+                    contentType={m.content_type}
+                    format={m.payload_format}
+                    mode={m.payload.text === null ? 'hex' : mode}
+                  />
+                )}
               </div>
             ))
           )}

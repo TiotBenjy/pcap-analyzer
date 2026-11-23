@@ -392,8 +392,11 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
 - Sous plage, l'arbre et le nombre de topics sont recalculés depuis `mqtt_topic_flows` : les connexions de la plage
   d'abord (index de leur étendue), puis leurs lignes par clé (lire l'étendue de `mqtt_topic_flows` parcourait toutes
   les lignes commencées avant la fin de la plage : 1,2 à 1,5 s sur 1 h). Le coût reste linéaire en lignes de la plage :
-  au-delà de 300 ms sur la moitié de cette session (`/mqtt/stats` 703 ms, racine 645 ms). Suivi : agrégats de topics
-  par plage dans la base des plages (P5.2b) si une capture réelle l'exige.
+  au-delà de 300 ms sur la moitié de cette session (`/mqtt/stats` 703 à 723 ms, racine 633 à 645 ms, mesures répétées
+  après les bornes de mémoire de la revue). Un niveau lit au plus 100 000 topics (mémoire bornée, réponse marquée
+  `partial` au-delà), ce qui ne réduit pas la lecture des lignes de la plage. Non fait : tables MQTT dans la base des
+  plages de P5.2b (ajout aux tables copiées et à la construction, empreinte des bases, routes à ouvrir sur la base de la
+  plage, première requête de plusieurs secondes de toute façon). Suivi si une capture réelle l'exige.
 - Étape `mqtt` (arbre de 100 000 topics) : 2,2 s.
 - Import : une ligne par paquet stocké (au plus 10 000 par connexion, accusés rattachés, PING comptés), une ligne
   par topic et sens de chaque connexion ; les paquets QoS 1 et 2 attendent leur accusé en mémoire (32 Mio par

@@ -50,6 +50,7 @@ const PROTOCOL_LABELS: Record<string, string> = {
   http: 'HTTP',
   imap: 'IMAP',
   ldap: 'LDAP',
+  mqtt: 'MQTT',
   pop3: 'POP3',
   smb: 'SMB',
   smtp: 'SMTP',

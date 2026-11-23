@@ -21,6 +21,7 @@ mod arp;
 mod credentials;
 mod ethernet;
 mod ftp;
+mod mqtt;
 mod servers;
 mod sip;
 mod ssdp;
@@ -45,6 +46,7 @@ pub fn to_store(record: Record) -> Option<StoreRecord> {
         Record::Ftp(f) => StoreRecord::Ftp(Box::new(ftp::ftp_row(f))),
         Record::HostTraffic(h) => StoreRecord::HostTraffic(host_traffic_row(&h)),
         Record::Http(t) => StoreRecord::Http(Box::new(http_row(*t))),
+        Record::Mqtt(m) => StoreRecord::Mqtt(Box::new(mqtt::mqtt_row(m))),
         Record::OpenPort(p) => StoreRecord::OpenPort(open_port_row(p)),
         Record::Server(s) => StoreRecord::Server(servers::server_row(s)),
         Record::Sip(s) => StoreRecord::Sip(Box::new(sip::sip_row(*s))),
@@ -179,6 +181,7 @@ pub fn approx_size(record: &StoreRecord) -> usize {
         StoreRecord::Ethernet(_) => 16,
         StoreRecord::Ftp(f) => f.approx_size(),
         StoreRecord::Http(h) => h.heap_size(),
+        StoreRecord::Mqtt(m) => m.approx_size(),
         StoreRecord::Server(s) => s.heap_size(),
         StoreRecord::Sip(s) => s.approx_size(),
         StoreRecord::Ssdp(s) => s.approx_size(),

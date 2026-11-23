@@ -49,15 +49,24 @@ const placeholders = (v: string) => [...v.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].m
  */
 const SAME_IN_FRENCH = new Set(
   [
-    'actions', 'agent', 'anomalies', 'bits', 'captures', 'chunk', 'chunks', 'client', 'clients', 'communications', 'contact',
+    'actions', 'agent', 'alias', 'anomalies', 'bits', 'broker', 'brokers', 'captures', 'chunk', 'chunks', 'client', 'clients', 'code', 'communications', 'contact',
     'conversation', 'conversations', 'destination', 'destinations', 'dimensions', 'documents', 'ethertype', 'ethertypes', 'extensions',
-    'format', 'images', 'import', 'message', 'messages', 'mode', 'modules', 'multicast', 'navigation', 'observations', 'occurrences', 'ports', 'position', 'public',
-    'scanner', 'scanners', 'secret', 'session', 'sessions', 'source', 'sources', 'total', 'transactions', 'transport', 'type', 'unicast', 'version', 'versions', 'volume',
+    'dup', 'format', 'images', 'import', 'local', 'message', 'messages', 'mode', 'modules', 'multicast', 'navigation', 'observations', 'occurrences', 'ports', 'position', 'public',
+    'retain', 'scanner', 'scanners', 'secret', 'session', 'sessions', 'source', 'sources', 'topic', 'topics', 'total', 'transactions', 'transport', 'type', 'unicast',
+    'version', 'versions', 'volume',
   ],
 );
 
 /** Product, tool and language names, written the same in every language. */
-const NAMES = ['Windows for Workgroups', 'Client Hello', 'Server Hello', 'tcpdump', 'English', 'Français', 'NetSift', 'Telnet', 'Ethernet', 'Kerberos', 'Novell', 'Apple', 'Xenix', 'GeoIP', 'Call-ID'];
+const NAMES = [
+  // Field names of the MQTT specifications, longest first (a shorter one is part of a longer one).
+  'Subscription Identifier Available', 'Wildcard Subscription Available', 'Shared Subscription Available',
+  'Request Problem Information', 'Request Response Information', 'Assigned Client Identifier', 'Payload Format Indicator',
+  'Session Expiry Interval', 'Message Expiry Interval', 'Subscription Identifier', 'Authentication Method', 'Maximum Packet Size',
+  'Topic Alias Maximum', 'Will Delay Interval', 'Response Information', 'Server Keep Alive', 'Retain Available', 'Correlation Data',
+  'Server Reference', 'Receive Maximum', 'Session Present', 'Session Expiry', 'Response Topic', 'Reason String', 'User Property',
+  'Content Type', 'Clean Session', 'Clean Start', 'Maximum QoS', 'Topic Alias', 'Keep Alive',
+  'Windows for Workgroups', 'Client Hello', 'Server Hello', 'tcpdump', 'English', 'Français', 'NetSift', 'Telnet', 'Ethernet', 'Kerberos', 'Novell', 'Apple', 'Xenix', 'GeoIP', 'Call-ID'];
 
 /** True for a value that reads the same in every language (see `SAME_IN_FRENCH`), or a URL. */
 function isLanguageNeutral(value: string): boolean {

@@ -252,6 +252,8 @@ const MIN_DEFRAG_BYTES: usize = 64 * 1024;
 const MIN_RETAINED_BYTES: usize = 256 * 1024;
 /// Smallest per-shard number of FTP sessions and data connections followed at a time.
 const MIN_FTP_FLOWS: usize = 16;
+/// Smallest share of the MQTT acknowledgement budget per shard (a few busy connections).
+const MIN_PENDING_BYTES: usize = 1024 * 1024;
 
 /// See [`RunCtx::parts`].
 struct Parts {
@@ -565,6 +567,13 @@ impl RunCtx<'_> {
         ftp.max_controls = (ftp.max_controls / shards.max(1)).max(MIN_FTP_FLOWS);
         ftp.max_data_flows = (ftp.max_data_flows / shards.max(1)).max(MIN_FTP_FLOWS);
         registry.config_mut().ftp = ftp;
+        // So are the followed MQTT connections and their packets waiting for an acknowledgement.
+        let mqtt = &mut registry.config_mut().mqtt;
+        mqtt.max_connections = (mqtt.max_connections / shards.max(1)).max(MIN_FTP_FLOWS);
+        mqtt.max_pending_bytes = (mqtt.max_pending_bytes / shards.max(1)).max(MIN_PENDING_BYTES);
+        mqtt.max_buffer_bytes = (mqtt.max_buffer_bytes / shards.max(1)).max(MIN_PENDING_BYTES);
+        mqtt.max_state_bytes = (mqtt.max_state_bytes / shards.max(1)).max(MIN_PENDING_BYTES);
+        mqtt.max_probe_bytes = (mqtt.max_probe_bytes / shards.max(1)).max(MIN_PENDING_BYTES);
         Parts {
             capacity: o.channel_batches.max(1),
             limits: BatchLimits {

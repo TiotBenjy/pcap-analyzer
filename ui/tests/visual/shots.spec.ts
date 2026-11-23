@@ -53,6 +53,15 @@ const VIEWS: Record<string, string | ((page: Page) => Promise<string>)> = {
   network: async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'network-detail': async (page) => `/sessions/${await demoSessionId(page)}/network`,
   'network-range': async (page) => rangedPath(page, 'network'),
+  mqtt: async (page) => `/sessions/${await demoSessionId(page)}/mqtt`,
+  'mqtt-brokers': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=brokers`,
+  'mqtt-clients': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=clients`,
+  'mqtt-connection': async (page) => `/sessions/${await demoSessionId(page)}/mqtt`,
+  'mqtt-hex': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=messages`,
+  'mqtt-messages': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=messages`,
+  'mqtt-range': async (page) => rangedPath(page, 'mqtt'),
+  'mqtt-range-empty': async (page) => emptyRangePath(page, 'mqtt'),
+  'mqtt-topics': async (page) => `/sessions/${await demoSessionId(page)}/mqtt?tab=topics`,
   'open-ports': async (page) => `/sessions/${await demoSessionId(page)}/open-ports`,
   'open-ports-range': async (page) => rangedPath(page, 'open-ports'),
   overview: async (page) => `/sessions/${await demoSessionId(page)}/overview`,
@@ -116,6 +125,20 @@ const DEMO_SECRETS = [
 
 /** Passwords typed in the Telnet sessions of the demo (fake fixture values), never shown in clear text. */
 const TELNET_SECRETS = ['user-fixture', 'switch-fixture', 'wrong-fixture', 'env-fixture', 'cam-fixture', 'split-fixture', 'monitor-fixture'];
+
+/** Passwords of the MQTT connections of the demo (fake fixture values), never shown in clear text. */
+const MQTT_SECRETS = [
+  'sensor-fixture',
+  'plc-fixture',
+  'dash-fixture',
+  'admin-fixture',
+  'admin-guess1-fixture',
+  'admin-guess2-fixture',
+  'admin-guess3-fixture',
+  'admin-guess4-fixture',
+  'admin-guess5-fixture',
+  'admin-guess6-fixture',
+];
 
 /** Placeholder id when no session exists: the session views then render their error or not-found state. */
 const NO_SESSION = '00000000000000000000000000';
@@ -420,6 +443,16 @@ for (const lang of LANGS) {
           if (view.startsWith('settings-update') || view === 'settings-notices-both') await mockUpdate(page);
           if (view === 'import-progress') await mockImportProgress(page);
           if (view === 'sources-backwards') await mockBackwardAnomalies(page);
+          // MQTT connections not followed during the import (bounds never reached by the demo).
+          if (view === 'mqtt') {
+            await page.route(
+              (url) => /^\/api\/v1\/sessions\/[^/]+\/mqtt\/stats$/.test(url.pathname),
+              async (route) => {
+                const res = await route.fetch();
+                return route.fulfill({ response: res, json: { ...((await res.json()) as object), unfollowed: 1240 } });
+              },
+            );
+          }
           await page.goto(`/#${path}`);
           await page.locator('#main h1').first().waitFor();
           await page.waitForLoadState('networkidle');
@@ -793,6 +826,82 @@ for (const lang of LANGS) {
             }
             const text = await page.evaluate(() => document.body.innerText);
             for (const secret of TELNET_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
+          }
+
+          if (view === 'mqtt-range-empty' && !path.includes(NO_SESSION)) {
+            await expect(page.getByText(D.timeRange.emptyTitle).first()).toBeVisible();
+          }
+
+          if (view.startsWith('mqtt') && view !== 'mqtt-range-empty' && !path.includes(NO_SESSION)) {
+            await expect(page.getByTestId('mqtt-summary')).toBeVisible();
+            if (view === 'mqtt' || view === 'mqtt-range' || view === 'mqtt-connection') {
+              const connections = page.getByRole('list', { name: D.views.mqtt.connections.label });
+              await expect(connections).toBeVisible();
+              if (view === 'mqtt') {
+                await expect(page.getByTestId('mqtt-signals')).toBeVisible();
+                await expect(page.getByTestId('mqtt-unfollowed')).toBeVisible();
+              }
+              if (view === 'mqtt-range') {
+                // Folded connection counters: "whole session" under the column title, or in each row below md.
+                const whole = page.getByText(new RegExp(escapeRe(D.timeRange.wholeSession), 'i')).locator('visible=true');
+                await expect(whole.first()).toBeVisible();
+              }
+              if (view === 'mqtt-connection') {
+                // The first connection expanded (the sensor of the showcase): CONNECT with its will
+                // message and masked password, CONNACK, end, subscription, transcript; then a PUBLISH
+                // of the transcript unfolded on its payload.
+                await connections.getByRole('button', { expanded: false }).first().click();
+                const transcript = page.getByTestId('mqtt-transcript');
+                await expect(transcript).toBeVisible();
+                await expect(page.getByRole('button', { name: filled(D.secret.show, { label: D.views.mqtt.detail.password }) }).first()).toBeVisible();
+                await transcript.getByRole('button', { expanded: false }).nth(1).click();
+                await expect(transcript.getByTestId('mqtt-payload')).toBeVisible();
+                await page.waitForLoadState('networkidle');
+                // The unfolded row from its top: CONNECT, CONNACK, end and the masked password.
+                await connections.getByRole('button', { expanded: true }).first().evaluate((el) => {
+                  el.scrollIntoView({ block: 'start' });
+                });
+              }
+            }
+            if (view === 'mqtt-topics') {
+              // The tree opened on `plant`, then `plant/line2/pressure` shown in the detail.
+              const level = page.getByRole('table', { name: D.views.mqtt.topics.label }).or(page.getByRole('list', { name: D.views.mqtt.topics.label }));
+              await expect(level).toBeVisible();
+              await level.getByText('plant', { exact: true }).first().click();
+              await level.getByText('line2', { exact: true }).first().click();
+              await level.getByText('pressure', { exact: true }).first().click();
+              await expect(page.getByTestId('mqtt-topic-detail')).toBeVisible();
+              await page.waitForLoadState('networkidle');
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+            }
+            if (view === 'mqtt-clients' || view === 'mqtt-brokers') {
+              const label = view === 'mqtt-clients' ? D.views.mqtt.clients.label : D.views.mqtt.brokers.label;
+              await expect(page.getByRole('table', { name: label }).or(page.getByRole('list', { name: label }))).toBeVisible();
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, document.getElementById('main')?.scrollHeight ?? 0));
+            }
+            if (view === 'mqtt-hex') {
+              // The binary message of the legacy gateway unfolded: hexadecimal dump only.
+              const messages = page.getByRole('list', { name: D.views.mqtt.messages.label });
+              await page.getByPlaceholder(D.views.mqtt.messages.search).fill('legacy-gw');
+              await expect(messages.getByText('plant/', { exact: false })).toHaveCount(0);
+              await messages.getByRole('button', { expanded: false }).first().click();
+              await expect(page.getByTestId('mqtt-payload')).toBeVisible();
+              await page.waitForLoadState('networkidle');
+              await messages.getByRole('button', { expanded: true }).first().evaluate((el) => {
+                el.scrollIntoView({ block: 'start' });
+              });
+            }
+            if (view === 'mqtt-messages') {
+              // The first message unfolded: payload excerpt as escaped text, properties.
+              const messages = page.getByRole('list', { name: D.views.mqtt.messages.label });
+              await expect(messages).toBeVisible();
+              await messages.getByRole('button', { expanded: false }).first().click();
+              await expect(page.getByTestId('mqtt-payload')).toBeVisible();
+              await page.waitForLoadState('networkidle');
+              await page.evaluate(() => document.getElementById('main')?.scrollTo(0, 0));
+            }
+            const text = await page.evaluate(() => document.body.innerText);
+            for (const secret of MQTT_SECRETS) expect(text.includes(secret), `secret visible: ${secret.length} chars`).toBe(false);
           }
 
           if (view.startsWith('sip') && !path.includes(NO_SESSION)) {

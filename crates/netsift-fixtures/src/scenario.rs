@@ -139,6 +139,12 @@ impl Scenario {
         self.packets
     }
 
+    /// Removes the packets of `range` (indices returned by the builders), keeping the others in
+    /// order: a connection whose start was not captured, a lost segment.
+    pub fn remove_packets(&mut self, range: std::ops::Range<usize>) {
+        self.packets.drain(range);
+    }
+
     /// Removes and returns the packets built so far, keeping the clock, ports and generator
     /// state (for streaming large captures). Indices returned afterwards restart at 0.
     pub fn take_packets(&mut self) -> Vec<Packet> {

@@ -37,6 +37,7 @@ pub enum AppProto {
     Imap,
     Kerberos,
     Ldap,
+    Mqtt,
     Netbios,
     Ntp,
     Pop3,
@@ -62,7 +63,7 @@ pub enum AppProto {
 
 impl AppProto {
     /// Every label, in declaration order.
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 26] = [
         Self::Dhcp,
         Self::Dns,
         Self::Ftp,
@@ -70,6 +71,7 @@ impl AppProto {
         Self::Imap,
         Self::Kerberos,
         Self::Ldap,
+        Self::Mqtt,
         Self::Netbios,
         Self::Ntp,
         Self::Pop3,
@@ -100,6 +102,7 @@ impl AppProto {
             Self::Imap => "imap",
             Self::Kerberos => "kerberos",
             Self::Ldap => "ldap",
+            Self::Mqtt => "mqtt",
             Self::Netbios => "netbios",
             Self::Ntp => "ntp",
             Self::Pop3 => "pop3",
@@ -166,6 +169,7 @@ pub fn well_known(ip_proto: u8, port: u16) -> Option<AppProto> {
         389 | 3268 => AppProto::Ldap,
         443 | 465 | 636 | 853 | 993 | 995 | 8443 if tcp => AppProto::Tls,
         514 if udp => AppProto::Syslog,
+        1883 if tcp => AppProto::Mqtt,
         1900 if udp => AppProto::Ssdp,
         3389 if tcp => AppProto::Rdp,
         5060 => AppProto::Sip,

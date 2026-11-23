@@ -188,7 +188,9 @@ impl TrafficProtocol {
     /// labels common on both transports (Kerberos) go to `Other`.
     pub(crate) fn of_label(label: &str) -> Self {
         match label {
-            "ftp" | "imap" | "ldap" | "pop3" | "rdp" | "smtp" | "telnet" | "tcp" => Self::OtherTcp,
+            "ftp" | "imap" | "ldap" | "mqtt" | "pop3" | "rdp" | "smtp" | "telnet" | "tcp" => {
+                Self::OtherTcp
+            }
             "ntp" | "sip" | "ssdp" | "syslog" | "udp" => Self::OtherUdp,
             other => Self::from_id(other)
                 .filter(|p| !matches!(p, Self::OtherTcp | Self::OtherUdp | Self::Other))
@@ -260,6 +262,7 @@ const MODULES: &[(&str, &str)] = &[
     ("hosts", "hosts"),
     ("http", "http_transactions"),
     ("httpHeaders", "http_headers"),
+    ("mqtt", "mqtt_connections"),
     ("network", "network_hosts"),
     ("openPorts", "open_ports"),
     ("pictures", "pictures"),
@@ -282,6 +285,7 @@ fn ranged_rows(module: &str) -> Option<ModuleRows> {
         "ftp" => Some(ModuleRows::FtpSessions),
         "http" => Some(ModuleRows::HttpTransactions),
         "httpHeaders" => Some(ModuleRows::HttpHeaders),
+        "mqtt" => Some(ModuleRows::Mqtt),
         "pictures" => Some(ModuleRows::Pictures),
         "sip" => Some(ModuleRows::Sip),
         "smb" => Some(ModuleRows::Smb),

@@ -12,6 +12,7 @@
 //! - [`connections`]: conversations between hosts and traffic per host;
 //! - [`credentials`]: FTP, mail (SMTP AUTH, POP3, IMAP), LDAP simple bind and SNMP community
 //!   credentials (HTTP and SMB emit theirs from their own analyzers);
+//! - [`mqtt`]: MQTT 3.1, 3.1.1 and 5.0 connections (packets, topics, subscriptions, logins);
 //! - [`oui`]: MAC address vendors (embedded IEEE listings) and address classes;
 //! - [`ethernet`]: MAC addresses, pairs, EtherTypes and VLANs of the link layer;
 //! - [`ftp`]: FTP control sessions (transcripts), data connections and transferred files;
@@ -50,6 +51,7 @@ pub mod ftp;
 #[doc(hidden)]
 pub mod fuzz;
 pub mod http;
+pub mod mqtt;
 pub mod oui;
 pub mod ports;
 pub mod record;

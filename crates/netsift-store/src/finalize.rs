@@ -151,6 +151,15 @@ pub static SESSION_FINALIZERS: &[Finalizer] = &[
         reads: &["sip_messages", "flows"],
         run: crate::sip::finalize,
     },
+    Finalizer {
+        id: "mqtt",
+        version: 1,
+        // Reads the topic aggregates in tree order through `mqtt_topic_flows_topic`.
+        after: &["indexes"],
+        fills: &["mqtt_topics"],
+        reads: &["mqtt_topic_flows"],
+        run: crate::mqtt::finalize,
+    },
 ];
 
 /// Progress of [`run_finalizers_with_progress`], reported before each step and once at the end.

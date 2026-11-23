@@ -64,6 +64,7 @@ par l'application) : l'API publique n'est pas élargie.
 | `ldap` | conversation, port 389 | `BerStream` + `ldap-parser` (simple bind) via l'analyseur credentials |
 | `lineproto` | port + conversation | `LineFlow` : FTP, SMTP AUTH, POP3, IMAP via l'analyseur credentials ; sur le port 21, analyseur `ftp` et parseurs `netsift_dissect::ftp` |
 | `telnet` | sélecteur + conversation | décodeur `IAC` pur et sous-négociations (`netsift_dissect::telnet`), ou analyseur `telnet` (transcription, échos, identifiants), ports 23 / 2323 |
+| `mqtt` | sélecteur + conversation | parseur pur des paquets MQTT 3.1 / 3.1.1 / 5.0 (`netsift_dissect::mqtt`, en-tête fixe, propriétés, détection du CONNECT), ou analyseur `mqtt` (détection, découpage, alias, accusés, resynchronisation), ports 1883 / 11883 |
 | `mmdb` | fichier `.mmdb` ou `.mmdb.gz` | `netsift_geo` (décodage borné, décodeur `maxminddb`, recherches) |
 | `thumbs` | fichier image | `netsift_engine::thumbs::render` (PNG, JPEG, GIF, WebP, BMP, ICO, limites de décodage) |
 | `analyzers` | protocole + ports + conversation | tous les analyseurs derrière une table de flux, trames IPv4 forgées (handshake, numéros de séquence cohérents, pertes), puis traduction en lignes du store |

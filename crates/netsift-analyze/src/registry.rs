@@ -14,6 +14,7 @@ use crate::ethernet::{EthernetAnalyzer, EthernetConfig};
 use crate::ftp::{FtpAnalyzer, FtpConfig};
 use crate::geo::GeoDb;
 use crate::http::{HttpAnalyzer, HttpConfig};
+use crate::mqtt::{MqttAnalyzer, MqttConfig};
 use crate::ports::{PortsAnalyzer, PortsConfig};
 use crate::servers::{ServersAnalyzer, ServersConfig};
 use crate::sip::SipAnalyzer;
@@ -55,6 +56,7 @@ pub struct AnalyzerConfig {
     pub ethernet: EthernetConfig,
     pub ftp: FtpConfig,
     pub http: HttpConfig,
+    pub mqtt: MqttConfig,
     pub ports: PortsConfig,
     pub servers: ServersConfig,
     pub smb: SmbConfig,
@@ -88,6 +90,7 @@ fn builtin() -> Vec<(AnalyzerId, Factory)> {
         (EthernetAnalyzer::ID, factory(EthernetAnalyzer::boxed)),
         (FtpAnalyzer::ID, factory(FtpAnalyzer::boxed)),
         (HttpAnalyzer::ID, factory(HttpAnalyzer::boxed)),
+        (MqttAnalyzer::ID, factory(MqttAnalyzer::boxed)),
         (PortsAnalyzer::ID, factory(PortsAnalyzer::boxed)),
         (ServersAnalyzer::ID, factory(ServersAnalyzer::boxed)),
         (SipAnalyzer::ID, factory(SipAnalyzer::boxed)),

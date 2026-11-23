@@ -377,6 +377,31 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
   par transfert ; le contenu d'un transfert est tenu en mémoire jusqu'à sa fin (budget de 128 Mio partagé
   par les shards, ADR-032), écrit une fois dans `blobs/` s'il est complet.
 
+## MQTT (P5.15a, 2026-11-23, `feat/mqtt`)
+
+- Requêtes de la vue sur 100 000 connexions (200 brokers, 10 000 clients), 1 000 000 de PUBLISH stockés et 100 000
+  topics, 1 000 000 de lignes `mqtt_topic_flows` (`mqtt::tests::timings`, ignoré, mode release, store seul, machine de
+  développement) ; session, 1 h, moitié de la session :
+  - `/mqtt/stats` 204 ms, 14 ms, 703 ms ; signalements 198 ms, 112 ms, 187 ms ;
+  - connexions (page et total) 11 ms, 21 ms, 20 ms ; filtre `auth-failures` 94 ms, 21 ms, 66 ms ;
+  - clients 136 ms, 17 ms, 86 ms ; brokers 210 ms, 9 ms, 128 ms (le nombre de topics par broker, un parcours de
+    tous les agrégats de topics par page, a été retiré : 862 ms) ;
+  - arbre des topics, racine 0,2 ms, 8 ms, 645 ms ; niveau profond 0,5 ms, 3 ms, 98 ms ; détail d'un nœud de
+    20 000 topics 241 ms, 91 ms, 283 ms ;
+  - messages (page et total) 158 ms, 4 ms, 67 ms ; messages sous un préfixe 217 ms, 3 ms, 92 ms.
+- Sous plage, l'arbre et le nombre de topics sont recalculés depuis `mqtt_topic_flows` : les connexions de la plage
+  d'abord (index de leur étendue), puis leurs lignes par clé (lire l'étendue de `mqtt_topic_flows` parcourait toutes
+  les lignes commencées avant la fin de la plage : 1,2 à 1,5 s sur 1 h). Le coût reste linéaire en lignes de la plage :
+  au-delà de 300 ms sur la moitié de cette session (`/mqtt/stats` 703 à 723 ms, racine 633 à 645 ms, mesures répétées
+  après les bornes de mémoire de la revue). Un niveau lit au plus 100 000 topics (mémoire bornée, réponse marquée
+  `partial` au-delà), ce qui ne réduit pas la lecture des lignes de la plage. Non fait : tables MQTT dans la base des
+  plages de P5.2b (ajout aux tables copiées et à la construction, empreinte des bases, routes à ouvrir sur la base de la
+  plage, première requête de plusieurs secondes de toute façon). Suivi si une capture réelle l'exige.
+- Étape `mqtt` (arbre de 100 000 topics) : 2,2 s.
+- Import : une ligne par paquet stocké (au plus 10 000 par connexion, accusés rattachés, PING comptés), une ligne
+  par topic et sens de chaque connexion ; les paquets QoS 1 et 2 attendent leur accusé en mémoire (32 Mio par
+  import, partagés entre les shards).
+
 ## Telnet (P5.9, 2026-11-23, `feat/telnet`)
 
 - Requêtes de la vue sur 100 000 sessions de 2 Kio de transcription chacune, 5 000 clients (`telnet::tests::timings`,

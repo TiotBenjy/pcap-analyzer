@@ -24,7 +24,7 @@ use netsift_fixtures::proto::{smb, x509};
 use netsift_fixtures::scenario::Scenario;
 use netsift_fixtures::scenarios::{self, Kind};
 use netsift_fixtures::writer::{Encoding, encode};
-use netsift_fixtures::{Packet, credentials, http_mix, images, servers, sip, ssdp, telnet};
+use netsift_fixtures::{Packet, credentials, http_mix, images, mqtt, servers, sip, ssdp, telnet};
 use netsift_fuzz::{Conversation, conversation_head, push_frame, push_segment};
 use netsift_geo::test_util::MmdbBuilder;
 
@@ -127,6 +127,7 @@ fn sources() -> Vec<(String, Vec<Packet>)> {
         }),
     ));
     out.push(("telnet".into(), build(&telnet::telnet_showcase)));
+    out.push(("mqtt".into(), build(&mqtt::mqtt_showcase)));
     out.push((
         "sip".into(),
         build(&|sc: &mut Scenario| {
@@ -325,6 +326,13 @@ fn from_scenario(out: &mut Out, name: &str, packets: &[Packet]) -> Result<(), Bo
                     let mut d = vec![sel];
                     d.extend_from_slice(&segs);
                     out.put("telnet", name, &d)?;
+                }
+            }
+            1883 | 11883 => {
+                for sel in [u8::from(sport == 11883), 0x80] {
+                    let mut d = vec![sel];
+                    d.extend_from_slice(&segs);
+                    out.put("mqtt", name, &d)?;
                 }
             }
             443 | 8443 => {

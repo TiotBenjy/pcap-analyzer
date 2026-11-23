@@ -210,7 +210,7 @@ pub fn keyset_page<T>(
 }
 
 /// Opaque cursor: hex of a two-element JSON array (URL-safe, no extra dependency).
-fn encode_cursor(sort: &Value, tiebreak: &Value) -> Result<String> {
+pub(crate) fn encode_cursor(sort: &Value, tiebreak: &Value) -> Result<String> {
     let json = serde_json::to_string(&[value_to_json(sort)?, value_to_json(tiebreak)?])?;
     let mut out = String::with_capacity(json.len() * 2);
     for b in json.bytes() {
@@ -222,7 +222,7 @@ fn encode_cursor(sort: &Value, tiebreak: &Value) -> Result<String> {
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
-fn decode_cursor(s: &str) -> Result<(Value, Value)> {
+pub(crate) fn decode_cursor(s: &str) -> Result<(Value, Value)> {
     if s.len() > MAX_CURSOR_LEN || !s.len().is_multiple_of(2) {
         return Err(StoreError::InvalidCursor);
     }

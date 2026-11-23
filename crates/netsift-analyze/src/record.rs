@@ -49,6 +49,8 @@ pub enum Record {
     HostTraffic(HostTrafficDelta),
     /// An HTTP request and its response (`http` analyzer), boxed: much larger than the others.
     Http(Box<HttpTransaction>),
+    /// `mqtt`: connection, stored packet, topic aggregate or subscription.
+    Mqtt(crate::mqtt::MqttRecord),
     /// `ports`: a service seen answering (merged by host, transport and port).
     OpenPort(OpenPortSeen),
     /// `servers`: one DHCP message, NTP response or KDC reply.
@@ -137,10 +139,10 @@ impl SecretState {
 #[derive(Clone, PartialEq, Eq)]
 pub struct Credential {
     /// Emitting protocol, lower case (`smb`, `http`, `ftp`, `smtp`, `pop3`, `imap`, `ldap`,
-    /// `snmp`, `sip`).
+    /// `snmp`, `sip`, `mqtt`).
     pub source_protocol: &'static str,
     /// Credential type, lower case: `ntlmv1`, `ntlmv2`, `ntlm` (no crackable line), `http-basic`,
-    /// `http-form`, `ftp`, `mail`, `ldap`, `snmp`, `sip-digest`.
+    /// `http-form`, `ftp`, `mail`, `ldap`, `snmp`, `sip-digest`, `mqtt`.
     pub kind: &'static str,
     /// Flow the credential belongs to, when it comes from a tracked flow.
     pub flow_id: Option<FlowId>,

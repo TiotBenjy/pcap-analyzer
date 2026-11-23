@@ -1,0 +1,73 @@
+---
+source: crates/netsift-analyze/src/mqtt/tests.rs
+expression: render(&out)
+---
+== 192.168.1.60:49152 -> 192.168.1.40:1883 v=3.1.1 partial=false id=sensor-01 user=sensor-01 auth=password login=accepted code=Some(0) end=disconnect pub=4/1 bytes=38/6 subs=1 pings=2 stored=9 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=89 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=4 payload=None ack=None/None reason=Some(0) filters=[] props=[]
+  2 c SUBSCRIBE id=Some(1) qos=None r=false d=false topic=- src=None alias=None size=32 payload=None ack=None/None reason=None filters=[plant/line1/sensor-01/cmd:0x01:Some(1)] props=[]
+  4 c PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line1/temperature src=Some("name") alias=None size=48 payload=Some(21) ack=Some("none")/None reason=None filters=[] props=[]
+  5 c PUBLISH id=Some(2) qos=Some(1) r=false d=false topic=plant/line1/humidity src=Some("name") alias=None size=28 payload=Some(2) ack=Some("acked")/None reason=None filters=[] props=[]
+  7 c PUBLISH id=Some(3) qos=Some(2) r=false d=false topic=plant/line1/alarm src=Some("name") alias=None size=32 payload=Some(9) ack=Some("acked")/None reason=None filters=[] props=[]
+  11 c PUBLISH id=Some(4) qos=Some(1) r=true d=false topic=plant/line1/sensor-01/status src=Some("name") alias=None size=40 payload=Some(6) ack=Some("acked")/None reason=None filters=[] props=[]
+  17 b PUBLISH id=Some(7) qos=Some(1) r=false d=false topic=plant/line1/sensor-01/cmd src=Some("name") alias=None size=37 payload=Some(6) ack=Some("acked")/None reason=None filters=[] props=[]
+  19 c DISCONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=2 payload=None ack=None/None reason=None filters=[] props=[]
+== 192.168.1.61:49153 -> 192.168.1.40:1883 v=5.0 partial=false id= user=plc auth=password login=accepted code=Some(0) end=disconnect pub=5/1 bytes=40/3 subs=2 pings=0 stored=10 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=58 payload=None ack=None/None reason=None filters=[] props=[("session_expiry", "3600"), ("receive_maximum", "20"), ("topic_alias_maximum", "10"), ("user_property", "site: north")]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=24 payload=None ack=None/None reason=Some(0) filters=[] props=[("assigned_client_id", "auto-7f3a"), ("topic_alias_maximum", "5"), ("maximum_qos", "1"), ("retain_available", "1")]
+  2 c SUBSCRIBE id=Some(1) qos=None r=false d=false topic=- src=None alias=None size=53 payload=None ack=None/None reason=None filters=[$share/hmi/plant/+/setpoint:0x01:Some(1),plant/line2/#:0x15:Some(1)] props=[("subscription_id", "4")]
+  4 c PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line2/pressure src=Some("name") alias=Some(1) size=75 payload=Some(9) ack=Some("none")/None reason=None filters=[] props=[("message_expiry", "30"), ("user_property", "unit: bar")]
+  5 c PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line2/pressure src=Some("alias") alias=Some(1) size=17 payload=Some(9) ack=Some("none")/None reason=None filters=[] props=[]
+  6 c PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line2/pressure src=Some("alias") alias=Some(1) size=17 payload=Some(9) ack=Some("none")/None reason=None filters=[] props=[]
+  7 c PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line2/pressure src=Some("alias") alias=Some(1) size=17 payload=Some(9) ack=Some("none")/None reason=None filters=[] props=[]
+  8 c PUBLISH id=Some(9) qos=Some(1) r=false d=false topic=plant/line2/flow src=Some("name") alias=None size=59 payload=Some(4) ack=Some("acked")/Some(16) reason=None filters=[] props=[("response_topic", "plant/line2/flow/reply"), ("correlation_data", "deadbeef (4 B)")]
+  10 b PUBLISH id=Some(11) qos=Some(1) r=false d=false topic=plant/line2/setpoint src=Some("name") alias=None size=32 payload=Some(3) ack=Some("acked")/Some(0) reason=None filters=[] props=[("subscription_id", "4")]
+  12 b DISCONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=25 payload=None ack=None/None reason=Some(142) filters=[] props=[]
+== 192.168.1.62:49154 -> 82.165.30.12:1883 v=3.1 partial=false id=legacy-gw user=- auth=none login=accepted code=Some(0) end=disconnect pub=1/0 bytes=64/0 subs=0 pings=0 stored=4 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=25 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=4 payload=None ack=None/None reason=Some(0) filters=[] props=[]
+  2 c PUBLISH id=None qos=Some(0) r=false d=false topic=telemetry/legacy-gw/raw src=Some("name") alias=None size=91 payload=Some(64) ack=Some("none")/None reason=None filters=[] props=[]
+  3 c DISCONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=2 payload=None ack=None/None reason=None filters=[] props=[]
+== 192.168.1.10:49155 -> 192.168.1.40:1883 v=3.1.1 partial=false id=dashboard user=dashboard auth=password login=accepted code=Some(0) end=disconnect pub=0/6 bytes=0/93 subs=2 pings=0 stored=11 malformed=0 errors=0 gaps=0 software=mosquitto version 2.0.18
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=48 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=4 payload=None ack=None/None reason=Some(0) filters=[] props=[]
+  2 c SUBSCRIBE id=Some(1) qos=None r=false d=false topic=- src=None alias=None size=17 payload=None ack=None/None reason=None filters=[#:0x00:Some(0),$SYS/#:0x00:Some(0)] props=[]
+  4 b PUBLISH id=None qos=Some(0) r=true d=false topic=$SYS/broker/version src=Some("name") alias=None size=47 payload=Some(24) ack=Some("none")/None reason=None filters=[] props=[]
+  5 b PUBLISH id=None qos=Some(0) r=true d=false topic=$SYS/broker/clients/connected src=Some("name") alias=None size=34 payload=Some(1) ack=Some("none")/None reason=None filters=[] props=[]
+  6 b PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line1/temperature src=Some("name") alias=None size=48 payload=Some(21) ack=Some("none")/None reason=None filters=[] props=[]
+  7 b PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line1/humidity src=Some("name") alias=None size=26 payload=Some(2) ack=Some("none")/None reason=None filters=[] props=[]
+  8 b PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line1/note src=Some("name") alias=None size=56 payload=Some(36) ack=Some("none")/None reason=None filters=[] props=[]
+  9 b PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line2/pressure src=Some("name") alias=None size=33 payload=Some(9) ack=Some("none")/None reason=None filters=[] props=[]
+  10 c UNSUBSCRIBE id=Some(2) qos=None r=false d=false topic=- src=None alias=None size=12 payload=None ack=None/None reason=None filters=[$SYS/#:0x00:None] props=[]
+  12 c DISCONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=2 payload=None ack=None/None reason=None filters=[] props=[]
+== 91.198.174.12:49156 -> 192.168.1.40:1883 v=3.1.1 partial=false id=probe user=admin auth=password login=rejected code=Some(4) end=close pub=0/0 bytes=0/0 subs=0 pings=0 stored=2 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=48 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=4 payload=None ack=None/None reason=Some(4) filters=[] props=[]
+== 91.198.174.12:49157 -> 192.168.1.40:1883 v=3.1.1 partial=false id=probe user=admin auth=password login=rejected code=Some(4) end=close pub=0/0 bytes=0/0 subs=0 pings=0 stored=2 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=48 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=4 payload=None ack=None/None reason=Some(4) filters=[] props=[]
+== 91.198.174.12:49158 -> 192.168.1.40:1883 v=3.1.1 partial=false id=probe user=admin auth=password login=rejected code=Some(4) end=close pub=0/0 bytes=0/0 subs=0 pings=0 stored=2 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=48 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=4 payload=None ack=None/None reason=Some(4) filters=[] props=[]
+== 91.198.174.12:49159 -> 192.168.1.40:1883 v=5.0 partial=false id=probe user=admin auth=password login=rejected code=Some(134) end=close pub=0/0 bytes=0/0 subs=0 pings=0 stored=2 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=49 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=5 payload=None ack=None/None reason=Some(134) filters=[] props=[]
+== 91.198.174.12:49160 -> 192.168.1.40:1883 v=5.0 partial=false id=probe user=admin auth=password login=rejected code=Some(134) end=close pub=0/0 bytes=0/0 subs=0 pings=0 stored=2 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=49 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=5 payload=None ack=None/None reason=Some(134) filters=[] props=[]
+== 91.198.174.12:49161 -> 192.168.1.40:1883 v=5.0 partial=false id=probe user=admin auth=password login=rejected code=Some(134) end=close pub=0/0 bytes=0/0 subs=0 pings=0 stored=2 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=49 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=5 payload=None ack=None/None reason=Some(134) filters=[] props=[]
+== 91.198.174.12:49162 -> 192.168.1.40:1883 v=3.1.1 partial=false id=probe user=admin auth=password login=accepted code=Some(0) end=close pub=1/0 bytes=2/0 subs=0 pings=0 stored=3 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=41 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=4 payload=None ack=None/None reason=Some(0) filters=[] props=[]
+  2 c PUBLISH id=None qos=Some(0) r=false d=false topic=plant/line1/setpoint src=Some("name") alias=None size=26 payload=Some(2) ack=Some("none")/None reason=None filters=[] props=[]
+== 192.168.1.63:49163 -> 192.168.1.40:11883 v=3.1.1 partial=false id=gw-7 user=gw auth=username login=accepted code=Some(0) end=disconnect pub=3/0 bytes=1048588/0 subs=0 pings=1 stored=6 malformed=0 errors=0 gaps=0 software=-
+  0 c CONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=22 payload=None ack=None/None reason=None filters=[] props=[]
+  1 b CONNACK id=None qos=None r=false d=false topic=- src=None alias=None size=4 payload=None ack=None/None reason=Some(0) filters=[] props=[]
+  2 c PUBLISH id=None qos=Some(0) r=false d=false topic=firmware/gw-7/image src=Some("name") alias=None size=1048601 payload=Some(1048576) ack=Some("none")/None reason=None filters=[] props=[]
+  3 c PUBLISH id=None qos=Some(0) r=false d=false topic=firmware/gw-7/state src=Some("name") alias=None size=30 payload=Some(7) ack=Some("none")/None reason=None filters=[] props=[]
+  4 c PUBLISH id=None qos=Some(0) r=false d=false topic=firmware/gw-7/version src=Some("name") alias=None size=30 payload=Some(5) ack=Some("none")/None reason=None filters=[] props=[]
+  7 c DISCONNECT id=None qos=None r=false d=false topic=- src=None alias=None size=2 payload=None ack=None/None reason=None filters=[] props=[]
+== 192.168.1.60:49164 -> 192.168.1.40:1883 v=3.1.1 partial=true id=- user=- auth=- login=- code=None end=close pub=1/0 bytes=4/0 subs=0 pings=1 stored=1 malformed=0 errors=0 gaps=0 software=-
+  0 c PUBLISH id=Some(21) qos=Some(1) r=false d=false topic=plant/line3/temperature src=Some("name") alias=None size=33 payload=Some(4) ack=Some("acked")/None reason=None filters=[] props=[]

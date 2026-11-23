@@ -13,6 +13,7 @@
 //! | 1000-1099 | arp     |   | 1100-1199 | ethernet |
 //! | 1200-1299 | ssdp    |   | 1300-1399 | sip     |
 //! | 1400-1499 | ftp     |   | 1500-1599 | telnet  |
+//! | 1600-1699 | mqtt    |   |           |         |
 //!
 //! To add a migration: create the SQL file, then add **one line** to [`SESSION_MIGRATIONS`]
 //! at its numeric position. Never edit or renumber a migration that has been merged into
@@ -73,6 +74,7 @@ pub static SESSION_MIGRATIONS: &[Migration] = &[
     migration!(1300, "sip", "1300_sip.sql"),
     migration!(1400, "ftp", "1400_ftp.sql"),
     migration!(1500, "telnet", "1500_telnet.sql"),
+    migration!(1600, "mqtt", "1600_mqtt.sql"),
 ];
 
 /// Migrations of `catalog.db`, sorted by version (owned by the core only).

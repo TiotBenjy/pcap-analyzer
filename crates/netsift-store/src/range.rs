@@ -270,6 +270,8 @@ pub enum ModuleRows {
     FtpSessions,
     HttpHeaders,
     HttpTransactions,
+    /// MQTT connections (folded: overlap).
+    Mqtt,
     Pictures,
     /// Announcements and SMB sessions (`smb_items`).
     Smb,
@@ -299,6 +301,9 @@ impl ModuleRows {
             Self::HttpHeaders => "SELECT count(*) FROM http_headers WHERE +ts >= ?1 AND +ts < ?2",
             Self::HttpTransactions => {
                 "SELECT count(*) FROM http_transactions WHERE ts >= ?1 AND ts < ?2"
+            }
+            Self::Mqtt => {
+                "SELECT count(*) FROM mqtt_connections WHERE first_ts < ?2 AND last_ts >= ?1"
             }
             Self::Pictures => {
                 "SELECT count(*) FROM objects o WHERE o.mime LIKE 'image/%' AND o.sha256 IN \

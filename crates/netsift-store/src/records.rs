@@ -72,6 +72,8 @@ pub enum StoreRecord {
     HostTraffic(HostTrafficRow),
     /// New HTTP transaction with its headers (`http_*`), boxed: much larger than the others.
     Http(Box<crate::http::HttpRow>),
+    /// New MQTT connection, packet, topic aggregate or subscription (`mqtt_*`), boxed: wide.
+    Mqtt(Box<crate::mqtt::MqttRow>),
     /// Commutative merging upsert of an open port (`ports`).
     OpenPort(OpenPortRow),
     /// DHCP message, NTP response or KDC reply (`servers`, see [`crate::servers`]).
@@ -110,6 +112,7 @@ impl StoreRecord {
             Self::Ftp(r) => r.kind(),
             Self::HostTraffic(_) => "host_traffic",
             Self::Http(_) => "http_transactions",
+            Self::Mqtt(r) => r.kind(),
             Self::OpenPort(_) => "open_ports",
             Self::Server(r) => r.kind(),
             Self::Sip(_) => "sip_messages",
@@ -138,6 +141,7 @@ impl StoreRecord {
             Self::Ftp(r) => r.insert(conn),
             Self::HostTraffic(r) => r.insert(conn),
             Self::Http(r) => r.insert(conn),
+            Self::Mqtt(r) => r.insert(conn),
             Self::OpenPort(r) => r.insert(conn),
             Self::Server(r) => r.insert(conn),
             Self::Sip(r) => r.insert(conn),

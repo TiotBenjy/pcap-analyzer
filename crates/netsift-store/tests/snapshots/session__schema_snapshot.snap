@@ -735,6 +735,199 @@ CREATE TABLE meta (
     value TEXT NOT NULL
 ) WITHOUT ROWID;
 
+-- table mqtt_connect_secrets
+CREATE TABLE mqtt_connect_secrets (
+    flow_id  INTEGER PRIMARY KEY,                   -- mqtt_connections.flow_id
+    password TEXT NOT NULL
+);
+
+-- table mqtt_connections
+CREATE TABLE mqtt_connections (
+    flow_id            INTEGER PRIMARY KEY,         -- flows.id
+    first_ts           INTEGER NOT NULL,
+    last_ts            INTEGER NOT NULL,
+    client_ip          TEXT NOT NULL,
+    client_port        INTEGER NOT NULL,
+    server_ip          TEXT NOT NULL,               -- the broker
+    server_port        INTEGER NOT NULL,
+    transport          TEXT NOT NULL CHECK (transport IN ('tcp', 'ws')),
+    ws_path            TEXT,                        -- WebSocket (P5.15b)
+    ws_host            TEXT,
+    ws_subprotocol     TEXT,
+    ws_close_code      INTEGER,
+    ws_compressed      INTEGER NOT NULL DEFAULT 0,
+    version            INTEGER,                     -- protocol level 3, 4, 5; NULL: unknown
+    bridge             INTEGER NOT NULL DEFAULT 0,  -- bit 7 of the level set
+    partial            INTEGER NOT NULL DEFAULT 0,  -- picked up in the middle (no CONNECT)
+    protocol_name      TEXT,                        -- MQTT / MQIsdp
+    client_id          TEXT,
+    assigned_client_id TEXT,                        -- 5.0 CONNACK
+    clean_start        INTEGER,
+    keep_alive         INTEGER,
+    server_keep_alive  INTEGER,
+    session_expiry     INTEGER,
+    username           TEXT,
+    has_password       INTEGER NOT NULL DEFAULT 0,
+    password_len       INTEGER,
+    auth_method        TEXT,                        -- 5.0 enhanced authentication
+    auth               TEXT CHECK (auth IN ('none', 'username', 'password', 'enhanced')),
+    will_topic         TEXT,
+    will_qos           INTEGER,
+    will_retain        INTEGER,
+    will_payload_len   INTEGER,
+    will_payload       BLOB,                        -- first 512 bytes
+    connect_props      TEXT NOT NULL DEFAULT '[]',  -- JSON array of [name, value]
+    connack_ts         INTEGER,
+    connack_code       INTEGER,
+    session_present    INTEGER,
+    connack_props      TEXT NOT NULL DEFAULT '[]',
+    login              TEXT CHECK (login IN ('accepted', 'rejected')),
+    end_kind           TEXT NOT NULL,               -- disconnect / close / reset / timeout / capture
+    disconnect_ts      INTEGER,
+    disconnect_by      TEXT,                        -- c (client) / b (broker)
+    disconnect_reason  INTEGER,
+    broker_software    TEXT,                        -- $SYS/broker/version
+    packets_c2s        INTEGER NOT NULL DEFAULT 0,
+    packets_s2c        INTEGER NOT NULL DEFAULT 0,
+    publish_c2s        INTEGER NOT NULL DEFAULT 0,
+    publish_s2c        INTEGER NOT NULL DEFAULT 0,
+    payload_bytes_c2s  INTEGER NOT NULL DEFAULT 0,
+    payload_bytes_s2c  INTEGER NOT NULL DEFAULT 0,
+    subscribe_count    INTEGER NOT NULL DEFAULT 0,
+    pings              INTEGER NOT NULL DEFAULT 0,
+    last_ping_ts       INTEGER,
+    bytes_c2s          INTEGER NOT NULL DEFAULT 0,  -- wire bytes
+    bytes_s2c          INTEGER NOT NULL DEFAULT 0,
+    stored_packets     INTEGER NOT NULL DEFAULT 0,
+    packets_truncated  INTEGER NOT NULL DEFAULT 0,
+    malformed          INTEGER NOT NULL DEFAULT 0,
+    protocol_errors    INTEGER NOT NULL DEFAULT 0,
+    gaps               INTEGER NOT NULL DEFAULT 0
+);
+
+-- index mqtt_connections_broker
+CREATE INDEX mqtt_connections_broker ON mqtt_connections (server_ip, server_port, transport);
+
+-- index mqtt_connections_client
+CREATE INDEX mqtt_connections_client ON mqtt_connections (client_id, first_ts);
+
+-- index mqtt_connections_first_ts
+CREATE INDEX mqtt_connections_first_ts ON mqtt_connections (first_ts, flow_id);
+
+-- index mqtt_connections_login
+CREATE INDEX mqtt_connections_login ON mqtt_connections (login, auth, first_ts);
+
+-- index mqtt_connections_pair
+CREATE INDEX mqtt_connections_pair ON mqtt_connections (client_ip, server_ip, server_port, login);
+
+-- index mqtt_connections_span
+CREATE INDEX mqtt_connections_span ON mqtt_connections (first_ts, last_ts);
+
+-- table mqtt_packets
+CREATE TABLE mqtt_packets (
+    id             INTEGER PRIMARY KEY,
+    flow_id        INTEGER NOT NULL,
+    seq            INTEGER NOT NULL,                -- order of arrival in the connection
+    ts             INTEGER NOT NULL,
+    dir            TEXT NOT NULL CHECK (dir IN ('c', 'b')),
+    ptype          INTEGER NOT NULL,                -- 1 CONNECT ... 15 AUTH
+    flags          INTEGER NOT NULL DEFAULT 0,
+    packet_id      INTEGER,
+    qos            INTEGER,
+    retain         INTEGER NOT NULL DEFAULT 0,
+    dup            INTEGER NOT NULL DEFAULT 0,
+    topic          TEXT,
+    topic_alias    INTEGER,
+    topic_source   TEXT,                            -- name / alias / unresolved
+    size           INTEGER NOT NULL,
+    payload_len    INTEGER,
+    payload        BLOB,                            -- first 512 bytes
+    payload_format INTEGER,
+    content_type   TEXT,
+    reason_code    INTEGER,
+    reason_string  TEXT,
+    ack_state      TEXT,                            -- none / acked / received / missing / error
+    ack_reason     INTEGER,
+    ack_ns         INTEGER,
+    filters        TEXT NOT NULL DEFAULT '[]',      -- JSON [filter, options, granted]
+    props          TEXT NOT NULL DEFAULT '[]',      -- JSON [name, value]
+    malformed      INTEGER NOT NULL DEFAULT 0
+);
+
+-- index mqtt_packets_publish_topic
+CREATE INDEX mqtt_packets_publish_topic ON mqtt_packets (topic, ts) WHERE ptype = 3;
+
+-- index mqtt_packets_publish_ts
+CREATE INDEX mqtt_packets_publish_ts ON mqtt_packets (ts, id) WHERE ptype = 3;
+
+-- index mqtt_packets_seq
+CREATE UNIQUE INDEX mqtt_packets_seq ON mqtt_packets (flow_id, seq);
+
+-- table mqtt_subscriptions
+CREATE TABLE mqtt_subscriptions (
+    flow_id         INTEGER NOT NULL,
+    seq             INTEGER NOT NULL,               -- seq of the SUBSCRIBE
+    idx             INTEGER NOT NULL,               -- filter index in it
+    ts              INTEGER NOT NULL,
+    filter          TEXT NOT NULL,
+    qos             INTEGER NOT NULL,
+    options         INTEGER NOT NULL,
+    granted         INTEGER,                        -- SUBACK code
+    shared_group    TEXT,
+    wildcard        INTEGER NOT NULL DEFAULT 0,     -- #, +/#, $SYS/#
+    unsubscribed_ts INTEGER,
+    PRIMARY KEY (flow_id, seq, idx)
+) WITHOUT ROWID;
+
+-- index mqtt_subscriptions_filter
+CREATE INDEX mqtt_subscriptions_filter ON mqtt_subscriptions (filter);
+
+-- index mqtt_subscriptions_wildcard
+CREATE INDEX mqtt_subscriptions_wildcard ON mqtt_subscriptions (flow_id) WHERE wildcard = 1;
+
+-- table mqtt_topic_flows
+CREATE TABLE mqtt_topic_flows (
+    flow_id       INTEGER NOT NULL,
+    dir           TEXT NOT NULL CHECK (dir IN ('c', 'b')),
+    topic         TEXT NOT NULL,
+    messages      INTEGER NOT NULL,
+    payload_bytes INTEGER NOT NULL,
+    first_ts      INTEGER NOT NULL,
+    last_ts       INTEGER NOT NULL,
+    qos0          INTEGER NOT NULL DEFAULT 0,
+    qos1          INTEGER NOT NULL DEFAULT 0,
+    qos2          INTEGER NOT NULL DEFAULT 0,
+    retained      INTEGER NOT NULL DEFAULT 0,
+    max_payload   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (flow_id, dir, topic)
+) WITHOUT ROWID;
+
+-- index mqtt_topic_flows_span
+CREATE INDEX mqtt_topic_flows_span ON mqtt_topic_flows (first_ts, last_ts);
+
+-- index mqtt_topic_flows_topic
+CREATE INDEX mqtt_topic_flows_topic ON mqtt_topic_flows (topic, dir);
+
+-- table mqtt_topics
+CREATE TABLE mqtt_topics (
+    path          TEXT PRIMARY KEY,
+    parent        TEXT,
+    name          TEXT NOT NULL,
+    depth         INTEGER NOT NULL,
+    is_topic      INTEGER NOT NULL DEFAULT 0,       -- this exact path was published
+    children      INTEGER NOT NULL DEFAULT 0,
+    topics        INTEGER NOT NULL DEFAULT 0,       -- topics of the subtree, itself included
+    messages_pub  INTEGER NOT NULL DEFAULT 0,       -- client to broker
+    messages_del  INTEGER NOT NULL DEFAULT 0,       -- broker to client
+    payload_bytes INTEGER NOT NULL DEFAULT 0,
+    retained      INTEGER NOT NULL DEFAULT 0,
+    first_ts      INTEGER NOT NULL,
+    last_ts       INTEGER NOT NULL
+) WITHOUT ROWID;
+
+-- index mqtt_topics_parent
+CREATE INDEX mqtt_topics_parent ON mqtt_topics (parent, name);
+
 -- table network_country_edges
 CREATE TABLE network_country_edges (
     a             TEXT NOT NULL,

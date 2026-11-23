@@ -157,7 +157,8 @@ function Metadata({ item }: { item: ObjectItem }) {
   const { t } = useTranslation();
   const unknown = t('views.pictures.viewer.unknown');
   const url = item.url ?? item.uri;
-  const urlLabel = t('views.pictures.viewer.url');
+  // A file received or sent by FTP has a path, not a URL.
+  const urlLabel = t(item.source === 'ftp' ? 'views.pictures.viewer.ftpPath' : 'views.pictures.viewer.url');
   const shaLabel = t('views.pictures.viewer.sha256');
   const rows: [string, ReactNode][] = [
     [urlLabel, url === null ? unknown : <Copyable value={cleanText(url)} name={urlLabel} />],

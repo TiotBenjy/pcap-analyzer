@@ -179,3 +179,40 @@ fn showcase_records_snapshot() {
     }
     insta::assert_snapshot!(s);
 }
+
+#[test]
+fn a_large_delivery_is_framed_in_pieces_not_abandoned() {
+    use crate::analyzer::Analyzer as _;
+    use netsift_flow::{Direction, Endpoint, FlowId, FlowKey, StreamCtx};
+    let key = FlowKey {
+        proto: 6,
+        client: Endpoint {
+            ip: sip_hosts::alice().ip,
+            port: 50_000,
+        },
+        server: Endpoint {
+            ip: sip_hosts::pbx().ip,
+            port: fx::PORT,
+        },
+    };
+    let ctx = StreamCtx {
+        ts_ns: 1,
+        chunk_id: 0,
+        frame: 0,
+        id: FlowId(7),
+        key,
+        gap_before: 0,
+    };
+    let one = b"OPTIONS sip:pbx SIP/2.0\r\nCall-ID: x\r\nContent-Length: 0\r\n\r\n";
+    let count = 3 * netsift_dissect::sip::MAX_MESSAGE / one.len();
+    let data: Vec<u8> = one
+        .iter()
+        .copied()
+        .cycle()
+        .take(one.len() * count)
+        .collect();
+    let mut analyzer = SipAnalyzer::new(&AnalyzerConfig::default());
+    let mut out = Vec::new();
+    analyzer.on_stream(&ctx, Direction::ToServer, &data, &mut out);
+    assert_eq!(out.len(), count, "{} bytes delivered at once", data.len());
+}

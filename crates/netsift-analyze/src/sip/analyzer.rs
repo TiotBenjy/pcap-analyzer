@@ -55,6 +55,40 @@ pub struct SipRecord {
     pub scanner: Option<&'static str>,
 }
 
+/// Most bytes buffered per direction of a TCP flow: one message of at most `MAX_MESSAGE` plus
+/// the next piece of data.
+const BUFFER_LIMIT: usize = sip::MAX_MESSAGE.saturating_mul(2);
+
+/// Cuts the complete messages at the start of `side.buf` (keep-alive line ends skipped) into
+/// `out`, with one cursor and a single drain; abandons the direction on a framing error.
+fn frame(side: &mut DirBuf, out: &mut Vec<SipMessage>) {
+    let mut pos = 0usize;
+    loop {
+        let rest = side.buf.get(pos..).unwrap_or_default();
+        let skip = sip::keepalive_len(rest);
+        pos = pos.saturating_add(skip);
+        let rest = side.buf.get(pos..).unwrap_or_default();
+        if rest.is_empty() {
+            break;
+        }
+        match sip::message_len(rest) {
+            Ok(Some(n)) if n > 0 => {
+                if let Some(m) = rest.get(..n).and_then(sip::parse) {
+                    out.push(m);
+                }
+                pos = pos.saturating_add(n);
+            }
+            Ok(_) => break,
+            Err(_) => {
+                side.dead = true;
+                side.buf = Vec::new();
+                return;
+            }
+        }
+    }
+    side.buf.drain(..pos.min(side.buf.len()));
+}
+
 /// Reassembly state of one direction of a TCP flow.
 #[derive(Default)]
 struct DirBuf {
@@ -230,33 +264,21 @@ impl Analyzer for SipAnalyzer {
             side.buf = Vec::new();
             return;
         }
-        if side.buf.len().saturating_add(data.len()) > sip::MAX_MESSAGE.saturating_mul(2) {
-            side.dead = true;
-            side.buf = Vec::new();
-            return;
-        }
-        side.buf.extend_from_slice(data);
+        // Data is taken in pieces so that the buffer never exceeds BUFFER_LIMIT, whatever the
+        // amount delivered at once; complete messages are cut after each piece.
         let mut messages = Vec::new();
-        loop {
-            let skip = sip::keepalive_len(&side.buf);
-            side.buf.drain(..skip);
-            if side.buf.is_empty() {
+        let mut rest = data;
+        while !rest.is_empty() && !side.dead {
+            let room = BUFFER_LIMIT.saturating_sub(side.buf.len());
+            if room == 0 {
+                side.dead = true;
+                side.buf = Vec::new();
                 break;
             }
-            match sip::message_len(&side.buf) {
-                Ok(Some(n)) => {
-                    if let Some(m) = side.buf.get(..n).and_then(sip::parse) {
-                        messages.push(m);
-                    }
-                    side.buf.drain(..n.min(side.buf.len()));
-                }
-                Ok(None) => break,
-                Err(_) => {
-                    side.dead = true;
-                    side.buf = Vec::new();
-                    break;
-                }
-            }
+            let (piece, next) = rest.split_at(room.min(rest.len()));
+            rest = next;
+            side.buf.extend_from_slice(piece);
+            frame(side, &mut messages);
         }
         for m in messages {
             self.emit(

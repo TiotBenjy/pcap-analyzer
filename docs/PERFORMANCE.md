@@ -356,6 +356,19 @@ plages de 1 h, 24 h et 6 jours centrées sur la session (`{r1h}`, `{r24h}`, `{r6
   environ 2 Kio par message sur disque, plus les index (300 à 400 octets de brut pour un message courant) ;
   10 M messages de taille maximale pèseraient environ 20 Go.
 
+## FTP (P5.8, 2026-11-23, `feat/ftp`)
+
+- Requêtes de la vue sur 100 000 sessions, 400 000 transferts et 2 M lignes de transcription
+  (`ftp::tests::timings`, ignoré, mode release, store seul) : `/ftp/stats` 194 ms sur la session, 7 ms sur
+  1 h, 212 ms sur la moitié ; page de sessions avec son total 9 à 15 ms, avec recherche et filtre de
+  connexion 12 à 66 ms ; page de transferts filtrée par sens 1 à 8 ms ; détail d'une session (transcription
+  de 2 000 lignes au plus et transferts) 1 ms. Les compteurs de sessions (`count(DISTINCT ...)` sur les
+  sessions qui chevauchent la plage) sont linéaires en sessions : environ 2 s pour 1 M de sessions FTP,
+  au-delà des 300 ms (agrégats précalculés à prévoir si le cas se présente).
+- Import : une ligne `ftp_lines` par commande ou réponse (au plus 2 000 et 256 Kio par session), une ligne
+  par transfert ; le contenu d'un transfert est tenu en mémoire jusqu'à sa fin (budget de 128 Mio partagé
+  par les shards, ADR-032), écrit une fois dans `blobs/` s'il est complet.
+
 ## Filtre temporel (P5.2b, 2026-11-22, `feat/time-filter-aggregates`)
 
 Même machine, jeu régénéré à l'identique (8 894 735 paquets sur 7 jours, 843 955 flux, 676 978 conversations),

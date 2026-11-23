@@ -147,24 +147,30 @@ la plage. `ModuleRows::Pictures` compte aussi les images déposées ou reçues p
 Ordre des blocs (une colonne sous 768 px) :
 
 1. En-tête : titre « FTP », sous-titre (nom de session), compteur de sessions.
-2. Bandeau de chiffres (`StatCard`) : Sessions, Connexions acceptées (indice : refusées), Fichiers
-   (indice : téléchargés / déposés), Octets transférés, Sessions TLS.
+2. Bandeau de chiffres (`StatCard`, 2 colonnes sous `sm`, 3 jusqu'à `xl`, 6 au-delà) : Sessions (indice :
+   serveurs), Connexions acceptées (indice : refusées, en ambre s'il y en a), Téléchargements, Dépôts,
+   Données transférées (indice : fichiers conservés), Sessions chiffrées (AUTH TLS).
 3. Carte « Sessions » : bande `filters` avec `SearchInput` et contrôle segmenté de connexion (Toutes,
    Acceptées, Refusées, Sans connexion). Liste dépliable (`ExpandableList`) : rangée = client ->
    serveur (`Endpoint`, port grisé), utilisateur, badge de connexion (Acceptée, Refusée, TLS), commandes,
-   fichiers, durée, début (`Timestamp`) ; cartes empilées sous `md`. Sous plage, les colonnes de
-   compteurs portent l'en-tête de colonne repliée « session entière ».
+   fichiers, durée, début (`Timestamp`) ; cartes empilées sous `md` (compteurs et début sur une ligne).
+   Sous plage, les colonnes de compteurs portent l'en-tête de colonne repliée (`WholeSessionHeader`),
+   et la ligne des compteurs d'une carte la mention « session entière ».
    Détail déplié : bannière, utilisateur avec lien « Voir dans Credentials », transcription dans un
    bloc à chasse fixe (fond `subtle`, pas d'aplat sombre), défilant à l'intérieur du bloc : une ligne
    par commande ou réponse, verbe en gras, argument en couleur d'accent, code de réponse en gris
    (rouge pour `4xx` / `5xx`), argument de `PASS` en `SecretValue`, notes (`suite chiffrée`,
    `octets manquants`, `transcription tronquée`) en italique ; liste des transferts de la session.
 4. Carte « Fichiers transférés » : bande `filters` avec `SearchInput` et contrôle segmenté du sens (Tous,
-   Téléchargés, Déposés, Listages). Tableau (`DataTable`, cartes sous `md`) : heure, sens (badge),
-   chemin (mono, troncature au milieu), taille, statut (code et libellé : Terminé, Interrompu, Échec,
-   Sans réponse ; Tronqué), client -> serveur, action : « Voir dans Pictures » pour une image stockée,
-   « Télécharger » (pièce jointe, ADR-016) pour tout autre fichier stocké, rien sinon. Un listage se
-   déplie sur son texte (bloc à chasse fixe, échappé).
+   Téléchargés, Déposés, Listages ; liste déroulante sous `sm`). Liste dépliable (`ExpandableList`, comme
+   les sessions, car chaque transfert a un détail ; cartes empilées sous `md`) : heure, sens (badge),
+   chemin (mono, tronqué avec infobulle), taille, statut (code et libellé : Terminé, Interrompu, Échec,
+   Sans réponse ; badge Tronqué), client -> serveur (à partir de `xl`). Détail déplié : commande et
+   chemin complets, réponse, canal de données (mode, octets, ou « Canal de données non vu »), décalage
+   `REST`, type détecté et SHA-256 (copie) d'un fichier conservé, miniature PNG générée par le backend
+   pour une image (jamais l'original, ADR-016), « Télécharger » (pièce jointe) et « Ouvrir Images » pour
+   une image ; listage en bloc à chasse fixe échappé. La même liste, sans colonne client -> serveur,
+   montre les transferts d'une session dans son détail.
 
 États : chargement (squelettes), erreur (réessayer), session en import ou en échec (`SessionGate`),
 aucune session FTP (« Aucune session FTP »), plage vide (état vide commun « Rien dans la plage »).
@@ -195,4 +201,17 @@ aucune session FTP (« Aucune session FTP »), plage vide (état vide commun « 
 
 ## Notes d'implémentation
 
-(Complétées à la fin de la tâche : mesures, écarts.)
+- Parseurs : `crates/netsift-dissect/src/ftp.rs` (cible de fuzz `lineproto`, avec l'analyseur) ;
+  analyseur : `crates/netsift-analyze/src/ftp/` (`analyzer.rs`, `text.rs`) ; store :
+  `crates/netsift-store/src/ftp.rs`, migration `1400_ftp.sql`, étape `objects` étendue
+  (`crates/netsift-store/src/objects.rs`) ; API : `crates/netsift-api/src/ftp.rs` ; UI : `ui/src/views/ftp/`.
+- Fixtures : `netsift_fixtures::ftp` (`ftp_showcase`, `ftp_round`), avec `TcpSession::park` et
+  `Scenario::resume` pour entrelacer contrôle et données ; ajoutées à la session de démonstration (vitrine
+  puis une petite session toutes les 9 s).
+- Mesures : `docs/PERFORMANCE.md`, section FTP (toutes les requêtes sous 300 ms sur 100 000 sessions et
+  400 000 transferts).
+- Écarts assumés : contenu d'un transfert interrompu ou tronqué non conservé (comme HTTP) ; nom du fichier
+  téléchargé = dernier segment du chemin envoyé par le client ; « Ouvrir Images » ouvre la vue sans
+  sélectionner l'image (la vue Images n'a pas encore de sélection par l'URL) ; borne d'un objet FTP de
+  64 Mio (celle d'`ARCHITECTURE.md`) alors que les images HTTP sont bornées à 16 Mio
+  (`HttpConfig::object_max_bytes`).

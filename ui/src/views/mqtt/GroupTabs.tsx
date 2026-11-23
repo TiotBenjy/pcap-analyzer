@@ -79,7 +79,7 @@ const CLIENT_COLUMNS: ColumnSets = {
 
 const BROKER_COLUMNS: ColumnSets = {
   narrow: ['broker', 'status', 'connections', 'clients', 'anonymous', 'rejected'],
-  mid: ['broker', 'status', 'software', 'connections', 'clients', 'anonymous', 'rejected', 'messages'],
+  mid: ['broker', 'status', 'software', 'connections', 'clients', 'anonymous', 'rejected'],
   all: ['broker', 'status', 'software', 'versions', 'connections', 'clients', 'anonymous', 'rejected', 'messages', 'last'],
 };
 

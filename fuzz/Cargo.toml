@@ -106,6 +106,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "mqtt"
+path = "fuzz_targets/mqtt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "ntlmssp"
 path = "fuzz_targets/ntlmssp.rs"
 test = false

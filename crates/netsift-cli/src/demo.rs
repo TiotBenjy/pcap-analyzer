@@ -152,6 +152,29 @@ fn add_telnet(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
     packets.sort_by_key(|p| p.ts_ns);
 }
 
+/// Gap between two periodic MQTT rounds (sensor report, PLC by topic alias every other round).
+const MQTT_EVERY_SECONDS: i64 = 20;
+
+/// MQTT connections of the MQTT view (`netsift_fixtures::mqtt`): the showcase once (every QoS,
+/// 5.0 aliases, anonymous public broker, `#` subscription, rejected logins, large message,
+/// connection picked up in the middle), then a round every `MQTT_EVERY_SECONDS` over the
+/// `seconds` following `start`, merged into `packets`.
+fn add_mqtt(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
+    let mut sc = Scenario::starting_at(start + 4 * NS_PER_SEC).with_seed(0x4d51_5454);
+    netsift_fixtures::mqtt::mqtt_showcase(&mut sc);
+    let mut round = 0;
+    loop {
+        sc.advance(MQTT_EVERY_SECONDS * NS_PER_SEC);
+        if sc.now() >= start + seconds * NS_PER_SEC {
+            break;
+        }
+        netsift_fixtures::mqtt::mqtt_round(&mut sc, round);
+        round += 1;
+    }
+    packets.extend(sc.into_packets());
+    packets.sort_by_key(|p| p.ts_ns);
+}
+
 /// Varied HTTP traffic (`netsift_fixtures::http_mix`), one round every few seconds over the
 /// `seconds` following `start`, merged into `packets` (sorted by time).
 fn add_http_mix(packets: &mut Vec<Packet>, start: i64, seconds: i64) {
@@ -228,6 +251,7 @@ fn write_chunked(dir: &Path) -> Result<usize> {
     add_ethernet_showcase(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_ftp(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     add_telnet(&mut packets, start, (end - start) / NS_PER_SEC - 5);
+    add_mqtt(&mut packets, start, (end - start) / NS_PER_SEC - 5);
     let pause_at = start + PAUSE_AFTER_SECONDS * NS_PER_SEC;
     for p in &mut packets {
         if p.ts_ns >= pause_at {
@@ -261,6 +285,7 @@ fn write_single(dir: &Path) -> Result<PathBuf> {
     add_ethernet_showcase(&mut packets, start, 20);
     add_ftp(&mut packets, start, 20);
     add_telnet(&mut packets, start, 20);
+    add_mqtt(&mut packets, start, 20);
     let bytes = encode(&packets, &Encoding::pcap())?;
     let path = dir.join("demo-single.pcap");
     std::fs::write(&path, bytes).with_context(|| format!("cannot write {}", path.display()))?;
@@ -352,6 +377,23 @@ mod tests {
         assert!(sessions > 6, "{sessions}");
         assert_eq!(truncated, 1);
         assert!(logins >= 9, "{logins}");
+    }
+
+    /// MQTT view: the showcase, periodic rounds, signals and credentials.
+    fn assert_mqtt(conn: &netsift_store::Connection) {
+        let (connections, rejected, creds, topics): (i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT count(*), sum(login = 'rejected'), (SELECT count(*) FROM credentials \
+                 WHERE protocol = 'mqtt'), (SELECT count(*) FROM mqtt_topics WHERE is_topic = 1) \
+                 FROM mqtt_connections",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert!(connections > 20, "{connections}");
+        assert_eq!(rejected, 6);
+        assert_eq!(creds, 11);
+        assert!(topics > 15, "{topics}");
     }
 
     /// SIP view: calls in every final state over the whole capture, registrations, a scanner.
@@ -462,6 +504,7 @@ mod tests {
         assert!(messages > 100, "{messages}");
         assert_eq!(conflicts, 2);
         assert_telnet(session.conn());
+        assert_mqtt(session.conn());
 
         // Populated: refused without --force, replaced with it.
         assert!(run(&args, &mut Vec::new()).is_err());

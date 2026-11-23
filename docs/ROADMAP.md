@@ -576,7 +576,7 @@ disposition et est soumise à l'utilisateur avant d'implémenter la vue.
       d'extrémités, sommes préfixes ; appel vu en cours de route couvert), scanners par user-agent, test
       d'équivalence chunks et 1/4/7 shards ; en-têtes d'authentification et mots de passe d'URI masqués dans le
       brut avant stockage ; identifiants Digest en `sip-digest` `metadata-only` (sans nonce ni réponse).
-      **Décision utilisateur en attente** : ligne hashcat 11400 pour SIP Digest (tâche à part si souhaitée).
+      Pas de ligne hashcat pour SIP Digest (décision utilisateur du 2026-11-23).
       Suivis : `/sip/stats` linéaire (environ 280 ms à 1 M de messages, agrégats précalculés au-delà) ; clé Digest
       non token qui récupère du texte (`response=abc secret, nonce=`) et mot de passe d'URI coupé par une borne
       (malformés, en clair dans le brut) ; raison d'un statut = `min(reason)` ; vue vide si l'étape `sip` n'a pas

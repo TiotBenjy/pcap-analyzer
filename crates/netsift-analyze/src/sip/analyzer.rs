@@ -59,15 +59,19 @@ pub struct SipRecord {
 /// the next piece of data.
 const BUFFER_LIMIT: usize = sip::MAX_MESSAGE.saturating_mul(2);
 
-/// Cuts the complete messages at the start of `side.buf` (keep-alive line ends skipped) into
-/// `out`, with one cursor and a single drain; abandons the direction on a framing error.
-fn frame(side: &mut DirBuf, out: &mut Vec<SipMessage>) {
-    let mut pos = 0usize;
-    loop {
-        let rest = side.buf.get(pos..).unwrap_or_default();
-        let skip = sip::keepalive_len(rest);
-        pos = pos.saturating_add(skip);
-        let rest = side.buf.get(pos..).unwrap_or_default();
+/// Messages cut from a buffer before they are emitted: what is held in memory at once, whatever
+/// the amount of data delivered.
+pub(super) const FRAME_BATCH: usize = 64;
+
+/// Cuts at most [`FRAME_BATCH`] complete messages of `side.buf` from `*pos` (keep-alive line ends
+/// skipped), moving `*pos` past them; the caller drains the consumed bytes once. Abandons the
+/// direction on a framing error.
+fn frame(side: &mut DirBuf, pos: &mut usize) -> Vec<SipMessage> {
+    let mut out = Vec::new();
+    while out.len() < FRAME_BATCH {
+        let rest = side.buf.get(*pos..).unwrap_or_default();
+        *pos = pos.saturating_add(sip::keepalive_len(rest));
+        let rest = side.buf.get(*pos..).unwrap_or_default();
         if rest.is_empty() {
             break;
         }
@@ -76,17 +80,30 @@ fn frame(side: &mut DirBuf, out: &mut Vec<SipMessage>) {
                 if let Some(m) = rest.get(..n).and_then(sip::parse) {
                     out.push(m);
                 }
-                pos = pos.saturating_add(n);
+                *pos = pos.saturating_add(n);
             }
             Ok(_) => break,
             Err(_) => {
                 side.dead = true;
                 side.buf = Vec::new();
-                return;
+                *pos = 0;
+                break;
             }
         }
     }
-    side.buf.drain(..pos.min(side.buf.len()));
+    out
+}
+
+/// Emits the record of one message and, for a request with a Digest authorization, its
+/// credential, counted in `credentials` (at most [`MAX_PER_FLOW`] per flow).
+fn emit_record(record: SipRecord, credentials: &mut usize, out: &mut dyn RecordSink) {
+    if let Some(cred) = credential(&record) {
+        *credentials = credentials.saturating_add(1);
+        if *credentials <= MAX_PER_FLOW {
+            out.emit(Record::Credential(cred));
+        }
+    }
+    out.emit(Record::Sip(Box::new(record)));
 }
 
 /// Reassembly state of one direction of a TCP flow.
@@ -109,13 +126,16 @@ struct FlowState {
 #[derive(Default)]
 pub struct SipAnalyzer {
     flows: HashMap<FlowId, FlowState>,
+    /// Most messages held before being emitted (tests: bounded by [`FRAME_BATCH`]).
+    #[cfg(test)]
+    pub(super) peak_pending: usize,
 }
 
 impl fmt::Debug for SipAnalyzer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SipAnalyzer")
             .field("flows", &self.flows.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -129,25 +149,6 @@ impl SipAnalyzer {
     /// [`crate::registry::Factory`] of this analyzer.
     pub fn boxed(config: &AnalyzerConfig) -> Box<dyn Analyzer> {
         Box::new(Self::new(config))
-    }
-
-    /// Emits the record of one message and, for a request with a Digest authorization, its
-    /// credential (at most [`MAX_PER_FLOW`] per flow).
-    fn emit(&mut self, record: SipRecord, out: &mut dyn RecordSink) {
-        if let Some(cred) = credential(&record) {
-            let allowed = match record.flow_id {
-                Some(id) => {
-                    let state = self.flows.entry(id).or_default();
-                    state.credentials = state.credentials.saturating_add(1);
-                    state.credentials <= MAX_PER_FLOW
-                }
-                None => true,
-            };
-            if allowed {
-                out.emit(Record::Credential(cred));
-            }
-        }
-        out.emit(Record::Sip(Box::new(record)));
     }
 }
 
@@ -231,10 +232,14 @@ impl Analyzer for SipAnalyzer {
             port: udp.dst_port,
         };
         let flow = ctx.flow.map(|f| f.id);
-        self.emit(
-            record(ctx.ts_ns, src, dst, SipTransport::Udp, flow, message),
-            out,
-        );
+        let record = record(ctx.ts_ns, src, dst, SipTransport::Udp, flow, message);
+        match flow {
+            Some(id) => {
+                let state = self.flows.entry(id).or_default();
+                emit_record(record, &mut state.credentials, out);
+            }
+            None => emit_record(record, &mut 0, out),
+        }
     }
 
     fn on_stream(
@@ -252,9 +257,9 @@ impl Analyzer for SipAnalyzer {
             Direction::ToClient => (ctx.key.server, ctx.key.client),
         };
         let state = self.flows.entry(ctx.id).or_default();
-        let side = match dir {
-            Direction::ToServer => &mut state.to_server,
-            Direction::ToClient => &mut state.to_client,
+        let (side, credentials) = match dir {
+            Direction::ToServer => (&mut state.to_server, &mut state.credentials),
+            Direction::ToClient => (&mut state.to_client, &mut state.credentials),
         };
         if side.dead {
             return;
@@ -265,8 +270,8 @@ impl Analyzer for SipAnalyzer {
             return;
         }
         // Data is taken in pieces so that the buffer never exceeds BUFFER_LIMIT, whatever the
-        // amount delivered at once; complete messages are cut after each piece.
-        let mut messages = Vec::new();
+        // amount delivered at once (up to the reassembly buffer of the flow); the messages of each
+        // piece are emitted by batches of FRAME_BATCH, so few are ever held at once.
         let mut rest = data;
         while !rest.is_empty() && !side.dead {
             let room = BUFFER_LIMIT.saturating_sub(side.buf.len());
@@ -278,13 +283,25 @@ impl Analyzer for SipAnalyzer {
             let (piece, next) = rest.split_at(room.min(rest.len()));
             rest = next;
             side.buf.extend_from_slice(piece);
-            frame(side, &mut messages);
-        }
-        for m in messages {
-            self.emit(
-                record(ctx.ts_ns, src, dst, SipTransport::Tcp, Some(ctx.id), m),
-                out,
-            );
+            let mut pos = 0;
+            loop {
+                let batch = frame(side, &mut pos);
+                let full = batch.len() == FRAME_BATCH;
+                #[cfg(test)]
+                {
+                    self.peak_pending = self.peak_pending.max(batch.len());
+                }
+                for m in batch {
+                    let r = record(ctx.ts_ns, src, dst, SipTransport::Tcp, Some(ctx.id), m);
+                    emit_record(r, credentials, out);
+                }
+                if !full || side.dead {
+                    break;
+                }
+            }
+            if !side.dead {
+                side.buf.drain(..pos.min(side.buf.len()));
+            }
         }
     }
 

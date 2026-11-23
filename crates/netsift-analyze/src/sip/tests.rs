@@ -204,7 +204,8 @@ fn a_large_delivery_is_framed_in_pieces_not_abandoned() {
         gap_before: 0,
     };
     let one = b"OPTIONS sip:pbx SIP/2.0\r\nCall-ID: x\r\nContent-Length: 0\r\n\r\n";
-    let count = 3 * netsift_dissect::sip::MAX_MESSAGE / one.len();
+    // 2 MiB at once (the reassembler may deliver up to its per-flow buffer).
+    let count = 32 * netsift_dissect::sip::MAX_MESSAGE / one.len();
     let data: Vec<u8> = one
         .iter()
         .copied()
@@ -215,4 +216,7 @@ fn a_large_delivery_is_framed_in_pieces_not_abandoned() {
     let mut out = Vec::new();
     analyzer.on_stream(&ctx, Direction::ToServer, &data, &mut out);
     assert_eq!(out.len(), count, "{} bytes delivered at once", data.len());
+    // Messages are emitted by batches: few are ever held at once.
+    assert!(analyzer.peak_pending <= super::analyzer::FRAME_BATCH);
+    assert!(analyzer.peak_pending > 0);
 }

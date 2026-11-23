@@ -36,6 +36,14 @@ ports des flux RTP de la voix, sans qu'il soit besoin de lire l'audio.
   tabulation et LF, et caractères de mise en forme bidirectionnelle ou invisibles (U+200B à U+200F,
   U+202A à U+202E, U+2066 à U+2069, U+FEFF), remplacés par U+FFFD. Jamais interprété : l'UI l'affiche
   comme texte.
+- Secrets masqués dans le brut, **avant stockage** (`redact_auth`) : dans la tête du message, la valeur
+  des en-têtes `Authorization`, `Proxy-Authorization`, `WWW-Authenticate`, `Proxy-Authenticate` et
+  `Authentication-Info`, lignes repliées comprises (rejointes à leur en-tête), est réécrite. Schéma
+  `Digest` : `username`, `realm`, `uri`, `algorithm`, `qop`, `stale` et `domain` restent lisibles, toute
+  autre valeur (`response`, `nonce`, `cnonce`, `opaque`, `nc`...) devient `<masked>`. `Basic`, schéma
+  inconnu et `Authentication-Info` : toute la valeur devient `<masked>`. Ni le stockage, ni l'API, ni
+  l'UI (affichage et copie) ne voient donc ces secrets ; les `Debug` des types qui portent le brut ne
+  l'impriment jamais.
 - Champs extraits : méthode ou code et raison, URI de requête, Call-ID, From et To (nom affiché, URI,
   `tag`), CSeq (numéro et méthode), `User-Agent`, `Server`, `Contact` (URI), premier `Via` (transport et
   émetteur), `Expires`, `Content-Type`, `Content-Length`, `Reason`, royaume du défi
@@ -47,7 +55,8 @@ ports des flux RTP de la voix, sans qu'il soit besoin de lire l'audio.
 - SDP (`Content-Type: application/sdp`, corps borné à 8 Kio) : seules les lignes utiles sont lues,
   `c=` de session et de média (`IN IP4` / `IN IP6`, adresse ; une adresse multicast avec TTL garde
   l'adresse), `m=` (type de média, port, protocole, formats), `a=rtpmap:` (nom des codecs),
-  `a=sendrecv` / `sendonly` / `recvonly` / `inactive`. Au plus 8 médias et 16 codecs par média. Un
+  `a=sendrecv` / `sendonly` / `recvonly` / `inactive`. Au plus 8 médias par corps SDP et 16 codecs
+  par média (et 16 médias distincts par dialogue, `MAX_DIALOG_MEDIA`). Un
   port 0 (média refusé) est conservé mais jamais joint aux flux.
 
 ### Analyseur `sip` (`crates/netsift-analyze/src/sip/`)
@@ -55,9 +64,10 @@ ports des flux RTP de la voix, sans qu'il soit besoin de lire l'audio.
 - UDP : tout datagramme dont le port source **ou** destination est 5060 et qui est un message SIP
   (un datagramme = un message, section 18.1.1 ; le corps est coupé à `Content-Length`). Un datagramme
   qui n'est pas du SIP n'est pas enregistré (balayage de port brut : vue Connexions).
-- TCP 5060 (l'un ou l'autre côté) : flux réassemblé découpé par `message_len`, tampon borné à 64 Kio
-  par sens ; un sens est abandonné après un trou (`gap_before`), un contenu non SIP ou un message trop
-  grand. SIP sur TLS (5061) n'est pas déchiffré : la session apparaît dans la vue TLS.
+- TCP 5060 (l'un ou l'autre côté) : flux réassemblé découpé par `message_len`, tampon borné à 128 Kio
+  par sens (un message de 64 Kio au plus et la suite) ; une livraison plus grande est lue par morceaux,
+  les messages complets étant découpés après chaque morceau. Un sens est abandonné après un trou
+  (`gap_before`), un contenu non SIP ou un message trop grand. SIP sur TLS (5061) n'est pas déchiffré : la session apparaît dans la vue TLS.
 - Un enregistrement par message (`Record::Sip`), sans état partagé entre flux.
 - Scanners : un `User-Agent` (ou `Server`) contenant le nom d'un outil de balayage SIP connu marque le
   message (`scanner`, nom canonique de l'outil) : `friendly-scanner`, `sipvicious` et `sipvicious_*`
@@ -100,13 +110,17 @@ ports des flux RTP de la voix, sans qu'il soit besoin de lire l'audio.
     (>= 300), `no-answer`.
 - `sip_media` (même étape) : un enregistrement par (dialogue, type de média, adresse, port) annoncé
   dans un SDP du dialogue : protocole, codecs, direction, émetteur de l'offre et heure de la première
-  annonce, puis les flux UDP dont une extrémité est cette adresse et ce port et qui chevauchent
-  `[première annonce, fin du dialogue + 10 s]` : nombre de flux, paquets, octets, premier flux (plus
-  petit identifiant). Aucune lecture du contenu RTP.
+  annonce, puis les flux UDP dont une extrémité est cette adresse et ce port, qui chevauchent
+  `[première annonce, fin du dialogue + 10 s]` et qui ont commencé au plus 60 s (délai d'expiration des
+  flux UDP) avant l'annonce : nombre de flux, paquets, octets, premier flux (plus petit identifiant).
+  Aucune lecture du contenu RTP. Jointure linéaire en nombre de flux : extrémités distinctes dans une
+  table temporaire, flux en destination par l'index `flows_service`, flux en source par un seul
+  parcours de `flows` (une passerelle média peut émettre des centaines de milliers de flux d'une même
+  adresse), puis agrégation par lectures d'index bornées.
 - Index (différés pendant l'import, ADR-023, sauf ceux des tables remplies par l'étape) :
   `(ts)` pour la liste, `(call_id, ts)` pour l'étape et le filtre de dialogue, `(kind, method, ts)` et
-  `(status, ts)` pour les compteurs et filtres, `(software, scanner, ts)` pour les user-agents,
-  `(scanner, src_ip, ts)` pour les scanners, `(src_ip, ts)` pour le filtre d'émetteur ;
+  `(status, reason, ts)` pour les compteurs et filtres, `(software, scanner, ts)` pour les user-agents,
+  `(scanner, src_ip, dst_ip, method, ts)` pour les scanners, `(src_ip, ts)` pour le filtre d'émetteur ;
   `sip_dialogs (first_ts, last_ts, method, state, duration_ns)` (ordre de la liste, chevauchement et
   compteurs sous plage, couvrant), `(method, first_ts)` (liste d'un type), `(method, state, duration_ns)`
   (compteurs sans plage, couvrant) ; `sip_media (dialog_id, ...)` (contrainte d'unicité).
@@ -115,7 +129,7 @@ ports des flux RTP de la voix, sans qu'il soit besoin de lire l'audio.
 
 | Méthode | Route | Réponse |
 |---|---|---|
-| GET | `/sessions/{id}/sip/stats` | `SipStats` : `messages`, `requests`, `responses`, `dialogs`, `calls` et leur répartition par état, `registrations`, `scanner_messages`, `senders`, top 10 des méthodes (requêtes), des codes de réponse, des user-agents (avec `scanner`) |
+| GET | `/sessions/{id}/sip/stats` | `SipStats` : `messages`, `requests`, `responses`, `dialogs`, `calls` et leur répartition par état, `registrations`, `scanner_messages`, `senders`, top 10 des méthodes (requêtes), des codes de réponse (avec une de leurs raisons, la plus petite), des user-agents (avec `scanner`) |
 | GET | `/sessions/{id}/sip/dialogs?type=call\|register\|other&state=&q=&limit=&cursor=` | `Page<SipDialogInfo>` : dialogues par début croissant (keyset `(first_ts, id)`), avec leurs médias (au plus 8, une requête pour la page) ; `q` cherche dans le Call-ID, From, To, user-agent, identifiant |
 | GET | `/sessions/{id}/sip/messages?kind=&method=&call_id=&src=&scanner=&q=&limit=&cursor=` | `Page<SipMessageInfo>` : messages par horodatage croissant (keyset `(ts, id)`), message brut compris ; `q` cherche dans le Call-ID, From, To, URI de requête et user-agent |
 | GET | `/sessions/{id}/sip/scanners` | `Vec<SipScannerInfo>` : émetteurs marqués scanner (outil, adresse, messages, méthodes distinctes, cibles distinctes, première et dernière activité), au plus 50 |
@@ -224,6 +238,7 @@ aucune donnée SIP (« Aucun message SIP »), plage vide (« Rien dans la plage 
   `sip`) ; API : `crates/netsift-api/src/sip.rs` ; UI : `ui/src/views/sip/`.
 - Démonstration : `add_sip` dans `crates/netsift-cli/src/demo.rs` (vitrine puis un appel toutes les
   `SIP_EVERY_SECONDS`, et un renouvellement d'enregistrement un tour sur deux).
-- Mesure (`sip::tests::timings`, ignoré, mode release, 1 M de messages, machine de développement) :
-  `/sip/stats` 252 ms sur la session, 32 ms sur 1 h, 279 ms sur la moitié ; pages de messages 3 à 24 ms,
-  d'appels 14 à 58 ms ; scanners 1 à 25 ms ; étape `sip` 6,5 à 7 s (`docs/PERFORMANCE.md`).
+- Mesure (`sip::tests::timings`, ignoré, mode release, 1 M de messages et 325 000 flux UDP, machine de
+  développement chargée) : `/sip/stats` 249 à 283 ms sur la session, 32 ms sur 1 h, 275 à 288 ms sur la
+  moitié ; pages de messages 3 à 26 ms, d'appels 14 à 40 ms ; scanners 2 à 30 ms ; étape `sip` 8,3 à
+  8,8 s, dont 1,6 s pour joindre 250 000 médias aux flux (`docs/PERFORMANCE.md`).
